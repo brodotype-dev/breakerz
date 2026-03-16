@@ -6,7 +6,7 @@ export async function POST(req: NextRequest) {
     const { query, sport } = await req.json();
     if (!query) return NextResponse.json({ error: 'query required' }, { status: 400 });
 
-    const result = await searchCards(query, sport);
+    const result = await searchCards(sport ? `${query} ${sport}` : query);
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';

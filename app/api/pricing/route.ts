@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { computeLiveEV, searchCards } from '@/lib/cardhedger';
+import { computeLiveEV, searchAndComputeEV } from '@/lib/cardhedger';
 import type { PlayerWithPricing } from '@/lib/types';
 
 const CACHE_TTL_HOURS = 24;
@@ -107,25 +107,25 @@ export async function POST(req: NextRequest) {
         }
 
         try {
-          // Auto-resolve card ID if not stored
+          let ev: { evLow: number; evMid: number; evHigh: number };
           let cardId = pp.cardhedger_card_id;
+
           if (!cardId) {
+            // Search + compute EV in one call
             const query = `${pp.player.name} ${product?.year ?? ''} ${product?.name ?? ''}`.trim();
-            const results = await searchCards(query);
-            cardId = results.cards?.[0]?.card_id ?? null;
+            const result = await searchAndComputeEV(query);
+            if (!result) throw new Error('No card found');
+            cardId = result.cardId;
+            ev = { evLow: result.evLow, evMid: result.evMid, evHigh: result.evHigh };
 
-            // Persist the card ID so future fetches skip the search step
-            if (cardId) {
-              await supabaseAdmin
-                .from('player_products')
-                .update({ cardhedger_card_id: cardId })
-                .eq('id', pp.id);
-            }
+            // Persist card ID so future refreshes skip the search step
+            await supabaseAdmin
+              .from('player_products')
+              .update({ cardhedger_card_id: cardId })
+              .eq('id', pp.id);
+          } else {
+            ev = await computeLiveEV(cardId);
           }
-
-          if (!cardId) throw new Error('No card found');
-
-          const ev = await computeLiveEV(cardId);
 
           await supabaseAdmin.from('pricing_cache').upsert({
             player_product_id: pp.id,
