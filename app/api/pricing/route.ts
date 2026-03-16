@@ -1,119 +1,161 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { computeLiveEV } from '@/lib/cardhedger';
+import { computeLiveEV, searchCards } from '@/lib/cardhedger';
 import type { PlayerWithPricing } from '@/lib/types';
 
 const CACHE_TTL_HOURS = 24;
 
+// GET — load roster with cached pricing only (fast, no CardHedger calls)
 export async function GET(req: NextRequest) {
   const productId = req.nextUrl.searchParams.get('productId');
   if (!productId) return NextResponse.json({ error: 'productId required' }, { status: 400 });
 
   try {
-    // Load all player_products for this product, with player info
     const { data: playerProducts, error } = await supabaseAdmin
       .from('player_products')
-      .select(`
-        *,
-        player:players(*)
-      `)
+      .select('*, player:players(*)')
       .eq('product_id', productId)
       .eq('insert_only', false)
       .order('id');
 
     if (error) throw error;
-    if (!playerProducts || playerProducts.length === 0) {
-      return NextResponse.json({ players: [] });
-    }
+    if (!playerProducts?.length) return NextResponse.json({ players: [] });
 
-    // Load all cached pricing in one query
-    const playerProductIds = playerProducts.map(pp => pp.id);
+    const ids = playerProducts.map(pp => pp.id);
     const { data: cachedPricing } = await supabaseAdmin
       .from('pricing_cache')
       .select('*')
-      .in('player_product_id', playerProductIds)
+      .in('player_product_id', ids)
       .gt('expires_at', new Date().toISOString());
 
     const cacheMap = new Map(cachedPricing?.map(c => [c.player_product_id, c]) ?? []);
 
-    // For each player, use cached pricing or fetch live
+    const players: PlayerWithPricing[] = playerProducts.map(pp => {
+      const cached = cacheMap.get(pp.id);
+      return {
+        ...pp,
+        evLow: cached?.ev_low ?? 0,
+        evMid: cached?.ev_mid ?? 0,
+        evHigh: cached?.ev_high ?? 0,
+        hobbyWeight: 0,
+        bdWeight: 0,
+        hobbySlotCost: 0,
+        bdSlotCost: 0,
+        totalCost: 0,
+        hobbyPerCase: 0,
+        bdPerCase: 0,
+        maxPay: 0,
+        pricingSource: cached ? 'cached' as const : 'none' as const,
+      };
+    });
+
+    return NextResponse.json({ players });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+// POST — fetch live pricing from CardHedger for all unpriced players
+export async function POST(req: NextRequest) {
+  const { productId } = await req.json();
+  if (!productId) return NextResponse.json({ error: 'productId required' }, { status: 400 });
+
+  try {
+    const { data: product } = await supabaseAdmin
+      .from('products')
+      .select('name, year')
+      .eq('id', productId)
+      .single();
+
+    const { data: playerProducts, error } = await supabaseAdmin
+      .from('player_products')
+      .select('*, player:players(*)')
+      .eq('product_id', productId)
+      .eq('insert_only', false)
+      .order('id');
+
+    if (error) throw error;
+    if (!playerProducts?.length) return NextResponse.json({ players: [] });
+
+    const ids = playerProducts.map(pp => pp.id);
+    const { data: existingCache } = await supabaseAdmin
+      .from('pricing_cache')
+      .select('*')
+      .in('player_product_id', ids)
+      .gt('expires_at', new Date().toISOString());
+
+    const cacheMap = new Map(existingCache?.map(c => [c.player_product_id, c]) ?? []);
+
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + CACHE_TTL_HOURS);
 
     const players: PlayerWithPricing[] = await Promise.all(
       playerProducts.map(async pp => {
+        // Already cached — return immediately
         const cached = cacheMap.get(pp.id);
-
         if (cached) {
           return {
             ...pp,
             evLow: cached.ev_low,
             evMid: cached.ev_mid,
             evHigh: cached.ev_high,
-            hobbyWeight: 0,
-            bdWeight: 0,
-            hobbySlotCost: 0,
-            bdSlotCost: 0,
-            totalCost: 0,
-            hobbyPerCase: 0,
-            bdPerCase: 0,
-            maxPay: 0,
+            hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
+            totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
             pricingSource: 'cached' as const,
           };
         }
 
-        // No cache — try live pricing
-        if (pp.cardhedger_card_id) {
-          try {
-            const ev = await computeLiveEV(pp.cardhedger_card_id);
+        try {
+          // Auto-resolve card ID if not stored
+          let cardId = pp.cardhedger_card_id;
+          if (!cardId) {
+            const query = `${pp.player.name} ${product?.year ?? ''} ${product?.name ?? ''}`.trim();
+            const results = await searchCards(query);
+            cardId = results.cards?.[0]?.card_id ?? null;
 
-            // Store in cache
-            await supabaseAdmin.from('pricing_cache').upsert({
-              player_product_id: pp.id,
-              cardhedger_card_id: pp.cardhedger_card_id,
-              ev_low: ev.evLow,
-              ev_mid: ev.evMid,
-              ev_high: ev.evHigh,
-              raw_comps: {},
-              fetched_at: new Date().toISOString(),
-              expires_at: expiresAt.toISOString(),
-            }, { onConflict: 'player_product_id' });
-
-            return {
-              ...pp,
-              evLow: ev.evLow,
-              evMid: ev.evMid,
-              evHigh: ev.evHigh,
-              hobbyWeight: 0,
-              bdWeight: 0,
-              hobbySlotCost: 0,
-              bdSlotCost: 0,
-              totalCost: 0,
-              hobbyPerCase: 0,
-              bdPerCase: 0,
-              maxPay: 0,
-              pricingSource: 'live' as const,
-            };
-          } catch {
-            // CardHedger failed — return zeroed pricing
+            // Persist the card ID so future fetches skip the search step
+            if (cardId) {
+              await supabaseAdmin
+                .from('player_products')
+                .update({ cardhedger_card_id: cardId })
+                .eq('id', pp.id);
+            }
           }
-        }
 
-        return {
-          ...pp,
-          evLow: 0,
-          evMid: 0,
-          evHigh: 0,
-          hobbyWeight: 0,
-          bdWeight: 0,
-          hobbySlotCost: 0,
-          bdSlotCost: 0,
-          totalCost: 0,
-          hobbyPerCase: 0,
-          bdPerCase: 0,
-          maxPay: 0,
-          pricingSource: 'none' as const,
-        };
+          if (!cardId) throw new Error('No card found');
+
+          const ev = await computeLiveEV(cardId);
+
+          await supabaseAdmin.from('pricing_cache').upsert({
+            player_product_id: pp.id,
+            cardhedger_card_id: cardId,
+            ev_low: ev.evLow,
+            ev_mid: ev.evMid,
+            ev_high: ev.evHigh,
+            raw_comps: {},
+            fetched_at: new Date().toISOString(),
+            expires_at: expiresAt.toISOString(),
+          }, { onConflict: 'player_product_id' });
+
+          return {
+            ...pp,
+            evLow: ev.evLow,
+            evMid: ev.evMid,
+            evHigh: ev.evHigh,
+            hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
+            totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
+            pricingSource: 'live' as const,
+          };
+        } catch {
+          return {
+            ...pp,
+            evLow: 0, evMid: 0, evHigh: 0,
+            hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
+            totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
+            pricingSource: 'none' as const,
+          };
+        }
       })
     );
 
