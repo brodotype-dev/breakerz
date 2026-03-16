@@ -17,11 +17,6 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
@@ -42,78 +37,63 @@
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* ── Heritage-inspired color system ──────────────────────────── */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.809 0.105 251.813);
-  --chart-2: oklch(0.623 0.214 259.815);
-  --chart-3: oklch(0.546 0.245 262.881);
-  --chart-4: oklch(0.488 0.243 264.376);
-  --chart-5: oklch(0.424 0.199 265.638);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
+  /* Warm cream base — like the back of a Heritage card */
+  --background: oklch(0.975 0.008 85);
+  --foreground: oklch(0.15 0.02 250);
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.809 0.105 251.813);
-  --chart-2: oklch(0.623 0.214 259.815);
-  --chart-3: oklch(0.546 0.245 262.881);
-  --chart-4: oklch(0.488 0.243 264.376);
-  --chart-5: oklch(0.424 0.199 265.638);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  /* White card surfaces */
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.15 0.02 250);
+
+  /* Topps navy — used as primary action color */
+  --primary: oklch(0.28 0.08 250);
+  --primary-foreground: oklch(0.98 0 0);
+
+  /* Light muted surfaces */
+  --secondary: oklch(0.94 0.006 85);
+  --secondary-foreground: oklch(0.28 0.08 250);
+
+  --muted: oklch(0.94 0.006 85);
+  --muted-foreground: oklch(0.52 0.02 250);
+
+  --accent: oklch(0.94 0.006 85);
+  --accent-foreground: oklch(0.28 0.08 250);
+
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.15 0.02 250);
+
+  /* Subtle warm border */
+  --border: oklch(0.87 0.01 85);
+  --input: oklch(0.87 0.01 85);
+  --ring: oklch(0.28 0.08 250);
+
+  --destructive: oklch(0.577 0.245 27.325);
+  --radius: 0.375rem;
+
+  /* Signal colors — used directly in components */
+  --signal-buy: oklch(0.48 0.16 145);
+  --signal-buy-bg: oklch(0.95 0.05 145);
+  --signal-watch: oklch(0.55 0.16 75);
+  --signal-watch-bg: oklch(0.97 0.05 85);
+  --signal-pass: oklch(0.52 0.22 27);
+  --signal-pass-bg: oklch(0.97 0.04 27);
+
+  /* Topps red accent — sparingly for RC badges, highlights */
+  --topps-red: oklch(0.52 0.22 27);
+  --topps-gold: oklch(0.72 0.14 85);
+
+  --sidebar: oklch(0.97 0.008 85);
+  --sidebar-foreground: oklch(0.15 0.02 250);
+  --sidebar-primary: oklch(0.28 0.08 250);
+  --sidebar-primary-foreground: oklch(0.98 0 0);
+  --sidebar-accent: oklch(0.94 0.006 85);
+  --sidebar-accent-foreground: oklch(0.28 0.08 250);
+  --sidebar-border: oklch(0.87 0.01 85);
+  --sidebar-ring: oklch(0.28 0.08 250);
 }
 
 @layer base {
@@ -125,5 +105,36 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+/* ── Heritage utility classes ─────────────────────────────────── */
+@layer utilities {
+  .signal-buy    { color: var(--signal-buy); }
+  .signal-watch  { color: var(--signal-watch); }
+  .signal-pass   { color: var(--signal-pass); }
+
+  .signal-buy-badge {
+    background: var(--signal-buy-bg);
+    color: var(--signal-buy);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+  .signal-watch-badge {
+    background: var(--signal-watch-bg);
+    color: var(--signal-watch);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+  .signal-pass-badge {
+    background: var(--signal-pass-bg);
+    color: var(--signal-pass);
+    font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+
+  /* Heritage-style thick top border accent */
+  .heritage-accent {
+    border-top: 3px solid var(--topps-red);
   }
 }

@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { computeSignal, formatCurrency, formatPct } from '@/lib/engine';
 import type { PlayerWithPricing, Signal } from '@/lib/types';
@@ -14,92 +13,112 @@ export default function BreakerComparison({ players }: Props) {
   const top = players.slice(0, 30);
   const [asks, setAsks] = useState<Record<string, number>>({});
 
-  const updateAsk = (id: string, value: number) => {
-    setAsks(prev => ({ ...prev, [id]: value }));
-  };
-
-  const results = useMemo(() => {
-    return top.map(row => {
-      const ask = asks[row.id] || 0;
-      const { valuePct, signal } = ask > 0
-        ? computeSignal(row.evMid, ask)
-        : { valuePct: 0, signal: 'WATCH' as Signal };
-      return { ...row, ask, valuePct, signal, hasInput: ask > 0 };
-    });
-  }, [top, asks]);
+  const results = useMemo(() => top.map(row => {
+    const ask = asks[row.id] || 0;
+    const { valuePct, signal } = ask > 0
+      ? computeSignal(row.evMid, ask)
+      : { valuePct: 0, signal: 'WATCH' as Signal };
+    return { ...row, ask, valuePct, signal, hasInput: ask > 0 };
+  }), [top, asks]);
 
   const totalAsk = Object.values(asks).reduce((s, v) => s + v, 0);
 
+  const buyCount  = results.filter(r => r.hasInput && r.signal === 'BUY').length;
+  const watchCount = results.filter(r => r.hasInput && r.signal === 'WATCH').length;
+  const passCount = results.filter(r => r.hasInput && r.signal === 'PASS').length;
+
   return (
-    <div className="rounded-lg border overflow-hidden">
-      <div className="px-6 py-4 border-b">
-        <h2 className="text-lg font-semibold">Breaker Comparison</h2>
-        <p className="text-xs text-muted-foreground mt-1">
-          Enter a breaker&apos;s asking price to get BUY / WATCH / PASS signals
-        </p>
-      </div>
+    <div className="bg-card border rounded overflow-hidden">
+      {/* Summary bar — only shown once any ask is entered */}
+      {totalAsk > 0 && (
+        <div className="border-b px-6 py-3 flex items-center justify-between gap-4 bg-secondary/40">
+          <div className="flex items-center gap-4 text-xs">
+            {buyCount > 0 && (
+              <span className="signal-buy font-bold">{buyCount} BUY</span>
+            )}
+            {watchCount > 0 && (
+              <span className="signal-watch font-bold">{watchCount} WATCH</span>
+            )}
+            {passCount > 0 && (
+              <span className="signal-pass font-bold">{passCount} PASS</span>
+            )}
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Total Ask</p>
+            <p className="font-mono font-bold text-sm">{formatCurrency(totalAsk)}</p>
+          </div>
+        </div>
+      )}
+
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b bg-muted/50">
+            <tr className="border-b bg-[oklch(0.28_0.08_250)] text-white">
               {['Player', 'EV Mid', 'Model Slot', 'Breaker Ask', 'Value %', 'Signal'].map(h => (
-                <th key={h} className="px-4 py-2.5 text-left text-xs uppercase tracking-wider text-muted-foreground font-medium">
+                <th key={h} className="px-4 py-2.5 text-left text-[10px] uppercase tracking-widest font-bold">
                   {h}
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {results.map(row => (
-              <tr key={row.id} className="border-b hover:bg-muted/30 transition-colors">
-                <td className="px-4 py-2.5 font-medium">
-                  {row.player.name}
-                  {row.player.is_rookie && (
-                    <Badge variant="outline" className="ml-2 text-[10px] px-1 py-0 text-primary border-primary">RC</Badge>
-                  )}
+            {results.map((row, i) => (
+              <tr
+                key={row.id}
+                className={`border-b last:border-0 hover:bg-secondary/40 transition-colors ${
+                  i % 2 === 0 ? 'bg-card' : 'bg-background'
+                }`}
+              >
+                <td className="px-4 py-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold whitespace-nowrap">{row.player.name}</span>
+                    {row.player.is_rookie && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-[var(--topps-red)] text-white shrink-0">
+                        RC
+                      </span>
+                    )}
+                  </div>
                 </td>
-                <td className="px-4 py-2.5 font-mono">{formatCurrency(row.evMid)}</td>
-                <td className="px-4 py-2.5 font-mono">{formatCurrency(row.totalCost)}</td>
-                <td className="px-4 py-2.5 w-32">
+
+                <td className="px-4 py-2.5 font-mono text-sm font-bold">
+                  {row.evMid > 0 ? formatCurrency(row.evMid) : <span className="text-muted-foreground/30">—</span>}
+                </td>
+
+                <td className="px-4 py-2.5 font-mono text-xs">
+                  {row.totalCost > 0 ? formatCurrency(row.totalCost) : <span className="text-muted-foreground/30">—</span>}
+                </td>
+
+                <td className="px-4 py-2.5 w-36">
                   <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">$</span>
                     <Input
                       type="number"
                       placeholder="—"
                       value={row.ask || ''}
-                      onChange={e => updateAsk(row.id, parseFloat(e.target.value) || 0)}
-                      className="pl-6 h-8 text-xs font-mono w-28"
+                      onChange={e => setAsks(prev => ({ ...prev, [row.id]: parseFloat(e.target.value) || 0 }))}
+                      className="pl-6 h-8 text-xs font-mono w-28 bg-background"
                     />
                   </div>
                 </td>
-                <td className="px-4 py-2.5 font-mono">
+
+                <td className="px-4 py-2.5 font-mono text-xs">
                   {row.hasInput ? (
                     <span className={
-                      row.valuePct >= 30 ? 'text-green-600 font-semibold' :
-                      row.valuePct >= 0 ? 'text-yellow-600 font-semibold' :
-                      'text-red-500 font-semibold'
+                      row.signal === 'BUY' ? 'signal-buy font-bold' :
+                      row.signal === 'WATCH' ? 'signal-watch font-bold' :
+                      'signal-pass font-bold'
                     }>
                       {formatPct(row.valuePct)}
                     </span>
-                  ) : <span className="text-muted-foreground">—</span>}
+                  ) : <span className="text-muted-foreground/30">—</span>}
                 </td>
+
                 <td className="px-4 py-2.5">
-                  {row.hasInput
-                    ? <SignalBadge signal={row.signal} />
-                    : <span className="text-muted-foreground text-xs">—</span>}
+                  {row.hasInput ? <SignalBadge signal={row.signal} /> : null}
                 </td>
               </tr>
             ))}
           </tbody>
-          {totalAsk > 0 && (
-            <tfoot>
-              <tr className="border-t bg-muted/20">
-                <td colSpan={3} className="px-4 py-3 text-sm font-semibold">Total Budget</td>
-                <td className="px-4 py-3 font-mono font-bold">{formatCurrency(totalAsk)}</td>
-                <td colSpan={2} />
-              </tr>
-            </tfoot>
-          )}
         </table>
       </div>
     </div>
@@ -107,10 +126,14 @@ export default function BreakerComparison({ players }: Props) {
 }
 
 function SignalBadge({ signal }: { signal: Signal }) {
-  const styles: Record<Signal, string> = {
-    BUY: 'bg-green-500/15 text-green-600 border-0',
-    WATCH: 'bg-yellow-500/15 text-yellow-600 border-0',
-    PASS: 'bg-red-500/15 text-red-500 border-0',
-  };
-  return <Badge className={`text-xs font-bold ${styles[signal]}`}>{signal}</Badge>;
+  const cls = signal === 'BUY'
+    ? 'signal-buy-badge'
+    : signal === 'WATCH'
+    ? 'signal-watch-badge'
+    : 'signal-pass-badge';
+  return (
+    <span className={`inline-block px-2.5 py-1 rounded text-[10px] uppercase tracking-wider ${cls}`}>
+      {signal}
+    </span>
+  );
 }
