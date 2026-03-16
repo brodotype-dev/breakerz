@@ -4,7 +4,7 @@
 -- ─────────────────────────────────────────────
 -- SPORTS
 -- ─────────────────────────────────────────────
-create table sports (
+create table if not exists sports (
   id   uuid primary key default gen_random_uuid(),
   name text not null,
   slug text not null unique  -- 'basketball', 'baseball', 'football'
@@ -13,7 +13,7 @@ create table sports (
 -- ─────────────────────────────────────────────
 -- PRODUCTS
 -- ─────────────────────────────────────────────
-create table products (
+create table if not exists products (
   id                    uuid primary key default gen_random_uuid(),
   sport_id              uuid references sports(id) on delete cascade,
   name                  text not null,
@@ -31,7 +31,7 @@ create table products (
 -- ─────────────────────────────────────────────
 -- PLAYERS  (cross-product identity)
 -- ─────────────────────────────────────────────
-create table players (
+create table if not exists players (
   id         uuid primary key default gen_random_uuid(),
   name       text not null,
   sport_id   uuid references sports(id) on delete cascade,
@@ -43,7 +43,7 @@ create table players (
 -- ─────────────────────────────────────────────
 -- PLAYER × PRODUCT  (set appearances)
 -- ─────────────────────────────────────────────
-create table player_products (
+create table if not exists player_products (
   id                  uuid primary key default gen_random_uuid(),
   player_id           uuid references players(id) on delete cascade,
   product_id          uuid references products(id) on delete cascade,
@@ -59,7 +59,7 @@ create table player_products (
 -- ─────────────────────────────────────────────
 -- PRICING CACHE  (CardHedger data, TTL-based)
 -- ─────────────────────────────────────────────
-create table pricing_cache (
+create table if not exists pricing_cache (
   id                  uuid primary key default gen_random_uuid(),
   player_product_id   uuid references player_products(id) on delete cascade unique,
   cardhedger_card_id  text not null,
@@ -71,8 +71,8 @@ create table pricing_cache (
   expires_at          timestamptz
 );
 
-create index on pricing_cache (player_product_id);
-create index on pricing_cache (expires_at);
+create index if not exists pricing_cache_player_product_id_idx on pricing_cache (player_product_id);
+create index if not exists pricing_cache_expires_at_idx on pricing_cache (expires_at);
 
 -- ─────────────────────────────────────────────
 -- SEED DATA — Sports
@@ -80,7 +80,8 @@ create index on pricing_cache (expires_at);
 insert into sports (name, slug) values
   ('Basketball', 'basketball'),
   ('Baseball',   'baseball'),
-  ('Football',   'football');
+  ('Football',   'football')
+on conflict (slug) do nothing;
 
 -- ─────────────────────────────────────────────
 -- SEED DATA — Products (starting set)
@@ -91,24 +92,15 @@ values
     (select id from sports where slug = 'basketball'),
     'Topps Finest Basketball',
     'topps-finest-basketball-2025-26',
-    'Topps',
-    '2025-26',
-    3840,
-    11500,
-    16,
-    30
+    'Topps', '2025-26', 3840, 11500, 16, 30
   ),
   (
     (select id from sports where slug = 'baseball'),
     'Topps Series 1 Baseball',
     'topps-series-1-baseball-2025',
-    'Topps',
-    '2025',
-    null,
-    null,
-    null,
-    null
-  );
+    'Topps', '2025', null, null, null, null
+  )
+on conflict (slug) do nothing;
 
 -- ─────────────────────────────────────────────
 -- SEED DATA — Basketball players (from prototype)
