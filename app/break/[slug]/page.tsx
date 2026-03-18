@@ -7,8 +7,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { createClient } from '@supabase/supabase-js';
 import DashboardConfig from '@/components/breakerz/DashboardConfig';
 import PlayerTable from '@/components/breakerz/PlayerTable';
+import TeamSlotsTable from '@/components/breakerz/TeamSlotsTable';
 import BreakerComparison from '@/components/breakerz/BreakerComparison';
-import { computeSlotPricing } from '@/lib/engine';
+import { computeSlotPricing, computeTeamSlotPricing } from '@/lib/engine';
 import type { BreakConfig, PlayerWithPricing, Product, Sport } from '@/lib/types';
 
 const supabase = createClient(
@@ -83,6 +84,12 @@ export default function BreakPage() {
   }
 
   const players = useMemo(() => computeSlotPricing(rawPlayers, config), [rawPlayers, config]);
+
+  const teamSlots = useMemo(
+    () => computeTeamSlotPricing(players, config),
+    [players, config]
+  );
+
   const pricedCount = players.filter(p => p.pricingSource !== 'none').length;
   const hasPricing = pricedCount > 0;
 
@@ -175,8 +182,14 @@ export default function BreakPage() {
           </div>
         )}
 
-        <Tabs defaultValue="players">
+        <Tabs defaultValue="teams">
           <TabsList className="bg-secondary">
+            <TabsTrigger value="teams">
+              Team Slots
+              <span className="ml-1.5 text-[10px] font-mono bg-background px-1.5 py-0.5 rounded-full">
+                {teamSlots.length}
+              </span>
+            </TabsTrigger>
             <TabsTrigger value="players">
               Player Slots
               <span className="ml-1.5 text-[10px] font-mono bg-background px-1.5 py-0.5 rounded-full">
@@ -185,6 +198,10 @@ export default function BreakPage() {
             </TabsTrigger>
             <TabsTrigger value="comparison">Breaker Compare</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="teams" className="mt-4">
+            <TeamSlotsTable teams={teamSlots} />
+          </TabsContent>
 
           <TabsContent value="players" className="mt-4">
             <PlayerTable players={players} fetching={fetching} />

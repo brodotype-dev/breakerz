@@ -1,4 +1,4 @@
-import type { PlayerWithPricing, BreakConfig, Signal } from './types';
+import type { PlayerWithPricing, BreakConfig, Signal, TeamSlot } from './types';
 
 export function computeSlotPricing(
   players: PlayerWithPricing[],
@@ -59,4 +59,33 @@ export function formatCurrency(value: number): string {
 
 export function formatPct(value: number): string {
   return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
+}
+
+export function computeTeamSlotPricing(
+  pricedPlayers: PlayerWithPricing[],
+  config: BreakConfig
+): TeamSlot[] {
+  const teamMap = new Map<string, PlayerWithPricing[]>();
+  for (const p of pricedPlayers) {
+    const team = p.player?.team || 'Unknown';
+    if (!teamMap.has(team)) teamMap.set(team, []);
+    teamMap.get(team)!.push(p);
+  }
+  return Array.from(teamMap.entries()).map(([team, players]) => {
+    const hobbySlotCost = players.reduce((s, p) => s + p.hobbySlotCost, 0);
+    const bdSlotCost = players.reduce((s, p) => s + p.bdSlotCost, 0);
+    const totalCost = hobbySlotCost + bdSlotCost;
+    return {
+      team,
+      playerCount: players.length,
+      rookieCount: players.filter(p => p.player?.is_rookie).length,
+      hobbySlotCost,
+      bdSlotCost,
+      totalCost,
+      hobbyPerCase: config.hobbyCases > 0 ? hobbySlotCost / config.hobbyCases : 0,
+      bdPerCase: config.bdCases > 0 ? bdSlotCost / config.bdCases : 0,
+      maxPay: totalCost * 1.5,
+      players: players.sort((a, b) => b.bdWeight - a.bdWeight),
+    };
+  }).sort((a, b) => b.totalCost - a.totalCost);
 }

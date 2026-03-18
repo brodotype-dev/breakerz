@@ -81,7 +81,29 @@ export interface PlayerWithPricing extends PlayerProduct {
   pricingSource: 'live' | 'cached' | 'none';
 }
 
+export interface PlayerProductVariant {
+  id: string;
+  player_product_id: string;
+  variant_name: string;
+  cardhedger_card_id: string;
+  hobby_sets: number;
+  bd_only_sets: number;
+}
+
 export type Signal = 'BUY' | 'WATCH' | 'PASS';
+
+export type TeamSlot = {
+  team: string;
+  playerCount: number;
+  rookieCount: number;
+  hobbySlotCost: number;
+  bdSlotCost: number;
+  totalCost: number;
+  hobbyPerCase: number;
+  bdPerCase: number;
+  maxPay: number;
+  players: PlayerWithPricing[];
+};
 
 // --- CardHedger API types ---
 

@@ -75,6 +75,29 @@ create index if not exists pricing_cache_player_product_id_idx on pricing_cache 
 create index if not exists pricing_cache_expires_at_idx on pricing_cache (expires_at);
 
 -- ─────────────────────────────────────────────
+-- PLAYER × PRODUCT VARIANTS  (multiple card types per player per product)
+-- ─────────────────────────────────────────────
+-- Each row represents a distinct card (e.g., "Base Auto", "XRC Auto") for a
+-- player in a product. If no variants exist, the pricing route falls back to
+-- player_products.cardhedger_card_id.
+create table if not exists player_product_variants (
+  id                  uuid primary key default gen_random_uuid(),
+  player_product_id   uuid references player_products(id) on delete cascade,
+  variant_name        text not null,         -- e.g., "Base Auto", "XRC Auto", "Finest Moments"
+  cardhedger_card_id  text not null,
+  hobby_sets          integer default 0,
+  bd_only_sets        integer default 0,
+  card_number         text,
+  is_sp               boolean default false,
+  print_run           integer,
+  hobby_odds          text,
+  breaker_odds        text,
+  created_at          timestamptz default now()
+);
+
+create index if not exists player_product_variants_player_product_id_idx on player_product_variants (player_product_id);
+
+-- ─────────────────────────────────────────────
 -- SEED DATA — Sports
 -- ─────────────────────────────────────────────
 insert into sports (name, slug) values
@@ -115,7 +138,7 @@ begin
   insert into players (name, sport_id, team, is_rookie) values ('Cooper Flagg', bball_sport_id, 'Dallas Mavericks', true) returning id into p_id;
   insert into player_products (player_id, product_id, hobby_sets, bd_only_sets) values (p_id, finest_product_id, 2, 2);
 
-  -- Kon Knueppel (override EV in pricing_cache after lookup)
+  -- Kon Knueppel
   insert into players (name, sport_id, team, is_rookie) values ('Kon Knueppel', bball_sport_id, 'Los Angeles Lakers', true) returning id into p_id;
   insert into player_products (player_id, product_id, hobby_sets, bd_only_sets) values (p_id, finest_product_id, 2, 2);
 
@@ -187,3 +210,15 @@ begin
   insert into players (name, sport_id, team, is_rookie) values ('VJ Edgecombe', bball_sport_id, 'Indiana Pacers', true) returning id into p_id;
   insert into player_products (player_id, product_id, hobby_sets, bd_only_sets, insert_only) values (p_id, finest_product_id, 0, 0, true);
 end $$;
+
+-- ─────────────────────────────────────────────
+-- SCHEMA MIGRATIONS  (run after initial setup)
+-- ─────────────────────────────────────────────
+
+-- Add import-checklist fields to player_product_variants
+-- Run these ALTER statements in Supabase SQL editor if table already exists:
+-- alter table player_product_variants add column if not exists card_number text;
+-- alter table player_product_variants add column if not exists is_sp boolean default false;
+-- alter table player_product_variants add column if not exists print_run integer;
+-- alter table player_product_variants add column if not exists hobby_odds text;
+-- alter table player_product_variants add column if not exists breaker_odds text;
