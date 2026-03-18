@@ -1,36 +1,107 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Card Breakerz
 
-## Getting Started
+Break analysis and slot pricing tool for sports card group breaks. Computes fair-value slot costs per team using live card pricing, set structure, and break configuration.
 
-First, run the development server:
+Built in collaboration with Kyle (Town & Line / CardPulse).
+
+**Live:** [breakerz-next.vercel.app](https://breakerz-next.vercel.app)
+
+---
+
+## What it does
+
+Given a sports card product (e.g. 2025-26 Topps Finest Basketball), Card Breakerz:
+
+1. Loads each player's card data and set counts from Supabase
+2. Fetches live pricing from the CardHedger API (with 24h cache)
+3. Computes weighted EV per player: `evMid × hobby_sets`
+4. Distributes break cost across teams proportionally
+5. Outputs per-team slot costs, RC counts, and BUY/WATCH/PASS signals
+
+---
+
+## Stack
+
+| Layer | Technology |
+|---|---|
+| Framework | Next.js 15 App Router (TypeScript) |
+| Styling | Tailwind CSS + shadcn/ui |
+| Database | Supabase (Postgres) |
+| Pricing API | CardHedger |
+| Deploy | Vercel (CLI) |
+
+---
+
+## Local development
 
 ```bash
+# Install dependencies
+npm install
+
+# Add environment variables
+cp .env.example .env.local
+# Fill in: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
+#          SUPABASE_SERVICE_ROLE_KEY, CARDHEDGER_API_KEY
+
+# Run dev server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Deploy
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Push to GitHub first, then deploy via CLI:
 
-## Learn More
+```bash
+git push origin main
+vercel --prod --yes
+```
 
-To learn more about Next.js, take a look at the following resources:
+See [CLAUDE.md](./CLAUDE.md) for full deploy instructions and known gotchas.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Key routes
 
-## Deploy on Vercel
+| Route | Purpose |
+|---|---|
+| `/break/[slug]` | Public break analysis page |
+| `/admin/import-checklist` | 3-step checklist import wizard |
+| `/admin/products/[id]/players` | Manual player management |
+| `/api/pricing` | Live pricing endpoint (Supabase + CardHedger) |
+| `/api/admin/parse-checklist` | PDF/CSV checklist parser |
+| `/api/admin/import-checklist` | Upsert players, products, variants |
+| `/api/admin/match-cardhedger` | Auto-link variants to CardHedger card IDs |
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Admin: importing a checklist
+
+1. Go to `/admin/import-checklist`
+2. Select a product and upload a checklist file (Topps PDF or Panini/Donruss CSV)
+3. Review parsed sections — set Hobby/BD sets per section, check for flagged lines
+4. Import → runs CardHedger auto-matching on the result
+5. Optionally upload a Topps odds PDF to attach pull rates to variants
+
+Supported formats: Topps numbered PDF, Topps code-based PDF, Panini/Donruss CSV, Topps odds PDF.
+
+---
+
+## CardHedger card mapping (manual)
+
+For players missing a `cardhedger_card_id`, use the interactive CLI:
+
+```bash
+node scripts/map-cards.mjs
+```
+
+Searches CardHedger, shows top results, lets you pick the right one per player.
+
+---
+
+## Project docs
+
+- [CHANGELOG.md](./CHANGELOG.md) — feature history and release notes
+- [CLAUDE.md](./CLAUDE.md) — context for Claude Code sessions (deploy, gotchas, schema)
+- [docs/plans/](./docs/plans/) — implementation plans for major features

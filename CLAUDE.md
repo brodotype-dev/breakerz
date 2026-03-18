@@ -2,6 +2,12 @@
 
 Sports card break slot pricing and analysis tool. Built with Kyle (Town & Line / CardPulse).
 
+**Before starting any session, read:**
+- [README.md](./README.md) — project overview, routes, local dev setup
+- [CHANGELOG.md](./CHANGELOG.md) — full feature history and technical decisions
+
+Update CHANGELOG.md at the end of every session with what changed and why.
+
 ---
 
 ## Stack

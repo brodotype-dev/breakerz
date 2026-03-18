@@ -1,87 +1,95 @@
 # Changelog
 
-## [Unreleased] — 2026-03-17
+All notable changes to Card Breakerz are documented here.
+Format: newest first. Each entry covers what changed, why, and any important technical notes.
 
-### Next.js migration
-- Migrated from Vite + React to Next.js 15 App Router (TypeScript, Tailwind CSS, shadcn/ui)
-- Replaced client-side only rendering with server components and API routes
-- Added Supabase backend replacing hard-coded prototype data
+---
 
-### Schema (`supabase/schema.sql`)
-- Tables: `sports`, `products`, `players`, `player_products`, `pricing_cache`, `player_product_variants`
-- `player_products.total_sets` is a generated column (`hobby_sets + bd_only_sets`)
-- `player_products.insert_only` flag excludes insert-only players from slot pricing
-- `player_product_variants` supports multiple distinct card types per player per product (e.g., Base Auto + XRC Auto), each with its own CardHedger ID, set counts, card number, SP flag, print run, and odds
+## 2026-03-18
 
-### Break page (`app/break/[slug]/page.tsx`)
-- Loads live pricing from `/api/pricing` (Supabase + CardHedger)
-- **Team Slots** is now the default tab — aggregates player EV by team, shows slot cost, RC count, and expandable player list
-- Tabs: Team Slots → Player Slots → Breaker Compare
-- Removed eBay Fee Rate and Shipping/Card fields from DashboardConfig UI
+### Deployment fixes
+- **Vercel build fix — pdf-parse:** `pdf-parse` evaluates canvas bindings at module load time and crashes the build with `DOMMatrix is not defined`. Fixed by moving `require('pdf-parse')` inside the handler function and adding `export const dynamic = 'force-dynamic'` to affected routes (`parse-checklist`, `parse-odds`).
+- **GitHub sync:** Vercel builds from the GitHub repo, not local uploads. Commits must be pushed to `origin/main` before deploying or the build uses stale code.
+- **Rebase + merge:** Local branch (team slots, checklist import) was rebased onto `origin/main` (Heritage UI redesign, CardHedger auth fixes). All conflicts resolved; both feature sets now live together.
 
-### Pricing engine (`lib/engine.ts`, `app/api/pricing/route.ts`)
-- Added `computeTeamSlotPricing()` — groups priced players by team, aggregates slot costs
-- Pricing route now loads variants per player, batch-prices all uncached card IDs in one CardHedger call, then computes total-set-weighted EV across variants before caching
-- Falls back to `player_products.cardhedger_card_id` if no variants exist
-- 24-hour TTL cache in `pricing_cache`
+### CLAUDE.md
+- Created `/CLAUDE.md` — project context file loaded automatically by Claude Code each session
+- Covers: stack, deploy command, env vars, two known build gotchas (Supabase + pdf-parse), key file map, schema overview, pricing model, checklist format table, MCP config
+- Added reference links in README pointing to CLAUDE.md and CHANGELOG.md
 
-### CardHedger client (`lib/cardhedger.ts`)
-- Added `batchPriceEstimate()` — up to 100 card/grade combos per call, used by pricing route
-- Added `cardMatch()` — scores top search result by token overlap, returns confidence 0–1; used by admin matching route
-- Added `computeLiveEV()` — derives EV low/mid/high from all-prices + comps fallback
+### Infrastructure restored
+- `scripts/map-cards.mjs` — interactive CLI for manually mapping CardHedger IDs to players; was on GitHub but missing from local
+- `.mcp.json` — Supabase MCP server config (project ref: `zucuzhtiitibsvryenpi`); connects Claude Code directly to live Supabase
 
-### Admin: checklist import (`app/admin/import-checklist/page.tsx`)
-Three-step wizard for seeding product rosters from manufacturer checklists:
+---
 
-**Step 1 — Upload**
-- Product selector (populated from `/api/admin/products`)
-- File upload: Topps PDF (numbered or code-based) or Panini/Donruss CSV
-- Calls `/api/admin/parse-checklist` → returns `ParsedChecklist`
+## 2026-03-17
 
-**Step 2 — Review & Configure**
-- Section table: section name, card count, flagged line count, Hobby Sets/Case, BD Sets/Case, include toggle
-- Expandable rows: card-level preview (card number, player, team, RC, SP, print run)
-- Flagged lines (parse failures) shown inline for manual review
-- Calls `/api/admin/import-checklist` → upserts players, player_products, variants
+### Checklist import admin wizard
+3-step wizard at `/admin/import-checklist` for seeding product rosters from manufacturer checklists.
 
-**Step 3 — Result**
-- Import summary: players created, player-products, variants
-- CardHedger matching: runs `/api/admin/match-cardhedger`, displays confidence table grouped by auto / needs review / no match
-- Optional odds upload: parses Topps odds PDF, calls `/api/admin/apply-odds` to attach pull rates to variants
+**Step 1 — Upload:** product selector, file upload (PDF or CSV), parse
+**Step 2 — Review & Configure:** per-section table with hobby/BD set inputs, expandable card previews, flagged-line review
+**Step 3 — Result:** import summary, CardHedger auto-matching (confidence bands: auto / needs review / no match), optional odds PDF upload
 
-### Admin API routes
+New admin API routes:
 | Route | Method | Purpose |
 |---|---|---|
-| `/api/admin/products` | GET | List all products for import wizard dropdown |
-| `/api/admin/parse-checklist` | POST | Parse PDF or CSV checklist → `ParsedChecklist` |
-| `/api/admin/parse-odds` | POST | Parse Topps odds PDF → `ParsedOdds` |
-| `/api/admin/import-checklist` | POST | Upsert players, player_products, variants from parsed sections |
-| `/api/admin/match-cardhedger` | POST | Auto-match unlinked variants to CardHedger card IDs |
-| `/api/admin/apply-odds` | POST | Write hobby/breaker odds to variants by fuzzy name match |
+| `/api/admin/products` | GET | Product list for import wizard dropdown |
+| `/api/admin/parse-checklist` | POST | PDF or CSV → `ParsedChecklist` |
+| `/api/admin/parse-odds` | POST | Topps odds PDF → `ParsedOdds` |
+| `/api/admin/import-checklist` | POST | Upsert players, player_products, variants |
+| `/api/admin/match-cardhedger` | POST | Auto-link variants to CardHedger card IDs |
+| `/api/admin/apply-odds` | POST | Write pull rates to variants by fuzzy name match |
 
-### Checklist parser (`lib/checklist-parser.ts`)
-- `parseChecklistPdf()` — handles Topps numbered format (`# Player Team®`) and code-based format (`SM-AB Player Team®`); auto-detects format from first card-like line; groups by ALL-CAPS section headers; flags unparseable lines
-- `parseChecklistCsv()` — handles Panini/Donruss CSV (`SPORT, YEAR, BRAND, CARD SET, ATHLETE, TEAM, CARD NUMBER, SEQUENCE`); groups by `CARD SET`; maps `SEQUENCE` to `printRun`
-- `parseOddsPdf()` — extracts `1:N` tokens per line; everything before first token = subset name; second token = breaker odds
+### Multi-format checklist parser (`lib/checklist-parser.ts`)
+- `parseChecklistPdf()` — Topps numbered (`# Player Team®`) and code-based (`SM-AB Player Team®`); auto-detects format; groups by ALL-CAPS section headers; flags unparseable lines
+- `parseChecklistCsv()` — Panini/Donruss CSV; groups by `CARD SET`; maps `SEQUENCE` → `printRun`
+- `parseOddsPdf()` — extracts `1:N` tokens per line; subset name = everything before first token
 
-### Format coverage
+Supported formats:
 | Format | Example products |
 |---|---|
 | Topps PDF — numbered | Heritage Baseball, Finest Basketball (base) |
 | Topps PDF — code-based | Finest Basketball (autos), Midnight Basketball |
 | Panini/Donruss CSV | Select Football, Optic Football, Donruss Football |
 | Topps odds PDF | Finest Basketball odds sheet |
-| URL (parked) | Upper Deck (JS-rendered — needs browser automation) |
+| URL (parked) | Upper Deck — JS-rendered, needs browser automation |
+
+### Player product variants model
+- Added `player_product_variants` table: multiple distinct card types per player per product (e.g., Base Auto + XRC Auto), each with its own CardHedger ID, set counts, card number, SP flag, print run, hobby/breaker odds
+- Pricing route updated: batch-prices all uncached variant card IDs in one CardHedger call, computes total-set-weighted EV before caching
+- Falls back to `player_products.cardhedger_card_id` if no variants exist
+
+### Team Slots view
+- Team Slots is now the default tab on the break page
+- Aggregates player EV by team: per-team slot cost, RC count, expandable player list
+- Added `computeTeamSlotPricing()` to `lib/engine.ts`
+- Tab order: Team Slots → Player Slots → Breaker Compare
+
+### CardHedger client additions (`lib/cardhedger.ts`)
+- `batchPriceEstimate()` — up to 100 card/grade combos per call
+- `cardMatch()` — token-overlap confidence scoring (0–1) for admin auto-matching
+- `computeLiveEV()` — EV low/mid/high from all-prices + comps fallback
+
+### Heritage UI redesign
+- Topps Heritage-inspired card aesthetic: cream backgrounds, serif type, red accent bar
+- Redesigned homepage, break page header, and component styling
+
+### Next.js migration
+- Migrated from Vite + React to Next.js 15 App Router (TypeScript, Tailwind, shadcn/ui)
+- Added Supabase backend; replaced hard-coded prototype data with live DB
+- Schema: `sports`, `products`, `players`, `player_products`, `pricing_cache`, `player_product_variants`
 
 ---
 
-## Earlier work (pre-migration)
+## Earlier (pre-Next.js, 2025)
 
-### [0.2.0] — 2025
-- Breaker Comparison tab with hobby vs BD breakeven analysis
-- Player table with EV tiers (hot / warm / cold)
-- DashboardConfig for case counts, costs, and fee inputs
+### 0.2.0
+- Breaker Comparison tab — hobby vs BD breakeven analysis, top 20 BUY/WATCH/PASS signals
+- Player table with EV tier badges (hot / warm / cold)
+- DashboardConfig: case counts, costs, eBay fee, shipping inputs
 
-### [0.1.0] — 2025
-- Initial prototype: static player data, Vite + React + Tailwind
-- Break pricing engine: slot cost = `breakCost × (evMid × sets / totalWeight)`
+### 0.1.0
+- Initial prototype: static player data (2025-26 Topps Finest Basketball), Vite + React + Tailwind
+- Break pricing engine: `Slot Cost = Break Cost × (evMid × sets) / Σ(evMid × sets)`
