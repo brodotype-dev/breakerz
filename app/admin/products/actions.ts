@@ -3,6 +3,36 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { revalidatePath } from 'next/cache';
 
+export async function createProduct(formData: {
+  name: string;
+  sport_id: string;
+  manufacturer: string;
+  year: string;
+  hobby_case_cost: number;
+  bd_case_cost: number | null;
+  hobby_autos_per_case: number;
+  bd_autos_per_case: number | null;
+}): Promise<{ id?: string; error?: string }> {
+  const slug = formData.name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+
+  const { data, error } = await supabaseAdmin
+    .from('products')
+    .insert({
+      ...formData,
+      slug,
+      is_active: true,
+    })
+    .select('id')
+    .single();
+
+  if (error) return { error: error.message };
+  revalidatePath('/admin/products');
+  return { id: data.id };
+}
+
 export type BulkPlayerRow = {
   name: string;
   team: string;

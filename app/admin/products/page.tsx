@@ -1,11 +1,13 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import Link from 'next/link';
+import NewProductForm from './NewProductForm';
+import type { Sport } from '@/lib/types';
 
 export default async function AdminProductsPage() {
-  const { data: products } = await supabaseAdmin
-    .from('products')
-    .select('id, name, slug, year, manufacturer')
-    .order('name');
+  const [{ data: products }, { data: sports }] = await Promise.all([
+    supabaseAdmin.from('products').select('id, name, slug, year, manufacturer, sport:sports(name)').order('name'),
+    supabaseAdmin.from('sports').select('id, name, slug').order('name'),
+  ]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -21,43 +23,59 @@ export default async function AdminProductsPage() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-        {/* Actions */}
-        <div className="flex items-center justify-between">
-          <h1 className="text-lg font-bold">Products</h1>
-          <Link
-            href="/admin/import-checklist"
-            className="rounded bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-          >
-            Import Checklist
-          </Link>
+      <main className="max-w-4xl mx-auto px-4 py-8 space-y-8">
+
+        {/* Add new product */}
+        <div className="bg-card border rounded overflow-hidden">
+          <div className="h-1 bg-[oklch(0.28_0.08_250)]" />
+          <div className="p-6">
+            <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground mb-5">
+              Add Product
+            </h2>
+            <NewProductForm sports={(sports ?? []) as Sport[]} />
+          </div>
         </div>
 
-        {/* Product list */}
-        {!products?.length ? (
-          <div className="rounded border p-12 text-center text-muted-foreground">
-            No products found. Add products via Supabase or import a checklist.
+        {/* Existing products */}
+        <div>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+              Products ({products?.length ?? 0})
+            </h2>
+            <Link
+              href="/admin/import-checklist"
+              className="text-xs text-primary hover:underline font-medium"
+            >
+              Import Checklist →
+            </Link>
           </div>
-        ) : (
-          <div className="rounded border overflow-hidden divide-y">
-            {products.map(product => (
-              <div key={product.id} className="flex items-center justify-between px-4 py-3 hover:bg-muted/20 transition-colors">
-                <div>
-                  <p className="text-sm font-medium">{product.name}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    {product.manufacturer} · {product.year}
-                  </p>
+
+          {!products?.length ? (
+            <div className="rounded border p-12 text-center text-muted-foreground text-sm">
+              No products yet.
+            </div>
+          ) : (
+            <div className="rounded border overflow-hidden divide-y">
+              {products.map((product: any) => (
+                <div key={product.id} className="flex items-center justify-between px-4 py-3 hover:bg-muted/20 transition-colors">
+                  <div>
+                    <p className="text-sm font-medium">{product.name}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {(product.sport as any)?.name} · {product.manufacturer} · {product.year}
+                    </p>
+                  </div>
+                  <Link
+                    href={`/admin/products/${product.id}/players`}
+                    className="text-xs text-primary hover:underline font-medium shrink-0"
+                  >
+                    Manage players →
+                  </Link>
                 </div>
-                <Link
-                  href={`/admin/products/${product.id}/players`}
-                  className="text-xs text-primary hover:underline font-medium shrink-0"
-                >
-                  Manage players →
-                </Link>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
+        </div>
+
       </main>
     </div>
   );
