@@ -23,7 +23,9 @@ cd /tmp/breakerz-next
 vercel --prod --yes
 ```
 
-**Production URL:** `breakerz-m3fxxo8mw-brody-clemmers-projects.vercel.app`
+**Production URL:** `breakerz-next.vercel.app`
+
+**Important:** Push to GitHub (`git push origin main`) before deploying. Vercel builds from the GitHub repo — local-only commits won't be included in the build.
 
 ---
 
@@ -42,7 +44,9 @@ For local dev, put these in `.env.local` (not committed).
 
 ---
 
-## Known Gotcha: Supabase + Vercel Build
+## Known Gotchas
+
+### 1. Supabase + Vercel Build
 
 The Vercel-Supabase integration injects env vars under **both** `NEXT_PUBLIC_SUPABASE_URL` **and** `SUPABASE_URL`. `lib/supabase.ts` must use `??` fallbacks to handle both:
 
@@ -53,6 +57,22 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.
 ```
 
 Without the fallbacks, builds fail with `supabaseUrl is required`.
+
+### 2. pdf-parse + Vercel Build
+
+`pdf-parse` loads canvas bindings at module evaluation time and crashes the build with `DOMMatrix is not defined`. Fix: `require('pdf-parse')` must be **inside the handler function**, not at the top of the file. Also add `export const dynamic = 'force-dynamic'` to any route that uses it.
+
+```typescript
+// ✗ breaks build
+const pdfParse = require('pdf-parse');
+
+// ✓ correct
+export const dynamic = 'force-dynamic';
+export async function POST(req) {
+  const pdfParse = require('pdf-parse'); // inside handler
+  ...
+}
+```
 
 ---
 
