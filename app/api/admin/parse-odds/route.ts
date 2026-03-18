@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require('pdf-parse');
 import { parseOddsPdf } from '@/lib/checklist-parser';
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
   const formData = await req.formData();
@@ -10,6 +10,8 @@ export async function POST(req: NextRequest) {
 
   const buffer = Buffer.from(await file.arrayBuffer());
   try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pdfParse = require('pdf-parse');
     const data = await pdfParse(buffer);
     const odds = parseOddsPdf(data.text);
     return NextResponse.json({ odds });

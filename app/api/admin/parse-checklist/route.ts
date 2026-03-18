@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require('pdf-parse');
 import { parseChecklistPdf, parseChecklistCsv } from '@/lib/checklist-parser';
+
+export const dynamic = 'force-dynamic';
 
 // Re-export ParsedPlayer for backward compatibility with ChecklistUpload.tsx
 // (that component still imports from this route path)
@@ -27,7 +27,9 @@ export async function POST(req: NextRequest) {
       const checklist = parseChecklistCsv(text);
       return NextResponse.json({ checklist });
     } else {
-      // PDF
+      // PDF — require inside handler so pdf-parse isn't evaluated at build time
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const pdfParse = require('pdf-parse');
       const data = await pdfParse(buffer);
       const checklist = parseChecklistPdf(data.text);
       return NextResponse.json({ checklist });
