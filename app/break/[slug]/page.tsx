@@ -25,6 +25,8 @@ export default function BreakPage() {
   const [fetching, setFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [breakType, setBreakType] = useState<'hobby' | 'bd'>('hobby');
+
   const [config, setConfig] = useState<BreakConfig>({
     hobbyCases: 10,
     bdCases: 10,
@@ -150,7 +152,31 @@ export default function BreakPage() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 py-6 space-y-5">
-        <DashboardConfig config={config} onChange={setConfig} />
+        {/* Break type toggle */}
+        <div className="flex gap-1 p-1 bg-secondary rounded-lg w-fit">
+          <button
+            onClick={() => setBreakType('hobby')}
+            className={`px-4 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-colors ${
+              breakType === 'hobby'
+                ? 'bg-[oklch(0.28_0.08_250)] text-white'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Hobby Case
+          </button>
+          <button
+            onClick={() => setBreakType('bd')}
+            className={`px-4 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-colors ${
+              breakType === 'bd'
+                ? 'bg-[oklch(0.28_0.08_250)] text-white'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Breakers Delight
+          </button>
+        </div>
+
+        <DashboardConfig config={config} onChange={setConfig} breakType={breakType} />
 
         {/* Fetch banner — shown only before first fetch */}
         {!hasPricing && !fetching && (
@@ -200,11 +226,11 @@ export default function BreakPage() {
           </TabsList>
 
           <TabsContent value="teams" className="mt-4">
-            <TeamSlotsTable teams={teamSlots} />
+            <TeamSlotsTable teams={teamSlots} breakType={breakType} />
           </TabsContent>
 
           <TabsContent value="players" className="mt-4">
-            <PlayerTable players={players} fetching={fetching} />
+            <PlayerTable players={players} fetching={fetching} breakType={breakType} />
           </TabsContent>
           <TabsContent value="comparison" className="mt-4">
             <BreakerComparison players={players} />

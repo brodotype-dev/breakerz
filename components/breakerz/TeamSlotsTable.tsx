@@ -7,9 +7,10 @@ import type { TeamSlot } from '@/lib/types';
 
 interface Props {
   teams: TeamSlot[];
+  breakType: 'hobby' | 'bd';
 }
 
-export default function TeamSlotsTable({ teams }: Props) {
+export default function TeamSlotsTable({ teams, breakType }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   if (teams.length === 0) {
@@ -29,13 +30,15 @@ export default function TeamSlotsTable({ teams }: Props) {
     });
   };
 
+  const isHobby = breakType === 'hobby';
+
   return (
     <div className="rounded-lg border overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/50">
-              {['#', 'Team', 'Players', 'RC', 'Hobby Slot', '/Case', 'BD Slot', '/Case', 'Total', 'Max Pay'].map(h => (
+              {['#', 'Team', 'Players', 'RC', 'Slot Cost', '/Case', 'Max Pay'].map(h => (
                 <th key={h} className="px-4 py-2.5 text-left text-xs uppercase tracking-wider text-muted-foreground font-medium whitespace-nowrap">
                   {h}
                 </th>
@@ -45,6 +48,8 @@ export default function TeamSlotsTable({ teams }: Props) {
           <tbody>
             {teams.map((row, i) => {
               const isOpen = expanded.has(row.team);
+              const slotCost = isHobby ? row.hobbySlotCost : row.bdSlotCost;
+              const perCase  = isHobby ? row.hobbyPerCase  : row.bdPerCase;
               return (
                 <>
                   <tr
@@ -65,11 +70,8 @@ export default function TeamSlotsTable({ teams }: Props) {
                         </Badge>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 font-mono">{formatCurrency(row.hobbySlotCost)}</td>
-                    <td className="px-4 py-2.5 font-mono text-muted-foreground text-xs">{formatCurrency(row.hobbyPerCase)}</td>
-                    <td className="px-4 py-2.5 font-mono">{formatCurrency(row.bdSlotCost)}</td>
-                    <td className="px-4 py-2.5 font-mono text-muted-foreground text-xs">{formatCurrency(row.bdPerCase)}</td>
-                    <td className="px-4 py-2.5 font-mono font-semibold">{formatCurrency(row.totalCost)}</td>
+                    <td className="px-4 py-2.5 font-mono font-semibold">{formatCurrency(slotCost)}</td>
+                    <td className="px-4 py-2.5 font-mono text-muted-foreground text-xs">{formatCurrency(perCase)}</td>
                     <td className="px-4 py-2.5 font-mono text-muted-foreground">{formatCurrency(row.maxPay)}</td>
                   </tr>
                   {isOpen && row.players.map(p => (
@@ -83,11 +85,10 @@ export default function TeamSlotsTable({ teams }: Props) {
                       </td>
                       <td className="px-4 py-2 text-center font-mono text-xs text-muted-foreground">{p.total_sets}</td>
                       <td />
-                      <td className="px-4 py-2 font-mono text-xs text-muted-foreground">{formatCurrency(p.hobbySlotCost)}</td>
+                      <td className="px-4 py-2 font-mono text-xs text-muted-foreground">
+                        {formatCurrency(isHobby ? p.hobbySlotCost : p.bdSlotCost)}
+                      </td>
                       <td />
-                      <td className="px-4 py-2 font-mono text-xs text-muted-foreground">{formatCurrency(p.bdSlotCost)}</td>
-                      <td />
-                      <td className="px-4 py-2 font-mono text-xs text-muted-foreground">{formatCurrency(p.totalCost)}</td>
                       <td />
                     </tr>
                   ))}

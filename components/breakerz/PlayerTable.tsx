@@ -6,9 +6,10 @@ import type { PlayerWithPricing } from '@/lib/types';
 interface Props {
   players: PlayerWithPricing[];
   fetching?: boolean;
+  breakType: 'hobby' | 'bd';
 }
 
-export default function PlayerTable({ players, fetching = false }: Props) {
+export default function PlayerTable({ players, fetching = false, breakType }: Props) {
   if (players.length === 0) {
     return (
       <div className="rounded border p-12 text-center text-muted-foreground bg-card">
@@ -23,7 +24,7 @@ export default function PlayerTable({ players, fetching = false }: Props) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-[oklch(0.28_0.08_250)] text-white">
-              {['#', 'Player', 'Team', 'Sets', 'EV Low', 'EV Mid', 'EV High', 'Hobby Slot', 'BD Slot', 'Total', 'Max Pay'].map((h, i) => (
+              {['#', 'Player', 'Team', 'Sets', 'EV Low', 'EV Mid', 'EV High', 'Slot Cost', 'Max Pay'].map((h, i) => (
                 <th
                   key={h}
                   className={`px-4 py-2.5 text-[10px] uppercase tracking-widest font-bold whitespace-nowrap ${
@@ -62,7 +63,7 @@ export default function PlayerTable({ players, fetching = false }: Props) {
                   <td className="px-4 py-2.5 text-center font-mono text-xs">{row.total_sets}</td>
 
                   {unpriced ? (
-                    Array.from({ length: 7 }).map((_, j) => (
+                    Array.from({ length: 5 }).map((_, j) => (
                       <td key={j} className="px-4 py-2.5 text-right">
                         <span className="text-muted-foreground/30 font-mono text-xs">—</span>
                       </td>
@@ -72,9 +73,9 @@ export default function PlayerTable({ players, fetching = false }: Props) {
                       <td className="px-4 py-2.5 text-right font-mono text-xs text-muted-foreground">{formatCurrency(row.evLow)}</td>
                       <td className="px-4 py-2.5 text-right font-mono text-sm font-bold">{formatCurrency(row.evMid)}</td>
                       <td className="px-4 py-2.5 text-right font-mono text-xs text-muted-foreground">{formatCurrency(row.evHigh)}</td>
-                      <td className="px-4 py-2.5 text-right font-mono text-xs">{formatCurrency(row.hobbySlotCost)}</td>
-                      <td className="px-4 py-2.5 text-right font-mono text-xs">{formatCurrency(row.bdSlotCost)}</td>
-                      <td className="px-4 py-2.5 text-right font-mono text-sm font-bold">{formatCurrency(row.totalCost)}</td>
+                      <td className="px-4 py-2.5 text-right font-mono text-sm font-bold">
+                        {formatCurrency(breakType === 'hobby' ? row.hobbySlotCost : row.bdSlotCost)}
+                      </td>
                       <td className="px-4 py-2.5 text-right font-mono text-xs text-muted-foreground">{formatCurrency(row.maxPay)}</td>
                     </>
                   )}

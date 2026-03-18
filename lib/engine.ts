@@ -36,7 +36,7 @@ export function computeSlotPricing(
       bdPerCase: config.bdCases > 0 ? bdSlotCost / config.bdCases : 0,
       maxPay: totalCost * 1.5,
     };
-  }).sort((a, b) => b.bdWeight - a.bdWeight);
+  }).sort((a, b) => (a.player?.name ?? '').localeCompare(b.player?.name ?? ''));
 }
 
 export function computeSignal(evMid: number, askPrice: number): { valuePct: number; signal: Signal } {
@@ -85,7 +85,7 @@ export function computeTeamSlotPricing(
       hobbyPerCase: config.hobbyCases > 0 ? hobbySlotCost / config.hobbyCases : 0,
       bdPerCase: config.bdCases > 0 ? bdSlotCost / config.bdCases : 0,
       maxPay: totalCost * 1.5,
-      players: players.sort((a, b) => b.bdWeight - a.bdWeight),
+      players: players.sort((a, b) => (a.player?.name ?? '').localeCompare(b.player?.name ?? '')),
     };
-  }).sort((a, b) => b.totalCost - a.totalCost);
+  }).sort((a, b) => a.team.localeCompare(b.team));
 }

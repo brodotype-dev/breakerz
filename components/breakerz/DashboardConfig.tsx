@@ -7,14 +7,18 @@ import type { BreakConfig } from '@/lib/types';
 interface Props {
   config: BreakConfig;
   onChange: (config: BreakConfig) => void;
+  breakType: 'hobby' | 'bd';
 }
 
-export default function DashboardConfig({ config, onChange }: Props) {
+export default function DashboardConfig({ config, onChange, breakType }: Props) {
   const update = (key: keyof BreakConfig, value: number) =>
     onChange({ ...config, [key]: value });
 
-  const hobbyTotal = config.hobbyCases * config.hobbyCaseCost * (1 + config.breakerMargin);
-  const bdTotal = config.bdCases * config.bdCaseCost * (1 + config.breakerMargin);
+  const total = breakType === 'hobby'
+    ? config.hobbyCases * config.hobbyCaseCost
+    : config.bdCases * config.bdCaseCost;
+
+  const totalLabel = breakType === 'hobby' ? 'Total Hobby Break' : 'Total BD Break';
 
   return (
     <div className="bg-card border rounded overflow-hidden">
@@ -26,28 +30,33 @@ export default function DashboardConfig({ config, onChange }: Props) {
           Break Configuration
         </p>
 
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
-          <Field label="Hobby Cases"    value={config.hobbyCases}    onChange={v => update('hobbyCases', v)} />
-          <Field label="BD Cases"       value={config.bdCases}       onChange={v => update('bdCases', v)} />
-          <Field label="Hobby / Case"   value={config.hobbyCaseCost} onChange={v => update('hobbyCaseCost', v)} prefix="$" />
-          <Field label="BD / Case"      value={config.bdCaseCost}    onChange={v => update('bdCaseCost', v)} prefix="$" />
+        <div className="grid grid-cols-2 gap-3 mb-5">
+          {breakType === 'hobby' ? (
+            <>
+              <Field label="Hobby Cases"  value={config.hobbyCases}    onChange={v => update('hobbyCases', v)} />
+              <Field label="Hobby / Case" value={config.hobbyCaseCost} onChange={v => update('hobbyCaseCost', v)} prefix="$" />
+            </>
+          ) : (
+            <>
+              <Field label="BD Cases"   value={config.bdCases}    onChange={v => update('bdCases', v)} />
+              <Field label="BD / Case"  value={config.bdCaseCost} onChange={v => update('bdCaseCost', v)} prefix="$" />
+            </>
+          )}
         </div>
 
+        {/* Hidden seller fields — reserved for breaker/seller UI variant
         <div className="grid grid-cols-3 gap-3 mb-5">
-          <Field label="Breaker Margin" value={config.breakerMargin * 100} onChange={v => update('breakerMargin', v / 100)} suffix="%" />
-          <Field label="eBay Fee"       value={config.ebayFeeRate * 100}   onChange={v => update('ebayFeeRate', v / 100)} suffix="%" />
-          <Field label="Shipping / Card" value={config.shippingPerCard}    onChange={v => update('shippingPerCard', v)} prefix="$" />
+          <Field label="Breaker Margin"  value={config.breakerMargin * 100}  onChange={v => update('breakerMargin', v / 100)} suffix="%" />
+          <Field label="eBay Fee"        value={config.ebayFeeRate * 100}     onChange={v => update('ebayFeeRate', v / 100)} suffix="%" />
+          <Field label="Shipping / Card" value={config.shippingPerCard}       onChange={v => update('shippingPerCard', v)} prefix="$" />
         </div>
+        */}
 
-        {/* Totals — Heritage banner style */}
-        <div className="grid grid-cols-2 gap-3 border-t pt-4">
+        {/* Total */}
+        <div className="border-t pt-4">
           <div className="rounded bg-secondary px-4 py-3">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Total Hobby Break</p>
-            <p className="text-xl font-black font-mono">{formatCurrency(hobbyTotal)}</p>
-          </div>
-          <div className="rounded bg-secondary px-4 py-3">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Total BD Break</p>
-            <p className="text-xl font-black font-mono">{formatCurrency(bdTotal)}</p>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{totalLabel}</p>
+            <p className="text-xl font-black font-mono">{formatCurrency(total)}</p>
           </div>
         </div>
       </div>
