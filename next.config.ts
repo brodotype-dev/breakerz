@@ -1,15 +1,20 @@
 import type { NextConfig } from "next";
+import path from "path";
 
 const nextConfig: NextConfig = {
+  // Stub out canvas (optional pdf-parse dependency) for both bundlers.
+  // We only need text extraction — no rendering APIs required.
   webpack: (config) => {
-    // pdf-parse pulls in canvas as an optional dependency for PDF rendering.
-    // We only need text extraction, so stub canvas out entirely to avoid
-    // "DOMMatrix is not defined" and related runtime errors in Node.js.
     config.resolve.alias = {
       ...config.resolve.alias,
-      canvas: false,
+      canvas: path.resolve("./lib/empty-module.js"),
     };
     return config;
+  },
+  turbopack: {
+    resolveAlias: {
+      canvas: "./lib/empty-module.js",
+    },
   },
 };
 
