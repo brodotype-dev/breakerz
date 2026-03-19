@@ -14,6 +14,9 @@ export type ParsedPlayer = {
 
 async function extractPdfText(buffer: Buffer): Promise<string> {
   // pdf2json is pure Node.js with no canvas / DOM dependencies.
+  // It returns individual text items with x/y coordinates rather than
+  // pre-assembled lines. We group items by y position and join them with
+  // fixed spacing so the checklist parser's column-aware regexes still match.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const PDFParser = require('pdf2json');
 
@@ -21,17 +24,39 @@ async function extractPdfText(buffer: Buffer): Promise<string> {
     const parser = new PDFParser();
 
     parser.on('pdfParser_dataReady', (data: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
-      const text = data.Pages
-        .map((page: any) => // eslint-disable-line @typescript-eslint/no-explicit-any
-          page.Texts
-            .map((t: any) => decodeURIComponent(t.R.map((r: any) => r.T).join(''))) // eslint-disable-line @typescript-eslint/no-explicit-any
-            .join(' ')
-        )
-        .join('\n');
-      resolve(text);
+      const pageLines: string[] = [];
+
+      for (const page of data.Pages) { // eslint-disable-line @typescript-eslint/no-explicit-any
+        // Group text items by rounded y (0.1 unit tolerance handles float drift)
+        const lineMap = new Map<number, Array<{ x: number; text: string }>>();
+
+        for (const item of page.Texts) { // eslint-disable-line @typescript-eslint/no-explicit-any
+          const text = decodeURIComponent(item.R.map((r: any) => r.T).join('')); // eslint-disable-line @typescript-eslint/no-explicit-any
+          if (!text.trim()) continue;
+          const y = Math.round(item.y * 10); // key in tenths of a unit
+          if (!lineMap.has(y)) lineMap.set(y, []);
+          lineMap.get(y)!.push({ x: item.x, text });
+        }
+
+        // Sort rows by y, reconstruct each row left-to-right
+        const sortedRows = Array.from(lineMap.entries())
+          .sort(([a], [b]) => a - b)
+          .map(([, items]) => items.sort((a, b) => a.x - b.x));
+
+        for (const items of sortedRows) {
+          // Prepend 6 spaces (satisfies ^\s{2,} in numbered-line regex),
+          // join text items with 3 spaces (satisfies \s{1,6} and \s{2,} gaps).
+          pageLines.push('      ' + items.map(i => i.text).join('   '));
+        }
+
+        pageLines.push(''); // blank line between pages
+      }
+
+      resolve(pageLines.join('\n'));
     });
 
-    parser.on('pdfParser_dataError', (err: any) => reject(new Error(err?.parserError ?? 'PDF parse error'))); // eslint-disable-line @typescript-eslint/no-explicit-any
+    parser.on('pdfParser_dataError', (err: any) => // eslint-disable-line @typescript-eslint/no-explicit-any
+      reject(new Error(err?.parserError ?? 'PDF parse error')));
 
     parser.parseBuffer(buffer);
   });
