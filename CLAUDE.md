@@ -64,18 +64,22 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.
 
 Without the fallbacks, builds fail with `supabaseUrl is required`.
 
-### 2. pdf-parse + Vercel Build
+### 2. pdf-parse + Vercel (build AND runtime)
 
-`pdf-parse` loads canvas bindings at module evaluation time and crashes the build with `DOMMatrix is not defined`. Fix: `require('pdf-parse')` must be **inside the handler function**, not at the top of the file. Also add `export const dynamic = 'force-dynamic'` to any route that uses it.
+Two separate issues:
+
+**Build-time:** `pdf-parse` loads canvas bindings at module evaluation time and crashes the build. Fix: `require('pdf-parse')` must be **inside the handler function**, not at the top of the file. Also add `export const dynamic = 'force-dynamic'`.
+
+**Runtime:** Even with lazy require, pdf-parse internally loads canvas which expects `DOMMatrix` — a browser global that doesn't exist in Node.js / Vercel's runtime. Fix: polyfill it before calling require.
 
 ```typescript
-// ✗ breaks build
-const pdfParse = require('pdf-parse');
-
-// ✓ correct
 export const dynamic = 'force-dynamic';
 export async function POST(req) {
-  const pdfParse = require('pdf-parse'); // inside handler
+  // Polyfill DOMMatrix for pdf-parse canvas dependency
+  if (typeof (globalThis as any).DOMMatrix === 'undefined') {
+    (globalThis as any).DOMMatrix = class DOMMatrix {};
+  }
+  const pdfParse = require('pdf-parse'); // lazy require inside handler
   ...
 }
 ```

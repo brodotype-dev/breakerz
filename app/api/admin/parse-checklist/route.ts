@@ -27,7 +27,14 @@ export async function POST(req: NextRequest) {
       const checklist = parseChecklistCsv(text);
       return NextResponse.json({ checklist });
     } else {
-      // PDF — require inside handler so pdf-parse isn't evaluated at build time
+      // PDF — require inside handler so pdf-parse isn't evaluated at build time.
+      // Polyfill DOMMatrix: pdf-parse pulls in canvas which expects this browser
+      // global; it doesn't exist in Node.js / Vercel's runtime.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (typeof (globalThis as any).DOMMatrix === 'undefined') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (globalThis as any).DOMMatrix = class DOMMatrix {};
+      }
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const pdfParse = require('pdf-parse');
       const data = await pdfParse(buffer);
