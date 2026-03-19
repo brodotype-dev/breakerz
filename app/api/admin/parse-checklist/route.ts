@@ -12,6 +12,29 @@ export type ParsedPlayer = {
   insertOnly: boolean;
 };
 
+async function extractPdfText(buffer: Buffer): Promise<string> {
+  // pdfjs-dist does pure-JS text extraction with no canvas/browser APIs needed.
+  // Use the legacy build which ships a self-contained bundle for Node.js.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { getDocument, GlobalWorkerOptions } = require('pdfjs-dist/legacy/build/pdf.mjs');
+  GlobalWorkerOptions.workerSrc = '';  // disable web worker in Node.js
+
+  const doc = await getDocument({ data: new Uint8Array(buffer) }).promise;
+  const pages: string[] = [];
+
+  for (let i = 1; i <= doc.numPages; i++) {
+    const page = await doc.getPage(i);
+    const content = await page.getTextContent();
+    const pageText = content.items
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((item: any) => ('str' in item ? item.str : ''))
+      .join(' ');
+    pages.push(pageText);
+  }
+
+  return pages.join('\n');
+}
+
 export async function POST(req: NextRequest) {
   const formData = await req.formData();
   const file = formData.get('file') as File | null;
@@ -27,13 +50,8 @@ export async function POST(req: NextRequest) {
       const checklist = parseChecklistCsv(text);
       return NextResponse.json({ checklist });
     } else {
-      // PDF — require inside handler so pdf-parse isn't evaluated at build time.
-      // canvas is stubbed out via next.config.ts webpack alias so pdf-parse
-      // only runs text extraction without any browser rendering APIs.
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const pdfParse = require('pdf-parse');
-      const data = await pdfParse(buffer);
-      const checklist = parseChecklistPdf(data.text);
+      const text = await extractPdfText(buffer);
+      const checklist = parseChecklistPdf(text);
       return NextResponse.json({ checklist });
     }
   } catch (err) {
