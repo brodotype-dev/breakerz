@@ -64,28 +64,24 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.
 
 Without the fallbacks, builds fail with `supabaseUrl is required`.
 
-### 2. pdf-parse + Vercel (build AND runtime)
+### 2. PDF parsing on Vercel
 
-`pdf-parse` pulls in `canvas` as an optional dependency. Canvas requires browser globals (`DOMMatrix` etc.) that don't exist in Node.js, causing both build-time and runtime failures.
+Do NOT use `pdf-parse` — it pulls in `canvas` at runtime which requires `DOMMatrix` and other browser globals unavailable in Node.js. Webpack aliases don't intercept the runtime `require`.
 
-**Fix (two parts):**
+**Use `pdfjs-dist` (Mozilla PDF.js) instead** — pure JS, no canvas, no browser globals:
 
-1. **`next.config.ts`** — stub canvas out via webpack alias so it's never loaded:
-```typescript
-webpack: (config) => {
-  config.resolve.alias = { ...config.resolve.alias, canvas: false };
-  return config;
-}
-```
-
-2. **Route file** — lazy require inside handler + `force-dynamic`:
 ```typescript
 export const dynamic = 'force-dynamic';
-export async function POST(req) {
-  const pdfParse = require('pdf-parse'); // inside handler, not at top of file
-  ...
+
+async function extractPdfText(buffer: Buffer): Promise<string> {
+  const { getDocument, GlobalWorkerOptions } = require('pdfjs-dist/legacy/build/pdf.mjs');
+  GlobalWorkerOptions.workerSrc = ''; // disable web worker in Node.js
+  const doc = await getDocument({ data: new Uint8Array(buffer) }).promise;
+  // ... iterate pages, collect text
 }
 ```
+
+Use the `legacy` build and disable the worker src. Lazy require inside the handler.
 
 ---
 
