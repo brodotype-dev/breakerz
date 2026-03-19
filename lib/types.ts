@@ -61,9 +61,6 @@ export interface BreakConfig {
   bdCases: number;
   hobbyCaseCost: number;
   bdCaseCost: number;
-  breakerMargin: number;
-  ebayFeeRate: number;
-  shippingPerCard: number;
 }
 
 export interface PlayerWithPricing extends PlayerProduct {

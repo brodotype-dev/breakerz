@@ -44,14 +44,6 @@ export default function DashboardConfig({ config, onChange, breakType }: Props) 
           )}
         </div>
 
-        {/* Hidden seller fields — reserved for breaker/seller UI variant
-        <div className="grid grid-cols-3 gap-3 mb-5">
-          <Field label="Breaker Margin"  value={config.breakerMargin * 100}  onChange={v => update('breakerMargin', v / 100)} suffix="%" />
-          <Field label="eBay Fee"        value={config.ebayFeeRate * 100}     onChange={v => update('ebayFeeRate', v / 100)} suffix="%" />
-          <Field label="Shipping / Card" value={config.shippingPerCard}       onChange={v => update('shippingPerCard', v)} prefix="$" />
-        </div>
-        */}
-
         {/* Total */}
         <div className="border-t pt-4">
           <div className="rounded bg-secondary px-4 py-3">

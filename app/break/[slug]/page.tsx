@@ -17,6 +17,25 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+function OddsTooltip() {
+  return (
+    <div className="relative group ml-auto shrink-0">
+      <button
+        className="flex items-center justify-center w-4 h-4 rounded-full border border-amber-400 text-amber-600 text-[10px] font-bold leading-none hover:bg-amber-100 dark:hover:bg-amber-900/40 transition-colors"
+        aria-label="How slot costs are calculated without odds"
+      >
+        ?
+      </button>
+      <div className="absolute right-0 top-6 z-20 w-64 rounded border border-amber-200 bg-white dark:bg-zinc-900 dark:border-amber-800 shadow-lg p-3 text-xs text-amber-900 dark:text-amber-200 leading-relaxed hidden group-hover:block">
+        <p className="font-semibold mb-1">No odds available</p>
+        <p>
+          When pull-rate odds aren{"'"}t published, slot costs are weighted by each player{"'"}s market value (EV) only — not by how likely you are to pull their card. Once odds are imported, weighting automatically accounts for actual pull rates.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function BreakPage() {
   const { slug } = useParams<{ slug: string }>();
   const [product, setProduct] = useState<(Product & { sport: Sport }) | null>(null);
@@ -32,9 +51,6 @@ export default function BreakPage() {
     bdCases: 10,
     hobbyCaseCost: 0,
     bdCaseCost: 0,
-    breakerMargin: 0.25,
-    ebayFeeRate: 0.13,
-    shippingPerCard: 6,
   });
 
   useEffect(() => {
@@ -155,14 +171,15 @@ export default function BreakPage() {
       {!product.has_odds && (
         <div className="bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800">
           <div className="max-w-7xl mx-auto px-4 py-2.5 flex items-center gap-2">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 text-amber-500">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 text-amber-500" aria-hidden="true">
               <path d="M7 1L13 13H1L7 1Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
               <path d="M7 5.5V8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
               <circle cx="7" cy="10.5" r="0.75" fill="currentColor"/>
             </svg>
             <p className="text-xs text-amber-700 dark:text-amber-400">
-              Odds not yet available for this product — slot costs are estimated from card values only and may not reflect actual pull rates.
+              Odds not yet available for this product — slot costs are estimated from card values only.
             </p>
+            <OddsTooltip />
           </div>
         </div>
       )}

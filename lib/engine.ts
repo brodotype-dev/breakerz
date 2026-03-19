@@ -6,18 +6,22 @@ export function computeSlotPricing(
 ): PlayerWithPricing[] {
   const eligible = players.filter(p => !p.insert_only);
 
-  const totalHobbyWeight = eligible.reduce((sum, p) => sum + p.evMid * p.hobby_sets, 0);
-  const totalBdWeight = eligible.reduce(
-    (sum, p) => sum + p.evMid * (p.hobby_sets + p.bd_only_sets),
+  // Weight by pure evMid — no sets multiplier.
+  // Sets count is a flawed proxy for pull probability; odds-weighted EV (Phase 2)
+  // will replace this once odds data is available per variant.
+  // BD-only players (hobby_sets === 0) are excluded from the hobby pool.
+  const totalHobbyWeight = eligible.reduce(
+    (sum, p) => sum + (p.hobby_sets > 0 ? p.evMid : 0),
     0
   );
+  const totalBdWeight = eligible.reduce((sum, p) => sum + p.evMid, 0);
 
-  const hobbyBreakCost = config.hobbyCases * config.hobbyCaseCost * (1 + config.breakerMargin);
-  const bdBreakCost = config.bdCases * config.bdCaseCost * (1 + config.breakerMargin);
+  const hobbyBreakCost = config.hobbyCases * config.hobbyCaseCost;
+  const bdBreakCost = config.bdCases * config.bdCaseCost;
 
   return eligible.map(player => {
-    const hobbyWeight = player.evMid * player.hobby_sets;
-    const bdWeight = player.evMid * (player.hobby_sets + player.bd_only_sets);
+    const hobbyWeight = player.hobby_sets > 0 ? player.evMid : 0;
+    const bdWeight = player.evMid;
 
     const hobbySlotCost =
       totalHobbyWeight > 0 ? hobbyBreakCost * (hobbyWeight / totalHobbyWeight) : 0;
