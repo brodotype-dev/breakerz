@@ -66,20 +66,23 @@ Without the fallbacks, builds fail with `supabaseUrl is required`.
 
 ### 2. pdf-parse + Vercel (build AND runtime)
 
-Two separate issues:
+`pdf-parse` pulls in `canvas` as an optional dependency. Canvas requires browser globals (`DOMMatrix` etc.) that don't exist in Node.js, causing both build-time and runtime failures.
 
-**Build-time:** `pdf-parse` loads canvas bindings at module evaluation time and crashes the build. Fix: `require('pdf-parse')` must be **inside the handler function**, not at the top of the file. Also add `export const dynamic = 'force-dynamic'`.
+**Fix (two parts):**
 
-**Runtime:** Even with lazy require, pdf-parse internally loads canvas which expects `DOMMatrix` — a browser global that doesn't exist in Node.js / Vercel's runtime. Fix: polyfill it before calling require.
+1. **`next.config.ts`** — stub canvas out via webpack alias so it's never loaded:
+```typescript
+webpack: (config) => {
+  config.resolve.alias = { ...config.resolve.alias, canvas: false };
+  return config;
+}
+```
 
+2. **Route file** — lazy require inside handler + `force-dynamic`:
 ```typescript
 export const dynamic = 'force-dynamic';
 export async function POST(req) {
-  // Polyfill DOMMatrix for pdf-parse canvas dependency
-  if (typeof (globalThis as any).DOMMatrix === 'undefined') {
-    (globalThis as any).DOMMatrix = class DOMMatrix {};
-  }
-  const pdfParse = require('pdf-parse'); // lazy require inside handler
+  const pdfParse = require('pdf-parse'); // inside handler, not at top of file
   ...
 }
 ```
