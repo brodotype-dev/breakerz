@@ -18,6 +18,7 @@ export interface Product {
   hobby_autos_per_case: number;
   bd_autos_per_case: number | null;
   is_active: boolean;
+  has_odds: boolean;
   sport?: Sport;
 }
 
@@ -85,9 +86,10 @@ export interface PlayerProductVariant {
   id: string;
   player_product_id: string;
   variant_name: string;
-  cardhedger_card_id: string;
+  cardhedger_card_id: string | null;
   hobby_sets: number;
   bd_only_sets: number;
+  match_confidence: number | null;
 }
 
 export type Signal = 'BUY' | 'WATCH' | 'PASS';

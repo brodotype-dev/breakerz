@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import type { ParsedChecklist, ParsedSection } from '@/lib/checklist-parser';
 
@@ -49,12 +50,13 @@ function confidenceColor(status: MatchRow['status']) {
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export default function ImportChecklistPage() {
+  const searchParams = useSearchParams();
   const fileRef = useRef<HTMLInputElement>(null);
   const oddsFileRef = useRef<HTMLInputElement>(null);
 
   const [step, setStep] = useState<Step>('upload');
   const [products, setProducts] = useState<Product[]>([]);
-  const [productId, setProductId] = useState('');
+  const [productId, setProductId] = useState(searchParams.get('productId') ?? '');
   const [parseError, setParseError] = useState<string | null>(null);
   const [parsing, setParsing] = useState(false);
 
@@ -71,7 +73,11 @@ export default function ImportChecklistPage() {
 
   const [oddsUploading, setOddsUploading] = useState(false);
   const [oddsError, setOddsError] = useState<string | null>(null);
-  const [oddsApplied, setOddsApplied] = useState<number | null>(null);
+  const [oddsResult, setOddsResult] = useState<{
+    updatedCount: number;
+    matched: { subsetName: string; variantName: string; hobbyOdds: string; breakerOdds: string | null }[];
+    unmatched: string[];
+  } | null>(null);
 
   // Fetch products on mount
   useEffect(() => {
@@ -227,7 +233,7 @@ export default function ImportChecklistPage() {
       if (!applyRes.ok || applyJson.error) {
         setOddsError(applyJson.error ?? 'Apply odds failed');
       } else {
-        setOddsApplied(applyJson.updatedCount ?? 0);
+        setOddsResult(applyJson);
       }
     } catch (err) {
       setOddsError(err instanceof Error ? err.message : 'Network error');
@@ -614,10 +620,48 @@ export default function ImportChecklistPage() {
                 </div>
 
                 {oddsError && <p className="text-sm text-red-500">{oddsError}</p>}
-                {oddsApplied !== null && (
-                  <p className="text-sm text-green-600">
-                    Odds applied to {oddsApplied} variant{oddsApplied !== 1 ? 's' : ''}.
-                  </p>
+                {oddsResult && (
+                  <div className="space-y-3">
+                    <p className="text-sm text-green-600 font-medium">
+                      Odds applied to {oddsResult.updatedCount} variant{oddsResult.updatedCount !== 1 ? 's' : ''}.
+                    </p>
+                    {oddsResult.matched.length > 0 && (
+                      <div className="rounded border overflow-hidden">
+                        <table className="w-full text-xs">
+                          <thead className="bg-muted/50">
+                            <tr>
+                              <th className="px-3 py-2 text-left font-medium text-muted-foreground">Odds Row</th>
+                              <th className="px-3 py-2 text-left font-medium text-muted-foreground">Matched Variant</th>
+                              <th className="px-3 py-2 text-center font-medium text-muted-foreground">Hobby Odds</th>
+                              <th className="px-3 py-2 text-center font-medium text-muted-foreground">Breaker Odds</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {oddsResult.matched.map((m, i) => (
+                              <tr key={i} className="hover:bg-muted/20">
+                                <td className="px-3 py-1.5 text-muted-foreground">{m.subsetName}</td>
+                                <td className="px-3 py-1.5 text-green-600">{m.variantName}</td>
+                                <td className="px-3 py-1.5 text-center">{m.hobbyOdds != null ? `1:${m.hobbyOdds}` : '—'}</td>
+                                <td className="px-3 py-1.5 text-center">{m.breakerOdds != null ? `1:${m.breakerOdds}` : '—'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                    {oddsResult.unmatched.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-yellow-600 mb-1">
+                          {oddsResult.unmatched.length} odds row{oddsResult.unmatched.length !== 1 ? 's' : ''} had no matching variant:
+                        </p>
+                        {oddsResult.unmatched.map((u, i) => (
+                          <p key={i} className="text-xs font-mono text-yellow-700 bg-yellow-50 dark:bg-yellow-950/30 rounded px-2 py-0.5 truncate">
+                            {u}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
             </div>
@@ -630,7 +674,7 @@ export default function ImportChecklistPage() {
                   setSections([]);
                   setImportResult(null);
                   setMatchResults(null);
-                  setOddsApplied(null);
+                  setOddsResult(null);
                   setProductId('');
                   if (fileRef.current) fileRef.current.value = '';
                   if (oddsFileRef.current) oddsFileRef.current.value = '';

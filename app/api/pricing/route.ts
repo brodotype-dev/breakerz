@@ -79,6 +79,22 @@ export async function POST(req: NextRequest) {
     if (!playerProducts?.length) return NextResponse.json({ players: [] });
 
     const ids = playerProducts.map(pp => pp.id);
+
+    // Load variants for all player_products (used for weighted EV)
+    const { data: allVariants } = await supabaseAdmin
+      .from('player_product_variants')
+      .select('id, player_product_id, cardhedger_card_id, hobby_sets, bd_only_sets')
+      .in('player_product_id', ids)
+      .not('cardhedger_card_id', 'is', null);
+
+    // Group variants by player_product_id
+    const variantMap = new Map<string, typeof allVariants>();
+    for (const v of allVariants ?? []) {
+      const list = variantMap.get(v.player_product_id) ?? [];
+      list.push(v);
+      variantMap.set(v.player_product_id, list);
+    }
+
     const { data: existingCache } = await supabaseAdmin
       .from('pricing_cache')
       .select('*')
@@ -108,28 +124,44 @@ export async function POST(req: NextRequest) {
 
         try {
           let ev: { evLow: number; evMid: number; evHigh: number };
-          let cardId = pp.cardhedger_card_id;
+          const variants = variantMap.get(pp.id) ?? [];
 
-          if (!cardId) {
-            // Search + compute EV in one call
-            const query = `${pp.player.name} ${product?.year ?? ''} ${product?.name ?? ''}`.trim();
-            const result = await searchAndComputeEV(query);
-            if (!result) throw new Error('No card found');
-            cardId = result.cardId;
-            ev = { evLow: result.evLow, evMid: result.evMid, evHigh: result.evHigh };
-
-            // Persist card ID so future refreshes skip the search step
-            await supabaseAdmin
-              .from('player_products')
-              .update({ cardhedger_card_id: cardId })
-              .eq('id', pp.id);
+          if (variants.length > 0) {
+            // Weighted EV across variants: Σ(variantEV × sets) / Σ(sets)
+            const variantEVs = await Promise.all(
+              variants.map(async v => {
+                const variantEV = await computeLiveEV(v.cardhedger_card_id!);
+                const sets = (v.hobby_sets ?? 0) + (v.bd_only_sets ?? 0);
+                return { ...variantEV, sets: Math.max(sets, 1) };
+              })
+            );
+            const totalSets = variantEVs.reduce((sum, v) => sum + v.sets, 0);
+            ev = {
+              evLow: variantEVs.reduce((sum, v) => sum + v.evLow * v.sets, 0) / totalSets,
+              evMid: variantEVs.reduce((sum, v) => sum + v.evMid * v.sets, 0) / totalSets,
+              evHigh: variantEVs.reduce((sum, v) => sum + v.evHigh * v.sets, 0) / totalSets,
+            };
           } else {
-            ev = await computeLiveEV(cardId);
+            const cardId = pp.cardhedger_card_id;
+            if (!cardId) {
+              // Search + compute EV in one call
+              const query = `${pp.player.name} ${product?.year ?? ''} ${product?.name ?? ''}`.trim();
+              const result = await searchAndComputeEV(query);
+              if (!result) throw new Error('No card found');
+              ev = { evLow: result.evLow, evMid: result.evMid, evHigh: result.evHigh };
+              // Persist card ID so future refreshes skip the search step
+              await supabaseAdmin
+                .from('player_products')
+                .update({ cardhedger_card_id: result.cardId })
+                .eq('id', pp.id);
+            } else {
+              ev = await computeLiveEV(cardId);
+            }
           }
 
           await supabaseAdmin.from('pricing_cache').upsert({
             player_product_id: pp.id,
-            cardhedger_card_id: cardId,
+            cardhedger_card_id: pp.cardhedger_card_id ?? null,
             ev_low: ev.evLow,
             ev_mid: ev.evMid,
             ev_high: ev.evHigh,

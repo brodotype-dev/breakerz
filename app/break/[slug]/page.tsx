@@ -151,6 +151,22 @@ export default function BreakPage() {
         <div className="h-0.5 bg-[var(--topps-red)]" />
       </header>
 
+      {/* No-odds warning banner */}
+      {!product.has_odds && (
+        <div className="bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800">
+          <div className="max-w-7xl mx-auto px-4 py-2.5 flex items-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 text-amber-500">
+              <path d="M7 1L13 13H1L7 1Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+              <path d="M7 5.5V8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              <circle cx="7" cy="10.5" r="0.75" fill="currentColor"/>
+            </svg>
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              Odds not yet available for this product — slot costs are estimated from card values only and may not reflect actual pull rates.
+            </p>
+          </div>
+        </div>
+      )}
+
       <main className="max-w-7xl mx-auto px-4 py-6 space-y-5">
         {/* Break type toggle */}
         <div className="flex gap-1 p-1 bg-secondary rounded-lg w-fit">

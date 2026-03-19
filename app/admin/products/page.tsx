@@ -64,12 +64,20 @@ export default async function AdminProductsPage() {
                       {(product.sport as any)?.name} · {product.manufacturer} · {product.year}
                     </p>
                   </div>
-                  <Link
-                    href={`/admin/products/${product.id}/players`}
-                    className="text-xs text-primary hover:underline font-medium shrink-0"
-                  >
-                    Manage players →
-                  </Link>
+                  <div className="flex items-center gap-4">
+                    <Link
+                      href={`/admin/products/${product.id}/players`}
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                    >
+                      Players
+                    </Link>
+                    <Link
+                      href={`/admin/products/${product.id}`}
+                      className="text-xs text-primary hover:underline font-medium shrink-0"
+                    >
+                      Dashboard →
+                    </Link>
+                  </div>
                 </div>
               ))}
             </div>

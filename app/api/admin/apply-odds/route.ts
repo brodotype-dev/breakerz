@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     .eq('product_id', productId);
 
   const ppIds = (playerProducts ?? []).map(pp => pp.id);
-  if (!ppIds.length) return NextResponse.json({ updatedCount: 0 });
+  if (!ppIds.length) return NextResponse.json({ updatedCount: 0, matched: [], unmatched: [] });
 
   // Load all variants for those player_products
   const { data: variants, error } = await supabaseAdmin
@@ -29,9 +29,11 @@ export async function POST(req: NextRequest) {
     .in('player_product_id', ppIds);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  if (!variants?.length) return NextResponse.json({ updatedCount: 0 });
+  if (!variants?.length) return NextResponse.json({ updatedCount: 0, matched: [], unmatched: [] });
 
   let updatedCount = 0;
+  const matched: { subsetName: string; variantName: string; hobbyOdds: string; breakerOdds: string | null }[] = [];
+  const unmatched: string[] = [];
 
   for (const oddsRow of odds.rows) {
     const normalizedOdds = normalize(oddsRow.subsetName);
@@ -42,16 +44,37 @@ export async function POST(req: NextRequest) {
       return normalizedVariant.includes(normalizedOdds) || normalizedOdds.includes(normalizedVariant);
     });
 
-    if (!match) continue;
+    if (!match) {
+      unmatched.push(oddsRow.subsetName);
+      continue;
+    }
+
+    const variantIds = variants
+      .filter(v => v.variant_name === match.variant_name)
+      .map(v => v.id);
 
     await supabaseAdmin
       .from('player_product_variants')
       .update({ hobby_odds: oddsRow.hobbyOdds, breaker_odds: oddsRow.breakerOdds })
       .eq('variant_name', match.variant_name)
-      .in('id', variants.filter(v => v.variant_name === match.variant_name).map(v => v.id));
+      .in('id', variantIds);
 
+    matched.push({
+      subsetName: oddsRow.subsetName,
+      variantName: match.variant_name,
+      hobbyOdds: oddsRow.hobbyOdds,
+      breakerOdds: oddsRow.breakerOdds,
+    });
     updatedCount++;
   }
 
-  return NextResponse.json({ updatedCount });
+  // Mark product as having odds if anything matched
+  if (updatedCount > 0) {
+    await supabaseAdmin
+      .from('products')
+      .update({ has_odds: true })
+      .eq('id', productId);
+  }
+
+  return NextResponse.json({ updatedCount, matched, unmatched });
 }
