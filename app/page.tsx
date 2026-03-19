@@ -1,6 +1,6 @@
-import Link from 'next/link';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { Product, Sport } from '@/lib/types';
+import ProductCard from '@/components/breakerz/ProductCard';
 
 async function getProducts(): Promise<(Product & { sport: Sport })[]> {
   const { data } = await supabaseAdmin
@@ -53,42 +53,9 @@ export default async function HomePage() {
                   <div className="flex-1 h-px bg-border" />
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                   {sportProducts.map(product => (
-                    <Link
-                      key={product.id}
-                      href={`/break/${product.slug}`}
-                      className="group block bg-card border rounded overflow-hidden hover:shadow-md transition-shadow"
-                    >
-                      <div className="h-1.5 bg-[oklch(0.28_0.08_250)] group-hover:bg-[var(--topps-red)] transition-colors" />
-                      <div className="p-5">
-                        <div className="flex items-start justify-between mb-3">
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                            {product.manufacturer}
-                          </span>
-                          <span className="text-[10px] font-mono bg-secondary text-muted-foreground px-1.5 py-0.5 rounded">
-                            {product.year}
-                          </span>
-                        </div>
-                        <p className="font-bold text-base leading-tight mb-4 group-hover:text-[oklch(0.28_0.08_250)] transition-colors">
-                          {product.name}
-                        </p>
-                        <div className="flex gap-4 text-xs">
-                          {product.hobby_case_cost ? (
-                            <div>
-                              <p className="text-muted-foreground uppercase tracking-wider text-[10px] mb-0.5">Hobby / case</p>
-                              <p className="font-mono font-semibold">${product.hobby_case_cost.toLocaleString()}</p>
-                            </div>
-                          ) : null}
-                          {product.bd_case_cost ? (
-                            <div>
-                              <p className="text-muted-foreground uppercase tracking-wider text-[10px] mb-0.5">BD / case</p>
-                              <p className="font-mono font-semibold">${product.bd_case_cost.toLocaleString()}</p>
-                            </div>
-                          ) : null}
-                        </div>
-                      </div>
-                    </Link>
+                    <ProductCard key={product.id} product={product} />
                   ))}
                 </div>
               </div>
