@@ -2,6 +2,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import type { Product, Sport } from '@/lib/types';
+import OddsUpload from './OddsUpload';
 
 type PageProps = { params: Promise<{ id: string }> };
 
@@ -168,6 +169,25 @@ export default async function ProductDashboardPage({ params }: PageProps) {
                 View Break Page →
               </Link>
             </div>
+          </div>
+        </div>
+
+        {/* Odds upload */}
+        <div className="bg-card border rounded overflow-hidden">
+          <div className="h-1 bg-muted" />
+          <div className="p-6 space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+                Import Odds
+              </h2>
+              {product.has_odds && (
+                <span className="text-xs text-green-600 font-medium">Odds imported</span>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Upload the manufacturer odds PDF to apply pull rates to variants. Can be run independently of the checklist import.
+            </p>
+            <OddsUpload productId={id} />
           </div>
         </div>
 
