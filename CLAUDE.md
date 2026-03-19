@@ -166,6 +166,27 @@ Use it to inspect tables, run queries, and verify data without leaving Claude Co
 
 ---
 
+## Database Migrations
+
+Supabase CLI is linked and authenticated — no Docker required for migrations.
+
+```bash
+# Create a new migration
+# Filename: supabase/migrations/YYYYMMDDHHMMSS_description.sql
+
+# Push to linked project (will prompt Y/n)
+cd /tmp/breakerz-next
+supabase db push --linked
+
+# If a migration partially failed and needs to be re-run:
+supabase migration repair --status reverted <timestamp> --linked
+supabase db push --linked
+```
+
+Migration files live in `supabase/migrations/`. Always commit them to the repo after applying.
+
+---
+
 ## Repo
 
 `https://github.com/brodotype-dev/breakerz.git` — push after deploying, not before.
