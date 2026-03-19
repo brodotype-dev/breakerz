@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import Link from 'next/link';
 import NewProductForm from './NewProductForm';
+import DeleteProductButton from './DeleteProductButton';
 import type { Sport } from '@/lib/types';
 
 export default async function AdminProductsPage() {
@@ -65,6 +66,7 @@ export default async function AdminProductsPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-4">
+                    <DeleteProductButton productId={product.id} productName={product.name} />
                     <Link
                       href={`/admin/products/${product.id}/players`}
                       className="text-xs text-muted-foreground hover:text-foreground transition-colors shrink-0"

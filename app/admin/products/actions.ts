@@ -33,6 +33,17 @@ export async function createProduct(formData: {
   return { id: data.id };
 }
 
+export async function deleteProduct(productId: string): Promise<{ error?: string }> {
+  const { error } = await supabaseAdmin
+    .from('products')
+    .delete()
+    .eq('id', productId);
+
+  if (error) return { error: error.message };
+  revalidatePath('/admin/products');
+  return {};
+}
+
 export type BulkPlayerRow = {
   name: string;
   team: string;

@@ -13,26 +13,28 @@ export type ParsedPlayer = {
 };
 
 async function extractPdfText(buffer: Buffer): Promise<string> {
-  // pdfjs-dist does pure-JS text extraction with no canvas/browser APIs needed.
-  // Use the legacy build which ships a self-contained bundle for Node.js.
+  // pdf2json is pure Node.js with no canvas / DOM dependencies.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { getDocument, GlobalWorkerOptions } = require('pdfjs-dist/legacy/build/pdf.mjs');
-  GlobalWorkerOptions.workerSrc = '';  // disable web worker in Node.js
+  const PDFParser = require('pdf2json');
 
-  const doc = await getDocument({ data: new Uint8Array(buffer) }).promise;
-  const pages: string[] = [];
+  return new Promise((resolve, reject) => {
+    const parser = new PDFParser();
 
-  for (let i = 1; i <= doc.numPages; i++) {
-    const page = await doc.getPage(i);
-    const content = await page.getTextContent();
-    const pageText = content.items
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      .map((item: any) => ('str' in item ? item.str : ''))
-      .join(' ');
-    pages.push(pageText);
-  }
+    parser.on('pdfParser_dataReady', (data: any) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+      const text = data.Pages
+        .map((page: any) => // eslint-disable-line @typescript-eslint/no-explicit-any
+          page.Texts
+            .map((t: any) => decodeURIComponent(t.R.map((r: any) => r.T).join(''))) // eslint-disable-line @typescript-eslint/no-explicit-any
+            .join(' ')
+        )
+        .join('\n');
+      resolve(text);
+    });
 
-  return pages.join('\n');
+    parser.on('pdfParser_dataError', (err: any) => reject(new Error(err?.parserError ?? 'PDF parse error'))); // eslint-disable-line @typescript-eslint/no-explicit-any
+
+    parser.parseBuffer(buffer);
+  });
 }
 
 export async function POST(req: NextRequest) {
