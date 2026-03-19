@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import type { ParsedChecklist, ParsedSection } from '@/lib/checklist-parser';
@@ -49,7 +49,7 @@ function confidenceColor(status: MatchRow['status']) {
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export default function ImportChecklistPage() {
+function ImportChecklistInner() {
   const searchParams = useSearchParams();
   const fileRef = useRef<HTMLInputElement>(null);
   const oddsFileRef = useRef<HTMLInputElement>(null);
@@ -688,5 +688,13 @@ export default function ImportChecklistPage() {
         )}
       </main>
     </div>
+  );
+}
+
+export default function ImportChecklistPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><p className="text-sm text-muted-foreground">Loading…</p></div>}>
+      <ImportChecklistInner />
+    </Suspense>
   );
 }
