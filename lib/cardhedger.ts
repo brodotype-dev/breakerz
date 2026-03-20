@@ -12,6 +12,7 @@ async function post<T>(path: string, body: Record<string, unknown>): Promise<T> 
     },
     body: JSON.stringify(body),
     next: { revalidate: 0 },
+    signal: AbortSignal.timeout(10_000),
   });
 
   if (!res.ok) {
@@ -174,7 +175,7 @@ Respond with JSON only — no explanation:
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 64,
     messages: [{ role: 'user', content: prompt }],
-  });
+  }, { timeout: 10_000 });
 
   const text = (message.content[0] as { type: string; text: string }).text.trim();
   // Strip markdown code fences if present
