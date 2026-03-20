@@ -64,7 +64,12 @@ export async function POST(req: NextRequest) {
         const batchResults = await Promise.all(
           batch.map(async task => {
             try {
-              const match = await cardMatch(task.query);
+              const match = await Promise.race([
+                cardMatch(task.query),
+                new Promise<never>((_, reject) =>
+                  setTimeout(() => reject(new Error('timeout')), 12_000)
+                ),
+              ]);
               const status: 'auto' | 'review' | 'no-match' =
                 match.confidence >= 0.7 ? 'auto'
                 : match.confidence >= 0.5 ? 'review'
