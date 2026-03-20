@@ -1,34 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { cardMatch } from '@/lib/cardhedger';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 300; // 5 min — needs Vercel Pro; on Hobby it caps at 60s
+export const maxDuration = 300;
 
-// Run up to CONCURRENCY cardMatch calls in parallel to stay within function timeout.
 const CONCURRENCY = 8;
-
-async function runWithConcurrency<T>(
-  tasks: (() => Promise<T>)[],
-  limit: number
-): Promise<T[]> {
-  const results: T[] = [];
-  let idx = 0;
-
-  async function worker() {
-    while (idx < tasks.length) {
-      const i = idx++;
-      results[i] = await tasks[i]();
-    }
-  }
-
-  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
-  return results;
-}
 
 export async function POST(req: NextRequest) {
   const { productId } = await req.json();
-  if (!productId) return NextResponse.json({ error: 'productId required' }, { status: 400 });
+  if (!productId) {
+    return new Response(JSON.stringify({ error: 'productId required' }), { status: 400 });
+  }
 
   const { data: product } = await supabaseAdmin
     .from('products')
@@ -36,10 +19,12 @@ export async function POST(req: NextRequest) {
     .eq('id', productId)
     .single();
 
-  if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
+  if (!product) {
+    return new Response(JSON.stringify({ error: 'Product not found' }), { status: 404 });
+  }
 
-  // Flatten all unmatched variants into a task list.
-  type VariantTask = {
+  // Flatten all unmatched variants.
+  type Task = {
     variantId: string;
     playerName: string;
     variantName: string;
@@ -47,7 +32,7 @@ export async function POST(req: NextRequest) {
     query: string;
   };
 
-  const tasks: VariantTask[] = [];
+  const tasks: Task[] = [];
   for (const pp of (product as any).player_products ?? []) { // eslint-disable-line @typescript-eslint/no-explicit-any
     const playerName = pp.player?.name;
     if (!playerName) continue;
@@ -63,40 +48,64 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Match all variants in parallel (bounded by CONCURRENCY).
-  const matchResults = await runWithConcurrency(
-    tasks.map(task => async () => {
-      try {
-        const match = await cardMatch(task.query);
-        const status: 'auto' | 'review' | 'no-match' =
-          match.confidence >= 0.7 ? 'auto' : match.confidence >= 0.5 ? 'review' : 'no-match';
+  const enc = new TextEncoder();
+  const line = (obj: object) => enc.encode(JSON.stringify(obj) + '\n');
 
-        const update = status === 'auto'
-          ? { cardhedger_card_id: match.card_id, match_confidence: match.confidence }
-          : { match_confidence: match.confidence };
+  const stream = new ReadableStream({
+    async start(controller) {
+      controller.enqueue(line({ type: 'total', count: tasks.length }));
 
-        await supabaseAdmin
-          .from('player_product_variants')
-          .update(update)
-          .eq('id', task.variantId);
+      let completed = 0;
 
-        return { ...task, cardId: match.card_id, confidence: match.confidence, status };
-      } catch {
-        return { ...task, cardId: null, confidence: 0, status: 'no-match' as const };
+      // Process in batches of CONCURRENCY.
+      for (let i = 0; i < tasks.length; i += CONCURRENCY) {
+        const batch = tasks.slice(i, i + CONCURRENCY);
+
+        const batchResults = await Promise.all(
+          batch.map(async task => {
+            try {
+              const match = await cardMatch(task.query);
+              const status: 'auto' | 'review' | 'no-match' =
+                match.confidence >= 0.7 ? 'auto'
+                : match.confidence >= 0.5 ? 'review'
+                : 'no-match';
+
+              const update = status === 'auto'
+                ? { cardhedger_card_id: match.card_id, match_confidence: match.confidence }
+                : { match_confidence: match.confidence };
+
+              await supabaseAdmin
+                .from('player_product_variants')
+                .update(update)
+                .eq('id', task.variantId);
+
+              return { ...task, cardId: match.card_id, confidence: match.confidence, status };
+            } catch {
+              return { ...task, cardId: null, confidence: 0, status: 'no-match' as const };
+            }
+          })
+        );
+
+        for (const result of batchResults) {
+          completed++;
+          controller.enqueue(line({
+            type: 'result',
+            variantId: result.variantId,
+            playerName: result.playerName,
+            variantName: result.variantName,
+            status: result.status,
+            confidence: result.confidence,
+            completed,
+          }));
+        }
       }
-    }),
-    CONCURRENCY
-  );
 
-  const results = matchResults.map(r => ({
-    variantId: r.variantId,
-    playerName: r.playerName,
-    variantName: r.variantName,
-    cardNumber: r.cardNumber,
-    cardId: r.cardId,
-    confidence: r.confidence,
-    status: r.status,
-  }));
+      controller.enqueue(line({ type: 'done' }));
+      controller.close();
+    },
+  });
 
-  return NextResponse.json({ results });
+  return new Response(stream, {
+    headers: { 'Content-Type': 'application/x-ndjson' },
+  });
 }
