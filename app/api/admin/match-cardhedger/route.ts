@@ -40,7 +40,13 @@ export async function POST(req: NextRequest) {
         if (status === 'auto') {
           await supabaseAdmin
             .from('player_product_variants')
-            .update({ cardhedger_card_id: match.card_id })
+            .update({ cardhedger_card_id: match.card_id, match_confidence: match.confidence })
+            .eq('id', variant.id);
+        } else {
+          // Persist confidence even for review/no-match so the dashboard can show them.
+          await supabaseAdmin
+            .from('player_product_variants')
+            .update({ match_confidence: match.confidence })
             .eq('id', variant.id);
         }
 

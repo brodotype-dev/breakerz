@@ -35,9 +35,31 @@ export default async function ProductDashboardPage({ params }: PageProps) {
   const { data: variants } = ppIds.length
     ? await supabaseAdmin
         .from('player_product_variants')
-        .select('id, cardhedger_card_id, hobby_odds, breaker_odds')
+        .select('id, cardhedger_card_id, hobby_odds, breaker_odds, variant_name, card_number, player_product_id')
         .in('player_product_id', ppIds)
     : { data: [] };
+
+  // For the unmatched list, join player names via player_products
+  const { data: playerProductsWithPlayers } = ppIds.length
+    ? await supabaseAdmin
+        .from('player_products')
+        .select('id, player:players(name)')
+        .in('id', ppIds)
+    : { data: [] };
+
+  const ppPlayerMap = new Map(
+    (playerProductsWithPlayers ?? []).map((pp: any) => [pp.id, pp.player?.name ?? ''])  // eslint-disable-line @typescript-eslint/no-explicit-any
+  );
+
+  const unmatchedVariants = (variants ?? [])
+    .filter(v => !v.cardhedger_card_id)
+    .slice(0, 50) // cap at 50 rows for display
+    .map(v => ({
+      id: v.id,
+      playerName: ppPlayerMap.get(v.player_product_id) ?? '',
+      variantName: v.variant_name,
+      cardNumber: v.card_number,
+    }));
 
   const variantTotal = variants?.length ?? 0;
   const variantMatched = variants?.filter(v => v.cardhedger_card_id).length ?? 0;
@@ -190,6 +212,46 @@ export default async function ProductDashboardPage({ params }: PageProps) {
             <OddsUpload productId={id} />
           </div>
         </div>
+
+        {/* Unmatched variants */}
+        {unmatchedVariants.length > 0 && (
+          <div className="bg-card border rounded overflow-hidden">
+            <div className="h-1 bg-amber-400" />
+            <div className="p-6 space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+                  Unmatched Variants
+                </h2>
+                <span className="text-xs text-amber-500 font-medium">
+                  {(variants ?? []).filter(v => !v.cardhedger_card_id).length} unmatched
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                These variants have no CardHedger card ID. Re-run matching from the import wizard, or import the checklist again if players are missing.
+              </p>
+              <div className="rounded border overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="text-left px-3 py-2 font-medium text-muted-foreground">Player</th>
+                      <th className="text-left px-3 py-2 font-medium text-muted-foreground">Variant</th>
+                      <th className="text-left px-3 py-2 font-medium text-muted-foreground">#</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {unmatchedVariants.map(v => (
+                      <tr key={v.id} className="hover:bg-muted/20">
+                        <td className="px-3 py-1.5 font-medium">{v.playerName}</td>
+                        <td className="px-3 py-1.5 text-muted-foreground">{v.variantName}</td>
+                        <td className="px-3 py-1.5 text-muted-foreground font-mono">{v.cardNumber ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Product details */}
         <div className="bg-card border rounded overflow-hidden">

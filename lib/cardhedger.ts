@@ -104,28 +104,86 @@ export async function batchPriceEstimate(
 }
 
 /**
- * Match a free-text query against the CardHedger card catalog.
- * Returns the best-matching card ID and a confidence score (0–1).
- * Used by the admin match-cardhedger route to auto-link variants.
+ * Match a free-text query against the CardHedger card catalog using Claude.
+ * Claude sees the top search results and reasons about which (if any) is the
+ * correct match — handling abbreviations, synonym names, RC year validation, etc.
+ *
+ * Falls back to token-based scoring if the Claude call fails.
  */
 export async function cardMatch(
   query: string
 ): Promise<{ card_id: string | null; confidence: number }> {
   const result = await searchCards(query);
-  const cards = result.cards ?? [];
+  const cards = (result.cards ?? []).slice(0, 5);
 
-  if (cards.length === 0) {
-    return { card_id: null, confidence: 0 };
+  if (cards.length === 0) return { card_id: null, confidence: 0 };
+
+  // Try Claude semantic matching first.
+  try {
+    const match = await claudeCardMatch(query, cards);
+    if (match) return match;
+  } catch (err) {
+    console.warn('[cardMatch] Claude fallback to token matcher:', err instanceof Error ? err.message : err);
   }
 
-  const queryTokens = query.toLowerCase().split(/\s+/).filter(Boolean);
-  const top = cards[0];
-  const candidate = `${top.player_name} ${top.set_name} ${top.year}`.toLowerCase();
+  // Fallback: token-based scoring against the top result.
+  return tokenCardMatch(query, cards[0]);
+}
 
+/** Token-based scorer — original logic, used as fallback. */
+function tokenCardMatch(
+  query: string,
+  card: CardHedgerSearchCard
+): { card_id: string; confidence: number } {
+  const queryTokens = query.toLowerCase().split(/\s+/).filter(Boolean);
+  const candidate = `${card.player_name} ${card.set_name} ${card.year}`.toLowerCase();
   const matched = queryTokens.filter(t => candidate.includes(t)).length;
   const confidence = queryTokens.length > 0 ? matched / queryTokens.length : 0;
+  return { card_id: card.card_id, confidence };
+}
 
-  return { card_id: top.card_id, confidence };
+/** Claude semantic matcher — reasons about which result best matches the query. */
+async function claudeCardMatch(
+  query: string,
+  cards: CardHedgerSearchCard[]
+): Promise<{ card_id: string; confidence: number } | null> {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const Anthropic = require('@anthropic-ai/sdk');
+  const client = new Anthropic.Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  const candidateList = cards
+    .map((c, i) =>
+      `${i + 1}. card_id="${c.card_id}" | player="${c.player_name}" | set="${c.set_name}" | year="${c.year}" | variant="${c.variant}" | number="${c.number}" | rookie=${c.rookie}`
+    )
+    .join('\n');
+
+  const prompt = `You are matching a sports card query to a CardHedger catalog entry.
+
+Query: "${query}"
+
+Candidates:
+${candidateList}
+
+Which candidate (if any) is the correct match for this query?
+Consider: player name variations, set name abbreviations, rookie card year alignment, variant synonyms (Auto = Autograph, RC = Rookie Card, etc.).
+
+Respond with JSON only — no explanation:
+- If a match exists: {"card_id": "<id>", "confidence": <0.7 to 1.0>}
+- If no candidate is a good match: {"card_id": null, "confidence": 0}`;
+
+  const message = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 64,
+    messages: [{ role: 'user', content: prompt }],
+  });
+
+  const text = (message.content[0] as { type: string; text: string }).text.trim();
+  // Strip markdown code fences if present
+  const json = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+  const parsed = JSON.parse(json) as { card_id: string | null; confidence: number };
+
+  if (!parsed.card_id) return null;
+  return { card_id: parsed.card_id, confidence: parsed.confidence };
 }
 
 /**
