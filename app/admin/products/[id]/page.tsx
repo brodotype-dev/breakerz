@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import type { Product, Sport } from '@/lib/types';
 import OddsUpload from './OddsUpload';
+import RunMatchingButton from './RunMatchingButton';
 
 type PageProps = { params: Promise<{ id: string }> };
 
@@ -190,6 +191,7 @@ export default async function ProductDashboardPage({ params }: PageProps) {
               >
                 View Break Page →
               </Link>
+              <RunMatchingButton productId={id} />
             </div>
           </div>
         </div>
