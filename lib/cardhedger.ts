@@ -147,9 +147,8 @@ async function claudeCardMatch(
   query: string,
   cards: CardHedgerSearchCard[]
 ): Promise<{ card_id: string; confidence: number } | null> {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const Anthropic = require('@anthropic-ai/sdk');
-  const client = new Anthropic.Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const { default: Anthropic } = await import('@anthropic-ai/sdk');
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   const candidateList = cards
     .map((c, i) =>
