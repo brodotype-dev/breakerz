@@ -18,6 +18,11 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 - Dynamic `import('@anthropic-ai/sdk')` (not `require`) required in Next.js server context
 - Added `ANTHROPIC_API_KEY` to Vercel env vars
 
+### Bug fix: matching silently skipped saves
+- **Root cause:** `catch` block in the variant matching loop swallowed all errors and returned `'no-match'` — if `cardMatch()` threw for any reason (API timeout, Anthropic error), the Supabase update never ran and the failure was invisible
+- **Also:** Supabase `.update()` result was discarded — write errors went undetected
+- **Fix:** catch block now logs the error (visible in Vercel function logs) and returns an `error` field in the result; update result is checked and logged if it fails; added null guard on `card_id` before writing an auto-match
+
 ### Chunked polling for large-batch matching
 - **Rewrote `app/api/admin/match-cardhedger/route.ts`** from streaming NDJSON to chunked polling
 - Each POST processes one chunk (default 40 variants, `CONCURRENCY=8`), returns `{ results, total, processed, hasMore, nextOffset }`
