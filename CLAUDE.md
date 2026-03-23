@@ -45,6 +45,7 @@ Set in Vercel project dashboard (already configured — do not re-add):
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key (browser) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server only, bypasses RLS) |
 | `CARDHEDGER_API_KEY` | CardHedger API key (server only, provided by Kyle) |
+| `ANTHROPIC_API_KEY` | Anthropic API key (server only, used for Claude-powered CardHedger matching) |
 
 For local dev, put these in `.env.local` (not committed).
 
@@ -68,20 +69,26 @@ Without the fallbacks, builds fail with `supabaseUrl is required`.
 
 Do NOT use `pdf-parse` — it pulls in `canvas` at runtime which requires `DOMMatrix` and other browser globals unavailable in Node.js. Webpack aliases don't intercept the runtime `require`.
 
-**Use `pdfjs-dist` (Mozilla PDF.js) instead** — pure JS, no canvas, no browser globals:
+**Use `pdf2json` instead** — pure JS, no canvas, exposes x/y coordinates per text item (required for column detection in the odds parser):
 
 ```typescript
 export const dynamic = 'force-dynamic';
 
-async function extractPdfText(buffer: Buffer): Promise<string> {
-  const { getDocument, GlobalWorkerOptions } = require('pdfjs-dist/legacy/build/pdf.mjs');
-  GlobalWorkerOptions.workerSrc = ''; // disable web worker in Node.js
-  const doc = await getDocument({ data: new Uint8Array(buffer) }).promise;
-  // ... iterate pages, collect text
+async function extractOddsPdfData(buffer: Buffer): Promise<ParsedOdds> {
+  const PDFParser = require('pdf2json'); // lazy require inside handler
+  return new Promise((resolve, reject) => {
+    const parser = new PDFParser();
+    parser.on('pdfParser_dataReady', (data) => {
+      // data.Pages[n].Texts[i] → { x, y, R: [{ T: urlencoded text }] }
+      resolve(/* ... */);
+    });
+    parser.on('pdfParser_dataError', (err) => reject(err));
+    parser.parseBuffer(buffer);
+  });
 }
 ```
 
-Use the `legacy` build and disable the worker src. Lazy require inside the handler.
+The odds PDF parser is coordinate-aware: it detects the Hobby Box column x-position from the first full data row (≥10 `1:` tokens, `colonItems[1].x`), then extracts only hobby odds per row. See `app/api/admin/parse-odds/route.ts`.
 
 ---
 
@@ -98,6 +105,10 @@ lib/
 app/
   break/[slug]/        — Public break analysis page (Team Slots default)
   admin/
+    products/          — Product listing page
+    products/[id]/     — Product readiness dashboard (match %, odds status, pricing, unmatched list)
+      OddsUpload.tsx   — Standalone odds PDF upload (independent of import wizard)
+      RunMatchingButton.tsx — Re-run CardHedger matching with chunked progress UI
     import-checklist/  — 3-step checklist import wizard
     products/[id]/players/ — Manual player management
 
@@ -129,7 +140,8 @@ products            → e.g. "Topps Finest Basketball 2025-26"
 players             → cross-product player identity
 player_products     → player × product (hobby_sets, bd_only_sets, insert_only)
 player_product_variants → multiple card types per player per product
-                          (Base Auto, XRC Auto, etc.) each with own CardHedger ID
+                          (Base Auto, XRC Auto, etc.) each with own CardHedger ID,
+                          match_confidence (0–1), hobby_odds, breaker_odds
 pricing_cache       → 24h TTL cache of EV low/mid/high per player_product
 ```
 
@@ -192,4 +204,6 @@ Migration files live in `supabase/migrations/`. Always commit them to the repo a
 
 ## Repo
 
-`https://github.com/brodotype-dev/breakerz.git` — push after deploying, not before.
+`https://github.com/brodotype-dev/breakerz.git`
+
+Push to GitHub **before** deploying — Vercel builds from the GitHub repo, not from local files.

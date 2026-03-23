@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
       try {
         const match = await cardMatch(query);
         const status: 'auto' | 'review' | 'no-match' =
-          match.confidence >= 0.7 ? 'auto'
+          match.confidence >= 0.7 && match.card_id ? 'auto'
           : match.confidence >= 0.5 ? 'review'
           : 'no-match';
 
@@ -80,14 +80,21 @@ export async function POST(req: NextRequest) {
           ? { cardhedger_card_id: match.card_id, match_confidence: match.confidence }
           : { match_confidence: match.confidence };
 
-        await supabaseAdmin
+        const { error: updateError } = await supabaseAdmin
           .from('player_product_variants')
           .update(update)
           .eq('id', variant.id);
 
+        if (updateError) {
+          console.error('[match-cardhedger] DB update failed for variant', variant.id, updateError.message);
+          return { variantId: variant.id, playerName, status: 'no-match' as const, confidence: 0, error: updateError.message };
+        }
+
         return { variantId: variant.id, playerName, status, confidence: match.confidence };
-      } catch {
-        return { variantId: variant.id, playerName, status: 'no-match' as const, confidence: 0 };
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('[match-cardhedger] match failed for variant', variant.id, 'query:', query, '—', msg);
+        return { variantId: variant.id, playerName, status: 'no-match' as const, confidence: 0, error: msg };
       }
     }),
     CONCURRENCY

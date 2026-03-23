@@ -5,6 +5,42 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-03-22
+
+### Claude-powered CardHedger matching
+- **Replaced token-based `cardMatch()`** with a Claude semantic matcher in `lib/cardhedger.ts`
+- Claude sees the top 5 CardHedger search results and reasons about which (if any) is the correct match — handling player name variations, set abbreviations, RC year alignment, variant synonyms (Auto = Autograph, RC = Rookie Card, etc.)
+- Model: `claude-haiku-4-5-20251001` — fast and cheap enough for batch matching
+- Token-based scorer kept as fallback if Claude call fails (rate limit, error, timeout)
+- Claude prompt returns `{ card_id, confidence }` JSON; if no match, returns `null`; fallback returns token-matched top result
+- Added `AbortSignal.timeout(10_000)` to all CardHedger API fetch calls to prevent zombie connections
+- Added `{ timeout: 10_000 }` option to Anthropic SDK call
+- Dynamic `import('@anthropic-ai/sdk')` (not `require`) required in Next.js server context
+- Added `ANTHROPIC_API_KEY` to Vercel env vars
+
+### Chunked polling for large-batch matching
+- **Rewrote `app/api/admin/match-cardhedger/route.ts`** from streaming NDJSON to chunked polling
+- Each POST processes one chunk (default 40 variants, `CONCURRENCY=8`), returns `{ results, total, processed, hasMore, nextOffset }`
+- Client (`RunMatchingButton.tsx`) loops: sends offset → gets chunk → updates progress → pauses 300ms → repeats until `hasMore = false`
+- Fixes Vercel serverless function timeout issue — each chunk runs in ~10–15s, well under the 60s `maxDuration`
+- Writes both `cardhedger_card_id` (auto-matches ≥0.7 confidence) and `match_confidence` to `player_product_variants`
+
+### Product dashboard (`/admin/products/[id]/`)
+- **Standalone odds upload:** `OddsUpload.tsx` — upload a Topps odds PDF at any time, independent of the import wizard; shows matched/unmatched variant table after applying
+- **Re-run Matching button:** `RunMatchingButton.tsx` — triggers chunked matching with live progress bar (completed/total), summary on completion (matched / low confidence / no match), retry on error
+- **Unmatched variants list:** amber section showing up to 50 variants missing a CardHedger card ID (player name, variant name, card number)
+- **Product readiness stats:** Players, CH Matched %, Odds status, Pricing cache count with status pills (green/amber/gray)
+
+### Coordinate-aware odds PDF parser (rewrite)
+- **Replaced** the text-line odds parser with a coordinate-aware extractor using `pdf2json`
+- Old parser: relied on text order, grabbed wrong column (Distributor Jumbo), filled subset names with dash strings from N/A columns. Result: 19 matched / 263 unmatched.
+- New parser: reads x/y positions per text token; detects Hobby Box column x-position dynamically (first row with ≥10 `1:` tokens, `colonItems[1]`); only emits rows with actual hobby odds
+- Continuation rows (all-caps label, no column data) are appended to the previous emitted row's `subsetName` — handles multi-line subset names correctly
+- Mixed-case rows (page titles like "2025 Topps Baseball Series 2") are skipped and reset the continuation target
+- Result: 224 clean rows from Series 2 PDF with correct hobby odds
+
+---
+
 ## 2026-03-18 (2)
 
 ### Break page UI cleanup

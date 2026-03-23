@@ -67,12 +67,16 @@ See [CLAUDE.md](./CLAUDE.md) for full deploy instructions and known gotchas.
 | Route | Purpose |
 |---|---|
 | `/break/[slug]` | Public break analysis page |
+| `/admin/products` | Product listing |
+| `/admin/products/[id]` | Product dashboard (readiness stats, odds upload, re-run matching) |
 | `/admin/import-checklist` | 3-step checklist import wizard |
 | `/admin/products/[id]/players` | Manual player management |
 | `/api/pricing` | Live pricing endpoint (Supabase + CardHedger) |
 | `/api/admin/parse-checklist` | PDF/CSV checklist parser |
 | `/api/admin/import-checklist` | Upsert players, products, variants |
-| `/api/admin/match-cardhedger` | Auto-link variants to CardHedger card IDs |
+| `/api/admin/match-cardhedger` | Auto-link variants to CardHedger card IDs (chunked, Claude-powered) |
+| `/api/admin/parse-odds` | Topps odds PDF → pull rates (coordinate-aware) |
+| `/api/admin/apply-odds` | Write pull rates to variants by fuzzy name match |
 
 ---
 
@@ -88,15 +92,15 @@ Supported formats: Topps numbered PDF, Topps code-based PDF, Panini/Donruss CSV,
 
 ---
 
-## CardHedger card mapping (manual)
+## CardHedger card mapping
 
-For players missing a `cardhedger_card_id`, use the interactive CLI:
+Matching is Claude-powered and runs automatically during import and on-demand from the product dashboard (`/admin/products/[id]` → "Re-run Matching").
+
+For any remaining unmatched variants, the product dashboard shows a table of missing card IDs. A manual CLI fallback also exists:
 
 ```bash
 node scripts/map-cards.mjs
 ```
-
-Searches CardHedger, shows top results, lets you pick the right one per player.
 
 ---
 
