@@ -10,6 +10,23 @@ Update CHANGELOG.md at the end of every session with what changed and why.
 
 ---
 
+## Current State
+
+The admin import pipeline is fully functional end-to-end:
+
+1. **Product creation** ✅
+2. **Checklist import** ✅ — 3-step wizard, Topps PDF + Panini CSV
+3. **CardHedger matching** ✅ — Claude-powered (haiku), chunked polling, ~90%+ auto-match rate
+4. **Odds import** ✅ — coordinate-aware Topps PDF parser; standalone upload on product dashboard
+5. **Product readiness dashboard** ✅ — match %, odds status, unmatched variants list, re-run matching
+
+**Known gaps / likely next work:**
+- Odds-weighted EV: incorporate `hobby_odds` into the pricing engine (`evMid × (1/odds)` as a pull-rate weight)
+- Match review UI: manual override for low-confidence variants (low priority — Claude matching handles most cases)
+- Pricing refresh: currently manual (pricing_cache has 24h TTL); no scheduled refresh exists yet
+
+---
+
 ## Stack
 
 - **Framework:** Next.js 15 App Router (TypeScript)
