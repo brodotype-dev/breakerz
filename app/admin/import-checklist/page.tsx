@@ -315,12 +315,12 @@ function ImportChecklistInner() {
               <div className="space-y-1.5">
                 <label className="text-sm font-medium">Checklist file</label>
                 <p className="text-xs text-muted-foreground">
-                  Accepts Topps PDF (numbered or code-based) or Panini/Donruss CSV
+                  Accepts Topps PDF (numbered or code-based), Panini/Donruss CSV, or Bowman-style XLSX
                 </p>
                 <input
                   ref={fileRef}
                   type="file"
-                  accept=".pdf,.csv"
+                  accept=".pdf,.csv,.xlsx,.xls"
                   className="text-sm text-muted-foreground file:mr-3 file:rounded file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-sm file:font-medium file:cursor-pointer"
                 />
               </div>
