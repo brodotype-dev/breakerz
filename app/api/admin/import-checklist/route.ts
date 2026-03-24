@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
   if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
 
   // --- Step 1: Collect unique players across all sections ---
-  // Key: "playerName||team"
+  // Key: "playerName||team" — used to accumulate set totals per card type
   const playerSetTotals = new Map<string, {
     name: string; team: string; hobbySets: number; bdSets: number; isRookie: boolean;
   }>();
@@ -51,7 +51,21 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const uniquePlayers = Array.from(playerSetTotals.values());
+  // Deduplicate by name for the players upsert — same player can appear
+  // across sections with different/empty teams; keep the most complete record
+  const playersByName = new Map<string, { name: string; team: string; hobbySets: number; bdSets: number; isRookie: boolean }>();
+  for (const p of playerSetTotals.values()) {
+    const existing = playersByName.get(p.name);
+    playersByName.set(p.name, {
+      name: p.name,
+      team: p.team || existing?.team || '',
+      hobbySets: (existing?.hobbySets ?? 0) + p.hobbySets,
+      bdSets: (existing?.bdSets ?? 0) + p.bdSets,
+      isRookie: p.isRookie || (existing?.isRookie ?? false),
+    });
+  }
+
+  const uniquePlayers = Array.from(playersByName.values());
 
   // --- Step 2: Bulk upsert players ---
   const playerRows = uniquePlayers.map(p => ({
@@ -102,10 +116,7 @@ export async function POST(req: NextRequest) {
   const variantRows: object[] = [];
   for (const section of sections) {
     for (const card of section.cards) {
-      const key = `${card.playerName}||${card.team ?? ''}`;
-      const totals = playerSetTotals.get(key);
-      if (!totals) continue;
-      const playerId = playerNameToId.get(totals.name);
+      const playerId = playerNameToId.get(card.playerName);
       if (!playerId) continue;
       const ppId = playerIdToPPId.get(playerId);
       if (!ppId) continue;
