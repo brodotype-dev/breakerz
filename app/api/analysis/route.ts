@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { computeLiveEV, get90DayPrices } from '@/lib/cardhedger';
+
+export const maxDuration = 60;
 import { computeSlotPricing, computeTeamSlotPricing, computeSignal, formatCurrency } from '@/lib/engine';
 import type { PlayerWithPricing, BreakConfig } from '@/lib/types';
+
+const CACHE_TTL_HOURS = 24;
 
 export async function POST(req: NextRequest) {
   try {
@@ -30,6 +35,21 @@ export async function POST(req: NextRequest) {
     }
 
     const ids = playerProducts.map(pp => pp.id);
+
+    // Load variants (needed for weighted EV on players with multiple card types)
+    const { data: allVariants } = await supabaseAdmin
+      .from('player_product_variants')
+      .select('id, player_product_id, cardhedger_card_id, hobby_sets, bd_only_sets, hobby_odds')
+      .in('player_product_id', ids)
+      .not('cardhedger_card_id', 'is', null);
+
+    const variantMap = new Map<string, typeof allVariants>();
+    for (const v of allVariants ?? []) {
+      const list = variantMap.get(v.player_product_id) ?? [];
+      list.push(v);
+      variantMap.set(v.player_product_id, list);
+    }
+
     const { data: cached } = await supabaseAdmin
       .from('pricing_cache')
       .select('*')
@@ -38,20 +58,100 @@ export async function POST(req: NextRequest) {
 
     const cacheMap = new Map(cached?.map(c => [c.player_product_id, c]) ?? []);
 
-    const rawPlayers: PlayerWithPricing[] = playerProducts.map(pp => {
-      const c = cacheMap.get(pp.id);
-      const evMid = c?.ev_mid ?? (pp.player?.is_rookie ? 15 : 8);
-      return {
-        ...pp,
-        evLow: c?.ev_low ?? Math.round(evMid * 0.35),
-        evMid,
-        evHigh: c?.ev_high ?? Math.round(evMid * 2.5),
-        hobbyEVPerBox: evMid,
-        hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
-        totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
-        pricingSource: c ? 'cached' as const : 'default' as const,
-      };
-    });
+    // For uncached players, fetch live pricing from CardHedger (same chain as /api/pricing)
+    const expiresAt = new Date();
+    expiresAt.setHours(expiresAt.getHours() + CACHE_TTL_HOURS);
+
+    const rawPlayers: PlayerWithPricing[] = await Promise.all(
+      playerProducts.map(async pp => {
+        const c = cacheMap.get(pp.id);
+        if (c) {
+          return {
+            ...pp,
+            evLow: c.ev_low, evMid: c.ev_mid, evHigh: c.ev_high,
+            hobbyEVPerBox: c.ev_mid,
+            hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
+            totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
+            pricingSource: 'cached' as const,
+          };
+        }
+
+        // No cache — fetch live
+        try {
+          const variants = variantMap.get(pp.id) ?? [];
+          let ev: { evLow: number; evMid: number; evHigh: number };
+          let hobbyEVPerBox: number;
+
+          if (variants.length > 0) {
+            const variantEVs = await Promise.all(
+              variants.map(async v => {
+                const variantEV = await computeLiveEV(v.cardhedger_card_id!);
+                const sets = (v.hobby_sets ?? 0) + (v.bd_only_sets ?? 0);
+                return { ...variantEV, sets: Math.max(sets, 1), hobby_odds: v.hobby_odds };
+              })
+            );
+            const totalSets = variantEVs.reduce((sum, v) => sum + v.sets, 0);
+            ev = {
+              evLow: variantEVs.reduce((sum, v) => sum + v.evLow * v.sets, 0) / totalSets,
+              evMid: variantEVs.reduce((sum, v) => sum + v.evMid * v.sets, 0) / totalSets,
+              evHigh: variantEVs.reduce((sum, v) => sum + v.evHigh * v.sets, 0) / totalSets,
+            };
+            const oddsVariants = variantEVs.filter(v => v.hobby_odds != null && v.hobby_odds > 0);
+            hobbyEVPerBox = oddsVariants.length > 0
+              ? oddsVariants.reduce((sum, v) => sum + v.evMid * (1 / v.hobby_odds!), 0)
+              : ev.evMid;
+          } else if (pp.cardhedger_card_id) {
+            ev = await computeLiveEV(pp.cardhedger_card_id);
+            hobbyEVPerBox = ev.evMid;
+          } else {
+            // Search fallback
+            const cardType = pp.player?.is_rookie ? 'Auto RC' : 'Base';
+            const result = await get90DayPrices(`${pp.player?.name} ${cardType}`, 'Raw');
+            const raw = result.prices.find((p: { grade: string }) => p.grade.toLowerCase().includes('raw'));
+            if (raw && (raw as any).avg_price > 0) {
+              const evMid = Math.round((raw as any).avg_price);
+              ev = {
+                evLow: (raw as any).min_price > 0 ? Math.round((raw as any).min_price) : Math.round(evMid * 0.35),
+                evMid,
+                evHigh: (raw as any).max_price > evMid ? Math.round((raw as any).max_price) : Math.round(evMid * 2.5),
+              };
+            } else {
+              const evMid = pp.player?.is_rookie ? 15 : 8;
+              ev = { evLow: Math.round(evMid * 0.35), evMid, evHigh: Math.round(evMid * 2.5) };
+            }
+            hobbyEVPerBox = ev.evMid;
+          }
+
+          if (ev.evMid > 0) {
+            await supabaseAdmin.from('pricing_cache').upsert({
+              player_product_id: pp.id,
+              cardhedger_card_id: pp.cardhedger_card_id ?? null,
+              ev_low: ev.evLow, ev_mid: ev.evMid, ev_high: ev.evHigh,
+              raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
+            }, { onConflict: 'player_product_id' });
+          }
+
+          return {
+            ...pp,
+            evLow: ev.evLow, evMid: ev.evMid, evHigh: ev.evHigh,
+            hobbyEVPerBox,
+            hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
+            totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
+            pricingSource: 'live' as const,
+          };
+        } catch {
+          const evMid = pp.player?.is_rookie ? 15 : 8;
+          return {
+            ...pp,
+            evLow: Math.round(evMid * 0.35), evMid, evHigh: Math.round(evMid * 2.5),
+            hobbyEVPerBox: evMid,
+            hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
+            totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
+            pricingSource: 'default' as const,
+          };
+        }
+      })
+    );
 
     const config: BreakConfig = {
       hobbyCases: 10,

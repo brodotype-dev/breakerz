@@ -83,8 +83,14 @@ function artworkStyle(sport: string): React.CSSProperties {
   return {};
 }
 
+function isPreRelease(releaseDate: string | null): boolean {
+  if (!releaseDate) return false;
+  return new Date(releaseDate + 'T00:00:00') > new Date();
+}
+
 export default function ProductCard({ product }: Props) {
   const sport = product.sport?.name ?? '';
+  const preRelease = isPreRelease(product.release_date);
 
   return (
     <Link href={`/break/${product.slug}`} className="group block" style={{ aspectRatio: '5/7' }}>
@@ -182,6 +188,26 @@ export default function ProductCard({ product }: Props) {
             >
               {product.name.replace(/^\d{4}(-\d{2,4})?\s+/i, '').replace(/\s+(basketball|baseball|football|hockey|soccer)/i, '')}
             </span>
+
+            {/* Pre-release ribbon */}
+            {preRelease && (
+              <div
+                className="absolute bottom-2 right-0 z-20"
+                style={{
+                  background: 'oklch(0.75 0.15 65)',
+                  color: 'white',
+                  fontSize: '7px',
+                  fontWeight: 900,
+                  letterSpacing: '0.14em',
+                  textTransform: 'uppercase',
+                  padding: '3px 8px 3px 10px',
+                  borderRadius: '2px 0 0 2px',
+                  boxShadow: '-1px 1px 3px rgba(0,0,0,0.2)',
+                }}
+              >
+                Pre-Release
+              </div>
+            )}
           </div>
 
           {/* Nameplate */}
