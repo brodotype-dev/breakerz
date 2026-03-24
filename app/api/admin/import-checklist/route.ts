@@ -82,7 +82,6 @@ export async function POST(req: NextRequest) {
       product_id: productId,
       hobby_sets: p.hobbySets,
       bd_only_sets: p.bdSets,
-      total_sets: p.hobbySets + p.bdSets,
       insert_only: false,
     };
   }).filter(Boolean) as object[];
