@@ -32,15 +32,34 @@ export default async function HomePage() {
             </p>
             <h1 className="text-2xl font-black tracking-tight">Card Breakerz</h1>
           </div>
-          <div className="flex items-center gap-4 pb-0.5">
-            <Link href="/analysis" className="text-xs text-white/70 hover:text-white font-semibold transition-colors">
-              Breaker Says →
-            </Link>
-            <p className="text-xs text-white/40 font-mono">v2.1</p>
-          </div>
+          <p className="text-xs text-white/40 font-mono pb-0.5">v2.1</p>
         </div>
       </header>
       <div className="h-1 bg-[var(--topps-red)]" />
+
+      {/* Breakerz Sayz promo strip */}
+      <div style={{ background: 'oklch(0.28 0.08 250)' }} className="border-b border-white/10">
+        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-4">
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <div
+              className="shrink-0 px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.15em]"
+              style={{ background: 'oklch(0.52 0.22 27)', color: 'white', borderRadius: '2px' }}
+            >
+              Breakerz Sayz
+            </div>
+            <p className="text-xs text-white/60 truncate">
+              Is that slot price actually fair? Get an instant BUY / WATCH / PASS verdict.
+            </p>
+          </div>
+          <Link
+            href="/analysis"
+            className="shrink-0 text-[11px] font-black uppercase tracking-wider px-4 py-1.5 rounded transition-opacity hover:opacity-90"
+            style={{ background: 'oklch(0.52 0.22 27)', color: 'white' }}
+          >
+            Check a deal →
+          </Link>
+        </div>
+      </div>
 
       <main className="max-w-5xl mx-auto px-4 py-10">
         {Object.keys(bySport).length === 0 ? (

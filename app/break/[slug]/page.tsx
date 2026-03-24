@@ -163,7 +163,7 @@ export default function BreakPage() {
           {/* Pricing status + fetch */}
           <div className="flex items-center gap-3 shrink-0">
             <Link href="/analysis" className="hidden sm:block text-[10px] text-white/50 hover:text-white font-medium transition-colors whitespace-nowrap">
-              Breaker Says →
+              Breakerz Sayz →
             </Link>
             {hasPricing && !fetching && (
               <span className="hidden sm:flex items-center gap-1.5 text-[10px] text-white/50">

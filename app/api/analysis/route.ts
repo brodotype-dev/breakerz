@@ -10,7 +10,7 @@ const CACHE_TTL_HOURS = 24;
 
 export async function POST(req: NextRequest) {
   try {
-    const { productId, team, askPrice, breakType = 'hobby' } = await req.json();
+    const { productId, team, askPrice, breakType = 'hobby', numCases = 10 } = await req.json();
     if (!productId || !team || askPrice == null) {
       return NextResponse.json({ error: 'productId, team, and askPrice required' }, { status: 400 });
     }
@@ -153,9 +153,10 @@ export async function POST(req: NextRequest) {
       })
     );
 
+    const cases = Math.max(1, Math.min(50, parseInt(numCases) || 10));
     const config: BreakConfig = {
-      hobbyCases: 10,
-      bdCases: 10,
+      hobbyCases: cases,
+      bdCases: cases,
       hobbyCaseCost: product.hobby_case_cost ?? 1200,
       bdCaseCost: product.bd_case_cost ?? 800,
     };

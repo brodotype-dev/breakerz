@@ -45,6 +45,7 @@ export default function AnalysisPage() {
   const [team, setTeam] = useState('');
   const [askPrice, setAskPrice] = useState('');
   const [breakType, setBreakType] = useState<'hobby' | 'bd'>('hobby');
+  const [numCases, setNumCases] = useState('10');
 
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
@@ -80,7 +81,7 @@ export default function AnalysisPage() {
       const res = await fetch('/api/analysis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId, team, askPrice: parseFloat(askPrice), breakType }),
+        body: JSON.stringify({ productId, team, askPrice: parseFloat(askPrice), breakType, numCases: parseInt(numCases) || 10 }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -107,7 +108,7 @@ export default function AnalysisPage() {
             <span className="text-xs font-medium">Products</span>
           </Link>
           <div className="flex-1 text-center">
-            <p className="text-sm font-bold">Breaker Says</p>
+            <p className="text-sm font-bold">Breakerz Sayz</p>
             <p className="text-[10px] text-white/50 uppercase tracking-widest">Break Slot Analysis</p>
           </div>
           <div className="w-20" />
@@ -118,7 +119,7 @@ export default function AnalysisPage() {
       <main className="max-w-3xl mx-auto px-4 py-8 space-y-6">
         {/* Intro */}
         <div>
-          <h1 className="text-xl font-black mb-1">Is this break worth it?</h1>
+          <h1 className="text-xl font-black mb-1">Breakerz Sayz</h1>
           <p className="text-sm text-muted-foreground">
             Select a product, pick your team, enter what the breaker is charging — we{"'"}ll tell you if it{"'"}s a good deal.
           </p>
@@ -172,6 +173,29 @@ export default function AnalysisPage() {
                       Breakers Delight
                     </button>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* Cases in the break */}
+            {productId && (
+              <div>
+                <label className="block text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mb-1.5">
+                  Cases in the break
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="1"
+                    max="50"
+                    step="1"
+                    value={numCases}
+                    onChange={e => setNumCases(e.target.value)}
+                    className="w-24 text-sm font-mono px-3 py-2 rounded border bg-background focus:outline-none focus:ring-1 focus:ring-[oklch(0.28_0.08_250)]"
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    {parseInt(numCases) === 1 ? 'single case break' : `case group break`}
+                  </span>
                 </div>
               </div>
             )}
