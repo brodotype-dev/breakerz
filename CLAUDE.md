@@ -42,7 +42,7 @@ The admin import pipeline is fully functional end-to-end:
 Always deploy from local via CLI — do not push to GitHub and wait for CI:
 
 ```bash
-cd /tmp/breakerz-next
+cd ~/Documents/GitHub/breakerz
 vercel --prod --yes
 ```
 
