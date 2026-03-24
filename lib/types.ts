@@ -68,6 +68,7 @@ export interface PlayerWithPricing extends PlayerProduct {
   evLow: number;
   evMid: number;
   evHigh: number;
+  hobbyEVPerBox: number;  // odds-weighted: Σ(variantEV × 1/hobby_odds); falls back to evMid if no odds
   hobbyWeight: number;
   bdWeight: number;
   hobbySlotCost: number;
@@ -87,6 +88,7 @@ export interface PlayerProductVariant {
   hobby_sets: number;
   bd_only_sets: number;
   match_confidence: number | null;
+  hobby_odds: number | null;
 }
 
 export type Signal = 'BUY' | 'WATCH' | 'PASS';

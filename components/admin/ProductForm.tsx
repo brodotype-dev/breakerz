@@ -90,7 +90,7 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
       : await createProduct(data);
 
     if ('error' in result) {
-      setStatus({ type: 'error', message: result.error });
+      setStatus({ type: 'error', message: result.error ?? 'Unknown error' });
     } else {
       if (publish) setIsActive(true);
       setStatus({ type: 'success', message: product ? 'Product updated.' : 'Product created.' });

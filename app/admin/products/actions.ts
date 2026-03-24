@@ -8,10 +8,11 @@ export async function createProduct(formData: {
   sport_id: string;
   manufacturer: string;
   year: string;
-  hobby_case_cost: number;
+  hobby_case_cost: number | null;
   bd_case_cost: number | null;
-  hobby_autos_per_case: number;
+  hobby_autos_per_case: number | null;
   bd_autos_per_case: number | null;
+  is_active?: boolean;
 }): Promise<{ id?: string; error?: string }> {
   const slug = formData.name
     .toLowerCase()
@@ -31,6 +32,32 @@ export async function createProduct(formData: {
   if (error) return { error: error.message };
   revalidatePath('/admin/products');
   return { id: data.id };
+}
+
+export async function updateProduct(
+  productId: string,
+  formData: {
+    sport_id: string;
+    manufacturer: string;
+    year: string;
+    name: string;
+    slug: string;
+    hobby_case_cost: number | null;
+    bd_case_cost: number | null;
+    hobby_autos_per_case: number | null;
+    bd_autos_per_case: number | null;
+    is_active: boolean;
+  }
+): Promise<{ error?: string }> {
+  const { error } = await supabaseAdmin
+    .from('products')
+    .update(formData)
+    .eq('id', productId);
+
+  if (error) return { error: error.message };
+  revalidatePath('/admin/products');
+  revalidatePath(`/admin/products/${productId}`);
+  return {};
 }
 
 export async function deleteProduct(productId: string): Promise<{ error?: string }> {

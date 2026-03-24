@@ -32,11 +32,14 @@ export async function GET(req: NextRequest) {
 
     const players: PlayerWithPricing[] = playerProducts.map(pp => {
       const cached = cacheMap.get(pp.id);
+      const evMid = cached?.ev_mid ?? 0;
       return {
         ...pp,
         evLow: cached?.ev_low ?? 0,
-        evMid: cached?.ev_mid ?? 0,
+        evMid,
         evHigh: cached?.ev_high ?? 0,
+        // GET path has no per-variant EV — fall back to evMid until a POST refresh runs
+        hobbyEVPerBox: evMid,
         hobbyWeight: 0,
         bdWeight: 0,
         hobbySlotCost: 0,
@@ -83,7 +86,7 @@ export async function POST(req: NextRequest) {
     // Load variants for all player_products (used for weighted EV)
     const { data: allVariants } = await supabaseAdmin
       .from('player_product_variants')
-      .select('id, player_product_id, cardhedger_card_id, hobby_sets, bd_only_sets')
+      .select('id, player_product_id, cardhedger_card_id, hobby_sets, bd_only_sets, hobby_odds')
       .in('player_product_id', ids)
       .not('cardhedger_card_id', 'is', null);
 
@@ -116,6 +119,7 @@ export async function POST(req: NextRequest) {
             evLow: cached.ev_low,
             evMid: cached.ev_mid,
             evHigh: cached.ev_high,
+            hobbyEVPerBox: cached.ev_mid, // no per-variant EV available; falls back to evMid
             hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
             totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
             pricingSource: 'cached' as const,
@@ -126,13 +130,14 @@ export async function POST(req: NextRequest) {
           let ev: { evLow: number; evMid: number; evHigh: number };
           const variants = variantMap.get(pp.id) ?? [];
 
+          let hobbyEVPerBox: number;
           if (variants.length > 0) {
             // Weighted EV across variants: Σ(variantEV × sets) / Σ(sets)
             const variantEVs = await Promise.all(
               variants.map(async v => {
                 const variantEV = await computeLiveEV(v.cardhedger_card_id!);
                 const sets = (v.hobby_sets ?? 0) + (v.bd_only_sets ?? 0);
-                return { ...variantEV, sets: Math.max(sets, 1) };
+                return { ...variantEV, sets: Math.max(sets, 1), hobby_odds: v.hobby_odds };
               })
             );
             const totalSets = variantEVs.reduce((sum, v) => sum + v.sets, 0);
@@ -141,6 +146,12 @@ export async function POST(req: NextRequest) {
               evMid: variantEVs.reduce((sum, v) => sum + v.evMid * v.sets, 0) / totalSets,
               evHigh: variantEVs.reduce((sum, v) => sum + v.evHigh * v.sets, 0) / totalSets,
             };
+            // Odds-weighted EV: Σ(variantEV × 1/hobby_odds) — expected dollars per box
+            // Falls back to evMid if no variant has odds data
+            const oddsVariants = variantEVs.filter(v => v.hobby_odds != null && v.hobby_odds > 0);
+            hobbyEVPerBox = oddsVariants.length > 0
+              ? oddsVariants.reduce((sum, v) => sum + v.evMid * (1 / v.hobby_odds!), 0)
+              : ev.evMid;
           } else {
             const cardId = pp.cardhedger_card_id;
             if (!cardId) {
@@ -157,6 +168,8 @@ export async function POST(req: NextRequest) {
             } else {
               ev = await computeLiveEV(cardId);
             }
+            // No variant data — no odds available, fall back to evMid
+            hobbyEVPerBox = ev.evMid;
           }
 
           await supabaseAdmin.from('pricing_cache').upsert({
@@ -175,6 +188,7 @@ export async function POST(req: NextRequest) {
             evLow: ev.evLow,
             evMid: ev.evMid,
             evHigh: ev.evHigh,
+            hobbyEVPerBox,
             hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
             totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
             pricingSource: 'live' as const,
@@ -183,6 +197,7 @@ export async function POST(req: NextRequest) {
           return {
             ...pp,
             evLow: 0, evMid: 0, evHigh: 0,
+            hobbyEVPerBox: 0,
             hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
             totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
             pricingSource: 'none' as const,
