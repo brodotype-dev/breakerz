@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { Product, Sport } from '@/lib/types';
 import ProductCard from '@/components/breakerz/ProductCard';
@@ -31,7 +32,12 @@ export default async function HomePage() {
             </p>
             <h1 className="text-2xl font-black tracking-tight">Card Breakerz</h1>
           </div>
-          <p className="text-xs text-white/40 font-mono pb-0.5">v2.0 MVP</p>
+          <div className="flex items-center gap-4 pb-0.5">
+            <Link href="/analysis" className="text-xs text-white/70 hover:text-white font-semibold transition-colors">
+              Breaker Says →
+            </Link>
+            <p className="text-xs text-white/40 font-mono">v2.1</p>
+          </div>
         </div>
       </header>
       <div className="h-1 bg-[var(--topps-red)]" />

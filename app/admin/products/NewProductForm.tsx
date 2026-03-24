@@ -43,6 +43,7 @@ export default function NewProductForm({ sports }: Props) {
       bd_case_cost: form.bd_case_cost ? parseFloat(form.bd_case_cost) : null,
       hobby_autos_per_case: parseInt(form.hobby_autos_per_case) || 0,
       bd_autos_per_case: form.bd_autos_per_case ? parseInt(form.bd_autos_per_case) : null,
+      release_date: null,
     });
 
     if (result.error) {

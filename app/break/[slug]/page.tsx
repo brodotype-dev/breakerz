@@ -114,6 +114,16 @@ export default function BreakPage() {
     p.pricingSource === 'search-fallback' || p.pricingSource === 'cross-product' || p.pricingSource === 'default'
   ).length;
 
+  const isPreRelease = product?.release_date
+    ? new Date(product.release_date + 'T00:00:00') > new Date()
+    : false;
+
+  function formatReleaseDate(d: string) {
+    return new Date(d + 'T00:00:00').toLocaleDateString('en-US', {
+      month: 'long', day: 'numeric', year: 'numeric',
+    });
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -152,6 +162,9 @@ export default function BreakPage() {
 
           {/* Pricing status + fetch */}
           <div className="flex items-center gap-3 shrink-0">
+            <Link href="/analysis" className="hidden sm:block text-[10px] text-white/50 hover:text-white font-medium transition-colors whitespace-nowrap">
+              Breaker Says →
+            </Link>
             {hasPricing && !fetching && (
               <span className="hidden sm:flex items-center gap-1.5 text-[10px] text-white/50">
                 <span className="h-1.5 w-1.5 rounded-full bg-green-400 inline-block" />
@@ -170,8 +183,28 @@ export default function BreakPage() {
         <div className="h-0.5 bg-[var(--topps-red)]" />
       </header>
 
-      {/* Estimated pricing banner — shown when any players use fallback pricing */}
-      {estimatedCount > 0 && (
+      {/* Pre-release banner — takes priority over generic estimated pricing notice */}
+      {isPreRelease && product.release_date ? (
+        <div className="bg-blue-50 dark:bg-blue-950/30 border-b border-blue-200 dark:border-blue-800">
+          <div className="max-w-7xl mx-auto px-4 py-3 flex items-start gap-3">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0 text-blue-500 mt-0.5" aria-hidden="true">
+              <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5"/>
+              <path d="M8 5v3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              <circle cx="8" cy="11" r="0.75" fill="currentColor"/>
+            </svg>
+            <div>
+              <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">
+                Pre-release · {product.name} launches {formatReleaseDate(product.release_date)}
+              </p>
+              <p className="text-xs text-blue-700 dark:text-blue-400 mt-0.5">
+                This product hasn{"'"}t hit shelves yet — no sales data exists for these specific cards.
+                Slot values shown are approximations based on historical comps for these players from prior sets.
+                Prices will update automatically once the market establishes real sales.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : estimatedCount > 0 ? (
         <div className="bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800">
           <div className="max-w-7xl mx-auto px-4 py-2.5 flex items-center gap-2">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 text-amber-500" aria-hidden="true">
@@ -184,7 +217,7 @@ export default function BreakPage() {
             </p>
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* No-odds warning banner */}
       {!product.has_odds && (

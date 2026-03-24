@@ -19,6 +19,7 @@ export interface Product {
   bd_autos_per_case: number | null;
   is_active: boolean;
   has_odds: boolean;
+  release_date: string | null; // ISO date string (YYYY-MM-DD)
   sport?: Sport;
 }
 

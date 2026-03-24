@@ -39,8 +39,15 @@ export default function TeamSlotsTable({ teams, breakType }: Props) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/50">
-              {['#', 'Team', 'Players', 'RC', 'Slot Cost', '/Case', 'Max Pay', 'Your $'].map(h => (
-                <th key={h} className="px-4 py-2.5 text-left text-xs uppercase tracking-wider text-muted-foreground font-medium whitespace-nowrap">
+              {['#', 'Team', 'Current Break Price', 'Players', 'RC', 'Slot Cost', '/Case', 'Max Pay'].map(h => (
+                <th
+                  key={h}
+                  className={`px-4 py-2.5 text-left text-xs uppercase tracking-wider font-medium whitespace-nowrap ${
+                    h === 'Current Break Price'
+                      ? 'text-[oklch(0.28_0.08_250)] bg-blue-50 dark:bg-blue-950/20'
+                      : 'text-muted-foreground'
+                  }`}
+                >
                   {h}
                 </th>
               ))}
@@ -73,6 +80,25 @@ export default function TeamSlotsTable({ teams, breakType }: Props) {
                       <span className="mr-2 text-muted-foreground text-xs">{isOpen ? '▼' : '▶'}</span>
                       {row.team}
                     </td>
+                    {/* Current Break Price — highlighted column */}
+                    <td className="px-4 py-2.5 bg-blue-50/50 dark:bg-blue-950/10" onClick={e => e.stopPropagation()}>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground text-xs font-mono pointer-events-none select-none">$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="0"
+                          value={askRaw}
+                          onChange={e => setAskPrices(prev => ({ ...prev, [row.team]: e.target.value }))}
+                          className="w-20 text-xs font-mono px-2 py-1 rounded border border-blue-200 dark:border-blue-800 bg-white dark:bg-background focus:outline-none focus:ring-1 focus:ring-[oklch(0.28_0.08_250)]"
+                        />
+                        {dealCheck && (
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border whitespace-nowrap ${signalColors[dealCheck.signal]}`}>
+                            {dealCheck.signal} {formatPct(dealCheck.valuePct)}
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-4 py-2.5 text-center font-mono">{row.playerCount}</td>
                     <td className="px-4 py-2.5 text-center">
                       {row.rookieCount > 0 && (
@@ -84,23 +110,6 @@ export default function TeamSlotsTable({ teams, breakType }: Props) {
                     <td className="px-4 py-2.5 font-mono font-semibold">{formatCurrency(slotCost)}</td>
                     <td className="px-4 py-2.5 font-mono text-muted-foreground text-xs">{formatCurrency(perCase)}</td>
                     <td className="px-4 py-2.5 font-mono text-muted-foreground">{formatCurrency(row.maxPay)}</td>
-                    <td className="px-4 py-2.5" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          min="0"
-                          placeholder="$0"
-                          value={askRaw}
-                          onChange={e => setAskPrices(prev => ({ ...prev, [row.team]: e.target.value }))}
-                          className="w-20 text-xs font-mono px-2 py-1 rounded border bg-background focus:outline-none focus:ring-1 focus:ring-primary"
-                        />
-                        {dealCheck && (
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border whitespace-nowrap ${signalColors[dealCheck.signal]}`}>
-                            {dealCheck.signal} {formatPct(dealCheck.valuePct)}
-                          </span>
-                        )}
-                      </div>
-                    </td>
                   </tr>
                   {isOpen && row.players.map(p => (
                     <tr key={p.id} className="border-b bg-muted/20">

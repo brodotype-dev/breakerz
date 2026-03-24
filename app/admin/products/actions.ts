@@ -12,6 +12,7 @@ export async function createProduct(formData: {
   bd_case_cost: number | null;
   hobby_autos_per_case: number | null;
   bd_autos_per_case: number | null;
+  release_date: string | null;
   is_active?: boolean;
 }): Promise<{ id?: string; error?: string }> {
   const slug = formData.name
@@ -46,6 +47,7 @@ export async function updateProduct(
     bd_case_cost: number | null;
     hobby_autos_per_case: number | null;
     bd_autos_per_case: number | null;
+    release_date: string | null;
     is_active: boolean;
   }
 ): Promise<{ error?: string }> {

@@ -44,6 +44,7 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
     product?.hobby_autos_per_case?.toString() ?? '16'
   );
   const [bdAutos, setBdAutos] = useState(product?.bd_autos_per_case?.toString() ?? '');
+  const [releaseDate, setReleaseDate] = useState(product?.release_date ?? '');
   const [isActive, setIsActive] = useState(product?.is_active ?? false);
 
   const [nameEdited, setNameEdited] = useState(!!product);
@@ -82,6 +83,7 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
       bd_case_cost: bdCaseCost ? parseFloat(bdCaseCost) : null,
       hobby_autos_per_case: hobbyAutos ? parseInt(hobbyAutos) : null,
       bd_autos_per_case: bdAutos ? parseInt(bdAutos) : null,
+      release_date: releaseDate || null,
       is_active: publish ? true : isActive,
     };
 
@@ -225,6 +227,20 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
             placeholder="Optional"
             type="number"
           />
+          <div>
+            <label className="block text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 font-semibold">
+              Release Date{' '}
+              <span className="normal-case font-normal text-muted-foreground/60">
+                (used for pre-release banner)
+              </span>
+            </label>
+            <Input
+              type="date"
+              value={releaseDate}
+              onChange={e => setReleaseDate(e.target.value)}
+              className="font-mono text-sm"
+            />
+          </div>
         </div>
       </div>
 
