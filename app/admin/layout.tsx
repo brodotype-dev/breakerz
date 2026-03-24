@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { LockIcon, PackageIcon, PlusCircleIcon } from 'lucide-react';
+import { LockIcon, PackageIcon, PlusCircleIcon, SearchCodeIcon } from 'lucide-react';
 import { logout } from './login/actions';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -29,6 +29,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           >
             <PlusCircleIcon className="size-4 shrink-0" />
             New Product
+          </Link>
+          <Link
+            href="/admin/api-debug"
+            className="flex items-center gap-2 px-3 py-2 rounded text-sm hover:bg-white/10 transition-colors"
+          >
+            <SearchCodeIcon className="size-4 shrink-0" />
+            API Debug
           </Link>
           <div className="border-t border-white/10 my-2" />
           <Link
