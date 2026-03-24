@@ -22,10 +22,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'productId and sections required' }, { status: 400 });
   }
 
-  let playersCreated = 0;
-  let playerProductsCreated = 0;
-  let variantsCreated = 0;
-
   // Get product sport_id
   const { data: product } = await supabaseAdmin
     .from('products')
@@ -35,84 +31,88 @@ export async function POST(req: NextRequest) {
 
   if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
 
-  // Build a map: playerName+team → player_product_id, accumulating set counts
-  const playerMap = new Map<string, { playerId: string; playerProductId: string }>();
+  // --- Step 1: Collect unique players across all sections ---
+  // Key: "playerName||team"
+  const playerSetTotals = new Map<string, {
+    name: string; team: string; hobbySets: number; bdSets: number; isRookie: boolean;
+  }>();
 
-  // First pass: collect all unique players and their total set counts across sections
-  const playerSetTotals = new Map<string, { hobbySets: number; bdSets: number; isRookie: boolean; team: string }>();
   for (const section of sections) {
     for (const card of section.cards) {
       const key = `${card.playerName}||${card.team ?? ''}`;
       const existing = playerSetTotals.get(key);
       playerSetTotals.set(key, {
+        name: card.playerName,
+        team: card.team ?? existing?.team ?? '',
         hobbySets: (existing?.hobbySets ?? 0) + section.hobbySets,
         bdSets: (existing?.bdSets ?? 0) + section.bdSets,
         isRookie: card.isRookie || (existing?.isRookie ?? false),
-        team: card.team ?? existing?.team ?? '',
       });
     }
   }
 
-  // Upsert players + player_products
-  for (const [key, totals] of playerSetTotals) {
-    const [playerName] = key.split('||');
+  const uniquePlayers = Array.from(playerSetTotals.values());
 
-    // Find or create player
-    let { data: existingPlayer } = await supabaseAdmin
-      .from('players')
-      .select('id')
-      .eq('name', playerName)
-      .eq('sport_id', product.sport_id)
-      .maybeSingle();
+  // --- Step 2: Bulk upsert players ---
+  const playerRows = uniquePlayers.map(p => ({
+    name: p.name,
+    team: p.team,
+    sport_id: product.sport_id,
+    is_rookie: p.isRookie,
+  }));
 
-    if (!existingPlayer) {
-      const { data: newPlayer } = await supabaseAdmin
-        .from('players')
-        .insert({ name: playerName, team: totals.team, sport_id: product.sport_id, is_rookie: totals.isRookie })
-        .select('id')
-        .single();
-      existingPlayer = newPlayer;
-      playersCreated++;
-    }
+  const { data: upsertedPlayers, error: playerErr } = await supabaseAdmin
+    .from('players')
+    .upsert(playerRows, { onConflict: 'name,sport_id' })
+    .select('id, name');
 
-    if (!existingPlayer) continue;
+  if (playerErr) return NextResponse.json({ error: playerErr.message }, { status: 500 });
 
-    // Find or create player_product
-    let { data: existingPP } = await supabaseAdmin
-      .from('player_products')
-      .select('id')
-      .eq('player_id', existingPlayer.id)
-      .eq('product_id', productId)
-      .maybeSingle();
+  const playerNameToId = new Map<string, string>(
+    (upsertedPlayers ?? []).map(p => [p.name, p.id])
+  );
+  const playersCreated = upsertedPlayers?.length ?? 0;
 
-    if (!existingPP) {
-      const { data: newPP } = await supabaseAdmin
-        .from('player_products')
-        .insert({
-          player_id: existingPlayer.id,
-          product_id: productId,
-          hobby_sets: totals.hobbySets,
-          bd_only_sets: totals.bdSets,
-        })
-        .select('id')
-        .single();
-      existingPP = newPP;
-      playerProductsCreated++;
-    }
+  // --- Step 3: Bulk upsert player_products ---
+  const ppRows = uniquePlayers.map(p => {
+    const playerId = playerNameToId.get(p.name);
+    if (!playerId) return null;
+    return {
+      player_id: playerId,
+      product_id: productId,
+      hobby_sets: p.hobbySets,
+      bd_only_sets: p.bdSets,
+      total_sets: p.hobbySets + p.bdSets,
+      insert_only: false,
+    };
+  }).filter(Boolean) as object[];
 
-    if (!existingPP) continue;
-    playerMap.set(key, { playerId: existingPlayer.id, playerProductId: existingPP.id });
-  }
+  const { data: upsertedPPs, error: ppErr } = await supabaseAdmin
+    .from('player_products')
+    .upsert(ppRows, { onConflict: 'player_id,product_id' })
+    .select('id, player_id');
 
-  // Second pass: create variants
+  if (ppErr) return NextResponse.json({ error: ppErr.message }, { status: 500 });
+
+  const playerIdToPPId = new Map<string, string>(
+    (upsertedPPs ?? []).map(pp => [pp.player_id, pp.id])
+  );
+  const playerProductsCreated = upsertedPPs?.length ?? 0;
+
+  // --- Step 4: Bulk insert variants in chunks ---
+  const variantRows: object[] = [];
   for (const section of sections) {
     for (const card of section.cards) {
       const key = `${card.playerName}||${card.team ?? ''}`;
-      const ids = playerMap.get(key);
-      if (!ids) continue;
+      const totals = playerSetTotals.get(key);
+      if (!totals) continue;
+      const playerId = playerNameToId.get(totals.name);
+      if (!playerId) continue;
+      const ppId = playerIdToPPId.get(playerId);
+      if (!ppId) continue;
 
-      await supabaseAdmin.from('player_product_variants').insert({
-        player_product_id: ids.playerProductId,
+      variantRows.push({
+        player_product_id: ppId,
         variant_name: section.sectionName,
         cardhedger_card_id: null,
         hobby_sets: section.hobbySets,
@@ -121,8 +121,19 @@ export async function POST(req: NextRequest) {
         is_sp: card.isSP,
         print_run: card.printRun ?? null,
       });
-      variantsCreated++;
     }
+  }
+
+  // Insert variants in chunks of 500 to stay within Supabase limits
+  const CHUNK_SIZE = 500;
+  let variantsCreated = 0;
+  for (let i = 0; i < variantRows.length; i += CHUNK_SIZE) {
+    const chunk = variantRows.slice(i, i + CHUNK_SIZE);
+    const { error: variantErr } = await supabaseAdmin
+      .from('player_product_variants')
+      .insert(chunk);
+    if (variantErr) return NextResponse.json({ error: variantErr.message }, { status: 500 });
+    variantsCreated += chunk.length;
   }
 
   return NextResponse.json({ playersCreated, playerProductsCreated, variantsCreated });
