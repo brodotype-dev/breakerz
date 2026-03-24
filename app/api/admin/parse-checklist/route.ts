@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { parseChecklistPdf, parseChecklistCsv } from '@/lib/checklist-parser';
+import { parseChecklistPdf, parseChecklistCsv, parseChecklistXlsx } from '@/lib/checklist-parser';
 
 export const dynamic = 'force-dynamic';
 
@@ -75,6 +75,9 @@ export async function POST(req: NextRequest) {
     if (fileName.endsWith('.csv')) {
       const text = buffer.toString('utf-8');
       const checklist = parseChecklistCsv(text);
+      return NextResponse.json({ checklist });
+    } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+      const checklist = parseChecklistXlsx(buffer);
       return NextResponse.json({ checklist });
     } else {
       const text = await extractPdfText(buffer);

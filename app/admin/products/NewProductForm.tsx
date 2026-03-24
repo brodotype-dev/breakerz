@@ -51,19 +51,11 @@ export default function NewProductForm({ sports }: Props) {
       return;
     }
 
-    // Reset form and refresh
-    setForm({
-      name: '',
-      sport_id: sports[0]?.id ?? '',
-      manufacturer: '',
-      year: new Date().getFullYear().toString(),
-      hobby_case_cost: '',
-      bd_case_cost: '',
-      hobby_autos_per_case: '',
-      bd_autos_per_case: '',
-    });
-    router.refresh();
-    setLoading(false);
+    if (result.id) {
+      router.push(`/admin/products/${result.id}`);
+    } else {
+      router.push('/admin/products');
+    }
   }
 
   const inputClass =

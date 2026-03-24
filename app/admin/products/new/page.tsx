@@ -1,19 +1,8 @@
-import { redirect } from 'next/navigation';
 import { supabaseAdmin } from '@/lib/supabase';
-import ProductForm from '@/components/admin/ProductForm';
-import type { Sport } from '@/lib/types';
-
-async function getSports(): Promise<Sport[]> {
-  const { data } = await supabaseAdmin.from('sports').select('*').order('name');
-  return data ?? [];
-}
-
-function RedirectOnSave({ id }: { id: string }) {
-  redirect(`/admin/products/${id}/players`);
-}
+import NewProductForm from '../NewProductForm';
 
 export default async function NewProductPage() {
-  const sports = await getSports();
+  const { data: sports } = await supabaseAdmin.from('sports').select('*').order('name');
 
   return (
     <div>
@@ -27,7 +16,7 @@ export default async function NewProductPage() {
       <div className="bg-card border rounded overflow-hidden">
         <div className="h-1 bg-[oklch(0.28_0.08_250)]" />
         <div className="p-6">
-          <ProductForm sports={sports} />
+          <NewProductForm sports={sports ?? []} />
         </div>
       </div>
     </div>

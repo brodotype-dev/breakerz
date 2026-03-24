@@ -370,3 +370,73 @@ export function parseOddsPdf(text: string): ParsedOdds {
 
   return { rows };
 }
+
+// ---------------------------------------------------------------------------
+// parseChecklistXlsx  (Bowman-style XLSX format)
+// ---------------------------------------------------------------------------
+// Each relevant sheet becomes a section. Row format:
+//   [card_number_or_code, "Player Name,", "Team or College", optional "RC"]
+// Sheets skipped: Full Checklist, NBA Teams, College Teams (aggregates/indexes)
+// ---------------------------------------------------------------------------
+
+const XLSX_SKIP_SHEETS = new Set(['Full Checklist', 'NBA Teams', 'College Teams']);
+
+export function parseChecklistXlsx(buffer: Buffer): ParsedChecklist {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const XLSX = require('xlsx');
+  const wb = XLSX.read(buffer, { type: 'buffer' });
+
+  const sections: ParsedSection[] = [];
+
+  for (const sheetName of wb.SheetNames) {
+    if (XLSX_SKIP_SHEETS.has(sheetName)) continue;
+
+    const ws = wb.Sheets[sheetName];
+    const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
+
+    const cards: ParsedCard[] = [];
+    const flagged: string[] = [];
+    let currentSectionName = sheetName;
+
+    for (const row of rows) {
+      if (!Array.isArray(row) || row.length === 0) continue;
+
+      // Row 0 is often the section label (string, no card number)
+      if (typeof row[0] === 'string' && typeof row[1] === 'undefined') {
+        const label = row[0].trim();
+        if (label && !/^\d+ cards?$/i.test(label)) {
+          currentSectionName = label;
+        }
+        continue;
+      }
+
+      // Data row: [card_number_or_code, player_name, team, flag?]
+      const cardNumber = row[0] != null ? String(row[0]).trim() : '';
+      const rawName = row[1] != null ? String(row[1]).trim() : '';
+      const team = row[2] != null ? String(row[2]).trim() : undefined;
+      const flag = row[3] != null ? String(row[3]).trim() : '';
+
+      if (!rawName) continue;
+
+      // Clean trailing comma from player names (Bowman exports include it)
+      const playerName = stripTrademarkSymbols(rawName.replace(/,\s*$/, ''));
+      const isRookie = flag === 'RC';
+
+      cards.push({
+        playerName,
+        team,
+        cardNumber: cardNumber || undefined,
+        isRookie,
+        isSP: false,
+        hasBackVariation: false,
+        rawLine: row.join('\t'),
+      });
+    }
+
+    if (cards.length > 0 || flagged.length > 0) {
+      sections.push({ sectionName: currentSectionName, cards, flagged });
+    }
+  }
+
+  return { productName: '', detectedFormat: 'generic', sections };
+}
