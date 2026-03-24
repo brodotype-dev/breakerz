@@ -56,10 +56,11 @@ export async function getAllPrices(cardId: string) {
 }
 
 // Get recent comps for a card
-export async function getComps(cardId: string, days = 90) {
+// API requires count (number of results) and grade in addition to card_id and days
+export async function getComps(cardId: string, days = 180, grade = 'Raw', count = 10) {
   return post<{ comps: Array<{ sale_price: number; sale_date: string; grade: string; platform: string }> }>(
     '/v1/cards/comps',
-    { card_id: cardId, days }
+    { card_id: cardId, days, grade, count }
   );
 }
 
