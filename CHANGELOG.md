@@ -5,6 +5,30 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-03-24
+
+### XLSX checklist support (Bowman-style)
+- Added `parseChecklistXlsx()` to `lib/checklist-parser.ts` — handles multi-sheet XLSX files
+- Each sheet becomes a section (Base, Variations, Prospects, Autographs, Inserts); skips aggregate sheets (Full Checklist, NBA Teams, College Teams)
+- Row format: `[card_code, "Player Name,", team_or_college, optional "RC"]` — trailing commas on player names are cleaned automatically
+- `parse-checklist` API route detects `.xlsx`/`.xls` and routes accordingly
+- Import wizard file input now accepts `.pdf`, `.csv`, `.xlsx`, `.xls`
+
+### Multi-league products (decision)
+- Bowman Basketball mixes NBA, WNBA, and college players in one product
+- Decision: treat as "Basketball" sport; player `team` field holds whatever string (NBA team, WNBA team, or college). Break page groups by team/school — correct behavior for a Bowman break.
+- No schema change needed.
+
+### Jumbo break type (deferred)
+- Jumbo boxes have different odds from Hobby and Breaker's Delight
+- Deferred until there's an actual Jumbo product to break — would require `jumbo_case_cost` on products, `jumbo_odds` on variants, third pool in engine
+
+### Admin / product creation fixes
+- New product page now redirects to product dashboard after save (was silently succeeding with no navigation)
+- Fixed admin login hang: auth route was checking wrong env var (`ADMIN_SECRET` → `ADMIN_PASSWORD`) and setting wrong cookie (`admin_token` → `admin_session`); replaced `router.push + router.refresh()` with `window.location.href` to avoid RSC navigation race
+
+---
+
 ## 2026-03-23
 
 ### Odds-weighted EV in pricing engine
