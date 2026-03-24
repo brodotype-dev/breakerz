@@ -5,6 +5,23 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-03-23
+
+### Odds-weighted EV in pricing engine
+- **Engine now weights the hobby pool by `hobbyEVPerBox`** instead of raw `evMid`
+- Formula: `hobbyEVPerBox = Σ(variantEV × 1/hobby_odds)` — expected dollars per box opened from this player
+- Previously, a $50 card at 1:6 odds and a $50 card at 1:48 odds had equal weight; now the 1:6 card gets 8× the weight because it hits 8× as often per box
+- Computed per-player in the POST pricing route using per-variant EV from CardHedger and `hobby_odds` from `player_product_variants`
+- Falls back to `evMid` when odds haven't been imported (GET cached path, or no odds data on variants)
+- BD pool still weights by `evMid` (no BD odds weighting yet)
+
+### Infrastructure fixes
+- **Moved repo from `/tmp/breakerz-next` to `~/Documents/GitHub/breakerz`** — `/tmp` was getting wiped on reboot, causing corrupted git state each session. Permanent location survives reboots.
+- **Removed deprecated `middleware.ts`** — Next.js 16 renamed middleware to proxy; both files existed causing a startup error. `proxy.ts` is the active auth guard.
+- **Fixed pre-existing build errors:** missing `updateProduct` server action, nullable field type mismatches in `createProduct`, undefined error string in `ProductForm`
+
+---
+
 ## 2026-03-22
 
 ### Claude-powered CardHedger matching
