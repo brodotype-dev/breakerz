@@ -5,6 +5,29 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-03-24 (4)
+
+### Breaker Says — AI break slot analysis page
+- New public page at `/analysis` — "Is this break worth it?"
+- Flow: select product → select team → enter break type + what the breaker is charging → Run Analysis
+- Calls Claude Haiku with full player context (EV, RC flags, fair value, ask price) → returns 2–3 sentence BUY/WATCH/PASS narrative
+- Shows signal badge, % above/below fair value, AI reasoning, and top 5 players with EV data
+- Linked from homepage header and break page header as "Breaker Says →"
+- New API route: `GET /api/analysis` (product list) + `POST /api/analysis` (analysis)
+
+### Product release date + pre-release banner
+- Added `release_date DATE` column to products (migration `20260324190000_add_release_date.sql`)
+- Admin product form (both ProductForm and edit pages) now includes a Release Date field
+- Break page: when `release_date` is set and in the future, shows a prominent **blue banner** with the launch date and explanation that pricing is estimated from historical comps — not actual sales of this set. Replaces the smaller amber estimated-pricing notice when applicable.
+- Set release date for Bowman 25-26 Basketball (~May 2026) to activate automatically
+
+### Team Slots deal checker UX polish
+- Renamed "Your $" column → **"Current Break Price"**, moved before Players column
+- Column header highlighted in navy, input has blue border — visually distinct from other columns
+- Signal badge (BUY/WATCH/PASS + %) still appears inline after input
+
+---
+
 ## 2026-03-24 (3) — V2.1 MVP
 
 ### Consumer deal checker
