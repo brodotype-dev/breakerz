@@ -46,7 +46,7 @@ cd ~/Documents/GitHub/breakerz
 vercel --prod --yes
 ```
 
-**Production URL:** `breakerz-next.vercel.app`
+**Production URL:** `https://breakerz.vercel.app`
 
 **Important:** Push to GitHub (`git push origin main`) before deploying. Vercel builds from the GitHub repo — local-only commits won't be included in the build.
 
