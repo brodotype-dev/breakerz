@@ -5,7 +5,55 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
-## 2026-03-24
+## 2026-03-24 (3) — V2.1 MVP
+
+### Consumer deal checker
+- Added "Your $" input column to every team row in the Team Slots table
+- User enters what they're being quoted for a slot → instant BUY/WATCH/PASS signal with % delta
+- Thresholds: BUY ≥ 30% below fair value, WATCH within 30%, PASS above fair value
+- Uses existing `computeSignal()` from `lib/engine.ts`; no backend required — pure client state
+- Clicking the input does not expand/collapse the team row (`stopPropagation`)
+
+### Pricing fallbacks for new releases
+- When CardHedger returns no data (new product, no sales history), engine falls back through a chain instead of showing $0:
+  1. **Search fallback** — `get90DayPrices(playerName + cardType)` — generic 90-day search using player name + "Auto RC" (rookies) or "Base" (veterans)
+  2. **Cross-product** — looks up the same player's pricing from another product's cache (e.g., prior year same player)
+  3. **Position default** — rookies: $15, veterans: $8
+- `pricingSource` type extended: `'search-fallback' | 'cross-product' | 'default'` added alongside existing `'live' | 'cached' | 'none'`
+- Player rows with estimated pricing show an amber "est" badge on evMid in the Player Slots table
+- Break page shows an amber banner: "X players using estimated pricing" when any fallback sources are active
+- Live pricing that returns evMid = 0 now also falls through to the fallback chain (previously showed as 'live' with $0)
+
+### Social currency foundation (schema only)
+- Added `buzz_score FLOAT DEFAULT NULL` to `player_products` via migration `20260324180000_add_buzz_score.sql`
+- Engine weight formula updated: `hobbyWeight = hobbyEVPerBox × (1 + (buzz_score ?? 0))`
+- When `buzz_score` is null/0: behavior identical to before. When populated: proportional boost to that player's slot weight
+- No admin UI, no data source yet — column is reserved for future social/buzz pipeline
+
+---
+
+## 2026-03-24 (2)
+
+### Infrastructure: permanent repo location
+- Moved repo from `/tmp/breakerz-next` to `~/Documents/GitHub/breakerz` — `/tmp` was wiped on every reboot, corrupting git state and losing context between sessions
+- Preserved Vercel project link (`.vercel/project.json`) so deploys still target the same project
+- Updated CLAUDE.md and README to reflect the new path and correct production URL (`breakerz.vercel.app`)
+
+### Admin login fix
+- Auth route was checking `ADMIN_SECRET` (not set) instead of `ADMIN_PASSWORD`; cookie was `admin_token` instead of `admin_session`
+- Proxy was checking `admin_session` against `ADMIN_SESSION_SECRET` — mismatch caused silent auth failures
+- Fixed auth route to use correct env vars and cookie names
+- Fixed login page: replaced `router.push + router.refresh()` with `window.location.href` to avoid RSC navigation race that caused the hang
+
+### Odds-weighted EV in pricing engine
+- Engine now weights the hobby pool by `hobbyEVPerBox` = `Σ(variantEV × 1/hobby_odds)` instead of flat `evMid`
+- A $50 card at 1:6 odds gets 8× the weight of a $50 card at 1:48 — reflects actual pull frequency per box
+- Added `hobby_odds` to variant select in pricing route; POST path computes per-player `hobbyEVPerBox` from variant data
+- GET/cached path falls back to `evMid` when odds data is absent
+
+### CardHedger comps fix
+- `/v1/cards/comps` started requiring `count` and `grade` fields — was returning 422
+- Fixed `getComps()` to always pass `grade = 'Raw'` and `count = 10` as defaults
 
 ### XLSX checklist support (Bowman-style)
 - Added `parseChecklistXlsx()` to `lib/checklist-parser.ts` — handles multi-sheet XLSX files
@@ -13,6 +61,13 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 - Row format: `[card_code, "Player Name,", team_or_college, optional "RC"]` — trailing commas on player names are cleaned automatically
 - `parse-checklist` API route detects `.xlsx`/`.xls` and routes accordingly
 - Import wizard file input now accepts `.pdf`, `.csv`, `.xlsx`, `.xls`
+
+### Import pipeline: batch DB operations + unique constraint
+- Rewrote `import-checklist` API route from ~1500 sequential inserts to ~5 bulk operations — eliminated Vercel function timeouts on large checklists
+- Players upserted in one batch; player_products in one batch; variants in chunks of 500
+- Fixed `ON CONFLICT` error: added `players_name_sport_id_unique` constraint via migration (`supabase/migrations/20260324145748_players_unique_name_sport.sql`); migration also deduplicates any existing duplicate rows first
+- Fixed `ON CONFLICT DO UPDATE affects row a second time`: same player appearing across multiple XLSX sheets was creating duplicate rows in the upsert batch — fixed by deduplicating `playerRows` by name before upserting
+- Fixed `total_sets generated column` error: removed `total_sets` from insert payload (it's a Postgres generated column)
 
 ### Multi-league products (decision)
 - Bowman Basketball mixes NBA, WNBA, and college players in one product
@@ -25,24 +80,8 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ### Admin / product creation fixes
 - New product page now redirects to product dashboard after save (was silently succeeding with no navigation)
-- Fixed admin login hang: auth route was checking wrong env var (`ADMIN_SECRET` → `ADMIN_PASSWORD`) and setting wrong cookie (`admin_token` → `admin_session`); replaced `router.push + router.refresh()` with `window.location.href` to avoid RSC navigation race
-
----
-
-## 2026-03-23
-
-### Odds-weighted EV in pricing engine
-- **Engine now weights the hobby pool by `hobbyEVPerBox`** instead of raw `evMid`
-- Formula: `hobbyEVPerBox = Σ(variantEV × 1/hobby_odds)` — expected dollars per box opened from this player
-- Previously, a $50 card at 1:6 odds and a $50 card at 1:48 odds had equal weight; now the 1:6 card gets 8× the weight because it hits 8× as often per box
-- Computed per-player in the POST pricing route using per-variant EV from CardHedger and `hobby_odds` from `player_product_variants`
-- Falls back to `evMid` when odds haven't been imported (GET cached path, or no odds data on variants)
-- BD pool still weights by `evMid` (no BD odds weighting yet)
-
-### Infrastructure fixes
-- **Moved repo from `/tmp/breakerz-next` to `~/Documents/GitHub/breakerz`** — `/tmp` was getting wiped on reboot, causing corrupted git state each session. Permanent location survives reboots.
-- **Removed deprecated `middleware.ts`** — Next.js 16 renamed middleware to proxy; both files existed causing a startup error. `proxy.ts` is the active auth guard.
-- **Fixed pre-existing build errors:** missing `updateProduct` server action, nullable field type mismatches in `createProduct`, undefined error string in `ProductForm`
+- Fixed build errors: missing `updateProduct` server action, nullable field type mismatches in `createProduct`, undefined error string in `ProductForm`
+- Removed deprecated `middleware.ts` — Next.js 16 uses `proxy.ts`; both files existing caused a startup error
 
 ---
 

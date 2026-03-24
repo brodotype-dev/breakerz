@@ -4,7 +4,7 @@ Break analysis and slot pricing tool for sports card group breaks. Computes fair
 
 Built in collaboration with Kyle (Town & Line / CardPulse).
 
-**Live:** [breakerz-next.vercel.app](https://breakerz-next.vercel.app)
+**Live:** [breakerz.vercel.app](https://breakerz.vercel.app)
 
 ---
 
@@ -14,7 +14,7 @@ Given a sports card product (e.g. 2025-26 Topps Finest Basketball), Card Breaker
 
 1. Loads each player's card data and set counts from Supabase
 2. Fetches live pricing from the CardHedger API (with 24h cache)
-3. Computes weighted EV per player: `evMid × hobby_sets`
+3. Computes odds-weighted EV per player: `hobbyEVPerBox = Σ(variantEV × 1/hobby_odds)`
 4. Distributes break cost across teams proportionally
 5. Outputs per-team slot costs, RC counts, and BUY/WATCH/PASS signals
 
@@ -88,7 +88,7 @@ See [CLAUDE.md](./CLAUDE.md) for full deploy instructions and known gotchas.
 4. Import → runs CardHedger auto-matching on the result
 5. Optionally upload a Topps odds PDF to attach pull rates to variants
 
-Supported formats: Topps numbered PDF, Topps code-based PDF, Panini/Donruss CSV, Topps odds PDF.
+Supported formats: Topps numbered PDF, Topps code-based PDF, Panini/Donruss CSV, Bowman XLSX, Topps odds PDF.
 
 ---
 

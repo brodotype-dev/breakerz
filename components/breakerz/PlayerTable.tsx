@@ -71,7 +71,16 @@ export default function PlayerTable({ players, fetching = false, breakType }: Pr
                   ) : (
                     <>
                       <td className="px-4 py-2.5 text-right font-mono text-xs text-muted-foreground">{formatCurrency(row.evLow)}</td>
-                      <td className="px-4 py-2.5 text-right font-mono text-sm font-bold">{formatCurrency(row.evMid)}</td>
+                      <td className="px-4 py-2.5 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <span className="font-mono text-sm font-bold">{formatCurrency(row.evMid)}</span>
+                          {(row.pricingSource === 'search-fallback' || row.pricingSource === 'cross-product' || row.pricingSource === 'default') && (
+                            <span className="text-[9px] font-medium px-1 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 border border-amber-300 dark:border-amber-700 whitespace-nowrap" title={`Estimated via ${row.pricingSource}`}>
+                              est
+                            </span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-4 py-2.5 text-right font-mono text-xs text-muted-foreground">{formatCurrency(row.evHigh)}</td>
                       <td className="px-4 py-2.5 text-right font-mono text-sm font-bold">
                         {formatCurrency(breakType === 'hobby' ? row.hobbySlotCost : row.bdSlotCost)}

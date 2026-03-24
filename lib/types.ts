@@ -39,6 +39,7 @@ export interface PlayerProduct {
   total_sets: number;
   insert_only: boolean;
   cardhedger_card_id: string | null;
+  buzz_score: number | null;
   player?: Player;
 }
 
@@ -77,7 +78,7 @@ export interface PlayerWithPricing extends PlayerProduct {
   hobbyPerCase: number;
   bdPerCase: number;
   maxPay: number;
-  pricingSource: 'live' | 'cached' | 'none';
+  pricingSource: 'live' | 'cached' | 'search-fallback' | 'cross-product' | 'default' | 'none';
 }
 
 export interface PlayerProductVariant {

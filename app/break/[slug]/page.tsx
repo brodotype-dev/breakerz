@@ -110,6 +110,9 @@ export default function BreakPage() {
 
   const pricedCount = players.filter(p => p.pricingSource !== 'none').length;
   const hasPricing = pricedCount > 0;
+  const estimatedCount = players.filter(p =>
+    p.pricingSource === 'search-fallback' || p.pricingSource === 'cross-product' || p.pricingSource === 'default'
+  ).length;
 
   if (loading) {
     return (
@@ -166,6 +169,22 @@ export default function BreakPage() {
         </div>
         <div className="h-0.5 bg-[var(--topps-red)]" />
       </header>
+
+      {/* Estimated pricing banner — shown when any players use fallback pricing */}
+      {estimatedCount > 0 && (
+        <div className="bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800">
+          <div className="max-w-7xl mx-auto px-4 py-2.5 flex items-center gap-2">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 text-amber-500" aria-hidden="true">
+              <path d="M7 1L13 13H1L7 1Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+              <path d="M7 5.5V8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+              <circle cx="7" cy="10.5" r="0.75" fill="currentColor"/>
+            </svg>
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              {estimatedCount} player{estimatedCount !== 1 ? 's' : ''} using estimated pricing — no sales data yet for this product. Values are approximations based on historical comps.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* No-odds warning banner */}
       {!product.has_odds && (

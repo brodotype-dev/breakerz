@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { computeLiveEV, searchAndComputeEV } from '@/lib/cardhedger';
+import { computeLiveEV, searchAndComputeEV, get90DayPrices } from '@/lib/cardhedger';
 import type { PlayerWithPricing } from '@/lib/types';
 
 const CACHE_TTL_HOURS = 24;
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
 
     const { data: playerProducts, error } = await supabaseAdmin
       .from('player_products')
-      .select('*, player:players(*)')
+      .select('*, player:players(*), buzz_score')
       .eq('product_id', productId)
       .eq('insert_only', false)
       .order('id');
@@ -172,6 +172,9 @@ export async function POST(req: NextRequest) {
             hobbyEVPerBox = ev.evMid;
           }
 
+          // If live pricing returned no data, fall through to fallback chain
+          if (ev.evMid === 0) throw new Error('No pricing data returned');
+
           await supabaseAdmin.from('pricing_cache').upsert({
             player_product_id: pp.id,
             cardhedger_card_id: pp.cardhedger_card_id ?? null,
@@ -194,13 +197,75 @@ export async function POST(req: NextRequest) {
             pricingSource: 'live' as const,
           };
         } catch {
+          // --- Fallback chain for no/zero pricing ---
+          const player = pp.player;
+
+          // Level 2: 90-day search pricing via CardHedger generic search
+          try {
+            const cardType = player.is_rookie ? 'Auto RC' : 'Base';
+            const result = await get90DayPrices(`${player.name} ${cardType}`, 'Raw');
+            const raw = result.prices.find(p => p.grade.toLowerCase().includes('raw'));
+            if (raw && raw.avg_price > 0) {
+              const evMid = Math.round(raw.avg_price);
+              const ev = {
+                evLow: raw.min_price > 0 ? Math.round(raw.min_price) : Math.round(evMid * 0.35),
+                evMid,
+                evHigh: raw.max_price > evMid ? Math.round(raw.max_price) : Math.round(evMid * 2.5),
+              };
+              await supabaseAdmin.from('pricing_cache').upsert({
+                player_product_id: pp.id,
+                cardhedger_card_id: pp.cardhedger_card_id ?? null,
+                ev_low: ev.evLow, ev_mid: ev.evMid, ev_high: ev.evHigh,
+                raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
+              }, { onConflict: 'player_product_id' });
+              return {
+                ...pp, ...ev, hobbyEVPerBox: evMid,
+                hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
+                totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
+                pricingSource: 'search-fallback' as const,
+              };
+            }
+          } catch { /* continue */ }
+
+          // Level 3: cross-product pricing cache for the same player
+          try {
+            const { data: siblings } = await supabaseAdmin
+              .from('player_products')
+              .select('id')
+              .eq('player_id', pp.player_id)
+              .neq('id', pp.id);
+            if (siblings?.length) {
+              const { data: crossCache } = await supabaseAdmin
+                .from('pricing_cache')
+                .select('ev_mid, ev_low, ev_high')
+                .in('player_product_id', siblings.map(s => s.id))
+                .gt('ev_mid', 0)
+                .order('fetched_at', { ascending: false })
+                .limit(1)
+                .single();
+              if (crossCache && crossCache.ev_mid > 0) {
+                return {
+                  ...pp,
+                  evLow: crossCache.ev_low, evMid: crossCache.ev_mid, evHigh: crossCache.ev_high,
+                  hobbyEVPerBox: crossCache.ev_mid,
+                  hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
+                  totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
+                  pricingSource: 'cross-product' as const,
+                };
+              }
+            }
+          } catch { /* continue */ }
+
+          // Level 4: position-based defaults
+          // Rookies skew toward base auto value; veterans toward base card value
+          const evMid = player.is_rookie ? 15 : 8;
           return {
             ...pp,
-            evLow: 0, evMid: 0, evHigh: 0,
-            hobbyEVPerBox: 0,
+            evLow: Math.round(evMid * 0.35), evMid, evHigh: Math.round(evMid * 2.5),
+            hobbyEVPerBox: evMid,
             hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
             totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
-            pricingSource: 'none' as const,
+            pricingSource: 'default' as const,
           };
         }
       })

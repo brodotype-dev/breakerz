@@ -9,17 +9,18 @@ export function computeSlotPricing(
   // Weight hobby pool by hobbyEVPerBox = Σ(variantEV × 1/hobby_odds) — expected dollars per box.
   // Falls back to evMid when odds data isn't available (cached GET path, or no odds imported).
   // BD-only players (hobby_sets === 0) are excluded from the hobby pool.
-  const totalHobbyWeight = eligible.reduce(
-    (sum, p) => sum + (p.hobby_sets > 0 ? p.hobbyEVPerBox : 0),
-    0
-  );
+  // buzz_score applies a multiplier: hobbyEVPerBox × (1 + buzz_score). NULL/0 = no change.
+  const hobbyWeightFor = (p: PlayerWithPricing) =>
+    p.hobby_sets > 0 ? p.hobbyEVPerBox * (1 + (p.buzz_score ?? 0)) : 0;
+
+  const totalHobbyWeight = eligible.reduce((sum, p) => sum + hobbyWeightFor(p), 0);
   const totalBdWeight = eligible.reduce((sum, p) => sum + p.evMid, 0);
 
   const hobbyBreakCost = config.hobbyCases * config.hobbyCaseCost;
   const bdBreakCost = config.bdCases * config.bdCaseCost;
 
   return eligible.map(player => {
-    const hobbyWeight = player.hobby_sets > 0 ? player.hobbyEVPerBox : 0;
+    const hobbyWeight = hobbyWeightFor(player);
     const bdWeight = player.evMid;
 
     const hobbySlotCost =
