@@ -107,6 +107,86 @@ These need a decision before the relevant work can be scoped or started.
 
 ---
 
+## Long-term Vision (Kyle's Ideas — 2026-03-25)
+
+These are not near-term roadmap items. Capturing them here so the thinking isn't lost.
+
+---
+
+### Vision 1 — Enhanced Pricing Engine (CardPulse Integration)
+
+Expand the engine beyond card EV by layering in real-world demand signals that haven't moved the secondary market yet:
+
+- **Real-time player statistics** — live game performance feeding into demand signal (extends the S-score concept from Phase 7, but real-time rather than daily)
+- **Player rankings across platforms** — cross-reference how a player ranks on alt-market platforms, fantasy services, and hobby sites; consensus ranking as a demand proxy
+- **Live sports betting odds** — if a player is heavily backed to win MVP, win a championship, or hit a performance threshold, that translates directly into card demand. Sportsbook APIs (DraftKings, FanDuel, etc.) are accessible.
+- **Prediction markets** — Polymarket, Kalshi, and similar platforms allow trading on outcomes like "Will Player X win Rookie of the Year?" These are early-signal, liquid, and increasingly accessible via API. A Polymarket position moving sharply before the market reacts is exactly the kind of leading indicator we want.
+
+**Technical note:** Betting odds and prediction market prices are available via free/low-cost APIs. The harder problem is normalization — converting a betting line into a directional card demand signal requires modeling. This is a research task before it's a build task.
+
+**What this enables:** The engine moves from "what are cards worth right now" to "what are cards about to be worth" — a genuinely differentiated product in the hobby space.
+
+---
+
+### Vision 2 — Deal Monitor / Card Arbitrage Tool
+
+A daily (or near-real-time) scanner that surfaces underpriced cards and hot auctions across the major platforms.
+
+**Two modes:**
+
+**Hot Auctions** — active auction monitoring across Alt, Golden, Fanatics Collect. Surface auctions where the current bid is materially below CardHedger's estimated value with low time remaining. Gives collectors and resellers a live edge.
+
+**BUY IT NOW Steals** — scan BUY IT NOW listings on eBay, Alt, Fanatics Collect, MySlabs, COMC for cards listed below a target discount threshold. User flow:
+1. User sets a target ROI (e.g., "show me cards where BIN price is ≥ 20% below market value")
+2. System queries listings, checks against CardHedger API for current market value
+3. Returns ranked list of matching cards sorted by ROI
+
+**What needs to exist:**
+- Platform APIs or scraping for eBay (has a Marketplace API), Alt, Fanatics, COMC, MySlabs — availability and rate limits vary per platform
+- CardHedger as the value oracle (already integrated)
+- A matching layer to link listing card identifiers to CardHedger `card_id`s — this is the hard part, same fuzzy matching problem as the checklist import but at scale
+
+**What this enables:** Turns Breakerz into a tool resellers and flippers actively use daily, not just during break season. High engagement driver.
+
+---
+
+### Vision 3 — Affiliate Commerce Layer
+
+If we're surfacing links to Alt, Golden, Fanatics Collect, eBay, and others throughout the app (deal monitor, auction links, break page context), there's a natural affiliate revenue opportunity.
+
+- **Alt** — has an affiliate/referral program
+- **eBay Partner Network** — well-established affiliate program, easy to implement
+- **Fanatics Collect** — worth checking; Fanatics has affiliate infrastructure
+- **COMC, MySlabs** — TBD
+
+**Implementation:** Append affiliate tracking parameters to outbound links. Low effort once the deal monitor surfaces links — the link is already there, it just needs the affiliate tag.
+
+**Revenue model:** Commission per sale or per click depending on the platform program. Not a primary revenue stream, but a natural byproduct of features we'd build anyway.
+
+**Note:** Affiliate links need disclosure — standard footer/tooltip language is sufficient.
+
+---
+
+### Vision 4 — Hobby Education Hub
+
+A content layer for collectors who are new to the hobby or learning to evaluate breaks more carefully.
+
+**Content areas:**
+- **Beginner's guide to group breaks** — what a group break is, hobby vs. BD vs. random team, how slot pricing works
+- **Card evaluation guides** — how to read a checklist, what makes a card valuable, the difference between base/refractor/auto
+- **Grading guides** — when to grade, who to grade with (PSA vs. BGS vs. SGC), cost/benefit for different price points
+- **Card prep guides** — how to handle, store, and submit cards without damaging them
+- **What to watch out for** — trimmed cards, fake autos, relabeled holders, altered serial numbers
+
+**Technical approach:** Static MDX pages are the simplest path — no CMS required, version-controlled, easy to update. Could also be a Notion-backed content layer if the team prefers editing in Notion.
+
+**What this enables:**
+- SEO surface area — "how to grade cards," "what is a group break," etc. are high-intent hobby searches
+- Reduces buyer friction on Breakerz Sayz — a new collector who doesn't understand EV can click through to learn before buying
+- Trust signal — demonstrates expertise, not just a calculator
+
+---
+
 ## Decided / Out of Scope
 
 - No public social leaderboard or trending feed
