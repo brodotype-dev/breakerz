@@ -15,10 +15,13 @@ Given a sports card product (e.g. 2025-26 Topps Finest Basketball), Card Breaker
 1. Loads each player's card data and set counts from Supabase
 2. Fetches live pricing from the CardHedger API (with 24h cache)
 3. Computes odds-weighted EV per player: `hobbyEVPerBox = Σ(variantEV × 1/hobby_odds)`
-4. Distributes break cost across teams proportionally
-5. Outputs per-team slot costs, RC counts, and BUY/WATCH/PASS signals
+4. Applies social signal adjustments: `effective_score = clamp(buzz_score + breakerz_score, -0.9, 1.0)`
+5. Distributes break cost across teams proportionally
+6. Outputs per-team slot costs, RC counts, and BUY/WATCH/PASS signals
 
-**Breakerz Sayz** (`/analysis`) is the consumer-facing deal checker: pick a product, select your team, enter the case count and what the breaker is charging — Claude returns a BUY/WATCH/PASS verdict with a 2–3 sentence AI narrative explaining the reasoning.
+**Breakerz Sayz** (`/analysis`) is the consumer-facing deal checker: pick a product, select your team, enter the case count and what the breaker is charging — Claude returns a BUY/WATCH/PASS verdict with a 2–3 sentence AI narrative. The result card surfaces icon-tier player badges, Breakerz Bets editorial scores, risk flag disclosures, and high volatility advisories.
+
+**Social Currency** is an ongoing signal layer on top of the EV model — see [docs/prd-social-currency.md](./docs/prd-social-currency.md). Currently live: Breakerz Bets (editorial B-score), Icon Tier, Risk Flags, and High Volatility. Automated pipeline (C-score from CardHedger top-movers, P-score from Reddit) is Phase 5–6.
 
 ---
 
@@ -72,9 +75,9 @@ See [CLAUDE.md](./CLAUDE.md) for full deploy instructions and known gotchas.
 | `/analysis` | **Breakerz Sayz** — consumer deal checker (BUY/WATCH/PASS) |
 | `/break/[slug]` | Break analysis page — team slots, player EV, deal checker column |
 | `/admin/products` | Product listing |
-| `/admin/products/[id]` | Product dashboard (readiness stats, odds upload, re-run matching) |
+| `/admin/products/[id]` | Product dashboard — readiness stats, odds upload, re-run matching, Breakerz Bets Debrief |
 | `/admin/import-checklist` | 3-step checklist import wizard |
-| `/admin/products/[id]/players` | Manual player management |
+| `/admin/products/[id]/players` | Player management — roster, icon tier (★), high volatility (⚡), risk flags (⚑) |
 | `/api/analysis` | GET: active product list · POST: run Breakerz Sayz analysis |
 | `/api/pricing` | Live pricing endpoint (Supabase + CardHedger, 24h cache) |
 | `/api/admin/parse-checklist` | PDF/CSV checklist parser |

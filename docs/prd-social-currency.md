@@ -1,6 +1,6 @@
 # PRD: Social Currency Signal
 
-**Status:** In progress — B-score input built; engine, consumer display, and automated pipeline not yet built
+**Status:** In progress — Phases 1–3 shipped; Phases 4–7 pending
 **Owner:** Brody Clemmer
 **Last updated:** 2026-03-24
 **Input:** Kyle (Town & Line / CardPulse) — signal layer architecture and API recommendations
@@ -35,19 +35,23 @@ Secondary user: the **breaker** setting slot prices. Social signal helps price f
 | `buzz_score` read by engine | ✅ Wired | `lib/engine.ts` — but always null/0 until populated |
 | `breakerz_score` + `breakerz_note` columns | ✅ Deployed | Migration 20260324200000 |
 | Breakerz Bets Debrief admin UI | ✅ Built | `/admin/products/[id]` — conversational input, review table, saves to DB |
-| `breakerz_score` read by engine | ❌ Not wired | Data is collected but has no effect on slot costs yet |
-| Breakerz Bets callout in Breakerz Sayz | ❌ Not built | |
-| `is_icon` flag on `players` | ❌ Not built | Migration + engine guard + UI + Sayz callout all pending |
-| Icon callout in Breakerz Sayz | ❌ Not built | |
-| `player_risk_flags` table | ❌ Not built | Migration + admin UI + display all pending |
-| Risk flag display in Breakerz Sayz | ❌ Not built | |
-| `is_high_volatility` on `player_products` | ❌ Not built | |
-| High Volatility display | ❌ Not built | |
-| Buzz indicators on Team Slots / Player table | ❌ Not built | |
-| C-score (CardHedger top-movers) | ❌ Not built | No automated pipeline yet |
-| P-score (Reddit sentiment) | ❌ Not built | |
-| S-score (sports stats API) | ❌ Not built | |
-| Composite score formula in engine | ❌ Not built | Engine reads raw `buzz_score` directly, not a composite |
+| `breakerz_score` read by engine | ✅ Wired | `effective_score = clamp(buzz_score + breakerz_score, -0.9, 1.0)` |
+| Breakerz Bets callout in Breakerz Sayz | ✅ Built | Editorial notes passed to Claude prompt; scores affect fair value |
+| `is_icon` flag on `players` | ✅ Deployed | Migration 20260324210000 |
+| Icon engine guard | ✅ Built | `is_icon = true` → effectiveScore forced to 0 |
+| Icon admin toggle | ✅ Built | Purple ★ button on `/admin/products/[id]/players` |
+| Icon callout in Breakerz Sayz | ✅ Built | Purple "★ Icon" badge on key players list |
+| `player_risk_flags` table | ✅ Deployed | Migration 20260324210000 — soft-delete pattern |
+| Risk flag admin UI | ✅ Built | ⚑ Flag button per player — type + note, × to clear |
+| Risk flag display in Breakerz Sayz | ✅ Built | Red ⚑ banners per active flag; passed to Claude prompt |
+| `is_high_volatility` on `player_products` | ✅ Deployed | Migration 20260324210000 |
+| High Volatility admin toggle | ✅ Built | Amber ⚡ button on `/admin/products/[id]/players` |
+| High Volatility display in Breakerz Sayz | ✅ Built | Amber ⚡ advisory block in result card |
+| Buzz indicators on Team Slots / Player table | ❌ Not built | Phase 4 |
+| C-score (CardHedger top-movers) | ❌ Not built | Phase 5 — needs Kyle to confirm top-movers response structure |
+| P-score (Reddit sentiment) | ❌ Not built | Phase 6 — needs Reddit API key |
+| S-score (sports stats API) | ❌ Not built | Phase 7 — NBA first via balldontlie.io |
+| Composite score formula in engine | ❌ Not built | Phase 5 — engine will read composite from buzz_score once pipeline runs |
 | Score decay mechanism | ❌ Not designed | Open question |
 
 ---
@@ -260,8 +264,8 @@ Sequenced by value delivered vs. build complexity. Each phase is independently s
 
 ---
 
-### Phase 1 — Wire Up What's Already in the DB
-**Effort:** 1 day | **Value:** Breakerz Bets actually affects slot costs and Sayz output
+### Phase 1 — Wire Up What's Already in the DB ✅
+**Effort:** 1 day | **Shipped:** 2026-03-24
 
 The `breakerz_score` data is collected but inert. This phase makes it real.
 
@@ -279,8 +283,8 @@ The `breakerz_score` data is collected but inert. This phase makes it real.
 
 ---
 
-### Phase 2 — Icon Tier
-**Effort:** 1 day | **Value:** Correct handling of structurally anomalous players
+### Phase 2 — Icon Tier ✅
+**Effort:** 1 day | **Shipped:** 2026-03-24
 
 **2a.** Migration: `is_icon BOOLEAN` on `players`
 **2b.** Engine: `is_icon` guard — skip buzz multiplier when true
@@ -292,8 +296,8 @@ The `breakerz_score` data is collected but inert. This phase makes it real.
 
 ---
 
-### Phase 3 — Risk Flags + High Volatility
-**Effort:** 2 days | **Value:** Consumer disclosure for events the model can't score
+### Phase 3 — Risk Flags + High Volatility ✅
+**Effort:** 2 days | **Shipped:** 2026-03-24
 
 **3a.** Migrations: `player_risk_flags` table + `is_high_volatility` on `player_products`
 **3b.** Admin: risk flag add/edit/clear UI on player management page
@@ -366,7 +370,7 @@ The `breakerz_score` data is collected but inert. This phase makes it real.
 5. **Icon process:** Who decides icon status? What are the criteria? Suggest: admin-only designation, requires approval from both Brody and Kyle, reviewed once per product cycle.
 6. **Risk flag style guide:** Notes appear on a consumer-facing product. Need to define: past tense, factual, no speculation, include source/date in parentheses. E.g., *"Suspended 80 games for PED violation (MLB, March 2026)."*
 7. **Controversy vs. cold:** A scandal player may have negative Risk Flag but positive market demand (dark curiosity buying). How do we display when buzz and flag conflict? Likely: show both, let Claude contextualize in the narrative.
-8. **`breakerz_score` in the pricing API:** The `/api/pricing` GET endpoint (used by the break page) should also include `breakerz_score` in the player data so the engine on the break page benefits, not just Breakerz Sayz.
+8. ~~**`breakerz_score` in the pricing API:** The `/api/pricing` GET endpoint (used by the break page) should also include `breakerz_score` in the player data so the engine on the break page benefits, not just Breakerz Sayz.~~ ✅ Resolved — both GET and POST `/api/pricing` now select `breakerz_score`.
 
 ---
 
