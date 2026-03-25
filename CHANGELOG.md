@@ -5,6 +5,23 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-03-24 (6)
+
+### Social Currency — Breakerz Bets Debrief (B-score input)
+
+- New admin section on `/admin/products/[id]` — **Breakerz Bets Debrief**: conversational B-score input for the editorial scoring layer
+- Flow: admin pastes a free-form market narrative ("Wemby is running hot, Cade's been quiet…") → Claude Haiku parses against the product's full player roster with fuzzy name matching → returns suggested scores (-0.5 to +0.5) and drafted reason notes → admin reviews in a table, edits scores/notes, unchecks any players to skip → clicks "Apply" → writes to DB
+- Review table: pill-selector for score (−0.5, −0.25, 0, +0.25, +0.5), editable reason note, include/exclude checkbox; low-confidence matches (< 0.7) flagged amber "Review"
+- Hallucination guard: API validates all returned `player_product_id`s against the actual roster — any IDs Claude fabricated are filtered out before returning to the client
+- `saveBreakerzBets` server action writes `breakerz_score` + `breakerz_note` to `player_products`
+- Migration `20260324200000_add_breakerz_bets.sql`: added `breakerz_score FLOAT` and `breakerz_note TEXT` to `player_products`
+- **Note:** data was collected in this session but `breakerz_score` was not yet wired into the engine — that shipped in session (7) Phase 1
+
+**New files:** `app/admin/products/[id]/BreakerzBetsDebrief.tsx`, `app/api/admin/parse-bets-debrief/route.ts`, `supabase/migrations/20260324200000_add_breakerz_bets.sql`
+**Modified:** `app/admin/products/[id]/page.tsx`, `app/admin/products/actions.ts`
+
+---
+
 ## 2026-03-24 (7)
 
 ### Social Currency — Phase 1: Breakerz Bets wired into engine; Phase 2: Icon tier; Phase 3: Risk flags + high volatility
