@@ -114,26 +114,56 @@ Captures cultural attention — search interest, hobby community sentiment, medi
 
 ---
 
+### Layer 4 — Breakerz Editorial (B-score)
+
+*What does the Breakerz team think is about to happen?*
+
+This is a permanently human-curated layer — not a placeholder until automation arrives, but a deliberate editorial signal that coexists with automated data forever. Automation tells you what the market is doing. B-score tells you what Breakerz thinks is about to happen before the data catches up.
+
+No API captures this. It's proprietary: conversations with breakers, floor observations at shows, pattern recognition from running breaks, knowledge of upcoming YouTube drops, trade chatter that hasn't gone public. This is the team's edge expressed as a number.
+
+**Score range: -0.5 to +0.5** (narrower than the full buzz_score range — editorial opinion should modify the signal, not dominate it)
+
+**Examples of what B-score captures:**
+- A breaker has been moving a team slot at a premium for 3 weeks — the market hasn't caught up yet
+- The team knows a major YouTube break featuring a specific player drops next week
+- A hype pattern looks manufactured — pump-and-dump recognized from experience
+- A college prospect is generating combine buzz that hasn't hit Reddit yet
+- A veteran is being shopped in quiet trade talks — chatter not yet public
+
+**Admin UI:** Score input on the player management page, with a required one-sentence reason note. The reason field matters — it creates a record of the team's logic that can be reviewed over time to see whether the bets paid off.
+
+**Consumer display — "Breakerz Bets":** When B-score is set, Breakerz Sayz surfaces a distinct callout separate from the algorithmic signal:
+> *"Breakerz Bets: Our team is watching [Player] — [reason note]."*
+
+This is a product differentiator. No comp product has a team of hobby experts layering judgment on top of market data. The label makes that visible to the buyer.
+
+---
+
 ## Composite Score
 
-The three layers combine into a single `buzz_score` that feeds the engine.
+The four layers combine into a single `buzz_score` that feeds the engine.
 
 ```
-buzz_score = weighted_average(C-score, S-score, P-score)
+buzz_score = weighted_average(C-score × 0.45, S-score × 0.25, P-score × 0.15, B-score × 0.15)
 ```
 
-Suggested MVP weighting:
-- C-score (market): **0.5** — actual buying behavior is the strongest signal
-- S-score (stats): **0.3** — on-court performance is predictive and objective
-- P-score (social): **0.2** — directional signal but noisier; weight up as confidence increases
+When any component is null, the remaining weights rebalance proportionally.
+
+| Layer | Weight | Source | Permanent? |
+|---|---|---|---|
+| C-score (market) | 0.45 | CardHedger top-movers + price-updates | Automated |
+| S-score (stats) | 0.25 | Sports stats API (per sport) | Automated |
+| P-score (social) | 0.15 | Reddit + platform mentions | Automated |
+| B-score (editorial) | 0.15 | Breakerz team curation | Always human |
 
 All weights are tunable. The ratio should shift as we validate which signals actually correlate with break slot demand.
 
 **Kyle's recommended MVP stack:**
-1. Google Trends (free) — buzz proxy
-2. Reddit API (free) — hobby sentiment
-3. One paid sports stats API — performance layer
-4. CardHedger — market pricing (already have this)
+1. CardHedger `top-movers` — C-score (no custom pipeline needed)
+2. Reddit API (free) — P-score hobby sentiment
+3. One paid sports stats API — S-score performance layer
+4. Breakerz editorial input — B-score (admin UI, Phase 1)
 
 **Score scale: -1.0 to +1.0**
 
@@ -197,6 +227,7 @@ Signal should be visible to users — not hidden in the math.
 - Positive buzz: surface in Claude's narrative — "demand for [player]'s cards is running hot right now"
 - Negative buzz: surface as a risk flag — "note: [player] is currently on injured reserve"
 - Icon tier: explicit callout (see above)
+- **B-score set:** distinct "Breakerz Bets" callout block, visually separate from the AI analysis — shows the reason note directly. This should feel like insider intel from the team, not an algorithm output.
 
 **Team Slots table (break page):**
 - Small up/down arrow or flame/cold indicator on rows with elevated or depressed buzz
@@ -365,8 +396,12 @@ buzz_score FLOAT DEFAULT NULL  -- -0.9 to +1.0
 
 **To add (Phase 1):**
 ```sql
--- players (icon status and risk flags are player-level, not product-level)
+-- players (icon status is player-level, not product-level)
 ALTER TABLE players ADD COLUMN IF NOT EXISTS is_icon BOOLEAN DEFAULT FALSE;
+
+-- player_products (B-score is product-specific — a player can be a Breakerz Bet in one set but not another)
+ALTER TABLE player_products ADD COLUMN IF NOT EXISTS breakerz_score FLOAT DEFAULT NULL;  -- -0.5 to +0.5
+ALTER TABLE player_products ADD COLUMN IF NOT EXISTS breakerz_note TEXT DEFAULT NULL;    -- required when score is set
 
 -- Risk flags (separate table — a player can have multiple active flags)
 CREATE TABLE player_risk_flags (
@@ -396,9 +431,10 @@ No data pipeline. Admin sets scores manually, flags icons manually.
 
 - Admin UI: buzz_score slider/pills (-0.9 to +1.0) on player management page
 - Admin UI: `is_icon` toggle on player management page
-- Engine: already reads `buzz_score`; add `is_icon` guard to skip multiplier for icons
-- Breakerz Sayz: surface icon callout in Claude prompt and result UI
-- Migration: add `is_icon` to `players` table
+- Admin UI: **Breakerz Bets** section — `breakerz_score` input (-0.5 to +0.5) + required `breakerz_note` text field; save button disabled until note is filled
+- Engine: already reads `buzz_score`; add `is_icon` guard to skip multiplier for icons; add `breakerz_score` to composite
+- Breakerz Sayz: surface icon callout + Breakerz Bets callout (with reason note) in result UI; pass both to Claude prompt
+- Migrations: `is_icon` on `players`, `breakerz_score` + `breakerz_note` on `player_products`
 
 ---
 
