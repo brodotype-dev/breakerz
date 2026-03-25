@@ -62,6 +62,27 @@ export async function updateProduct(
   return {};
 }
 
+export async function saveBreakerzBets(
+  productId: string,
+  updates: Array<{ playerProductId: string; score: number; note: string }>
+): Promise<{ saved: number; error?: string }> {
+  try {
+    let saved = 0;
+    for (const u of updates) {
+      const { error } = await supabaseAdmin
+        .from('player_products')
+        .update({ breakerz_score: u.score, breakerz_note: u.note.trim() })
+        .eq('id', u.playerProductId);
+      if (error) { console.error('saveBreakerzBets update failed:', u.playerProductId, error); continue; }
+      saved++;
+    }
+    revalidatePath(`/admin/products/${productId}`);
+    return { saved };
+  } catch (err) {
+    return { saved: 0, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
 export async function deleteProduct(productId: string): Promise<{ error?: string }> {
   const { error } = await supabaseAdmin
     .from('products')

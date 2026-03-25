@@ -4,6 +4,7 @@ import Link from 'next/link';
 import type { Product, Sport } from '@/lib/types';
 import OddsUpload from './OddsUpload';
 import RunMatchingButton from './RunMatchingButton';
+import BreakerzBetsDebrief from './BreakerzBetsDebrief';
 
 type PageProps = { params: Promise<{ id: string }> };
 
@@ -39,6 +40,22 @@ export default async function ProductDashboardPage({ params }: PageProps) {
         .select('id, cardhedger_card_id, hobby_odds, breaker_odds, variant_name, card_number, player_product_id')
         .in('player_product_id', ppIds)
     : { data: [] };
+
+  // Player list for Breakerz Bets debrief
+  const { data: betsPlayers } = ppIds.length
+    ? await supabaseAdmin
+        .from('player_products')
+        .select('id, player:players(name, team, is_rookie)')
+        .eq('product_id', id)
+        .eq('insert_only', false)
+    : { data: [] };
+
+  const debriefPlayers = (betsPlayers ?? []).map((pp: any) => ({
+    id: pp.id,
+    name: pp.player?.name ?? '',
+    team: pp.player?.team ?? '',
+    isRookie: pp.player?.is_rookie ?? false,
+  })).filter(p => p.name);
 
   // For the unmatched list, join player names via player_products
   const { data: playerProductsWithPlayers } = ppIds.length
@@ -212,6 +229,24 @@ export default async function ProductDashboardPage({ params }: PageProps) {
               Upload the manufacturer odds PDF to apply pull rates to variants. Can be run independently of the checklist import.
             </p>
             <OddsUpload productId={id} />
+          </div>
+        </div>
+
+        {/* Breakerz Bets debrief */}
+        <div className="bg-card border rounded overflow-hidden">
+          <div className="h-1" style={{ background: 'oklch(0.52 0.22 27)' }} />
+          <div className="p-6 space-y-3">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+                  Breakerz Bets
+                </h2>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Tell us what you{"'"}re seeing in the market — Claude extracts player mentions, scores sentiment, and drafts reason notes for your review.
+                </p>
+              </div>
+            </div>
+            <BreakerzBetsDebrief productId={id} players={debriefPlayers} />
           </div>
         </div>
 
