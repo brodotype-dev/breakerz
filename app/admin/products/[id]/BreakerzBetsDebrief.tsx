@@ -112,13 +112,13 @@ export default function BreakerzBetsDebrief({ productId }: Props) {
   if (status === 'done') {
     return (
       <div className="space-y-3">
-        <div className="rounded border border-green-200 bg-green-50 dark:bg-green-950/20 p-4 flex items-center justify-between">
+        <div className="rounded border border-green-200 bg-green-50 dark:bg-green-950/20 p-4 space-y-3">
           <p className="text-sm font-medium text-green-700 dark:text-green-400">
-            {savedCount} Breakerz Bet{savedCount !== 1 ? 's' : ''} saved.
+            {savedCount} Breakerz Bet{savedCount !== 1 ? 's' : ''} saved successfully.
           </p>
           <button
             onClick={() => { setStatus('idle'); setNarrative(''); setRows([]); setSavedCount(0); }}
-            className="text-xs text-green-700 dark:text-green-400 hover:underline font-medium"
+            className="px-4 py-2 rounded border border-green-300 dark:border-green-700 text-sm font-bold text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors"
           >
             Run another debrief
           </button>

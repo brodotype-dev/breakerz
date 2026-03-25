@@ -196,7 +196,10 @@ export async function POST(req: NextRequest) {
       .filter(p => p.is_high_volatility)
       .map(p => p.player.name);
 
-    const topPlayers = teamPlayers.slice(0, 5).map(p => ({
+    // Always include icon players even if outside top 5 by EV
+    const top5 = teamPlayers.slice(0, 5);
+    const iconPlayersOutsideTop5 = teamPlayers.slice(5).filter(p => p.player.is_icon);
+    const topPlayers = [...top5, ...iconPlayersOutsideTop5].map(p => ({
       name: p.player.name,
       isRookie: p.player.is_rookie,
       isIcon: p.player.is_icon ?? false,

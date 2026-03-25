@@ -38,6 +38,9 @@ export async function POST(req: NextRequest) {
       }))
       .filter(p => p.name);
 
+    // Build a name lookup for cross-validation after parsing
+    const rosterNameMap = new Map(roster.map(p => [p.player_product_id, p.name]));
+
     const rosterLines = roster
       .map(p => `- ${p.name} (${p.team || 'N/A'}${p.is_rookie ? ', RC' : ''}) [id: ${p.player_product_id}]`)
       .join('\n');
@@ -52,19 +55,21 @@ The team has submitted the following market observations:
 ${narrative.trim()}
 """
 
-Extract every player mentioned (use fuzzy matching — nicknames and partial names are common, e.g. "Wemby" = "Victor Wembanyama", "Shohei" = "Shohei Ohtani").
-For each mentioned player, determine:
+Find players from the roster who are clearly mentioned in the narrative. Common nicknames are acceptable (e.g. "Wemby" = "Victor Wembanyama"), but ONLY match to a player if you are confident the mention refers to someone on this specific roster. Do not substitute a similar player if the mentioned player is not on this roster.
+
+For each matched player, determine:
+- player_product_id: copy the exact id from the roster line above — do not invent or modify IDs
+- player_name: copy the exact name from the roster line above
 - suggested_score: a float from -0.5 (very bearish/cold) to +0.5 (very bullish/hot), based on the sentiment expressed
-- reason_note: a single sentence drawn directly from the narrative that captures WHY (use the team's own words where possible)
+- reason_note: a single sentence drawn directly from the narrative that captures WHY
 - confidence: 0.0–1.0, how confident you are this mention refers to this specific player
 
-Return JSON only — no explanation, no markdown fences:
+Return JSON only — no explanation, no markdown fences, no text before or after the array:
 [
   { "player_product_id": "...", "player_name": "...", "suggested_score": 0.3, "reason_note": "...", "confidence": 0.9 }
 ]
 
-Only include players that were explicitly or clearly implicitly mentioned. Do not return the full roster.
-If no players are clearly mentioned, return [].`;
+IMPORTANT: Only include players explicitly mentioned. Do not include the full roster. If no players are clearly mentioned, return exactly: []`;
 
     const { default: Anthropic } = await import('@anthropic-ai/sdk');
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -76,8 +81,14 @@ If no players are clearly mentioned, return [].`;
     }, { timeout: 25_000 });
 
     const raw = (message.content[0] as { type: string; text: string }).text.trim();
-    const json = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
-    const parsed = JSON.parse(json) as Array<{
+
+    // Extract just the JSON array — handles cases where Claude adds text before/after
+    const arrayMatch = raw.match(/\[[\s\S]*\]/);
+    if (!arrayMatch) {
+      return NextResponse.json({ results: [] });
+    }
+
+    let parsed: Array<{
       player_product_id: string;
       player_name: string;
       suggested_score: number;
@@ -85,9 +96,27 @@ If no players are clearly mentioned, return [].`;
       confidence: number;
     }>;
 
+    try {
+      parsed = JSON.parse(arrayMatch[0]);
+    } catch {
+      return NextResponse.json({ results: [] });
+    }
+
     // Validate player_product_ids are real (guard against hallucination)
     const validIds = new Set(roster.map(p => p.player_product_id));
-    const validated = parsed.filter(r => validIds.has(r.player_product_id));
+    const validated = parsed
+      .filter(r => validIds.has(r.player_product_id))
+      .map(r => {
+        // Cross-check: if Claude returned a different player_name than what's in the roster,
+        // it likely matched the wrong player — penalise confidence
+        const actualName = rosterNameMap.get(r.player_product_id) ?? '';
+        const nameMismatch = actualName.toLowerCase() !== r.player_name.toLowerCase();
+        return {
+          ...r,
+          player_name: actualName || r.player_name, // always use the DB name
+          confidence: nameMismatch ? Math.min(r.confidence, 0.4) : r.confidence,
+        };
+      });
 
     return NextResponse.json({ results: validated });
   } catch (err) {
