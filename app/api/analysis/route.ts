@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { computeLiveEV, get90DayPrices } from '@/lib/cardhedger';
-
-export const maxDuration = 60;
 import { computeSlotPricing, computeTeamSlotPricing, computeSignal, formatCurrency } from '@/lib/engine';
 import type { PlayerWithPricing, BreakConfig } from '@/lib/types';
+
+export const maxDuration = 60;
 
 const CACHE_TTL_HOURS = 24;
 
@@ -219,7 +219,7 @@ export async function POST(req: NextRequest) {
       .filter(p => p.breakerz_score != null && p.breakerz_score !== 0)
       .map(p => {
         const direction = (p.breakerz_score ?? 0) > 0 ? 'bullish' : 'bearish';
-        const note = (p as any).breakerz_note ? ` — "${(p as any).breakerz_note}"` : '';
+        const note = p.breakerz_note ? ` — "${p.breakerz_note}"` : '';
         return `- ${p.player.name}: Breakerz is ${direction} (score: ${p.breakerz_score})${note}`;
       }).join('\n');
 
@@ -267,7 +267,7 @@ Write a 2–3 sentence analysis explaining whether this break slot is worth buyi
 
     const message = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 200,
+      max_tokens: 300,
       messages: [{ role: 'user', content: prompt }],
     }, { timeout: 15_000 });
 

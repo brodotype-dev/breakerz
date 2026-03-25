@@ -121,8 +121,10 @@ export default function PlayerFlagsManager({ productId, players }: Props) {
                 {/* Add flag toggle */}
                 <button
                   onClick={() => {
-                    setExpandedId(isExpanded ? null : pp.playerProductId);
+                    const opening = !isExpanded;
+                    setExpandedId(opening ? pp.playerProductId : null);
                     setNewFlagNote('');
+                    if (opening) setNewFlagType('injury');
                   }}
                   className="text-[9px] font-bold px-1.5 py-0.5 rounded border border-dashed text-muted-foreground hover:text-foreground hover:border-foreground transition-colors uppercase tracking-wide"
                 >

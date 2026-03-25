@@ -4,13 +4,6 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { saveBreakerzBets } from '../actions';
 
-interface Player {
-  id: string;
-  name: string;
-  team: string;
-  isRookie: boolean;
-}
-
 interface ParsedResult {
   player_product_id: string;
   player_name: string;
@@ -43,10 +36,9 @@ function snapScore(raw: number): number {
 
 interface Props {
   productId: string;
-  players: Player[];
 }
 
-export default function BreakerzBetsDebrief({ productId, players: _players }: Props) {
+export default function BreakerzBetsDebrief({ productId }: Props) {
   const router = useRouter();
   const [narrative, setNarrative] = useState('');
   const [status, setStatus] = useState<'idle' | 'parsing' | 'reviewing' | 'done' | 'error'>('idle');

@@ -43,6 +43,7 @@ export interface PlayerProduct {
   cardhedger_card_id: string | null;
   buzz_score: number | null;
   breakerz_score: number | null;
+  breakerz_note: string | null;
   is_high_volatility: boolean;
   player?: Player;
 }

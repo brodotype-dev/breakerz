@@ -41,22 +41,6 @@ export default async function ProductDashboardPage({ params }: PageProps) {
         .in('player_product_id', ppIds)
     : { data: [] };
 
-  // Player list for Breakerz Bets debrief
-  const { data: betsPlayers } = ppIds.length
-    ? await supabaseAdmin
-        .from('player_products')
-        .select('id, player:players(name, team, is_rookie)')
-        .eq('product_id', id)
-        .eq('insert_only', false)
-    : { data: [] };
-
-  const debriefPlayers = (betsPlayers ?? []).map((pp: any) => ({
-    id: pp.id,
-    name: pp.player?.name ?? '',
-    team: pp.player?.team ?? '',
-    isRookie: pp.player?.is_rookie ?? false,
-  })).filter(p => p.name);
-
   // For the unmatched list, join player names via player_products
   const { data: playerProductsWithPlayers } = ppIds.length
     ? await supabaseAdmin
@@ -246,7 +230,7 @@ export default async function ProductDashboardPage({ params }: PageProps) {
                 </p>
               </div>
             </div>
-            <BreakerzBetsDebrief productId={id} players={debriefPlayers} />
+            <BreakerzBetsDebrief productId={id} />
           </div>
         </div>
 
