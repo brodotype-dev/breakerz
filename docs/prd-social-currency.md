@@ -51,7 +51,18 @@ This is the most direct signal — actual secondary market behavior. Distinct fr
 - Prices declining week-over-week despite steady mentions → hype without buyers
 - Cards sitting on eBay for days → weak demand regardless of EV
 
-**Status:** CardHedger integration exists. Kyle needs to confirm velocity/trajectory data is available via the API.
+**CardHedger endpoints available (from full API review):**
+
+| Endpoint | Purpose | How we use it |
+|---|---|---|
+| `GET /v1/cards/top-movers` | Pre-computed cards with highest recent price gains; anomaly-filtered | **Primary C-score source** — cross-reference against our active players; no custom velocity math needed |
+| `POST /v1/cards/price-updates` | Delta polling for price changes since a given timestamp | Powers High Volatility auto-detection; efficient — only fetches what changed |
+| `GET /v1/download/daily-price-export/{file_date}` | Full CSV of all prices for a given day | Nightly batch refresh once product catalog grows; far cheaper than per-card calls |
+| `POST /v1/cards/subscribe-price-updates` | Subscribe to real-time tracking for specific card IDs | Future — real-time alerts; not needed for Phase 2 MVP |
+
+**Key insight:** `top-movers` means we don't need to build C-score velocity from scratch. CardHedger already computes "cards with the highest recent price gains" with outlier filtering built in. Pulling that endpoint daily and joining against our tracked players IS the C-score — significantly lower build effort than originally estimated.
+
+**Note on card matching:** CardHedger also exposes `POST /v1/cards/card-match`, an AI-powered natural language matcher. We currently do this with Claude (`lib/cardhedger.ts` → `claudeCardMatch()`). Worth benchmarking their endpoint against ours on a sample batch — if accuracy is comparable, it eliminates Anthropic API cost on matching operations entirely.
 
 ---
 
@@ -395,18 +406,22 @@ No data pipeline. Admin sets scores manually, flags icons manually.
 
 Replace manual scores with an automated pipeline. Build incrementally — each layer adds value independently.
 
-**Recommended build order:**
-1. **CardHedger velocity** (C-score) — already in the API relationship; lowest lift, highest signal quality
-2. **Google Trends + Reddit** (P-score MVP) — free, covers the social surface adequately for launch
-3. **Sports stats API** (S-score) — pick one paid provider per sport as products expand; injury status alone justifies the cost
+**Recommended build order (updated based on full API review):**
+
+1. **`top-movers` cross-reference** (C-score) — single daily API call, join against tracked players; no custom velocity pipeline needed. Fastest path to a real market signal.
+2. **`price-updates` delta polling** — powers High Volatility auto-detection; efficient because it only returns what changed since last poll
+3. **Reddit API** (P-score) — free, hobby-specific sentiment; covers the social layer adequately for MVP
+4. **Sports stats API** (S-score) — pick one provider per sport; injury status auto-drafts Risk Flags
+5. **`daily-price-export`** — replace per-card calls with a nightly CSV batch once the tracked player list grows beyond ~200
 
 **Pipeline architecture:**
-1. Scheduled job (daily or every 6h) pulls signal per player from each active source
-2. Normalizes each component to -1.0 to +1.0 relative to rolling 30-day baseline per player
-3. Computes weighted composite, clamps to [-0.9, +1.0]
-4. Writes to `player_products.buzz_score`
-5. Engine picks it up on next pricing request (no cache invalidation needed — next fetch reflects new score)
-6. Stats API injury status → auto-drafts Risk Flag for admin review (never auto-publishes)
+1. Scheduled job (daily) calls `top-movers`, filters to our tracked `cardhedger_card_id` set
+2. `price-updates` delta poll (every 6h) flags cards with >threshold price swing → queues High Volatility review
+3. Reddit + stats job (daily) computes P-score and S-score per player
+4. Normalizes each component to -1.0 to +1.0 relative to rolling 30-day baseline
+5. Computes weighted composite, clamps to [-0.9, +1.0], writes to `player_products.buzz_score`
+6. Engine picks it up on next pricing request — no cache invalidation needed
+7. Stats API injury flag → auto-drafts Risk Flag record (pending admin approval before publishing)
 
 ---
 
