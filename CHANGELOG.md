@@ -5,15 +5,26 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-03-24 (5)
+
+### Breakerz Sayz — rename + case count input + homepage CTA
+- Renamed feature from "Breaker Says" → **"Breakerz Sayz"** everywhere (page title, header, nav links)
+- Added **Cases in the break** input on the analysis page (default 10, range 1–50); fair value now scales correctly for single-case vs multi-case group breaks
+- API (`POST /api/analysis`) accepts `numCases` param; feeds into `BreakConfig.hobbyCases` / `bdCases` — previously always assumed 10 cases
+- Homepage: replaced buried text link with a full-width promo strip between header and products — red "Breakerz Sayz" badge, tagline, and prominent "Check a deal →" CTA button
+
+---
+
 ## 2026-03-24 (4)
 
-### Breaker Says — AI break slot analysis page
+### Breakerz Sayz — AI break slot analysis page
 - New public page at `/analysis` — "Is this break worth it?"
-- Flow: select product → select team → enter break type + what the breaker is charging → Run Analysis
+- Flow: select product → select team → enter break type + case count + what the breaker is charging → Run Analysis
 - Calls Claude Haiku with full player context (EV, RC flags, fair value, ask price) → returns 2–3 sentence BUY/WATCH/PASS narrative
 - Shows signal badge, % above/below fair value, AI reasoning, and top 5 players with EV data
-- Linked from homepage header and break page header as "Breaker Says →"
-- New API route: `GET /api/analysis` (product list) + `POST /api/analysis` (analysis)
+- For uncached players, fetches live CardHedger pricing before running analysis — prevents $0 fair values on first run
+- Linked from homepage promo strip and break page header
+- New API route: `GET /api/analysis` (product list) + `POST /api/analysis` (analysis, accepts `numCases`)
 
 ### Product release date + pre-release banner
 - Added `release_date DATE` column to products (migration `20260324190000_add_release_date.sql`)

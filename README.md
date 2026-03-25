@@ -18,6 +18,8 @@ Given a sports card product (e.g. 2025-26 Topps Finest Basketball), Card Breaker
 4. Distributes break cost across teams proportionally
 5. Outputs per-team slot costs, RC counts, and BUY/WATCH/PASS signals
 
+**Breakerz Sayz** (`/analysis`) is the consumer-facing deal checker: pick a product, select your team, enter the case count and what the breaker is charging — Claude returns a BUY/WATCH/PASS verdict with a 2–3 sentence AI narrative explaining the reasoning.
+
 ---
 
 ## Stack
@@ -66,12 +68,15 @@ See [CLAUDE.md](./CLAUDE.md) for full deploy instructions and known gotchas.
 
 | Route | Purpose |
 |---|---|
-| `/break/[slug]` | Public break analysis page |
+| `/` | Homepage — product grid by sport |
+| `/analysis` | **Breakerz Sayz** — consumer deal checker (BUY/WATCH/PASS) |
+| `/break/[slug]` | Break analysis page — team slots, player EV, deal checker column |
 | `/admin/products` | Product listing |
 | `/admin/products/[id]` | Product dashboard (readiness stats, odds upload, re-run matching) |
 | `/admin/import-checklist` | 3-step checklist import wizard |
 | `/admin/products/[id]/players` | Manual player management |
-| `/api/pricing` | Live pricing endpoint (Supabase + CardHedger) |
+| `/api/analysis` | GET: active product list · POST: run Breakerz Sayz analysis |
+| `/api/pricing` | Live pricing endpoint (Supabase + CardHedger, 24h cache) |
 | `/api/admin/parse-checklist` | PDF/CSV checklist parser |
 | `/api/admin/import-checklist` | Upsert players, products, variants |
 | `/api/admin/match-cardhedger` | Auto-link variants to CardHedger card IDs (chunked, Claude-powered) |
@@ -108,4 +113,5 @@ node scripts/map-cards.mjs
 
 - [CHANGELOG.md](./CHANGELOG.md) — feature history and release notes
 - [CLAUDE.md](./CLAUDE.md) — context for Claude Code sessions (deploy, gotchas, schema)
+- [docs/prd-social-currency.md](./docs/prd-social-currency.md) — Social Currency Signal PRD (buzz score pipeline)
 - [docs/plans/](./docs/plans/) — implementation plans for major features
