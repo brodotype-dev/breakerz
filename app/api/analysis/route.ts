@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     // Fetch players with cached pricing
     const { data: playerProducts } = await supabaseAdmin
       .from('player_products')
-      .select('*, player:players(*), buzz_score')
+      .select('*, player:players(*), buzz_score, breakerz_score')
       .eq('product_id', productId)
       .eq('insert_only', false);
 
@@ -173,9 +173,33 @@ export async function POST(req: NextRequest) {
     const { signal, valuePct } = computeSignal(fairValue, askPrice);
 
     const teamPlayers = teamSlot.players.sort((a, b) => b.evMid - a.evMid);
+    const teamPlayerProductIds = teamPlayers.map(p => p.id);
+
+    // Fetch active risk flags for this team's players
+    const { data: teamFlags } = teamPlayerProductIds.length
+      ? await supabaseAdmin
+          .from('player_risk_flags')
+          .select('player_product_id, flag_type, note')
+          .in('player_product_id', teamPlayerProductIds)
+          .is('cleared_at', null)
+      : { data: [] };
+
+    // Build name lookup for flags
+    const ppNameMap = new Map(teamPlayers.map(p => [p.id, p.player.name]));
+    const riskFlags = (teamFlags ?? []).map(f => ({
+      playerName: ppNameMap.get(f.player_product_id) ?? '',
+      flagType: f.flag_type as string,
+      note: f.note,
+    }));
+
+    const hvPlayers = teamPlayers
+      .filter(p => p.is_high_volatility)
+      .map(p => p.player.name);
+
     const topPlayers = teamPlayers.slice(0, 5).map(p => ({
       name: p.player.name,
       isRookie: p.player.is_rookie,
+      isIcon: p.player.is_icon ?? false,
       evMid: p.evMid,
       evHigh: p.evHigh,
     }));
@@ -189,6 +213,36 @@ export async function POST(req: NextRequest) {
     const rookieNote = rookies.length > 0
       ? `Rookies on this team: ${rookies.map(r => r.player.name).join(', ')}.`
       : 'No rookies on this team.';
+
+    // Breakerz Bets editorial notes for players on this team
+    const betsNotes = teamPlayers
+      .filter(p => p.breakerz_score != null && p.breakerz_score !== 0)
+      .map(p => {
+        const direction = (p.breakerz_score ?? 0) > 0 ? 'bullish' : 'bearish';
+        const note = (p as any).breakerz_note ? ` — "${(p as any).breakerz_note}"` : '';
+        return `- ${p.player.name}: Breakerz is ${direction} (score: ${p.breakerz_score})${note}`;
+      }).join('\n');
+
+    const betsSection = betsNotes
+      ? `\nBreakerz editorial market read:\n${betsNotes}`
+      : '';
+
+    // Icon-tier players
+    const iconNames = teamPlayers.filter(p => p.player.is_icon).map(p => p.player.name);
+    const iconSection = iconNames.length
+      ? `\nIcon-tier players on this team (structural demand baked into EV — not amplified by buzz): ${iconNames.join(', ')}.`
+      : '';
+
+    // Risk flags
+    const flagLines = riskFlags.map(f => `- ${f.playerName} [${f.flagType}]: ${f.note}`).join('\n');
+    const flagSection = flagLines
+      ? `\nRisk flags (consumer-visible disclosures):\n${flagLines}\nIMPORTANT: Mention flagged players directly — buyers need to know about these risks.`
+      : '';
+
+    // High volatility
+    const hvSection = hvPlayers.length
+      ? `\nHigh Volatility: ${hvPlayers.join(', ')} — pricing for these players is unusually uncertain. Note this in your analysis.`
+      : '';
 
     const prompt = `You are a sports card break analyst at Card Breakerz. A collector is evaluating a group break slot.
 
@@ -204,7 +258,7 @@ Top players on ${team}:
 ${playerLines}
 
 ${rookieNote}
-Total players on team: ${teamSlot.playerCount}
+Total players on team: ${teamSlot.playerCount}${betsSection}${iconSection}${flagSection}${hvSection}
 
 Write a 2–3 sentence analysis explaining whether this break slot is worth buying at this price. Be direct — lead with the signal. Mention the most important player(s) to hit, the rookie upside if applicable, and whether the price justifies the risk. Use plain conversational language, no bullet points, no markdown.`;
 
@@ -228,6 +282,8 @@ Write a 2–3 sentence analysis explaining whether this break slot is worth buyi
       topPlayers,
       teamName: team,
       productName: product.name,
+      riskFlags,
+      hvPlayers,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';

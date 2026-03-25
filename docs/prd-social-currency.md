@@ -1,6 +1,6 @@
 # PRD: Social Currency Signal
 
-**Status:** Planned — schema foundation complete, data pipeline not yet built
+**Status:** In progress — B-score input built; engine, consumer display, and automated pipeline not yet built
 **Owner:** Brody Clemmer
 **Last updated:** 2026-03-24
 **Input:** Kyle (Town & Line / CardPulse) — signal layer architecture and API recommendations
@@ -27,460 +27,389 @@ Secondary user: the **breaker** setting slot prices. Social signal helps price f
 
 ---
 
-## Three Signal Layers
+## Build Status
 
-Kyle's architecture breaks this into three distinct layers. Each is independent — they can be built and shipped incrementally, and each adds signal on its own before the others are in place.
+| Component | Status | Notes |
+|---|---|---|
+| `buzz_score` column on `player_products` | ✅ Deployed | Migration 20260324180000 |
+| `buzz_score` read by engine | ✅ Wired | `lib/engine.ts` — but always null/0 until populated |
+| `breakerz_score` + `breakerz_note` columns | ✅ Deployed | Migration 20260324200000 |
+| Breakerz Bets Debrief admin UI | ✅ Built | `/admin/products/[id]` — conversational input, review table, saves to DB |
+| `breakerz_score` read by engine | ❌ Not wired | Data is collected but has no effect on slot costs yet |
+| Breakerz Bets callout in Breakerz Sayz | ❌ Not built | |
+| `is_icon` flag on `players` | ❌ Not built | Migration + engine guard + UI + Sayz callout all pending |
+| Icon callout in Breakerz Sayz | ❌ Not built | |
+| `player_risk_flags` table | ❌ Not built | Migration + admin UI + display all pending |
+| Risk flag display in Breakerz Sayz | ❌ Not built | |
+| `is_high_volatility` on `player_products` | ❌ Not built | |
+| High Volatility display | ❌ Not built | |
+| Buzz indicators on Team Slots / Player table | ❌ Not built | |
+| C-score (CardHedger top-movers) | ❌ Not built | No automated pipeline yet |
+| P-score (Reddit sentiment) | ❌ Not built | |
+| S-score (sports stats API) | ❌ Not built | |
+| Composite score formula in engine | ❌ Not built | Engine reads raw `buzz_score` directly, not a composite |
+| Score decay mechanism | ❌ Not designed | Open question |
 
 ---
 
-### Layer 1 — Card Market (C-score)
+## Signal Architecture
+
+### Score Design
+
+The system has two score fields on `player_products` that combine in the engine:
+
+```
+effective_score = clamp(buzz_score + breakerz_score, -0.9, 1.0)
+hobbyWeight = hobbyEVPerBox × (1 + effective_score)
+```
+
+- **`buzz_score`** — the automated composite output (C + S + P layers). Written by the scheduled pipeline. When no pipeline exists, this is null/0 and has no effect.
+- **`breakerz_score`** — the editorial layer (B-score). Written via the Breakerz Bets Debrief admin UI. Always human-curated, never automated.
+
+They add additively so neither can fully override the other. The combined value is clamped to [-0.9, +1.0] to prevent zero/negative weights.
+
+The automated composite is computed outside the engine (in the scheduled job) before writing to `buzz_score`:
+
+```
+buzz_score = clamp(C × 0.45 + S × 0.25 + P × 0.15, -0.9, 1.0)
+```
+
+B-score is always separate — it does not fold into `buzz_score`.
+
+---
+
+### The Four Signal Layers
+
+#### Layer 1 — Card Market (C-score, weight 0.45)
 
 *What is the market doing with this player's cards right now?*
 
-**Source:** CardHedger (already integrated)
+**Source:** CardHedger — already integrated
 
-This is the most direct signal — actual secondary market behavior. Distinct from the EV point-in-time price: this is about *rate of change* and *demand velocity*.
+Rate of change and demand velocity, not a point-in-time price.
 
-**Inputs:**
-- Sales velocity vs rolling 30-day baseline
-- Price trajectory: current comps vs 14-day and 30-day averages
-- Sell-through rate: how quickly listings are moving
-
-**Examples:**
-- Cards selling 3× faster than baseline → strong demand spike
-- Prices declining week-over-week despite steady mentions → hype without buyers
-- Cards sitting on eBay for days → weak demand regardless of EV
-
-**CardHedger endpoints available (from full API review):**
+**CardHedger endpoints:**
 
 | Endpoint | Purpose | How we use it |
 |---|---|---|
-| `GET /v1/cards/top-movers` | Pre-computed cards with highest recent price gains; anomaly-filtered | **Primary C-score source** — cross-reference against our active players; no custom velocity math needed |
-| `POST /v1/cards/price-updates` | Delta polling for price changes since a given timestamp | Powers High Volatility auto-detection; efficient — only fetches what changed |
-| `GET /v1/download/daily-price-export/{file_date}` | Full CSV of all prices for a given day | Nightly batch refresh once product catalog grows; far cheaper than per-card calls |
-| `POST /v1/cards/subscribe-price-updates` | Subscribe to real-time tracking for specific card IDs | Future — real-time alerts; not needed for Phase 2 MVP |
+| `GET /v1/cards/top-movers` | Pre-computed cards with highest recent price gains; anomaly-filtered | **Primary source** — cross-reference against our tracked `cardhedger_card_id` set daily |
+| `POST /v1/cards/price-updates` | Delta polling since a timestamp | High Volatility auto-detection — only fetches what changed |
+| `GET /v1/download/daily-price-export/{file_date}` | Full daily CSV | Nightly batch once catalog grows beyond ~200 tracked players |
 
-**Key insight:** `top-movers` means we don't need to build C-score velocity from scratch. CardHedger already computes "cards with the highest recent price gains" with outlier filtering built in. Pulling that endpoint daily and joining against our tracked players IS the C-score — significantly lower build effort than originally estimated.
-
-**Note on card matching:** CardHedger also exposes `POST /v1/cards/card-match`, an AI-powered natural language matcher. We currently do this with Claude (`lib/cardhedger.ts` → `claudeCardMatch()`). Worth benchmarking their endpoint against ours on a sample batch — if accuracy is comparable, it eliminates Anthropic API cost on matching operations entirely.
+`top-movers` means no custom velocity pipeline is needed. CardHedger already computes the signal with outlier filtering. Cross-referencing against our players IS the C-score.
 
 ---
 
-### Layer 2 — Player Performance (S-score)
+#### Layer 2 — Player Performance (S-score, weight 0.25)
 
 *Is this player playing well right now?*
 
-This layer was missing from the original PRD. Recent on-court/on-field performance is a direct driver of card demand — a player averaging 35 PPG in a playoff run moves differently than the same player at 18 PPG in a lost season.
+Recent on-court/on-field performance is a direct driver of card demand. S-score is null for pre-debut prospects and college players — the composite rebalances when S-score is absent (see Prospect Window below).
 
 **Sources by sport:**
 
-| Sport | API | Cost | Key metrics |
-|---|---|---|---|
-| NBA | balldontlie.io | Free | PPG, RPG, APG, PER, recent game logs |
-| NBA (deeper) | sportsdata.io | Paid | More depth, injury status |
-| College | ESPN public endpoints | Free | Stats, draft stock context |
-| WNBA | ESPN public endpoints | Free | Stats |
-| MLB | — | TBD | Similar approach |
-| NFL | — | TBD | Similar approach |
+| Sport | API | Cost |
+|---|---|---|
+| NBA | balldontlie.io | Free |
+| NBA (deeper) | sportsdata.io | Paid |
+| College / WNBA | ESPN public endpoints | Free |
+| MLB / NFL | TBD | TBD |
 
-**What we compute:**
-- Recent performance trend (last 7 days vs season average) — rising or falling
-- Injury status (feeds directly into Risk Flags, see below)
-- Draft/prospect context for college players on pre-release products
+**Key metrics:** PPG/ERA/etc., recent game log trend vs season average, injury status
 
-**Output:** A performance momentum score — positive when a player is playing above their norm, negative when trending down or on IR.
+Injury status → auto-drafts a pending Risk Flag for admin review (never auto-publishes).
 
 ---
 
-### Layer 3 — Social Buzz (P-score)
+#### Layer 3 — Social Buzz (P-score, weight 0.15)
 
 *Are people talking about this player, and is it positive?*
 
-Captures cultural attention — search interest, hobby community sentiment, media volume. Harder to source than market or stats data, but captures things the other two miss: viral moments, off-field stories, draft hype, breakout narratives.
-
-**Sources (Kyle's assessment):**
+**Sources:**
 
 | Source | Cost | Signal |
 |---|---|---|
-| Google Trends (pytrends) | Free | Search interest spikes — strong proxy for card demand |
-| Reddit API | Free | r/sportscards + sport-specific subs; hobby-specific sentiment |
-| X / Twitter API | ~$100/mo (basic tier) | Mention volume + engagement |
+| Reddit API | Free | r/sportscards + sport subs — hobby-specific sentiment |
+| X / Twitter API | ~$100/mo | Mention volume + engagement |
 | NewsAPI | $0–$449/mo | Media mention volume |
-| TikTok / Instagram | No public API | Would need SocialBlade or Google Trends as proxy |
 
-**Kyle's recommendation for MVP: Google Trends + Reddit.** Both free, together they cover search intent (is anyone looking this player up?) and hobby community sentiment (are collectors excited or not?).
-
-**Output:** A cultural attention score — directional, positive or negative, based on volume and sentiment of mentions.
+**MVP recommendation:** Reddit only. Free, hobby-specific, good signal-to-noise for card demand specifically. Google Trends was previously considered but is too broad and noisy for player-level card signal.
 
 ---
 
-### Layer 4 — Breakerz Editorial (B-score)
+#### Layer 4 — Breakerz Editorial (B-score, weight 0.15 via `breakerz_score`)
 
 *What does the Breakerz team think is about to happen?*
 
-This is a permanently human-curated layer — not a placeholder until automation arrives, but a deliberate editorial signal that coexists with automated data forever. Automation tells you what the market is doing. B-score tells you what Breakerz thinks is about to happen before the data catches up.
+Permanent human-curated layer. Coexists with automation forever — it captures what no API can: breaker conversations, insider chatter, pattern recognition, upcoming YouTube drops.
 
-No API captures this. It's proprietary: conversations with breakers, floor observations at shows, pattern recognition from running breaks, knowledge of upcoming YouTube drops, trade chatter that hasn't gone public. This is the team's edge expressed as a number.
+**Input mechanism:** Breakerz Bets Debrief (✅ built)
+- Admin pastes a market narrative in natural language
+- Claude parses against the product's full player roster, fuzzy-matches names (e.g., "Wemby" → "Victor Wembanyama")
+- Returns suggested scores (-0.5 to +0.5) and drafted reason notes for admin review
+- Admin edits scores/notes, checks/unchecks players, clicks "Apply"
+- Writes to `breakerz_score` and `breakerz_note` on `player_products`
 
-**Score range: -0.5 to +0.5** (narrower than the full buzz_score range — editorial opinion should modify the signal, not dominate it)
+**Score range: -0.5 to +0.5** — editorial opinion modifies the signal, doesn't dominate it.
 
-**Examples of what B-score captures:**
-- A breaker has been moving a team slot at a premium for 3 weeks — the market hasn't caught up yet
-- The team knows a major YouTube break featuring a specific player drops next week
-- A hype pattern looks manufactured — pump-and-dump recognized from experience
-- A college prospect is generating combine buzz that hasn't hit Reddit yet
-- A veteran is being shopped in quiet trade talks — chatter not yet public
-
-**Admin UI:** Score input on the player management page, with a required one-sentence reason note. The reason field matters — it creates a record of the team's logic that can be reviewed over time to see whether the bets paid off.
-
-**Consumer display — "Breakerz Bets":** When B-score is set, Breakerz Sayz surfaces a distinct callout separate from the algorithmic signal:
-> *"Breakerz Bets: Our team is watching [Player] — [reason note]."*
-
-This is a product differentiator. No comp product has a team of hobby experts layering judgment on top of market data. The label makes that visible to the buyer.
+**Consumer label:** "Breakerz Bets" — displayed as a distinct callout in Breakerz Sayz with the reason note. Not an algorithm output. The team's read, attributed to the team.
 
 ---
 
-## Composite Score
+### The Icon Tier
 
-The four layers combine into a single `buzz_score` that feeds the engine.
+Some players exist beyond the reach of a normal scoring model — structural sticking power that doesn't cycle like normal buzz. **Wemby. Ohtani. Judge. LeBron.**
 
-```
-buzz_score = weighted_average(C-score × 0.45, S-score × 0.25, P-score × 0.15, B-score × 0.15)
-```
+For these players, a buzz multiplier misrepresents the situation. Their elevated demand is not a phase — it's the baseline. The `is_icon` flag skips the buzz multiplier entirely and instead surfaces a consumer callout: *"This is a generational player — our model's baseline doesn't fully capture their structural demand."*
 
-When any component is null, the remaining weights rebalance proportionally.
+**Engine behavior:** `is_icon = true` → skip `buzz_score`/`breakerz_score` multiplier. EV comps already reflect their true floor.
 
-| Layer | Weight | Source | Permanent? |
-|---|---|---|---|
-| C-score (market) | 0.45 | CardHedger top-movers + price-updates | Automated |
-| S-score (stats) | 0.25 | Sports stats API (per sport) | Automated |
-| P-score (social) | 0.15 | Reddit + platform mentions | Automated |
-| B-score (editorial) | 0.15 | Breakerz team curation | Always human |
+**Admin UI:** `is_icon` checkbox on the player management page. Short list — 10–20 players globally.
 
-All weights are tunable. The ratio should shift as we validate which signals actually correlate with break slot demand.
+---
 
-**Kyle's recommended MVP stack:**
-1. CardHedger `top-movers` — C-score (no custom pipeline needed)
-2. Reddit API (free) — P-score hobby sentiment
-3. One paid sports stats API — S-score performance layer
-4. Breakerz editorial input — B-score (admin UI, Phase 1)
+### Player Risk Flags
 
-**Score scale: -1.0 to +1.0**
+Separate from buzz_score entirely. Disclosure layer, not a scoring adjustment — equivalent to a fantasy sports injury report.
 
-| Range | Meaning | Engine effect |
+The engine does not change slot costs based on Risk Flags. They surface information and let the buyer decide.
+
+**Schema:** `player_risk_flags` table (player-level — an injury applies across all products)
+
+| Field | Type | Values |
 |---|---|---|
-| `null` / `0.0` | No data, no adjustment | Baseline (current behavior) |
-| `+0.1` to `+0.25` | Mild positive buzz | +10–25% weight boost |
-| `+0.25` to `+0.5` | Hot — trending, active demand | +25–50% weight boost |
-| `+0.5` to `+1.0` | Peak hype — viral, breaking out | +50–100% weight boost |
-| `-0.1` to `-0.25` | Mild headwind — fading, quiet | -10–25% weight reduction |
-| `-0.25` to `-0.5` | Soft — injured, poor performance, declining sentiment | -25–50% weight reduction |
-| `-0.5` to `-0.9` | Cold — IR, suspended, disgraced | -50–90% weight reduction (floor: -0.9) |
+| `type` | TEXT | `injury` / `suspension` / `legal` / `trade` / `retirement` / `off-field` |
+| `severity` | TEXT | `low` / `medium` / `high` |
+| `note` | TEXT | 1–2 factual sentences, no speculation |
+| `is_active` | BOOLEAN | Clear when resolved |
 
-**Engine formula (already wired in):**
-```
-hobbyWeight = hobbyEVPerBox × (1 + buzz_score)
-```
-
-Floor at `buzz_score = -0.9` to prevent zero or negative weights. A weight of zero means a team's slot cost drops to $0 if one player dominates their team — needs the floor to behave correctly.
+**Phase 2:** Stats API injury status → auto-drafts pending flag → admin approves before publishing. Human always in the loop on Risk Flags.
 
 ---
 
-## The Icon Tier — Players Outside Statistical Reference
+### High Volatility Tag
 
-Some players exist beyond the reach of a normal scoring model. Their cultural footprint is so large and so durable that no historical comp, no sales baseline, and no sentiment score captures what they actually mean to the hobby.
+Uncertainty signal — not negative, not positive. *"Expect large price swings in either direction."* Different from a Risk Flag (which has a known cause). High Volatility may have no identified cause.
 
-**Wemby. Ohtani. Judge. LeBron. Harper.**
+Lives on `player_products` (not `players`) because volatility is product/card-specific.
 
-These are not outliers in the statistical sense — they don't just have high buzz scores. They have *structural sticking power*. Their cards move regardless of recent performance, their hype self-sustains, and their floor is substantially higher than what their pure EV suggests during any given period.
+**Phase 2 auto-detection:** C-score price spread > 3× 30-day baseline → pending admin review.
 
-Treating them like a normal player with a high buzz_score misrepresents the situation. A 1.0 buzz score implies a multiplier that could flip back to 0. For icon-tier players, the elevated demand is not a cycle — it's the baseline.
-
-### How We Handle Icons
-
-**New flag:** `is_icon BOOLEAN DEFAULT FALSE` on `player_products` (or `players` — probably players, since iconhood is player-level not product-level).
-
-**Engine behavior when `is_icon = true`:**
-- Do not apply `buzz_score` multiplier — the floor is already baked in via elevated EV comps
-- Instead, surface a distinct UI signal: this player operates outside normal model reference
-
-**Breakerz Sayz behavior:**
-- When a team's slot includes an icon-tier player, show a visible callout: **"This team includes [Player], a generational player — their cards hold structural demand that our model's baseline doesn't fully capture. Fair value may be understated."**
-- Claude's analysis prompt gets an explicit note: `{player name} is designated icon-tier — their historical comps are not a reliable statistical reference for current demand. Mention this in the analysis.`
-
-**Admin UI:**
-- Simple toggle on the player management page: `Icon Player` checkbox
-- Short list — this should be 10–20 players globally across all sports, not a casual designation
-
-**Examples of icon-tier players (not exhaustive):**
-- Baseball: Shohei Ohtani, Aaron Judge, Ronald Acuña Jr.
-- Basketball: LeBron James, Victor Wembanyama, Giannis Antetokounmpo
-- Football: Patrick Mahomes, Josh Allen
+**Default for top prospects on pre-release products** — tag them High Volatility until the market establishes.
 
 ---
 
-## Consumer-Facing Expression
+### Prospect and Draft Window
 
-Signal should be visible to users — not hidden in the math.
+S-score is null for pre-debut players. The composite rebalances:
 
-**Breakerz Sayz (analysis page):**
-- Positive buzz: surface in Claude's narrative — "demand for [player]'s cards is running hot right now"
-- Negative buzz: surface as a risk flag — "note: [player] is currently on injured reserve"
-- Icon tier: explicit callout (see above)
-- **B-score set:** distinct "Breakerz Bets" callout block, visually separate from the AI analysis — shows the reason note directly. This should feel like insider intel from the team, not an algorithm output.
+| Player type | buzz_score composite |
+|---|---|
+| Established pro | C × 0.45 + S × 0.25 + P × 0.15 |
+| Rookie (debut season, < 20 games) | C × 0.55 + P × 0.20 (S downweighted) |
+| Draft pick / college (pre-debut) | C × 0.60 + P × 0.40 (S excluded) |
 
-**Team Slots table (break page):**
-- Small up/down arrow or flame/cold indicator on rows with elevated or depressed buzz
-- Icon-tier players get a distinct badge (e.g., a star or crown mark)
-
-**Player table:**
-- `buzz_score > 0.1`: upward indicator badge
-- `buzz_score < -0.1`: downward indicator badge
-- `is_icon`: icon badge separate from buzz (always shown regardless of current score)
+Prospects often have the highest P-score of anyone in the product — draft buzz, combine momentum, mock draft movement. The absence of S-score doesn't mean low signal; it means different signal. Claude's Breakerz Sayz prompt should know which regime it's in and frame the analysis accordingly.
 
 ---
 
-## Player Risk Flags — A Separate Concept
+## Schema
 
-Risk flags are **not** part of the buzz_score system. They are a disclosure layer — the equivalent of a fantasy sports injury report. The engine doesn't adjust the math; it surfaces information and lets the buyer make the call.
-
-The distinction matters because the *outcome* of a news event is unknowable at the time of the break, and the *impact* on card value is highly context-dependent:
-
-- Wander Franco (MLB, criminal investigation, likely career-ending) → cards essentially worthless
-- NFL player DV charge (league issues fine, plays next week) → hobby community largely doesn't care
-- Star player traded mid-season to a bad team → meaningful price drop, no controversy involved
-- Player retires unexpectedly → depends entirely on legacy and whether they were already priced in
-
-A score can't capture that. What it needs is a flag + a plain-language note that puts the buyer on notice.
-
-### What a Risk Flag Looks Like
-
-Each flag has three parts:
-
-1. **Type** — categorizes the situation so the UI can choose appropriate framing
-2. **Note** — a short, factual description of the situation (admin-written or AI-drafted)
-3. **Severity** — Low / Medium / High; drives display treatment, not the score
-
-| Type | Examples | Typical severity |
-|---|---|---|
-| `injury` | Day-to-day, IR, season-ending | Low → High |
-| `suspension` | PED, conduct, league discipline | Medium → High |
-| `legal` | Investigation, charges, arrest | Medium → High (depends on outcome) |
-| `trade` | Traded to weak team, diminished role | Low → Medium |
-| `retirement` | Announced or rumored | Medium → High |
-| `off-field` | Controversy, scandal, public incident | Highly variable — needs a note |
-
-### Display in Breakerz Sayz
-
-When a team includes a flagged player:
-
-- Surface a **red flag banner** in the result card, similar to an injury report line
-- Example: `⚑ Wander Franco — Under investigation (MLB suspended indefinitely). Card values have declined significantly pending outcome.`
-- Claude's prompt receives the flag and note: the AI narrative should acknowledge the risk directly rather than ignoring it
-
-### Display in Break Page / Team Slots
-
-- Small flag icon on the team row and expanded player row
-- Tooltip with the note text on hover
-
-### Admin UI
-
-- Flag management on the player page — add/edit/clear flags per player
-- Fields: Type (dropdown), Severity (Low/Medium/High), Note (free text, 1–2 sentences)
-- Flags are player-level, not product-specific — an injured player carries the flag across all active products
-
-### Phase 2 — AI-Assisted Flag Detection
-
-In a future automated phase, a news scanner could:
-1. Pull recent headlines for tracked players via a news API or RSS
-2. Send to Claude with a prompt: "Does this headline indicate a risk to this player's card value? If yes, classify the type and severity and draft a one-sentence note."
-3. Surface as a *pending flag* for admin review and approval — never auto-publish
-4. Admin approves, edits, or dismisses
-
-The human stays in the loop on risk flags. Automated buzz scores can publish directly; risk flags require a human judgment call before going live.
-
----
-
-## High Volatility Tag — A Third Label Type
-
-Distinct from both Risk Flags and buzz_score. A Risk Flag says "here's a known event that may impact value." The High Volatility tag says "this player's cards are behaving unpredictably — expect large price swings in either direction."
-
-The key difference: **Risk Flags have a known cause. High Volatility may not.**
-
-A High Volatility tag is appropriate when:
-- Card prices are swinging more than 2–3× their normal range with no clear reason
-- The player is a hot prospect with no established comp baseline (thin data, wild spread)
-- Rumors are circulating but nothing confirmed (trade speculation, draft position chatter)
-- The card has recently been pumped or manipulated on social (artificial spike, not organic demand)
-- The player is polarizing — some buyers are all-in, others won't touch it
-
-It is **not** a negative signal — it's an uncertainty signal. A highly volatile player could spike massively or crater. The tag says: factor this into your risk tolerance, not "avoid this."
-
-### Display
-
-- Different visual treatment from Risk Flags: where a Risk Flag gets a red icon (⚑), High Volatility gets a lightning bolt or similar "unstable" indicator (⚡)
-- Breakerz Sayz: surfaces as a neutral advisory, not a warning — "This player's card market is showing high volatility — prices have been swinging significantly. The fair value shown may not reflect where the market lands by break day."
-- Claude's prompt receives the tag and should reference it: frame the slot as higher risk/reward, not as a pass
-- Player table: small indicator badge on the row
-
-### Schema
+### Deployed
 
 ```sql
--- player_risk_flags table (already planned) — add high_volatility as a type
--- OR: separate boolean on player_products for simplicity
-ALTER TABLE player_products ADD COLUMN IF NOT EXISTS is_high_volatility BOOLEAN DEFAULT FALSE;
+-- player_products
+buzz_score      FLOAT DEFAULT NULL  -- automated composite output (-0.9 to +1.0)
+breakerz_score  FLOAT DEFAULT NULL  -- editorial B-score (-0.5 to +0.5)
+breakerz_note   TEXT  DEFAULT NULL  -- reason note, required when breakerz_score is set
 ```
 
-Because High Volatility is tied to a specific product context (a player's cards in *this* set may be volatile while their cards in another set aren't), it lives on `player_products` rather than `players`. Risk Flags are player-level because an injury applies everywhere; volatility is card/product-specific.
+Migrations: `20260324180000_add_buzz_score.sql`, `20260324200000_add_breakerz_bets.sql`
 
-### Phase 2 Automation
+### Still Needed
 
-C-score data (CardHedger price spread, sell-through variance) can auto-detect high volatility:
-- If price spread (high/low ratio) exceeds 3× the player's 30-day baseline spread → auto-flag for admin review
-- If sales volume spikes >5× in 48 hours → auto-flag
-- Like Risk Flags, auto-detection drafts a pending flag; admin approves before it goes live
+```sql
+-- players
+ALTER TABLE players ADD COLUMN IF NOT EXISTS is_icon BOOLEAN DEFAULT FALSE;
+
+-- player_products
+ALTER TABLE player_products ADD COLUMN IF NOT EXISTS is_high_volatility BOOLEAN DEFAULT FALSE;
+
+-- Risk flags (player-level, not product-specific)
+CREATE TABLE player_risk_flags (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  player_id   UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+  type        TEXT NOT NULL,    -- injury | suspension | legal | trade | retirement | off-field
+  severity    TEXT NOT NULL,    -- low | medium | high
+  note        TEXT NOT NULL,
+  is_active   BOOLEAN DEFAULT TRUE,
+  created_at  TIMESTAMPTZ DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ DEFAULT NOW()
+);
+```
+
+### Architectural Gap: No Component Score Columns
+
+Currently `buzz_score` is a single field. Once the automated pipeline runs, there's no way to audit what drove the composite — was it C-score? P-score? Both? Consider adding `c_score`, `s_score`, `p_score` as separate columns for transparency and debugging, then have the pipeline write the composite to `buzz_score`. Decision needed before Phase 4.
 
 ---
 
-## Prospects, Draft Picks, and the Pre-Stat Window
+## Implementation Order
 
-The player stats layer (S-score) is built on performance data. But the highest-buzz players in the hobby often have *zero* stats to reference — top draft prospects, college players on pre-release products, and rookies before they've played a meaningful NBA/MLB/NFL game.
+Sequenced by value delivered vs. build complexity. Each phase is independently shippable.
 
-This is not a gap in the model. It's a different regime entirely.
+---
 
-**The argument:** At draft time and in the pre-rookie window, a prospect's cards can see some of the most intense demand in the hobby. Bowman is the clearest example — draft picks are being broken months before a single pro at-bat. The entire value is forward-looking hype, not performance.
+### Phase 1 — Wire Up What's Already in the DB
+**Effort:** 1 day | **Value:** Breakerz Bets actually affects slot costs and Sayz output
 
-**How we handle the pre-stat window:**
+The `breakerz_score` data is collected but inert. This phase makes it real.
 
-| Player type | S-score | C-score | P-score | Notes |
-|---|---|---|---|---|
-| Established pro | Full weight | Full weight | Full weight | Normal composite |
-| Rookie (debut season) | Partial — limited game log | Full weight | Full weight | S-score weighted down until 20+ games |
-| Draft pick (pre-debut) | Null | Full weight | Full weight | S-score excluded entirely; C + P only |
-| College player (Bowman) | Null | Full weight | Full weight | Same as draft pick |
-| Prospect (pre-announcement) | Null | Partial | Full weight | C-score may be thin if card is new |
+**1a. Engine reads `breakerz_score`**
+- `lib/engine.ts`: update formula to `hobbyWeight = hobbyEVPerBox × (1 + clamp(buzz_score + breakerz_score, -0.9, 1.0))`
+- `app/api/pricing/route.ts`: add `breakerz_score, breakerz_note` to player_products select
+- `app/api/analysis/route.ts`: same select update + pass to Claude prompt
 
-**When S-score is null, the composite rebalances:**
-```
-buzz_score = weighted_average(C-score × 0.6, P-score × 0.4)
-```
+**1b. Breakerz Sayz surfaces Breakerz Bets callout**
+- When any player on the selected team has `breakerz_score != null`, show a distinct "Breakerz Bets" block in the result card
+- Display the player name + reason note
+- Pass to Claude prompt: `"Breakerz Bets on [player]: [note]"` so the AI narrative can reference it
 
-**Prospect-specific P-score inputs to prioritize:**
-- Draft board position and movement (mock drafts, beat reporter consensus)
-- Combine/workout performance buzz (Reddit, beat writers)
-- College highlight reel viral momentum
-- "Top prospect" designations in hobby media
+**Files:** `lib/engine.ts`, `app/api/pricing/route.ts`, `app/api/analysis/route.ts`, `app/analysis/page.tsx`
 
-**The implication for Breakerz Sayz:** When a team's slot is dominated by a high-buzz draft prospect with no pro stats, the AI narrative should explicitly frame this as a pure hype play — "this slot's value is entirely prospect hype, not established performance." That's a different conversation than a veteran slot, and Claude's prompt should know which regime it's in.
+---
 
-**High Volatility is almost always appropriate for pure prospects.** No comps, thin data, massive upside and downside. Admin should default to tagging top draft picks as High Volatility on pre-release products until their market establishes.
+### Phase 2 — Icon Tier
+**Effort:** 1 day | **Value:** Correct handling of structurally anomalous players
+
+**2a.** Migration: `is_icon BOOLEAN` on `players`
+**2b.** Engine: `is_icon` guard — skip buzz multiplier when true
+**2c.** Admin: `is_icon` checkbox on player management page (`/admin/products/[id]/players`)
+**2d.** Breakerz Sayz: icon callout in result card + Claude prompt note
+**2e.** `app/api/pricing/route.ts`: include `player.is_icon` in select
+
+**Files:** migration, `lib/engine.ts`, `app/api/pricing/route.ts`, player management page, `app/analysis/page.tsx`, `app/api/analysis/route.ts`
+
+---
+
+### Phase 3 — Risk Flags + High Volatility
+**Effort:** 2 days | **Value:** Consumer disclosure for events the model can't score
+
+**3a.** Migrations: `player_risk_flags` table + `is_high_volatility` on `player_products`
+**3b.** Admin: risk flag add/edit/clear UI on player management page
+**3c.** Admin: `is_high_volatility` toggle on player management page
+**3d.** Breakerz Sayz: risk flag banners (red ⚑) + high volatility advisory (⚡) in result card; pass flags to Claude prompt
+**3e.** Break page Team Slots: flag icon on team row + player row tooltip
+
+**Files:** 2 migrations, player management page, `app/api/analysis/route.ts`, `app/analysis/page.tsx`, `components/breakerz/TeamSlotsTable.tsx`
+
+---
+
+### Phase 4 — Consumer Buzz Indicators (Break Page)
+**Effort:** 0.5 days | **Value:** Buzz signal visible on break page, not just Sayz
+
+**4a.** Team Slots table: show up/down arrow on rows where effective score > 0.1 or < -0.1
+**4b.** Team Slots table: show icon badge for icon-tier players
+**4c.** Player table: buzz indicator badge, icon badge, high volatility ⚡ badge
+
+**Files:** `components/breakerz/TeamSlotsTable.tsx`, `components/breakerz/PlayerTable.tsx`
+**Dependency:** Phases 1–3 must be complete (needs the data to display)
+
+---
+
+### Phase 5 — C-score: CardHedger Top-Movers
+**Effort:** 2–3 days | **Value:** First automated market signal — no external API key needed
+
+**5a.** Add `top-movers` and `price-updates` endpoints to `lib/cardhedger.ts`
+**5b.** Decide: store C-score in separate `c_score` column or write directly to `buzz_score`
+**5c.** Vercel Cron job (daily): fetch `top-movers`, cross-reference against `player_product_variants.cardhedger_card_id`, compute normalized C-score per player, write to DB
+**5d.** `price-updates` delta poll (every 6h): detect cards with price swing > threshold → create pending High Volatility review record
+**5e.** Admin: pending High Volatility review queue
+
+**Gap:** Need to confirm with Kyle whether `top-movers` includes enough volume data to normalize against a player's own baseline, or just gives a relative rank. If it's rank-only, normalization strategy changes.
+
+**Files:** `lib/cardhedger.ts`, new cron route (`app/api/cron/update-scores/route.ts`), Vercel cron config
+
+---
+
+### Phase 6 — P-score: Reddit Sentiment
+**Effort:** 2–3 days | **Value:** Hobby-specific social signal
+
+**6a.** Reddit API integration — query r/sportscards + sport-specific subs for player mentions
+**6b.** Mention extraction + volume count per player vs rolling 30-day baseline
+**6c.** Normalize to P-score scale
+**6d.** Combine with C-score into `buzz_score` composite in the cron job
+
+**Gap:** Reddit API rate limits for a large roster scan need to be evaluated. May need to prioritize players (e.g., only score players in active products).
+
+---
+
+### Phase 7 — S-score: Player Stats API
+**Effort:** 3–5 days (per sport) | **Value:** Performance trend signal; injury → Risk Flag automation
+
+**7a.** NBA first: integrate balldontlie.io (free tier)
+**7b.** Compute recent performance trend (last 7 days vs season avg) → S-score
+**7c.** Injury status → auto-draft Risk Flag pending record → admin review queue
+**7d.** Prospect/draft pick detection: if `is_rookie` and games < 20, downweight S-score in composite
+**7e.** Add other sports as products expand
+
+**Gap:** No `player_type` or `debut_date` field exists to distinguish "draft pick (pre-debut)" from "rookie (debut season)." Will need either a field on `players` or a heuristic based on game count from the stats API.
+
+---
+
+## Open Questions
+
+1. **Score decay:** Should `buzz_score` auto-decay toward 0.0 between pipeline runs (e.g., -20% per day without a refresh)? Or persist until overwritten? Daily pipeline runs may make this moot.
+2. **Component score columns:** Store `c_score`, `s_score`, `p_score` separately for auditability, or just write composite to `buzz_score`? Separate columns are better for debugging but add schema complexity. Decide before Phase 5.
+3. **Breakerz Bets decay:** `breakerz_score` has no expiry. Should a B-score set today still be active in 3 months? Need a `breakerz_score_set_at` timestamp and a decay or expiry policy.
+4. **Transparency to buyer:** When fair value is influenced by `buzz_score` or `breakerz_score`, should Breakerz Sayz show the "baseline" fair value (without adjustments) alongside the adjusted value? Lets the buyer see how much signal moved the number.
+5. **Icon process:** Who decides icon status? What are the criteria? Suggest: admin-only designation, requires approval from both Brody and Kyle, reviewed once per product cycle.
+6. **Risk flag style guide:** Notes appear on a consumer-facing product. Need to define: past tense, factual, no speculation, include source/date in parentheses. E.g., *"Suspended 80 games for PED violation (MLB, March 2026)."*
+7. **Controversy vs. cold:** A scandal player may have negative Risk Flag but positive market demand (dark curiosity buying). How do we display when buzz and flag conflict? Likely: show both, let Claude contextualize in the narrative.
+8. **`breakerz_score` in the pricing API:** The `/api/pricing` GET endpoint (used by the break page) should also include `breakerz_score` in the player data so the engine on the break page benefits, not just Breakerz Sayz.
 
 ---
 
 ## What We're Not Building
 
 - A public social leaderboard or trending feed
-- Real-time data — daily or 6h refresh is sufficient; this is directional, not a ticker
-- A pure sentiment product — sentiment is one input, not the whole score
-- Icon status as a marketing feature — it's a model correction flag, not a way to promote players
-
----
-
-## Schema
-
-**Already deployed:**
-```sql
--- player_products
-buzz_score FLOAT DEFAULT NULL  -- -0.9 to +1.0
-```
-
-**To add (Phase 1):**
-```sql
--- players (icon status is player-level, not product-level)
-ALTER TABLE players ADD COLUMN IF NOT EXISTS is_icon BOOLEAN DEFAULT FALSE;
-
--- player_products (B-score is product-specific — a player can be a Breakerz Bet in one set but not another)
-ALTER TABLE player_products ADD COLUMN IF NOT EXISTS breakerz_score FLOAT DEFAULT NULL;  -- -0.5 to +0.5
-ALTER TABLE player_products ADD COLUMN IF NOT EXISTS breakerz_note TEXT DEFAULT NULL;    -- required when score is set
-
--- Risk flags (separate table — a player can have multiple active flags)
-CREATE TABLE player_risk_flags (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  player_id UUID NOT NULL REFERENCES players(id) ON DELETE CASCADE,
-  type TEXT NOT NULL,         -- 'injury' | 'suspension' | 'legal' | 'trade' | 'retirement' | 'off-field'
-  severity TEXT NOT NULL,     -- 'low' | 'medium' | 'high'
-  note TEXT NOT NULL,         -- 1–2 sentence plain-language description
-  is_active BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
-
-Existing migration: `supabase/migrations/20260324180000_add_buzz_score.sql`
-New migrations needed:
-- `supabase/migrations/YYYYMMDDHHMMSS_add_is_icon.sql`
-- `supabase/migrations/YYYYMMDDHHMMSS_add_player_risk_flags.sql`
-
----
-
-## Implementation Phases
-
-### Phase 1 — Manual Curator Score + Icon Flag (v3 target)
-
-No data pipeline. Admin sets scores manually, flags icons manually.
-
-- Admin UI: buzz_score slider/pills (-0.9 to +1.0) on player management page
-- Admin UI: `is_icon` toggle on player management page
-- Admin UI: **Breakerz Bets** section — `breakerz_score` input (-0.5 to +0.5) + required `breakerz_note` text field; save button disabled until note is filled
-- Engine: already reads `buzz_score`; add `is_icon` guard to skip multiplier for icons; add `breakerz_score` to composite
-- Breakerz Sayz: surface icon callout + Breakerz Bets callout (with reason note) in result UI; pass both to Claude prompt
-- Migrations: `is_icon` on `players`, `breakerz_score` + `breakerz_note` on `player_products`
-
----
-
-### Phase 2 — Automated Score from Signal Sources (future)
-
-Replace manual scores with an automated pipeline. Build incrementally — each layer adds value independently.
-
-**Recommended build order (updated based on full API review):**
-
-1. **`top-movers` cross-reference** (C-score) — single daily API call, join against tracked players; no custom velocity pipeline needed. Fastest path to a real market signal.
-2. **`price-updates` delta polling** — powers High Volatility auto-detection; efficient because it only returns what changed since last poll
-3. **Reddit API** (P-score) — free, hobby-specific sentiment; covers the social layer adequately for MVP
-4. **Sports stats API** (S-score) — pick one provider per sport; injury status auto-drafts Risk Flags
-5. **`daily-price-export`** — replace per-card calls with a nightly CSV batch once the tracked player list grows beyond ~200
-
-**Pipeline architecture:**
-1. Scheduled job (daily) calls `top-movers`, filters to our tracked `cardhedger_card_id` set
-2. `price-updates` delta poll (every 6h) flags cards with >threshold price swing → queues High Volatility review
-3. Reddit + stats job (daily) computes P-score and S-score per player
-4. Normalizes each component to -1.0 to +1.0 relative to rolling 30-day baseline
-5. Computes weighted composite, clamps to [-0.9, +1.0], writes to `player_products.buzz_score`
-6. Engine picks it up on next pricing request — no cache invalidation needed
-7. Stats API injury flag → auto-drafts Risk Flag record (pending admin approval before publishing)
-
----
-
-## Open Questions
-
-1. **Who curates scores in Phase 1?** Kyle, Brody, or a trusted admin? How often are they expected to refresh?
-2. **Negative buzz on pre-release products?** If a player gets injured before a product releases, should the negative score apply to default/fallback EV values, or only live-priced players?
-3. **Decay mechanism?** Should buzz scores auto-decay over time without a refresh (e.g., -50% per week toward 0.0), or persist until manually updated?
-4. **Transparency in Breakerz Sayz:** When fair value is influenced by buzz_score, should we show the "unadjusted" baseline fair value alongside it so users can see how much the signal moved the number?
-5. **Icon review process:** How does a player earn or lose icon status? Who decides? Define the criteria (likely: sustained elite demand across multiple product cycles, not just one breakout moment).
-6. **Controversy vs. cold:** High negative-sentiment volume (scandal, incident) is now handled by Risk Flags, not buzz_score. But the two signals can conflict — a player's cards may spike on controversy (dark curiosity buying) even while the flag says "risk." Do we surface both simultaneously, or does a High severity flag suppress the positive buzz display?
-7. **Risk flag sourcing in Phase 1:** Who writes the notes? They need to be factual and neutral — not editorializing — since they appear in a consumer-facing product. Define a style guide (past tense, no speculation, source in parentheses if possible).
+- Real-time data — daily/6h refresh is sufficient; this is directional signal, not a ticker
+- A pure sentiment product — sentiment is one input among four
+- Icon status as a promotional feature — it's a model correction flag
 
 ---
 
 ## Success Criteria
 
-- **Phase 1:** Admin can set a buzz score and icon flag for any player in under 30 seconds. A -0.5 score on an injured star visibly reduces their team's slot cost. An icon-tier player surfaces a callout in Breakerz Sayz output.
-- **Phase 2:** Scores update automatically at least daily. A real-world event (injury, breakout game, viral pull) produces a measurable score shift within 24 hours.
+- **Phase 1:** A Breakerz Bet set via the debrief UI visibly shifts that player's team slot cost on the break page and changes the Breakerz Sayz fair value.
+- **Phase 3:** Admin can flag a player as injured in under 60 seconds. The flag appears in Breakerz Sayz output for that team.
+- **Phase 5:** C-score updates automatically once daily. A player appearing in CardHedger's top-movers surfaces a measurable positive buzz_score within 24 hours.
+- **Phase 7:** An NBA injury detected via stats API auto-drafts a Risk Flag for admin review within 24 hours.
+
+---
+
+## Key Files
+
+| File | Role |
+|---|---|
+| `lib/engine.ts` | Pricing formula — reads `buzz_score` + `breakerz_score` |
+| `app/api/pricing/route.ts` | Select includes `buzz_score`, `breakerz_score`, `breakerz_note` |
+| `app/api/analysis/route.ts` | Breakerz Sayz — passes social signals to Claude prompt |
+| `app/analysis/page.tsx` | Breakerz Sayz consumer UI |
+| `app/admin/products/[id]/BreakerzBetsDebrief.tsx` | B-score conversational input ✅ |
+| `app/api/admin/parse-bets-debrief/route.ts` | B-score Claude parser ✅ |
+| `lib/cardhedger.ts` | CardHedger API client — needs top-movers + price-updates |
+| `components/breakerz/TeamSlotsTable.tsx` | Break page team rows — needs buzz indicators |
+| `components/breakerz/PlayerTable.tsx` | Break page player rows — needs buzz indicators |
+| `supabase/migrations/` | All schema changes |
 
 ---
 
 ## Dependencies
 
-- **Phase 1:** Admin UI work on player management page; `is_icon` migration; engine guard for icon players
-- **Phase 2:** Kyle's agreement on CardHedger velocity data access; Reddit API key; scheduled job infrastructure (Vercel Cron or similar)
+- **Phase 1:** No new dependencies — all data already in DB
+- **Phase 2:** No new dependencies
+- **Phase 3:** No new dependencies
+- **Phase 5:** Kyle to confirm `top-movers` response structure and whether volume normalization is possible; Vercel Cron enabled on project
+- **Phase 6:** Reddit API key
+- **Phase 7:** Sports stats API key (balldontlie.io for NBA is free; others TBD)

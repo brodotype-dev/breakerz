@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import ChecklistUpload from '@/components/admin/ChecklistUpload';
 import PlayerBulkForm from '@/components/admin/PlayerBulkForm';
+import PlayerFlagsManager from './PlayerFlagsManager';
 import type { Product, PlayerProduct, Player, Sport } from '@/lib/types';
 
 type PageProps = { params: Promise<{ id: string }> };
@@ -25,6 +26,36 @@ export default async function AdminPlayersPage({ params }: PageProps) {
     .order('id') as { data: (PlayerProduct & { player: Player })[] | null };
 
   const players = playerProducts ?? [];
+  const ppIds = players.map(pp => pp.id);
+
+  // Fetch active risk flags for this product's players
+  const { data: riskFlags } = ppIds.length
+    ? await supabaseAdmin
+        .from('player_risk_flags')
+        .select('id, player_product_id, flag_type, note')
+        .in('player_product_id', ppIds)
+        .is('cleared_at', null)
+    : { data: [] };
+
+  const flagsByPP = new Map<string, Array<{ id: string; flagType: string; note: string }>>();
+  for (const f of riskFlags ?? []) {
+    const list = flagsByPP.get(f.player_product_id) ?? [];
+    list.push({ id: f.id, flagType: f.flag_type, note: f.note });
+    flagsByPP.set(f.player_product_id, list);
+  }
+
+  const flagPlayers = players
+    .filter(pp => !pp.insert_only && pp.player?.name)
+    .map(pp => ({
+      playerProductId: pp.id,
+      playerId: pp.player_id,
+      name: pp.player?.name ?? '',
+      team: pp.player?.team ?? '',
+      isIcon: (pp.player as any)?.is_icon ?? false,
+      isHighVolatility: (pp as any).is_high_volatility ?? false,
+      activeFlags: flagsByPP.get(pp.id) ?? [],
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <div className="min-h-screen bg-background">
@@ -77,6 +108,29 @@ export default async function AdminPlayersPage({ params }: PageProps) {
                   </tbody>
                 </table>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Player flags: icon tier, high volatility, risk flags */}
+        {flagPlayers.length > 0 && (
+          <div className="bg-card border rounded overflow-hidden">
+            <div className="h-1" style={{ background: 'oklch(0.52 0.22 27)' }} />
+            <div className="p-4 space-y-3">
+              <div>
+                <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+                  Player Flags &amp; Settings
+                </h2>
+                <p className="text-xs text-muted-foreground mt-1">
+                  <span className="font-semibold text-purple-600 dark:text-purple-400">★ Icon</span>
+                  {' '}— skips buzz multiplier (structural demand already in EV).{' '}
+                  <span className="font-semibold text-amber-600 dark:text-amber-400">⚡ High Volatility</span>
+                  {' '}— market pricing is unusually uncertain.{' '}
+                  <span className="font-semibold text-red-600 dark:text-red-400">⚑ Flag</span>
+                  {' '}— consumer-visible risk disclosure (injury, suspension, etc.).
+                </p>
+              </div>
+              <PlayerFlagsManager productId={id} players={flagPlayers} />
             </div>
           </div>
         )}

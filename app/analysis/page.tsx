@@ -20,15 +20,22 @@ interface Product {
   bd_case_cost: number | null;
 }
 
+const FLAG_LABELS: Record<string, string> = {
+  injury: 'Injury', suspension: 'Suspension', legal: 'Legal',
+  trade: 'Trade', retirement: 'Retirement', off_field: 'Off-field',
+};
+
 interface AnalysisResult {
   signal: Signal;
   valuePct: number;
   fairValue: number;
   askPrice: number;
   analysis: string;
-  topPlayers: Array<{ name: string; isRookie: boolean; evMid: number; evHigh: number }>;
+  topPlayers: Array<{ name: string; isRookie: boolean; isIcon: boolean; evMid: number; evHigh: number }>;
   teamName: string;
   productName: string;
+  riskFlags: Array<{ playerName: string; flagType: string; note: string }>;
+  hvPlayers: string[];
 }
 
 const signalStyles: Record<Signal, { bg: string; text: string; border: string; label: string }> = {
@@ -312,6 +319,11 @@ export default function AnalysisPage() {
                                 RC
                               </span>
                             )}
+                            {p.isIcon && (
+                              <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-purple-600 text-white uppercase tracking-wider">
+                                ★ Icon
+                              </span>
+                            )}
                           </div>
                           <div className="text-right font-mono text-xs text-muted-foreground">
                             <span>EV {formatCurrency(p.evMid)}</span>
@@ -320,6 +332,41 @@ export default function AnalysisPage() {
                         </div>
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {/* High Volatility advisory */}
+                {result.hvPlayers?.length > 0 && (
+                  <div className="border-t pt-4">
+                    <div className="rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/20 px-3 py-2.5 flex items-start gap-2">
+                      <span className="text-amber-500 mt-px">⚡</span>
+                      <div>
+                        <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">High Volatility</p>
+                        <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                          {result.hvPlayers.join(', ')} — market pricing is unusually uncertain for {result.hvPlayers.length === 1 ? 'this player' : 'these players'}. EVs may shift significantly.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Risk flags */}
+                {result.riskFlags?.length > 0 && (
+                  <div className="border-t pt-4 space-y-2">
+                    {result.riskFlags.map((flag, i) => (
+                      <div key={i} className="rounded border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/20 px-3 py-2.5 flex items-start gap-2">
+                        <span className="text-red-500 mt-px text-xs font-bold">⚑</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-semibold text-red-800 dark:text-red-300">{flag.playerName}</span>
+                            <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-red-200 dark:bg-red-900/60 text-red-700 dark:text-red-400 uppercase">
+                              {FLAG_LABELS[flag.flagType] ?? flag.flagType}
+                            </span>
+                          </div>
+                          <p className="text-xs text-red-700 dark:text-red-400 mt-0.5">{flag.note}</p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
 

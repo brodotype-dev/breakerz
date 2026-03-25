@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
 
     const { data: playerProducts, error } = await supabaseAdmin
       .from('player_products')
-      .select('*, player:players(*), buzz_score')
+      .select('*, player:players(*), buzz_score, breakerz_score')
       .eq('product_id', productId)
       .eq('insert_only', false)
       .order('id');

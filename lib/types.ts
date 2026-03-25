@@ -29,6 +29,7 @@ export interface Player {
   sport_id: string;
   team: string;
   is_rookie: boolean;
+  is_icon: boolean;
 }
 
 export interface PlayerProduct {
@@ -41,7 +42,18 @@ export interface PlayerProduct {
   insert_only: boolean;
   cardhedger_card_id: string | null;
   buzz_score: number | null;
+  breakerz_score: number | null;
+  is_high_volatility: boolean;
   player?: Player;
+}
+
+export interface PlayerRiskFlag {
+  id: string;
+  player_product_id: string;
+  flag_type: 'injury' | 'suspension' | 'legal' | 'trade' | 'retirement' | 'off_field';
+  note: string;
+  created_at: string;
+  cleared_at: string | null;
 }
 
 export interface PricingCache {

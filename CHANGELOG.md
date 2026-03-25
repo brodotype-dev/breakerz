@@ -5,6 +5,34 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-03-24 (7)
+
+### Social Currency — Phase 1: Breakerz Bets wired into engine; Phase 2: Icon tier; Phase 3: Risk flags + high volatility
+
+**Phase 1 — Breakerz Bets live**
+- `lib/engine.ts`: engine now reads both `buzz_score` (automated composite) and `breakerz_score` (editorial), combining them as `effective_score = clamp(buzz_score + breakerz_score, -0.9, 1.0)` before applying the slot cost multiplier. Data was already being collected; now it affects actual prices.
+- `app/api/analysis/route.ts` + `app/api/pricing/route.ts`: both select `breakerz_score` from DB; Sayz passes editorial notes to Claude prompt when set
+- Migration `20260324200000_add_breakerz_bets.sql` was already applied in session (6)
+
+**Phase 2 — Icon tier**
+- `players.is_icon BOOLEAN` added (migration `20260324210000_icon_and_risk_flags.sql`)
+- Engine skips buzz multiplier entirely for icon-tier players — their structural demand is already reflected in market EV; applying a multiplier would double-count demand
+- Admin toggle on `/admin/products/[id]/players` — purple ★ button per player
+- Sayz result card shows purple "★ Icon" badge next to icon players in the key players list; icon context passed to Claude prompt
+
+**Phase 3 — Risk flags + high volatility**
+- `player_risk_flags` table: `(id, player_product_id, flag_type, note, created_at, cleared_at)` — soft-delete pattern, cleared flags preserved for audit
+- `player_products.is_high_volatility BOOLEAN` added
+- Admin UI at `/admin/products/[id]/players` — per-player flag add/clear (⚑ button), HV toggle (⚡ button)
+- Flag types: injury, suspension, legal, trade, retirement, off_field
+- Sayz result card: red ⚑ banner per active flag with player name + note; amber ⚡ high volatility advisory block; both passed to Claude prompt with explicit instruction to mention flagged players
+- Engine math unchanged — flags are disclosure-only, not a score input
+
+**New files:** `app/admin/products/[id]/players/PlayerFlagsManager.tsx`, `supabase/migrations/20260324210000_icon_and_risk_flags.sql`
+**Modified:** `lib/types.ts`, `lib/engine.ts`, `app/admin/products/actions.ts`, players admin page, `app/api/analysis/route.ts`, `app/analysis/page.tsx`
+
+---
+
 ## 2026-03-24 (5)
 
 ### Breakerz Sayz — rename + case count input + homepage CTA

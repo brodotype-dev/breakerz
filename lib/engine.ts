@@ -9,9 +9,16 @@ export function computeSlotPricing(
   // Weight hobby pool by hobbyEVPerBox = Σ(variantEV × 1/hobby_odds) — expected dollars per box.
   // Falls back to evMid when odds data isn't available (cached GET path, or no odds imported).
   // BD-only players (hobby_sets === 0) are excluded from the hobby pool.
-  // buzz_score applies a multiplier: hobbyEVPerBox × (1 + buzz_score). NULL/0 = no change.
+  // effective_score combines buzz_score (automated composite) + breakerz_score (editorial), clamped to [-0.9, 1.0].
+  // Icon-tier players (Wemby/Ohtani/Judge-class) skip the multiplier — their structural demand is already
+  // baked into market EV. Applying buzz to an icon would double-count the demand signal.
+  // NULL scores are treated as 0.
+  const effectiveScore = (p: PlayerWithPricing) =>
+    p.player?.is_icon
+      ? 0
+      : Math.max(-0.9, Math.min(1.0, (p.buzz_score ?? 0) + (p.breakerz_score ?? 0)));
   const hobbyWeightFor = (p: PlayerWithPricing) =>
-    p.hobby_sets > 0 ? p.hobbyEVPerBox * (1 + (p.buzz_score ?? 0)) : 0;
+    p.hobby_sets > 0 ? p.hobbyEVPerBox * (1 + effectiveScore(p)) : 0;
 
   const totalHobbyWeight = eligible.reduce((sum, p) => sum + hobbyWeightFor(p), 0);
   const totalBdWeight = eligible.reduce((sum, p) => sum + p.evMid, 0);
