@@ -1,5 +1,15 @@
 import type { PlayerWithPricing, BreakConfig, Signal, TeamSlot } from './types';
 
+// Exported for use in UI components that need to display buzz signals
+export function computeEffectiveScore(
+  buzzScore: number | null | undefined,
+  breakerzScore: number | null | undefined,
+  isIcon: boolean
+): number {
+  if (isIcon) return 0;
+  return Math.max(-0.9, Math.min(1.0, (buzzScore ?? 0) + (breakerzScore ?? 0)));
+}
+
 export function computeSlotPricing(
   players: PlayerWithPricing[],
   config: BreakConfig

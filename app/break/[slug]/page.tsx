@@ -44,6 +44,9 @@ export default function BreakPage() {
   const [fetching, setFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // player_product_id → active risk flags
+  const [riskFlagMap, setRiskFlagMap] = useState<Map<string, Array<{ flagType: string; note: string }>>>(new Map());
+
   const [breakType, setBreakType] = useState<'hobby' | 'bd'>('hobby');
 
   const [config, setConfig] = useState<BreakConfig>({
@@ -74,8 +77,26 @@ export default function BreakPage() {
         }));
 
         const res = await fetch(`/api/pricing?productId=${prod.id}`);
-        const { players } = await res.json();
-        setRawPlayers(players ?? []);
+        const { players: fetchedPlayers } = await res.json();
+        const playerList: PlayerWithPricing[] = fetchedPlayers ?? [];
+        setRawPlayers(playerList);
+
+        // Fetch active risk flags for all players in this product
+        if (playerList.length > 0) {
+          const ppIds = playerList.map((p: PlayerWithPricing) => p.id);
+          const { data: flags } = await supabase
+            .from('player_risk_flags')
+            .select('player_product_id, flag_type, note')
+            .in('player_product_id', ppIds)
+            .is('cleared_at', null);
+          const fm = new Map<string, Array<{ flagType: string; note: string }>>();
+          for (const f of flags ?? []) {
+            const arr = fm.get(f.player_product_id) ?? [];
+            arr.push({ flagType: f.flag_type, note: f.note });
+            fm.set(f.player_product_id, arr);
+          }
+          setRiskFlagMap(fm);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error');
       } finally {
@@ -311,11 +332,11 @@ export default function BreakPage() {
           </TabsList>
 
           <TabsContent value="teams" className="mt-4">
-            <TeamSlotsTable teams={teamSlots} breakType={breakType} />
+            <TeamSlotsTable teams={teamSlots} breakType={breakType} riskFlagMap={riskFlagMap} />
           </TabsContent>
 
           <TabsContent value="players" className="mt-4">
-            <PlayerTable players={players} fetching={fetching} breakType={breakType} />
+            <PlayerTable players={players} fetching={fetching} breakType={breakType} riskFlagMap={riskFlagMap} />
           </TabsContent>
           <TabsContent value="comparison" className="mt-4">
             <BreakerComparison players={players} />
