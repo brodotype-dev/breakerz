@@ -5,6 +5,57 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-03-26
+
+### Terminal Design System + Full Consumer UI Redesign
+
+Major visual overhaul — "Bloomberg terminal for card breaks" direction applied across all consumer-facing pages. The design system is now codified in the repo and sourced from Figma Make.
+
+**Design system (`components/breakerz/ds/`)**
+- New DS component library: `ElevatedCard`, `StepHeader`, `FormLabel`, `SegmentedControl`, `CounterInput`, `LargeCTAButton` — all using terminal CSS custom properties
+- Design tokens stored at `design-assets/design-system-tokens.json`; component specs at `design-assets/DESIGN_SYSTEM_EXPORT.md`
+- All DS components exported from `components/breakerz/ds/index.ts`
+- Workflow: Figma Make → export source zip → copy CSS/components → adapt for Next.js (Link href, useParams from next/navigation, real data)
+
+**`app/globals.css`**
+- Added terminal design system CSS custom properties: `--terminal-bg`, `--terminal-surface`, `--terminal-border`, `--terminal-border-hover`, `--accent-blue`, `--signal-buy/watch/pass`, `--gradient-blue/hero`, `--glow-blue/green`, `--badge-icon`, sport-specific color tokens, etc.
+- Defined as non-layered `:root` rules so they override Tailwind's `@layer base` body styles — intentional, do not move into a layer
+- Added `.terminal-label`, `.terminal-surface`, `.signal-buy/watch/pass` utility classes
+
+**`app/layout.tsx`**
+- Switched fonts to Inter + JetBrains Mono (via `next/font/google`)
+
+**`app/page.tsx` — Homepage**
+- Full redesign: sticky terminal status bar (live count, pre-release count, version), hero section with cards photo background, gradient title, CTA buttons ("Analyze a Break" / "Browse Products"), feature pills
+- Products section: terminal-bordered card grid with sport-specific gradient accents, pre-release state, last updated timestamp
+- Breakerz Sayz promo card at bottom of hero area
+- Hero background: Unsplash sports card image at 20% opacity as base layer under gradient/dot overlays
+
+**`app/break/[slug]/page.tsx` — Break analysis page**
+- Redesigned with terminal aesthetic: dark header, tabbed TeamSlots/PlayerSlots with SegmentedControl-style tabs, DashboardConfig panel
+
+**`app/analysis/page.tsx` — Breakerz Sayz**
+- Full redesign to match Figma Make two-column layout
+- Hero header: dark gradient with dot pattern, TrendingUp icon, gradient title, Instant Analysis / Market Intelligence / Social Signals feature pills
+- Left column: "1 Configure Your Break" — `ElevatedCard` with `SegmentedControl` (Hobby/BD), `CounterInput` for cases, styled native selects for product/team, large price input, `LargeCTAButton`
+- Right column: "2 AI Analysis" — `ElevatedCard` with empty state or full result panel
+- Result panel: signal verdict card (color-coded border/bg by BUY/WATCH/PASS), fair value vs asking price grid, AI narrative, key players table, HV advisory, risk flags
+- All existing data logic preserved (API calls, Supabase team fetch, result types)
+
+**`components/breakerz/DashboardConfig.tsx`**
+- Rebuilt using DS components: `ElevatedCard`, `FormLabel`, `CounterInput`
+
+**`components/breakerz/TeamSlotsTable.tsx`, `PlayerTable.tsx`**
+- Restyled with terminal design system vars, Social Currency badges updated
+
+**`components/breakerz/ProductCard.tsx`**
+- New component matching Figma Make product card design
+
+**New files:** `components/breakerz/ds/` (6 DS components + index), `components/breakerz/SignalBadge.tsx`, `components/breakerz/SocialBadges.tsx`, `design-assets/DESIGN_SYSTEM_EXPORT.md`, `design-assets/design-system-tokens.json`
+**Modified:** `app/analysis/page.tsx`, `app/break/[slug]/page.tsx`, `app/globals.css`, `app/layout.tsx`, `app/page.tsx`, `components/breakerz/DashboardConfig.tsx`, `components/breakerz/PlayerTable.tsx`, `components/breakerz/TeamSlotsTable.tsx`
+
+---
+
 ## 2026-03-24 (6)
 
 ### Social Currency — Breakerz Bets Debrief (B-score input)

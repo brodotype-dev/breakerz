@@ -3,8 +3,17 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
+import { TrendingUp, Sparkles, Zap, ArrowLeft } from 'lucide-react';
 import { formatCurrency } from '@/lib/engine';
 import type { Signal } from '@/lib/types';
+import {
+  ElevatedCard,
+  StepHeader,
+  FormLabel,
+  SegmentedControl,
+  CounterInput,
+  LargeCTAButton,
+} from '@/components/breakerz/ds';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -25,16 +34,6 @@ const FLAG_LABELS: Record<string, string> = {
   trade: 'Trade', retirement: 'Retirement', off_field: 'Off-field',
 };
 
-const FLAG_COLORS: Record<string, { chip: string; banner: string }> = {
-  injury:     { chip: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',   banner: 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/20' },
-  suspension: { chip: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',           banner: 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/20' },
-  legal:      { chip: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',           banner: 'border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/20' },
-  trade:      { chip: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400',       banner: 'border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/20' },
-  retirement: { chip: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',          banner: 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-950/20' },
-  off_field:  { chip: 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400', banner: 'border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-950/20' },
-};
-const defaultFlagColor = { chip: 'bg-red-100 text-red-700', banner: 'border-red-200 bg-red-50' };
-
 interface AnalysisResult {
   signal: Signal;
   valuePct: number;
@@ -48,10 +47,10 @@ interface AnalysisResult {
   hvPlayers: string[];
 }
 
-const signalStyles: Record<Signal, { bg: string; text: string; border: string; label: string }> = {
-  BUY:   { bg: 'bg-green-50 dark:bg-green-950/30',  text: 'text-green-800 dark:text-green-300',  border: 'border-green-300 dark:border-green-700',  label: 'BUY' },
-  WATCH: { bg: 'bg-amber-50 dark:bg-amber-950/30',  text: 'text-amber-800 dark:text-amber-300',  border: 'border-amber-300 dark:border-amber-700',  label: 'WATCH' },
-  PASS:  { bg: 'bg-red-50 dark:bg-red-950/30',      text: 'text-red-800 dark:text-red-300',      border: 'border-red-300 dark:border-red-700',      label: 'PASS' },
+const signalConfig: Record<Signal, { borderColor: string; bgColor: string; textColor: string; label: string }> = {
+  BUY:   { borderColor: 'var(--signal-buy)',   bgColor: 'rgba(34,197,94,0.08)',  textColor: 'var(--signal-buy)',   label: 'BUY' },
+  WATCH: { borderColor: 'var(--signal-watch)', bgColor: 'rgba(234,179,8,0.08)', textColor: 'var(--signal-watch)', label: 'WATCH' },
+  PASS:  { borderColor: 'var(--signal-pass)',  bgColor: 'rgba(239,68,68,0.08)', textColor: 'var(--signal-pass)',  label: 'PASS' },
 };
 
 export default function AnalysisPage() {
@@ -62,7 +61,7 @@ export default function AnalysisPage() {
   const [team, setTeam] = useState('');
   const [askPrice, setAskPrice] = useState('');
   const [breakType, setBreakType] = useState<'hobby' | 'bd'>('hobby');
-  const [numCases, setNumCases] = useState('10');
+  const [numCases, setNumCases] = useState(1);
 
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState<AnalysisResult | null>(null);
@@ -89,6 +88,10 @@ export default function AnalysisPage() {
       });
   }, [productId]);
 
+  const selectedProduct = products.find(p => p.id === productId);
+  const hasBD = selectedProduct?.bd_case_cost != null;
+  const canAnalyze = productId && team && askPrice && !running;
+
   async function runAnalysis() {
     if (!productId || !team || !askPrice) return;
     setRunning(true);
@@ -98,7 +101,7 @@ export default function AnalysisPage() {
       const res = await fetch('/api/analysis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId, team, askPrice: parseFloat(askPrice), breakType, numCases: parseInt(numCases) || 10 }),
+        body: JSON.stringify({ productId, team, askPrice: parseFloat(askPrice), breakType, numCases }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -110,296 +113,429 @@ export default function AnalysisPage() {
     }
   }
 
-  const selectedProduct = products.find(p => p.id === productId);
-  const hasBD = selectedProduct?.bd_case_cost != null;
+  const breakTypeOptions = hasBD
+    ? [{ value: 'hobby', label: 'Hobby' }, { value: 'bd', label: 'BD' }]
+    : [{ value: 'hobby', label: 'Hobby' }];
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="bg-[oklch(0.28_0.08_250)] text-white sticky top-0 z-10">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center gap-4">
-          <Link href="/" className="flex items-center gap-2 text-white/60 hover:text-white transition-colors shrink-0">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0">
-              <path d="M9 2L4 7L9 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            <span className="text-xs font-medium">Products</span>
-          </Link>
-          <div className="flex-1 text-center">
-            <p className="text-sm font-bold">Breakerz Sayz</p>
-            <p className="text-[10px] text-white/50 uppercase tracking-widest">Break Slot Analysis</p>
-          </div>
-          <div className="w-20" />
-        </div>
-        <div className="h-0.5 bg-[var(--topps-red)]" />
-      </header>
+    <div className="min-h-screen" style={{ backgroundColor: 'var(--terminal-bg)' }}>
+      {/* Hero Header */}
+      <div
+        className="relative overflow-hidden border-b"
+        style={{
+          background: 'var(--gradient-hero)',
+          borderColor: 'var(--terminal-border)',
+        }}
+      >
+        {/* Dot pattern */}
+        <div
+          className="absolute inset-0 opacity-5"
+          style={{
+            backgroundImage: 'radial-gradient(circle at 2px 2px, var(--accent-blue) 1px, transparent 0)',
+            backgroundSize: '40px 40px',
+          }}
+        />
+        {/* Ambient glows */}
+        <div
+          className="absolute top-0 right-0 w-96 h-96 blur-3xl opacity-20"
+          style={{ background: 'radial-gradient(circle, var(--accent-blue) 0%, transparent 70%)' }}
+        />
+        <div
+          className="absolute bottom-0 left-0 w-96 h-96 blur-3xl opacity-20"
+          style={{ background: 'radial-gradient(circle, var(--badge-icon) 0%, transparent 70%)' }}
+        />
 
-      <main className="max-w-3xl mx-auto px-4 py-8 space-y-6">
-        {/* Intro */}
-        <div>
-          <h1 className="text-xl font-black mb-1">Breakerz Sayz</h1>
-          <p className="text-sm text-muted-foreground">
-            Select a product, pick your team, enter what the breaker is charging — we{"'"}ll tell you if it{"'"}s a good deal.
+        <div className="relative px-6 py-8 max-w-7xl mx-auto">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-sm font-semibold mb-6 px-3 py-1.5 rounded-lg backdrop-blur-sm hover:opacity-70 transition-opacity"
+            style={{
+              color: 'var(--text-primary)',
+              backgroundColor: 'rgba(59, 130, 246, 0.1)',
+              border: '1px solid rgba(59, 130, 246, 0.3)',
+            }}
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to Home
+          </Link>
+
+          <div className="flex items-center justify-center gap-4 mb-4">
+            <div
+              className="w-14 h-14 rounded-xl flex items-center justify-center"
+              style={{ background: 'var(--gradient-blue)', boxShadow: 'var(--glow-blue)' }}
+            >
+              <TrendingUp className="w-7 h-7 text-white" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <h1
+                  className="text-4xl font-bold"
+                  style={{
+                    background: 'linear-gradient(135deg, var(--text-primary) 0%, var(--accent-blue) 100%)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                  }}
+                >
+                  Breakerz Sayz
+                </h1>
+                <Sparkles className="w-6 h-6 animate-pulse" style={{ color: 'var(--badge-icon)' }} />
+              </div>
+              <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+                AI-powered deal analysis with live market data
+              </p>
+            </div>
+          </div>
+
+          {/* Feature pills */}
+          <div className="flex flex-wrap items-center justify-center gap-3 mt-6">
+            {[
+              { icon: <Zap className="w-4 h-4" style={{ color: 'var(--signal-buy)' }} />, label: 'Instant Analysis' },
+              { icon: <TrendingUp className="w-4 h-4" style={{ color: 'var(--accent-blue)' }} />, label: 'Market Intelligence' },
+              { icon: <Sparkles className="w-4 h-4" style={{ color: 'var(--badge-icon)' }} />, label: 'Social Signals' },
+            ].map(pill => (
+              <div
+                key={pill.label}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-full border backdrop-blur-sm"
+                style={{
+                  backgroundColor: 'rgba(19, 24, 32, 0.6)',
+                  borderColor: 'var(--terminal-border-hover)',
+                }}
+              >
+                {pill.icon}
+                <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+                  {pill.label}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Two-column body */}
+      <div className="px-6 py-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 max-w-7xl mx-auto">
+
+          {/* Left — Configure */}
+          <div>
+            <StepHeader stepNumber={1} title="Configure Your Break" className="mb-6" />
+            <ElevatedCard>
+              <div className="space-y-6">
+                {/* Product */}
+                <div>
+                  <FormLabel>Product</FormLabel>
+                  <select
+                    value={productId}
+                    onChange={e => setProductId(e.target.value)}
+                    className="w-full h-12 text-base font-medium rounded-lg border-2 px-4 focus:outline-none transition-all"
+                    style={{
+                      backgroundColor: 'var(--terminal-bg)',
+                      borderColor: productId ? 'var(--accent-blue)' : 'var(--terminal-border)',
+                      color: productId ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                    }}
+                  >
+                    <option value="">Select product…</option>
+                    {products.map(p => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Break type + cases */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <FormLabel>Break Type</FormLabel>
+                    <SegmentedControl
+                      options={breakTypeOptions}
+                      value={breakType}
+                      onChange={v => setBreakType(v as 'hobby' | 'bd')}
+                    />
+                  </div>
+                  <div>
+                    <FormLabel>Cases</FormLabel>
+                    <CounterInput value={numCases} onChange={setNumCases} min={1} max={50} />
+                  </div>
+                </div>
+
+                {/* Team */}
+                <div>
+                  <FormLabel>Team</FormLabel>
+                  <select
+                    value={team}
+                    onChange={e => setTeam(e.target.value)}
+                    disabled={teams.length === 0}
+                    className="w-full h-12 text-base font-medium rounded-lg border-2 px-4 focus:outline-none transition-all disabled:opacity-40"
+                    style={{
+                      backgroundColor: 'var(--terminal-bg)',
+                      borderColor: team ? 'var(--accent-blue)' : 'var(--terminal-border)',
+                      color: team ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                    }}
+                  >
+                    <option value="">{productId ? 'Select team…' : 'Select a product first'}</option>
+                    {teams.map(t => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Asking price */}
+                <div>
+                  <FormLabel>Asking Price</FormLabel>
+                  <div className="relative">
+                    <span
+                      className="absolute left-5 top-1/2 -translate-y-1/2 text-2xl font-mono font-bold pointer-events-none"
+                      style={{ color: 'var(--text-secondary)' }}
+                    >
+                      $
+                    </span>
+                    <input
+                      type="number"
+                      placeholder="0"
+                      value={askPrice}
+                      onChange={e => setAskPrice(e.target.value)}
+                      disabled={!team}
+                      className="w-full h-16 text-2xl font-mono font-bold rounded-lg border-2 pl-10 pr-4 focus:outline-none transition-all disabled:opacity-40"
+                      style={{
+                        backgroundColor: 'var(--terminal-bg)',
+                        borderColor: askPrice ? 'var(--accent-blue)' : 'var(--terminal-border)',
+                        color: 'var(--text-primary)',
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* CTA */}
+                <LargeCTAButton
+                  onClick={runAnalysis}
+                  disabled={!canAnalyze}
+                  loading={running}
+                >
+                  {running ? (
+                    'Analyzing Deal…'
+                  ) : (
+                    <>
+                      <Sparkles className="w-5 h-5" />
+                      Analyze Deal
+                    </>
+                  )}
+                </LargeCTAButton>
+              </div>
+            </ElevatedCard>
+          </div>
+
+          {/* Right — Analysis Result */}
+          <div>
+            <StepHeader stepNumber={2} title="AI Analysis" className="mb-6" />
+            <ElevatedCard>
+              {error && (
+                <div
+                  className="rounded-lg p-4 text-sm mb-4"
+                  style={{
+                    backgroundColor: 'rgba(239,68,68,0.08)',
+                    border: '1px solid var(--signal-pass)',
+                    color: 'var(--signal-pass)',
+                  }}
+                >
+                  {error}
+                </div>
+              )}
+
+              {result && !running ? (
+                <AnalysisResultPanel result={result} products={products} productId={productId} />
+              ) : (
+                <div
+                  className="rounded-lg p-12 flex items-center justify-center border"
+                  style={{ borderColor: 'var(--terminal-border)' }}
+                >
+                  <div className="text-center">
+                    <Sparkles
+                      className="w-12 h-12 mx-auto mb-4 opacity-20"
+                      style={{ color: 'var(--text-secondary)' }}
+                    />
+                    <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>
+                      Configure your break and enter a price to get started
+                    </p>
+                  </div>
+                </div>
+              )}
+            </ElevatedCard>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AnalysisResultPanel({
+  result,
+  products,
+  productId,
+}: {
+  result: AnalysisResult;
+  products: Product[];
+  productId: string;
+}) {
+  const cfg = signalConfig[result.signal];
+  const aboveBelow = result.valuePct >= 0 ? 'below fair value' : 'above fair value';
+  const slug = products.find(p => p.id === productId)?.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') ?? '';
+
+  return (
+    <div className="space-y-4">
+      {/* Verdict */}
+      <div
+        className="rounded-lg p-6 border-2"
+        style={{ backgroundColor: cfg.bgColor, borderColor: cfg.borderColor }}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <span className="text-3xl font-black" style={{ color: cfg.textColor }}>
+            {cfg.label}
+          </span>
+          <div className="text-right">
+            <p className="text-sm font-semibold font-mono" style={{ color: cfg.textColor }}>
+              {Math.abs(result.valuePct).toFixed(1)}% {aboveBelow}
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div>
+            <p className="terminal-label mb-1">Fair Value</p>
+            <p className="font-mono text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
+              {formatCurrency(result.fairValue)}
+            </p>
+          </div>
+          <div>
+            <p className="terminal-label mb-1">You&apos;re Paying</p>
+            <p className="font-mono text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
+              {formatCurrency(result.askPrice)}
+            </p>
+          </div>
+        </div>
+
+        <div
+          className="pl-4 border-l-2 py-1"
+          style={{ borderColor: 'var(--accent-blue)' }}
+        >
+          <p className="text-sm leading-relaxed italic" style={{ color: 'var(--text-secondary)' }}>
+            {result.analysis}
           </p>
         </div>
+      </div>
 
-        {/* Input form */}
-        <div className="bg-card border rounded-lg overflow-hidden">
-          <div className="h-1 bg-[oklch(0.28_0.08_250)]" />
-          <div className="p-5 space-y-4">
-            {/* Product */}
-            <div>
-              <label className="block text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mb-1.5">
-                Product
-              </label>
-              <select
-                value={productId}
-                onChange={e => setProductId(e.target.value)}
-                className="w-full text-sm px-3 py-2 rounded border bg-background focus:outline-none focus:ring-1 focus:ring-[oklch(0.28_0.08_250)]"
+      {/* Key players */}
+      {result.topPlayers.length > 0 && (
+        <div
+          className="rounded-lg p-5 border"
+          style={{
+            backgroundColor: 'var(--terminal-bg)',
+            borderColor: 'var(--terminal-border)',
+          }}
+        >
+          <p className="terminal-label mb-3">Key Players — {result.teamName}</p>
+          <div className="space-y-3">
+            {result.topPlayers.map(p => (
+              <div
+                key={p.name}
+                className="flex items-center justify-between py-2 border-b last:border-b-0"
+                style={{ borderColor: 'var(--terminal-border)' }}
               >
-                <option value="">Select a product…</option>
-                {products.map(p => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Break type toggle */}
-            {productId && (
-              <div>
-                <label className="block text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mb-1.5">
-                  Break Type
-                </label>
-                <div className="flex gap-1 p-1 bg-secondary rounded-lg w-fit">
-                  <button
-                    onClick={() => setBreakType('hobby')}
-                    className={`px-3 py-1 rounded text-xs font-bold uppercase tracking-wider transition-colors ${
-                      breakType === 'hobby' ? 'bg-[oklch(0.28_0.08_250)] text-white' : 'text-muted-foreground hover:text-foreground'
-                    }`}
-                  >
-                    Hobby
-                  </button>
-                  {hasBD && (
-                    <button
-                      onClick={() => setBreakType('bd')}
-                      className={`px-3 py-1 rounded text-xs font-bold uppercase tracking-wider transition-colors ${
-                        breakType === 'bd' ? 'bg-[oklch(0.28_0.08_250)] text-white' : 'text-muted-foreground hover:text-foreground'
-                      }`}
+                <div className="flex items-center gap-2">
+                  <span className="text-sm" style={{ color: 'var(--text-primary)' }}>{p.name}</span>
+                  {p.isRookie && (
+                    <span
+                      className="text-[10px] px-1.5 py-0.5 rounded font-bold"
+                      style={{ backgroundColor: 'var(--accent-blue)', color: 'white' }}
                     >
-                      Breakers Delight
-                    </button>
+                      RC
+                    </span>
+                  )}
+                  {p.isIcon && (
+                    <span
+                      className="text-[10px] px-1.5 py-0.5 rounded font-bold"
+                      style={{ backgroundColor: 'var(--badge-icon)', color: 'var(--terminal-bg)' }}
+                    >
+                      ★ Icon
+                    </span>
                   )}
                 </div>
-              </div>
-            )}
-
-            {/* Cases in the break */}
-            {productId && (
-              <div>
-                <label className="block text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mb-1.5">
-                  Cases in the break
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min="1"
-                    max="50"
-                    step="1"
-                    value={numCases}
-                    onChange={e => setNumCases(e.target.value)}
-                    className="w-24 text-sm font-mono px-3 py-2 rounded border bg-background focus:outline-none focus:ring-1 focus:ring-[oklch(0.28_0.08_250)]"
-                  />
-                  <span className="text-xs text-muted-foreground">
-                    {parseInt(numCases) === 1 ? 'single case break' : 'case group break'}
-                  </span>
-                </div>
-                {parseInt(numCases) > 50 && (
-                  <p className="text-xs text-amber-600 dark:text-amber-400">Max 50 cases — will be capped at 50.</p>
-                )}
-              </div>
-            )}
-
-            {/* Team */}
-            {teams.length > 0 && (
-              <div>
-                <label className="block text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mb-1.5">
-                  Your Team
-                </label>
-                <select
-                  value={team}
-                  onChange={e => setTeam(e.target.value)}
-                  className="w-full text-sm px-3 py-2 rounded border bg-background focus:outline-none focus:ring-1 focus:ring-[oklch(0.28_0.08_250)]"
-                >
-                  <option value="">Select a team…</option>
-                  {teams.map(t => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {/* Ask price */}
-            {team && (
-              <div>
-                <label className="block text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mb-1.5">
-                  What the breaker is charging
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm pointer-events-none">$</span>
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="0"
-                    value={askPrice}
-                    onChange={e => setAskPrice(e.target.value)}
-                    className="w-full text-sm font-mono pl-7 pr-4 py-2 rounded border bg-background focus:outline-none focus:ring-1 focus:ring-[oklch(0.28_0.08_250)]"
-                  />
+                <div className="flex items-center gap-4 font-mono text-xs">
+                  <div>
+                    <span className="terminal-label mr-1">EV</span>
+                    <span style={{ color: 'var(--text-primary)' }}>{formatCurrency(p.evMid)}</span>
+                  </div>
+                  <div>
+                    <span className="terminal-label mr-1">↑</span>
+                    <span style={{ color: 'var(--signal-buy)' }}>{formatCurrency(p.evHigh)}</span>
+                  </div>
                 </div>
               </div>
-            )}
-
-            {/* Run button */}
-            <button
-              onClick={runAnalysis}
-              disabled={!productId || !team || !askPrice || running}
-              className="w-full py-2.5 rounded bg-[oklch(0.28_0.08_250)] text-white text-sm font-bold uppercase tracking-wider hover:opacity-90 transition-opacity disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              {running ? 'Analyzing…' : 'Run Analysis'}
-            </button>
+            ))}
           </div>
         </div>
+      )}
 
-        {/* Running state */}
-        {running && (
-          <div className="bg-card border rounded-lg p-6 text-center space-y-2">
-            <p className="text-sm font-medium">Checking the numbers…</p>
-            <p className="text-xs text-muted-foreground">Pulling player data and running analysis</p>
-            <div className="mt-3 h-1 bg-secondary rounded-full overflow-hidden">
-              <div className="h-full bg-[oklch(0.28_0.08_250)] animate-pulse w-full" />
-            </div>
+      {/* HV advisory */}
+      {result.hvPlayers?.length > 0 && (
+        <div
+          className="rounded-lg p-4 border flex items-start gap-3"
+          style={{
+            backgroundColor: 'rgba(234,179,8,0.08)',
+            borderColor: 'var(--signal-watch)',
+          }}
+        >
+          <span className="text-lg">⚡</span>
+          <div>
+            <p className="text-sm font-semibold mb-1" style={{ color: 'var(--signal-watch)' }}>
+              High Volatility Advisory
+            </p>
+            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+              {result.hvPlayers.join(', ')} — market pricing is unusually uncertain. EVs may shift significantly.
+            </p>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Error */}
-        {error && (
-          <div className="rounded border border-red-200 bg-red-50 dark:bg-red-950/20 p-4 text-sm text-red-700 dark:text-red-400">
-            {error}
-          </div>
-        )}
-
-        {/* Analysis result */}
-        {result && !running && (() => {
-          const style = signalStyles[result.signal];
-          const aboveBelow = result.valuePct >= 0 ? 'below fair value' : 'above fair value';
-          return (
-            <div className={`border rounded-lg overflow-hidden ${style.border}`}>
-              {/* Signal header */}
-              <div className={`${style.bg} ${style.border} border-b px-5 py-4 flex items-center justify-between`}>
-                <div>
-                  <span className={`text-2xl font-black ${style.text}`}>{style.label}</span>
-                  <p className={`text-xs mt-0.5 ${style.text} opacity-80`}>
-                    {result.productName} · {result.teamName}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className={`text-xs font-medium ${style.text}`}>
-                    {Math.abs(result.valuePct).toFixed(1)}% {aboveBelow}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Fair value: {formatCurrency(result.fairValue)}
-                  </p>
-                </div>
-              </div>
-
-              {/* AI analysis */}
-              <div className="bg-card px-5 py-4 space-y-4">
-                <p className="text-sm leading-relaxed">{result.analysis}</p>
-
-                {/* Top players */}
-                {result.topPlayers.length > 0 && (
-                  <div className="border-t pt-4">
-                    <p className="text-[10px] uppercase tracking-widest text-muted-foreground font-semibold mb-2">
-                      Key Players on {result.teamName}
-                    </p>
-                    <div className="space-y-1.5">
-                      {result.topPlayers.map(p => (
-                        <div key={p.name} className="flex items-center justify-between text-sm">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">{p.name}</span>
-                            {p.isRookie && (
-                              <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-[var(--topps-red)] text-white uppercase tracking-wider">
-                                RC
-                              </span>
-                            )}
-                            {p.isIcon && (
-                              <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-purple-600 text-white uppercase tracking-wider">
-                                ★ Icon
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-right font-mono text-xs text-muted-foreground">
-                            <span>EV {formatCurrency(p.evMid)}</span>
-                            <span className="ml-2 text-green-600 dark:text-green-400" title="Upside (90-day high)">↑ {formatCurrency(p.evHigh)}</span>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* High Volatility advisory */}
-                {result.hvPlayers?.length > 0 && (
-                  <div className="border-t pt-4">
-                    <div className="rounded border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/20 px-3 py-2.5 flex items-start gap-2">
-                      <span className="text-amber-500 mt-px">⚡</span>
-                      <div>
-                        <p className="text-xs font-semibold text-amber-800 dark:text-amber-300">High Volatility</p>
-                        <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
-                          {result.hvPlayers.join(', ')} — market pricing is unusually uncertain for {result.hvPlayers.length === 1 ? 'this player' : 'these players'}. EVs may shift significantly.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Risk flags */}
-                {result.riskFlags?.length > 0 && (
-                  <div className="border-t pt-4 space-y-2">
-                    {result.riskFlags.map((flag, i) => {
-                      const colors = FLAG_COLORS[flag.flagType] ?? defaultFlagColor;
-                      return (
-                        <div key={i} className={`rounded border ${colors.banner} px-3 py-2.5 flex items-start gap-2`}>
-                          <span className="mt-px text-xs font-bold opacity-60">⚑</span>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-semibold">{flag.playerName}</span>
-                              <span className={`text-[9px] font-bold px-1 py-0.5 rounded uppercase ${colors.chip}`}>
-                                {FLAG_LABELS[flag.flagType] ?? flag.flagType}
-                              </span>
-                            </div>
-                            <p className="text-xs mt-0.5 opacity-80">{flag.note}</p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                {/* View full break */}
-                <div className="border-t pt-3">
-                  <Link
-                    href={`/break/${products.find(p => p.id === productId)?.name.toLowerCase().replace(/[^a-z0-9]+/g, '-') ?? ''}`}
-                    className="text-xs text-primary hover:underline font-medium"
+      {/* Risk flags */}
+      {result.riskFlags?.length > 0 && (
+        <div className="space-y-2">
+          {result.riskFlags.map((flag, i) => (
+            <div
+              key={i}
+              className="rounded-lg p-4 border flex items-start gap-3"
+              style={{
+                backgroundColor: 'rgba(239,68,68,0.05)',
+                borderColor: 'var(--signal-pass)',
+              }}
+            >
+              <span className="text-sm font-bold opacity-60" style={{ color: 'var(--signal-pass)' }}>⚑</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    {flag.playerName}
+                  </span>
+                  <span
+                    className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase"
+                    style={{ backgroundColor: 'var(--signal-pass)', color: 'white' }}
                   >
-                    View full break analysis →
-                  </Link>
+                    {FLAG_LABELS[flag.flagType] ?? flag.flagType}
+                  </span>
                 </div>
+                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>{flag.note}</p>
               </div>
             </div>
-          );
-        })()}
-      </main>
+          ))}
+        </div>
+      )}
+
+      {/* View full break */}
+      <div className="pt-2 border-t" style={{ borderColor: 'var(--terminal-border)' }}>
+        <Link
+          href={`/break/${slug}`}
+          className="text-xs font-medium hover:underline"
+          style={{ color: 'var(--accent-blue)' }}
+        >
+          View full break analysis →
+        </Link>
+      </div>
     </div>
   );
 }

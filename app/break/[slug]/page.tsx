@@ -3,12 +3,12 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { createClient } from '@supabase/supabase-js';
 import DashboardConfig from '@/components/breakerz/DashboardConfig';
 import PlayerTable from '@/components/breakerz/PlayerTable';
 import TeamSlotsTable from '@/components/breakerz/TeamSlotsTable';
 import BreakerComparison from '@/components/breakerz/BreakerComparison';
+import { SegmentedControl } from '@/components/breakerz/ds';
 import { computeSlotPricing, computeTeamSlotPricing } from '@/lib/engine';
 import type { BreakConfig, PlayerWithPricing, Product, Sport } from '@/lib/types';
 
@@ -48,6 +48,7 @@ export default function BreakPage() {
   const [riskFlagMap, setRiskFlagMap] = useState<Map<string, Array<{ flagType: string; note: string }>>>(new Map());
 
   const [breakType, setBreakType] = useState<'hobby' | 'bd'>('hobby');
+  const [activeTab, setActiveTab] = useState<'teams' | 'players' | 'comparison'>('teams');
 
   const [config, setConfig] = useState<BreakConfig>({
     hobbyCases: 10,
@@ -145,157 +146,172 @@ export default function BreakPage() {
     });
   }
 
+  function getSportStyle(sportName: string) {
+    const s = (sportName ?? '').toLowerCase();
+    if (s === 'basketball') return { primary: '#f97316', gradient: 'linear-gradient(135deg, #f97316 0%, #ef4444 100%)' };
+    if (s === 'football')   return { primary: '#22c55e', gradient: 'linear-gradient(135deg, #22c55e 0%, #10b981 100%)' };
+    return { primary: '#3b82f6', gradient: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)' };
+  }
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <p className="text-muted-foreground text-sm">Loading…</p>
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--terminal-bg)' }}>
+        <div className="text-center">
+          <div
+            className="w-10 h-10 border-4 border-t-transparent rounded-full animate-spin mx-auto mb-3"
+            style={{ borderColor: 'var(--accent-blue)', borderTopColor: 'transparent' }}
+          />
+          <p className="text-sm font-medium" style={{ color: 'var(--text-t-secondary)' }}>Loading…</p>
+        </div>
       </div>
     );
   }
 
   if (error || !product) {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background">
-        <p className="text-red-500">{error ?? 'Product not found.'}</p>
-        <Link href="/" className="text-sm text-primary underline">← Back</Link>
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4" style={{ backgroundColor: 'var(--terminal-bg)' }}>
+        <p className="text-sm" style={{ color: '#dc2626' }}>{error ?? 'Product not found.'}</p>
+        <Link href="/" className="text-sm underline" style={{ color: 'var(--accent-blue)' }}>← Back to Products</Link>
       </div>
     );
   }
 
+  const { primary, gradient } = getSportStyle(product.sport?.name ?? '');
+
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="bg-[oklch(0.28_0.08_250)] text-white sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-          <Link href="/" className="flex items-center gap-2 text-white/60 hover:text-white transition-colors shrink-0">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0">
-              <path d="M9 2L4 7L9 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-            <span className="text-xs font-medium">Products</span>
+    <div className="min-h-screen" style={{ backgroundColor: 'var(--terminal-bg)' }}>
+
+      {/* Hero header with sport gradient */}
+      <div className="relative overflow-hidden border-b" style={{ background: gradient, borderColor: 'var(--terminal-border)' }}>
+        {/* Dot pattern */}
+        <div
+          className="absolute inset-0 opacity-5"
+          style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)', backgroundSize: '32px 32px' }}
+        />
+        {/* Glow */}
+        <div
+          className="absolute top-0 right-0 w-80 h-80 blur-3xl opacity-25"
+          style={{ background: `radial-gradient(circle, ${primary} 0%, transparent 70%)` }}
+        />
+
+        <div className="relative px-6 py-6">
+          {/* Back nav */}
+          <Link href="/">
+            <button
+              className="flex items-center gap-2 text-xs font-semibold mb-5 px-3 py-1.5 rounded-lg transition-opacity hover:opacity-70"
+              style={{ color: 'white', backgroundColor: 'rgba(255,255,255,0.15)' }}
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M9 2L4 7L9 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              Products
+            </button>
           </Link>
 
-          <div className="flex-1 min-w-0 text-center">
-            <p className="text-sm font-bold truncate">{product.name}</p>
-            <p className="text-[10px] text-white/50 uppercase tracking-widest">
-              {product.sport?.name} · {product.year}
-            </p>
-          </div>
-
-          {/* Pricing status + fetch */}
-          <div className="flex items-center gap-3 shrink-0">
-            <Link href="/analysis" className="hidden sm:block text-[10px] text-white/50 hover:text-white font-medium transition-colors whitespace-nowrap">
-              Breakerz Sayz →
-            </Link>
-            {hasPricing && !fetching && (
-              <span className="hidden sm:flex items-center gap-1.5 text-[10px] text-white/50">
-                <span className="h-1.5 w-1.5 rounded-full bg-green-400 inline-block" />
-                {pricedCount}/{players.length} priced
-              </span>
-            )}
-            <button
-              onClick={fetchLivePricing}
-              disabled={fetching}
-              className="text-xs px-3 py-1.5 rounded bg-white/10 hover:bg-white/20 text-white font-semibold disabled:opacity-40 disabled:cursor-not-allowed transition-colors border border-white/20 whitespace-nowrap"
-            >
-              {fetching ? 'Fetching…' : hasPricing ? 'Refresh' : 'Fetch Pricing'}
-            </button>
-          </div>
-        </div>
-        <div className="h-0.5 bg-[var(--topps-red)]" />
-      </header>
-
-      {/* Pre-release banner — takes priority over generic estimated pricing notice */}
-      {isPreRelease && product.release_date ? (
-        <div className="bg-blue-50 dark:bg-blue-950/30 border-b border-blue-200 dark:border-blue-800">
-          <div className="max-w-7xl mx-auto px-4 py-3 flex items-start gap-3">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="shrink-0 text-blue-500 mt-0.5" aria-hidden="true">
-              <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5"/>
-              <path d="M8 5v3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              <circle cx="8" cy="11" r="0.75" fill="currentColor"/>
-            </svg>
+          <div className="flex items-start justify-between flex-wrap gap-5">
             <div>
-              <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">
-                Pre-release · {product.name} launches {formatReleaseDate(product.release_date)}
-              </p>
-              <p className="text-xs text-blue-700 dark:text-blue-400 mt-0.5">
-                This product hasn{"'"}t hit shelves yet — no sales data exists for these specific cards.
-                Slot values shown are approximations based on historical comps for these players from prior sets.
-                Prices will update automatically once the market establishes real sales.
-              </p>
+              <div className="flex items-center gap-2 mb-2">
+                <span
+                  className="text-[10px] font-bold uppercase px-2.5 py-1 rounded-lg backdrop-blur-sm"
+                  style={{ backgroundColor: 'rgba(255,255,255,0.2)', color: 'white', letterSpacing: '0.06em' }}
+                >
+                  {product.sport?.name}
+                </span>
+                <span className="text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.9)' }}>{product.year}</span>
+                <span className="text-sm" style={{ color: 'rgba(255,255,255,0.65)' }}>{product.manufacturer}</span>
+              </div>
+              <h1 className="text-2xl md:text-3xl font-black text-white mb-3">{product.name}</h1>
+              <div className="flex items-center gap-3 flex-wrap">
+                {hasPricing && !fetching && (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg backdrop-blur-sm" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
+                    <span className="h-1.5 w-1.5 rounded-full bg-white inline-block" />
+                    <span className="text-xs font-semibold text-white">{pricedCount}/{players.length} priced</span>
+                  </div>
+                )}
+                {!product.has_odds && (
+                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg backdrop-blur-sm" style={{ backgroundColor: 'rgba(245,158,11,0.3)' }}>
+                    <span className="text-xs font-medium" style={{ color: '#fef3c7' }}>No odds · EV-only weighting</span>
+                    <OddsTooltip />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Controls */}
+            <div className="flex items-center gap-4 flex-wrap">
+              <div>
+                <div className="text-[10px] font-semibold uppercase mb-2" style={{ color: 'rgba(255,255,255,0.7)', letterSpacing: '0.06em' }}>
+                  Break Type
+                </div>
+                <SegmentedControl
+                  value={breakType}
+                  onChange={v => setBreakType(v as 'hobby' | 'bd')}
+                  options={[
+                    { value: 'hobby', label: 'Hobby' },
+                    { value: 'bd',    label: "Breaker's Delight" },
+                  ]}
+                />
+              </div>
+              <div>
+                <div className="text-[10px] font-semibold uppercase mb-2" style={{ color: 'rgba(255,255,255,0.7)', letterSpacing: '0.06em' }}>
+                  Pricing
+                </div>
+                <button
+                  onClick={fetchLivePricing}
+                  disabled={fetching}
+                  className="px-4 py-2.5 text-sm font-bold rounded-lg transition-all disabled:opacity-40"
+                  style={{
+                    backgroundColor: 'rgba(255,255,255,0.15)',
+                    color: 'white',
+                    border: '1px solid rgba(255,255,255,0.3)',
+                  }}
+                >
+                  {fetching ? 'Fetching…' : hasPricing ? 'Refresh' : 'Fetch Pricing'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
-      ) : estimatedCount > 0 ? (
-        <div className="bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800">
-          <div className="max-w-7xl mx-auto px-4 py-2.5 flex items-center gap-2">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 text-amber-500" aria-hidden="true">
-              <path d="M7 1L13 13H1L7 1Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
-              <path d="M7 5.5V8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              <circle cx="7" cy="10.5" r="0.75" fill="currentColor"/>
-            </svg>
-            <p className="text-xs text-amber-700 dark:text-amber-400">
-              {estimatedCount} player{estimatedCount !== 1 ? 's' : ''} using estimated pricing — no sales data yet for this product. Values are approximations based on historical comps.
-            </p>
-          </div>
-        </div>
-      ) : null}
+      </div>
 
-      {/* No-odds warning banner */}
-      {!product.has_odds && (
-        <div className="bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800">
-          <div className="max-w-7xl mx-auto px-4 py-2.5 flex items-center gap-2">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className="shrink-0 text-amber-500" aria-hidden="true">
-              <path d="M7 1L13 13H1L7 1Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
-              <path d="M7 5.5V8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
-              <circle cx="7" cy="10.5" r="0.75" fill="currentColor"/>
-            </svg>
-            <p className="text-xs text-amber-700 dark:text-amber-400">
-              Odds not yet available for this product — slot costs are estimated from card values only.
-            </p>
-            <OddsTooltip />
-          </div>
+      {/* Info banners */}
+      {isPreRelease && product.release_date && (
+        <div className="border-b px-6 py-3" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'rgba(59,130,246,0.08)' }}>
+          <p className="text-xs font-semibold" style={{ color: '#93c5fd' }}>
+            Pre-release · {product.name} launches {formatReleaseDate(product.release_date)}
+          </p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text-t-secondary)' }}>
+            Slot values are approximations from historical comps. Prices update once the market establishes real sales.
+          </p>
+        </div>
+      )}
+      {!isPreRelease && estimatedCount > 0 && (
+        <div className="border-b px-6 py-2.5 flex items-center gap-2" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'rgba(245,158,11,0.06)' }}>
+          <span className="text-[10px]" style={{ color: '#f59e0b' }}>▲</span>
+          <p className="text-xs" style={{ color: 'var(--text-t-secondary)' }}>
+            {estimatedCount} player{estimatedCount !== 1 ? 's' : ''} using estimated pricing — approximations based on historical comps.
+          </p>
         </div>
       )}
 
-      <main className="max-w-7xl mx-auto px-4 py-6 space-y-5">
-        {/* Break type toggle */}
-        <div className="flex gap-1 p-1 bg-secondary rounded-lg w-fit">
-          <button
-            onClick={() => setBreakType('hobby')}
-            className={`px-4 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-colors ${
-              breakType === 'hobby'
-                ? 'bg-[oklch(0.28_0.08_250)] text-white'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            Hobby Case
-          </button>
-          <button
-            onClick={() => setBreakType('bd')}
-            className={`px-4 py-1.5 rounded text-xs font-bold uppercase tracking-wider transition-colors ${
-              breakType === 'bd'
-                ? 'bg-[oklch(0.28_0.08_250)] text-white'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            Breakers Delight
-          </button>
-        </div>
-
+      <main className="px-4 md:px-6 py-6 space-y-5 max-w-[1400px] mx-auto">
         <DashboardConfig config={config} onChange={setConfig} breakType={breakType} />
 
-        {/* Fetch banner — shown only before first fetch */}
         {!hasPricing && !fetching && (
-          <div className="rounded border border-dashed bg-card p-6 flex items-center justify-between gap-4">
+          <div
+            className="rounded-lg border border-dashed p-6 flex items-center justify-between gap-4"
+            style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
+          >
             <div>
-              <p className="font-semibold text-sm mb-0.5">Live pricing not loaded</p>
-              <p className="text-xs text-muted-foreground">
+              <p className="font-semibold text-sm mb-0.5" style={{ color: 'var(--text-t-primary)' }}>Live pricing not loaded</p>
+              <p className="text-xs" style={{ color: 'var(--text-t-secondary)' }}>
                 Players are loaded — hit Fetch to pull EV data from CardHedger. Caches for 24 hrs.
               </p>
             </div>
             <button
               onClick={fetchLivePricing}
-              className="shrink-0 text-sm px-4 py-2 rounded bg-[oklch(0.28_0.08_250)] text-white font-semibold hover:bg-[oklch(0.22_0.08_250)] transition-colors"
+              className="shrink-0 text-xs px-4 py-2 rounded-lg font-bold transition-colors"
+              style={{ backgroundColor: 'var(--accent-blue)', color: 'white' }}
             >
               Fetch Pricing
             </button>
@@ -303,45 +319,60 @@ export default function BreakPage() {
         )}
 
         {fetching && (
-          <div className="rounded border bg-card p-5 text-center">
-            <p className="text-sm font-medium mb-1">Fetching live prices…</p>
-            <p className="text-xs text-muted-foreground">
-              Searching CardHedger for {players.length} players. First run takes ~15–20s, then caches for 24 hrs.
+          <div
+            className="rounded-lg border p-5 text-center"
+            style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
+          >
+            <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text-t-primary)' }}>Fetching live prices…</p>
+            <p className="text-xs mb-3" style={{ color: 'var(--text-t-secondary)' }}>
+              Searching CardHedger for {players.length} players. First run ~15–20s, then caches for 24 hrs.
             </p>
-            <div className="mt-3 h-1 bg-secondary rounded-full overflow-hidden">
-              <div className="h-full bg-[oklch(0.28_0.08_250)] animate-pulse w-full" />
+            <div className="h-1 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--terminal-border)' }}>
+              <div className="h-full animate-pulse w-full" style={{ backgroundColor: 'var(--accent-blue)' }} />
             </div>
           </div>
         )}
 
-        <Tabs defaultValue="teams">
-          <TabsList className="bg-secondary">
-            <TabsTrigger value="teams">
-              Team Slots
-              <span className="ml-1.5 text-[10px] font-mono bg-background px-1.5 py-0.5 rounded-full">
-                {teamSlots.length}
-              </span>
-            </TabsTrigger>
-            <TabsTrigger value="players">
-              Player Slots
-              <span className="ml-1.5 text-[10px] font-mono bg-background px-1.5 py-0.5 rounded-full">
-                {players.length}
-              </span>
-            </TabsTrigger>
-            <TabsTrigger value="comparison">Breaker Compare</TabsTrigger>
-          </TabsList>
+        {/* Tab bar */}
+        <div className="flex gap-1 p-1 rounded-lg" style={{ backgroundColor: 'var(--terminal-surface)', border: '1px solid var(--terminal-border)' }}>
+          {(['teams', 'players', 'comparison'] as const).map(tab => {
+            const label = tab === 'teams' ? 'Team Slots' : tab === 'players' ? 'Player Slots' : 'Breaker Compare';
+            const count = tab === 'teams' ? teamSlots.length : tab === 'players' ? players.length : null;
+            const active = activeTab === tab;
+            return (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-semibold transition-all"
+                style={{
+                  backgroundColor: active ? 'var(--terminal-surface-hover)' : 'transparent',
+                  color: active ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                  border: active ? '1px solid var(--terminal-border-hover)' : '1px solid transparent',
+                }}
+              >
+                {label}
+                {count !== null && (
+                  <span
+                    className="text-[10px] font-mono px-1.5 py-0.5 rounded-full"
+                    style={{
+                      backgroundColor: active ? 'var(--accent-blue)' : 'var(--terminal-border)',
+                      color: active ? 'white' : 'var(--text-tertiary)',
+                    }}
+                  >
+                    {count}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
 
-          <TabsContent value="teams" className="mt-4">
-            <TeamSlotsTable teams={teamSlots} breakType={breakType} riskFlagMap={riskFlagMap} />
-          </TabsContent>
-
-          <TabsContent value="players" className="mt-4">
-            <PlayerTable players={players} fetching={fetching} breakType={breakType} riskFlagMap={riskFlagMap} />
-          </TabsContent>
-          <TabsContent value="comparison" className="mt-4">
-            <BreakerComparison players={players} />
-          </TabsContent>
-        </Tabs>
+        {/* Tab content */}
+        <div className="mt-4">
+          {activeTab === 'teams' && <TeamSlotsTable teams={teamSlots} breakType={breakType} riskFlagMap={riskFlagMap} />}
+          {activeTab === 'players' && <PlayerTable players={players} fetching={fetching} breakType={breakType} riskFlagMap={riskFlagMap} />}
+          {activeTab === 'comparison' && <BreakerComparison players={players} />}
+        </div>
       </main>
     </div>
   );

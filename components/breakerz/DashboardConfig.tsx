@@ -1,7 +1,7 @@
 'use client';
 
-import { Input } from '@/components/ui/input';
 import { formatCurrency } from '@/lib/engine';
+import { ElevatedCard, FormLabel, CounterInput } from '@/components/breakerz/ds';
 import type { BreakConfig } from '@/lib/types';
 
 interface Props {
@@ -21,68 +21,73 @@ export default function DashboardConfig({ config, onChange, breakType }: Props) 
   const totalLabel = breakType === 'hobby' ? 'Total Hobby Break' : 'Total BD Break';
 
   return (
-    <div className="bg-card border rounded overflow-hidden">
-      {/* Heritage accent stripe */}
-      <div className="h-1 bg-[oklch(0.28_0.08_250)]" />
+    <ElevatedCard>
+      <p className="terminal-label mb-5">Break Configuration</p>
 
-      <div className="p-5">
-        <p className="text-[10px] font-black uppercase tracking-[0.15em] text-muted-foreground mb-4">
-          Break Configuration
-        </p>
+      <div className="grid grid-cols-2 gap-6 mb-6">
+        {breakType === 'hobby' ? (
+          <>
+            <div>
+              <FormLabel>Hobby Cases</FormLabel>
+              <CounterInput value={config.hobbyCases} onChange={v => update('hobbyCases', v)} min={1} />
+            </div>
+            <div>
+              <FormLabel>Hobby / Case</FormLabel>
+              <CostInput value={config.hobbyCaseCost} onChange={v => update('hobbyCaseCost', v)} />
+            </div>
+          </>
+        ) : (
+          <>
+            <div>
+              <FormLabel>BD Cases</FormLabel>
+              <CounterInput value={config.bdCases} onChange={v => update('bdCases', v)} min={1} />
+            </div>
+            <div>
+              <FormLabel>BD / Case</FormLabel>
+              <CostInput value={config.bdCaseCost} onChange={v => update('bdCaseCost', v)} />
+            </div>
+          </>
+        )}
+      </div>
 
-        <div className="grid grid-cols-2 gap-3 mb-5">
-          {breakType === 'hobby' ? (
-            <>
-              <Field label="Hobby Cases"  value={config.hobbyCases}    onChange={v => update('hobbyCases', v)} />
-              <Field label="Hobby / Case" value={config.hobbyCaseCost} onChange={v => update('hobbyCaseCost', v)} prefix="$" />
-            </>
-          ) : (
-            <>
-              <Field label="BD Cases"   value={config.bdCases}    onChange={v => update('bdCases', v)} />
-              <Field label="BD / Case"  value={config.bdCaseCost} onChange={v => update('bdCaseCost', v)} prefix="$" />
-            </>
-          )}
-        </div>
-
-        {/* Total */}
-        <div className="border-t pt-4">
-          <div className="rounded bg-secondary px-4 py-3">
-            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">{totalLabel}</p>
-            <p className="text-xl font-black font-mono">{formatCurrency(total)}</p>
-          </div>
+      <div className="border-t pt-5" style={{ borderColor: 'var(--terminal-border)' }}>
+        <div className="rounded-lg px-4 py-3" style={{ backgroundColor: 'var(--terminal-bg)' }}>
+          <p className="terminal-label mb-1">{totalLabel}</p>
+          <p className="text-2xl font-bold font-mono" style={{ color: 'var(--text-primary)' }}>
+            {formatCurrency(total)}
+          </p>
         </div>
       </div>
-    </div>
+    </ElevatedCard>
   );
 }
 
-function Field({ label, value, onChange, prefix, suffix }: {
-  label: string; value: number; onChange: (v: number) => void; prefix?: string; suffix?: string;
-}) {
+function CostInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
-    <div>
-      <label className="block text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 font-semibold">
-        {label}
-      </label>
-      <div className="relative">
-        {prefix && (
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none z-10">
-            {prefix}
-          </span>
-        )}
-        <Input
-          type="number"
-          value={value}
-          onChange={e => onChange(parseFloat(e.target.value) || 0)}
-          className="font-mono text-sm bg-background"
-          style={{ paddingLeft: prefix ? '1.5rem' : undefined, paddingRight: suffix ? '1.75rem' : undefined }}
-        />
-        {suffix && (
-          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs pointer-events-none">
-            {suffix}
-          </span>
-        )}
-      </div>
+    <div className="relative">
+      <span
+        className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono pointer-events-none z-10"
+        style={{ color: 'var(--text-tertiary)' }}
+      >
+        $
+      </span>
+      <input
+        type="number"
+        value={value}
+        onChange={e => onChange(parseFloat(e.target.value) || 0)}
+        className="w-full rounded-lg border text-sm font-mono focus:outline-none"
+        style={{
+          backgroundColor: 'var(--terminal-bg)',
+          borderColor: 'var(--terminal-border)',
+          color: 'var(--text-primary)',
+          paddingLeft: '1.5rem',
+          paddingRight: '0.75rem',
+          paddingTop: '0.625rem',
+          paddingBottom: '0.625rem',
+        }}
+        onFocus={e => (e.target.style.borderColor = 'var(--accent-blue)')}
+        onBlur={e => (e.target.style.borderColor = 'var(--terminal-border)')}
+      />
     </div>
   );
 }

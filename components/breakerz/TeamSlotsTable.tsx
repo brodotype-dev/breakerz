@@ -1,24 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { Badge } from '@/components/ui/badge';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import { formatCurrency, computeSignal, formatPct, computeEffectiveScore } from '@/lib/engine';
+import SignalBadge from '@/components/breakerz/SignalBadge';
+import { IconPlayerBadge, BullishBadge, BearishBadge, HighVolatilityBadge, RiskFlagBadge } from '@/components/breakerz/SocialBadges';
 import type { TeamSlot } from '@/lib/types';
 
 type RiskFlagEntry = { flagType: string; note: string };
-
-const FLAG_COLORS: Record<string, string> = {
-  injury:     'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300',
-  suspension: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',
-  legal:      'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400',
-  trade:      'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400',
-  retirement: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
-  off_field:  'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400',
-};
-const FLAG_LABELS: Record<string, string> = {
-  injury: 'Injury', suspension: 'Suspension', legal: 'Legal',
-  trade: 'Trade', retirement: 'Retirement', off_field: 'Off-field',
-};
 
 interface Props {
   teams: TeamSlot[];
@@ -26,14 +15,16 @@ interface Props {
   riskFlagMap?: Map<string, RiskFlagEntry[]>;
 }
 
+const COL = 'grid-cols-[36px_1fr_160px_72px_56px_104px_88px_88px]';
+
 export default function TeamSlotsTable({ teams, breakType, riskFlagMap = new Map() }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [askPrices, setAskPrices] = useState<Record<string, string>>({});
 
   if (teams.length === 0) {
     return (
-      <div className="rounded-lg border p-12 text-center text-muted-foreground">
-        No team data available. Player pricing must be loaded first.
+      <div className="rounded-lg border p-12 text-center" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)', color: 'var(--text-t-secondary)' }}>
+        No team data available. Fetch pricing first.
       </div>
     );
   }
@@ -41,8 +32,7 @@ export default function TeamSlotsTable({ teams, breakType, riskFlagMap = new Map
   const toggle = (team: string) => {
     setExpanded(prev => {
       const next = new Set(prev);
-      if (next.has(team)) next.delete(team);
-      else next.add(team);
+      next.has(team) ? next.delete(team) : next.add(team);
       return next;
     });
   };
@@ -50,160 +40,173 @@ export default function TeamSlotsTable({ teams, breakType, riskFlagMap = new Map
   const isHobby = breakType === 'hobby';
 
   return (
-    <div className="rounded-lg border overflow-hidden">
+    <div className="rounded-lg overflow-hidden border" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b bg-muted/50">
-              {['#', 'Team', 'Current Break Price', 'Players', 'RC', 'Slot Cost', '/Case', 'Max Pay'].map(h => (
-                <th
-                  key={h}
-                  className={`px-4 py-2.5 text-left text-xs uppercase tracking-wider font-medium whitespace-nowrap ${
-                    h === 'Current Break Price'
-                      ? 'text-[oklch(0.28_0.08_250)] bg-blue-50 dark:bg-blue-950/20'
-                      : 'text-muted-foreground'
-                  }`}
+        {/* Header */}
+        <div
+          className={`grid ${COL} gap-3 px-4 py-2.5 border-b`}
+          style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
+        >
+          {['#', 'Team', 'Break Price / Signal', 'Players', 'RC', 'Slot Cost', '/Case', 'Max Pay'].map(h => (
+            <div key={h} className="terminal-label">{h}</div>
+          ))}
+        </div>
+
+        {/* Rows */}
+        <div>
+          {teams.map((row, i) => {
+            const isOpen = expanded.has(row.team);
+            const slotCost = isHobby ? row.hobbySlotCost : row.bdSlotCost;
+            const perCase  = isHobby ? row.hobbyPerCase  : row.bdPerCase;
+            const askRaw = askPrices[row.team] ?? '';
+            const askNum = parseFloat(askRaw);
+            const dealCheck = askRaw && !isNaN(askNum) && slotCost > 0
+              ? computeSignal(slotCost, askNum)
+              : null;
+
+            const teamScores = row.players.map(p =>
+              computeEffectiveScore(p.buzz_score, p.breakerz_score, p.player?.is_icon ?? false)
+            );
+            const maxScore = Math.max(...teamScores);
+            const minScore = Math.min(...teamScores);
+            const hasIcon    = row.players.some(p => p.player?.is_icon);
+            const hasBullish = maxScore > 0.1;
+            const hasBearish = minScore < -0.1;
+            const hasHV      = row.players.some(p => p.is_high_volatility);
+            const teamFlags  = row.players.flatMap(p => riskFlagMap.get(p.id) ?? []);
+
+            return (
+              <div key={row.team}>
+                {/* Team row */}
+                <div
+                  className={`grid ${COL} gap-3 px-4 py-2.5 border-b cursor-pointer transition-colors`}
+                  style={{ borderColor: 'var(--terminal-border)' }}
+                  onClick={() => toggle(row.team)}
+                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--terminal-surface-hover)')}
+                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = '')}
                 >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {teams.map((row, i) => {
-              const isOpen = expanded.has(row.team);
-              const slotCost = isHobby ? row.hobbySlotCost : row.bdSlotCost;
-              const perCase  = isHobby ? row.hobbyPerCase  : row.bdPerCase;
-              const askRaw = askPrices[row.team] ?? '';
-              const askNum = parseFloat(askRaw);
-              const dealCheck = askRaw && !isNaN(askNum) && slotCost > 0
-                ? computeSignal(slotCost, askNum)
-                : null;
-              const signalColors = {
-                BUY: 'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300 border-green-300',
-                WATCH: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 border-amber-300',
-                PASS: 'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300 border-red-300',
-              };
+                  {/* Rank */}
+                  <div className="flex items-center">
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-t-tertiary)' }}>{i + 1}</span>
+                  </div>
 
-              // Compute team-level Social Currency signals
-              const teamScores = row.players.map(p =>
-                computeEffectiveScore(p.buzz_score, p.breakerz_score, p.player?.is_icon ?? false)
-              );
-              const maxScore = Math.max(...teamScores);
-              const minScore = Math.min(...teamScores);
-              const hasBullish = maxScore > 0.1;
-              const hasBearish = minScore < -0.1;
-              const hasIcon = row.players.some(p => p.player?.is_icon);
-              const hasHV = row.players.some(p => p.is_high_volatility);
-              const teamFlags = row.players.flatMap(p => riskFlagMap.get(p.id) ?? []);
-              const hasFlags = teamFlags.length > 0;
+                  {/* Team */}
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    {isOpen
+                      ? <ChevronDown className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--text-t-tertiary)' }} />
+                      : <ChevronRight className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--text-t-tertiary)' }} />
+                    }
+                    <span className="text-sm font-medium truncate" style={{ color: 'var(--text-t-primary)' }}>{row.team}</span>
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      {hasIcon    && <IconPlayerBadge />}
+                      {hasBullish && <BullishBadge />}
+                      {hasBearish && <BearishBadge />}
+                      {hasHV      && <HighVolatilityBadge />}
+                      {teamFlags.length > 0 && <RiskFlagBadge type={teamFlags[0].flagType} note={teamFlags.map(f => f.note).join(' · ')} />}
+                    </div>
+                  </div>
 
-              return (
-                <>
-                  <tr
-                    key={row.team}
-                    className="border-b hover:bg-muted/30 transition-colors cursor-pointer"
-                    onClick={() => toggle(row.team)}
-                  >
-                    <td className="px-4 py-2.5 text-muted-foreground text-xs font-mono">{i + 1}</td>
-                    <td className="px-4 py-2.5 font-medium">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="mr-1 text-muted-foreground text-xs">{isOpen ? '▼' : '▶'}</span>
-                        <span>{row.team}</span>
-                        {hasIcon && (
-                          <span title="Icon-tier player on this team" className="text-[9px] font-black px-1 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 leading-none">★</span>
+                  {/* Price input + signal */}
+                  <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                    <div className="relative flex-1">
+                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-mono" style={{ color: 'var(--text-t-tertiary)' }}>$</span>
+                      <input
+                        type="number"
+                        min="0"
+                        placeholder="0"
+                        value={askRaw}
+                        onChange={e => setAskPrices(prev => ({ ...prev, [row.team]: e.target.value }))}
+                        className="w-full pl-5 pr-2 py-1 text-xs font-mono rounded border focus:outline-none"
+                        style={{
+                          backgroundColor: 'var(--terminal-bg)',
+                          borderColor: 'var(--terminal-border-hover)',
+                          color: 'var(--text-t-primary)',
+                        }}
+                        onFocus={e => (e.target.style.borderColor = 'var(--accent-blue)')}
+                        onBlur={e => (e.target.style.borderColor = 'var(--terminal-border-hover)')}
+                      />
+                    </div>
+                    {dealCheck && <SignalBadge signal={dealCheck.signal} size="sm" valuePct={dealCheck.valuePct} />}
+                  </div>
+
+                  {/* Players */}
+                  <div className="flex items-center">
+                    <span className="font-mono text-sm" style={{ color: 'var(--text-t-primary)' }}>{row.playerCount}</span>
+                  </div>
+
+                  {/* RC count */}
+                  <div className="flex items-center">
+                    {row.rookieCount > 0 && (
+                      <span className="text-[10px] font-bold px-1 py-0.5 rounded" style={{ backgroundColor: 'rgba(59,130,246,0.15)', color: 'var(--accent-blue)' }}>
+                        {row.rookieCount}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Slot cost */}
+                  <div className="flex items-center">
+                    <span className="font-mono text-sm font-semibold" style={{ color: 'var(--text-t-primary)' }}>
+                      {formatCurrency(slotCost)}
+                    </span>
+                  </div>
+
+                  {/* /Case */}
+                  <div className="flex items-center">
+                    <span className="font-mono text-xs" style={{ color: 'var(--text-t-secondary)' }}>
+                      {formatCurrency(perCase)}
+                    </span>
+                  </div>
+
+                  {/* Max pay */}
+                  <div className="flex items-center">
+                    <span className="font-mono text-sm" style={{ color: '#22c55e' }}>
+                      {formatCurrency(row.maxPay)}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Expanded player rows */}
+                {isOpen && row.players.map(p => {
+                  const playerFlags = riskFlagMap.get(p.id) ?? [];
+                  const score = computeEffectiveScore(p.buzz_score, p.breakerz_score, p.player?.is_icon ?? false);
+                  return (
+                    <div
+                      key={p.id}
+                      className={`grid ${COL} gap-3 px-4 py-2 border-b`}
+                      style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-bg)' }}
+                    >
+                      <div />
+                      <div className="flex items-center gap-1.5 pl-5 min-w-0">
+                        <span className="text-xs truncate" style={{ color: 'var(--text-t-secondary)' }}>{p.player.name}</span>
+                        {p.player.is_rookie && (
+                          <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ backgroundColor: 'rgba(59,130,246,0.15)', color: 'var(--accent-blue)' }}>RC</span>
                         )}
-                        {hasBullish && (
-                          <span title={`Breakerz bullish (score: +${maxScore.toFixed(2)})`} className="text-[9px] font-black px-1 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 leading-none">↑</span>
-                        )}
-                        {hasBearish && (
-                          <span title={`Breakerz bearish (score: ${minScore.toFixed(2)})`} className="text-[9px] font-black px-1 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 leading-none">↓</span>
-                        )}
-                        {hasHV && (
-                          <span title="High Volatility — EV may shift significantly" className="text-[9px] px-1 py-0.5 rounded bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400 leading-none">⚡</span>
-                        )}
-                        {hasFlags && (
-                          <span title={teamFlags.map(f => `${FLAG_LABELS[f.flagType] ?? f.flagType}: ${f.note}`).join(' · ')} className="text-[9px] font-black px-1 py-0.5 rounded bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400 leading-none">⚑</span>
-                        )}
+                        {p.player.is_icon    && <IconPlayerBadge />}
+                        {score > 0.1         && <BullishBadge />}
+                        {score < -0.1        && <BearishBadge />}
+                        {p.is_high_volatility && <HighVolatilityBadge />}
+                        {playerFlags.map((f, fi) => (
+                          <RiskFlagBadge key={fi} type={f.flagType} note={f.note} />
+                        ))}
                       </div>
-                    </td>
-                    {/* Current Break Price — highlighted column */}
-                    <td className="px-4 py-2.5 bg-blue-50/50 dark:bg-blue-950/10" onClick={e => e.stopPropagation()}>
-                      <div className="flex items-center gap-2">
-                        <span className="text-muted-foreground text-xs font-mono pointer-events-none select-none">$</span>
-                        <input
-                          type="number"
-                          min="0"
-                          placeholder="0"
-                          value={askRaw}
-                          onChange={e => setAskPrices(prev => ({ ...prev, [row.team]: e.target.value }))}
-                          className="w-20 text-xs font-mono px-2 py-1 rounded border border-blue-200 dark:border-blue-800 bg-white dark:bg-background focus:outline-none focus:ring-1 focus:ring-[oklch(0.28_0.08_250)]"
-                        />
-                        {dealCheck && (
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border whitespace-nowrap ${signalColors[dealCheck.signal]}`}>
-                            {dealCheck.signal} {formatPct(dealCheck.valuePct)}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2.5 text-center font-mono">{row.playerCount}</td>
-                    <td className="px-4 py-2.5 text-center">
-                      {row.rookieCount > 0 && (
-                        <Badge variant="outline" className="text-[10px] px-1 py-0 text-primary border-primary">
-                          {row.rookieCount}
-                        </Badge>
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 font-mono font-semibold">{formatCurrency(slotCost)}</td>
-                    <td className="px-4 py-2.5 font-mono text-muted-foreground text-xs">{formatCurrency(perCase)}</td>
-                    <td className="px-4 py-2.5 font-mono text-muted-foreground">{formatCurrency(row.maxPay)}</td>
-                  </tr>
-                  {isOpen && row.players.map(p => {
-                    const playerFlags = riskFlagMap.get(p.id) ?? [];
-                    const score = computeEffectiveScore(p.buzz_score, p.breakerz_score, p.player?.is_icon ?? false);
-                    return (
-                      <tr key={p.id} className="border-b bg-muted/20">
-                        <td className="px-4 py-2 text-muted-foreground text-xs font-mono" />
-                        <td className="px-4 py-2 pl-10 text-sm text-muted-foreground">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span>{p.player.name}</span>
-                            {p.player.is_rookie && (
-                              <Badge variant="outline" className="text-[10px] px-1 py-0 text-primary border-primary">RC</Badge>
-                            )}
-                            {p.player.is_icon && (
-                              <span title="Icon-tier player" className="text-[8px] font-black px-1 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 leading-none">★</span>
-                            )}
-                            {score > 0.1 && (
-                              <span title={`Breakerz bullish (+${score.toFixed(2)})`} className="text-[8px] font-black px-1 py-0.5 rounded bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300 leading-none">↑</span>
-                            )}
-                            {score < -0.1 && (
-                              <span title={`Breakerz bearish (${score.toFixed(2)})`} className="text-[8px] font-black px-1 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 leading-none">↓</span>
-                            )}
-                            {p.is_high_volatility && (
-                              <span title="High Volatility" className="text-[8px] px-1 py-0.5 rounded bg-amber-100 text-amber-600 dark:bg-amber-900/40 dark:text-amber-400 leading-none">⚡</span>
-                            )}
-                            {playerFlags.map((f, fi) => (
-                              <span key={fi} title={f.note} className={`text-[8px] font-bold px-1 py-0.5 rounded leading-none ${FLAG_COLORS[f.flagType] ?? 'bg-red-100 text-red-700'}`}>
-                                {FLAG_LABELS[f.flagType] ?? f.flagType}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                        <td className="px-4 py-2 text-center font-mono text-xs text-muted-foreground">{p.total_sets}</td>
-                        <td />
-                        <td className="px-4 py-2 font-mono text-xs text-muted-foreground">
+                      <div />
+                      <div />
+                      <div />
+                      {/* Slot cost for this player */}
+                      <div className="flex items-center">
+                        <span className="font-mono text-xs" style={{ color: 'var(--text-t-tertiary)' }}>
                           {formatCurrency(isHobby ? p.hobbySlotCost : p.bdSlotCost)}
-                        </td>
-                        <td />
-                        <td />
-                      </tr>
-                    );
-                  })}
-                </>
-              );
-            })}
-          </tbody>
-        </table>
+                        </span>
+                      </div>
+                      <div />
+                      <div />
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
   );

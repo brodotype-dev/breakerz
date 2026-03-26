@@ -1,86 +1,16 @@
 import Link from 'next/link';
+import { ChevronRight } from 'lucide-react';
 import type { Product, Sport } from '@/lib/types';
 
 interface Props {
   product: Product & { sport: Sport };
 }
 
-function MfrLogo({ manufacturer }: { manufacturer: string }) {
-  const mfr = manufacturer.toLowerCase();
-
-  if (mfr === 'topps') {
-    return (
-      <div style={{ background: '#d62828', padding: '3px 7px', borderRadius: '2px', display: 'flex', alignItems: 'center' }}>
-        <span style={{ fontSize: '11px', fontWeight: 900, letterSpacing: '0.08em', color: 'white', lineHeight: 1, textTransform: 'uppercase' as const }}>
-          Topps
-        </span>
-      </div>
-    );
-  }
-
-  if (mfr === 'panini') {
-    return (
-      <div style={{ background: '#1a1a2e', padding: '3px 7px', borderRadius: '2px', display: 'flex', alignItems: 'center', gap: '2px' }}>
-        <span style={{ fontSize: '10px', fontWeight: 800, letterSpacing: '0.06em', color: 'white', lineHeight: 1, textTransform: 'lowercase' as const }}>
-          panini
-        </span>
-        <span style={{ display: 'inline-block', width: '4px', height: '4px', borderRadius: '50%', background: '#e8b84b', flexShrink: 0 }} />
-      </div>
-    );
-  }
-
-  if (mfr.includes('upper deck')) {
-    return (
-      <div style={{ background: '#2d2d2d', padding: '3px 6px', borderRadius: '2px', border: '1px solid #888', display: 'flex', alignItems: 'center' }}>
-        <span style={{ fontSize: '11px', fontWeight: 900, letterSpacing: '0.1em', color: '#ddd', lineHeight: 1, textTransform: 'uppercase' as const }}>
-          UD
-        </span>
-      </div>
-    );
-  }
-
-  // Default badge
-  return (
-    <div style={{ background: 'oklch(0.87 0.01 85)', padding: '3px 7px', borderRadius: '2px', display: 'flex', alignItems: 'center' }}>
-      <span style={{ fontSize: '9px', fontWeight: 800, letterSpacing: '0.12em', color: 'oklch(0.28 0.08 250)', textTransform: 'uppercase' as const }}>
-        {manufacturer}
-      </span>
-    </div>
-  );
-}
-
-function artworkStyle(sport: string): React.CSSProperties {
-  const s = sport.toLowerCase();
-
-  if (s === 'basketball') {
-    return {
-      backgroundImage: [
-        'radial-gradient(circle at 50% 18%, transparent 34%, oklch(0.28 0.08 250 / 0.06) 34.5%, oklch(0.28 0.08 250 / 0.06) 36%, transparent 36.5%)',
-        'radial-gradient(ellipse 95% 55% at 50% 105%, transparent 82%, oklch(0.28 0.08 250 / 0.06) 82.5%, oklch(0.28 0.08 250 / 0.06) 84%, transparent 84.5%)',
-      ].join(', '),
-      backgroundRepeat: 'no-repeat',
-      backgroundSize: '100% 100%',
-    };
-  }
-
-  if (s === 'baseball') {
-    return {
-      backgroundImage: 'radial-gradient(ellipse 140% 50% at 50% 115%, transparent 60%, oklch(0.28 0.08 250 / 0.055) 60.5%, oklch(0.28 0.08 250 / 0.055) 62%, transparent 62.5%)',
-      backgroundRepeat: 'no-repeat',
-      backgroundSize: '100% 100%',
-    };
-  }
-
-  if (s === 'football') {
-    return {
-      backgroundImage: [
-        'repeating-linear-gradient(180deg, transparent 0px, transparent 22px, oklch(0.28 0.08 250 / 0.055) 22px, oklch(0.28 0.08 250 / 0.055) 24px)',
-        'repeating-linear-gradient(90deg, transparent 0, transparent 27%, oklch(0.28 0.08 250 / 0.038) 27%, oklch(0.28 0.08 250 / 0.038) 29%, transparent 29%, transparent 71%, oklch(0.28 0.08 250 / 0.038) 71%, oklch(0.28 0.08 250 / 0.038) 73%, transparent 73%)',
-      ].join(', '),
-    };
-  }
-
-  return {};
+function getSportStyle(sportName: string): { primary: string; gradient: string } {
+  const s = sportName.toLowerCase();
+  if (s === 'basketball') return { primary: '#f97316', gradient: 'linear-gradient(135deg, #f97316 0%, #ef4444 100%)' };
+  if (s === 'football')   return { primary: '#22c55e', gradient: 'linear-gradient(135deg, #22c55e 0%, #10b981 100%)' };
+  return { primary: '#3b82f6', gradient: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)' }; // baseball / default
 }
 
 function isPreRelease(releaseDate: string | null): boolean {
@@ -90,171 +20,110 @@ function isPreRelease(releaseDate: string | null): boolean {
 
 export default function ProductCard({ product }: Props) {
   const sport = product.sport?.name ?? '';
+  const { primary, gradient } = getSportStyle(sport);
   const preRelease = isPreRelease(product.release_date);
 
   return (
-    <Link href={`/break/${product.slug}`} className="group block" style={{ aspectRatio: '5/7' }}>
-      {/* Outer navy border */}
+    <Link href={`/break/${product.slug}`} className="block group">
       <div
-        className="relative h-full overflow-hidden transition-all duration-200 group-hover:-translate-y-1"
+        className="relative overflow-hidden rounded-xl border transition-all duration-200 group-hover:scale-[1.02]"
         style={{
-          border: '8px solid oklch(0.28 0.08 250)',
-          borderRadius: '4px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+          borderColor: 'var(--terminal-border)',
+          backgroundColor: 'var(--terminal-surface)',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
         }}
       >
-        {/* Inner red border */}
+        {/* Sport gradient top bar */}
+        <div className="absolute top-0 left-0 right-0 h-1.5" style={{ background: gradient }} />
+
+        {/* Hover glow */}
         <div
-          className="absolute inset-0 pointer-events-none"
-          style={{
-            border: '2px solid oklch(0.52 0.22 27)',
-            margin: '3px',
-            borderRadius: '1px',
-            zIndex: 5,
-          }}
+          className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+          style={{ background: `radial-gradient(circle at center, ${primary}12 0%, transparent 70%)` }}
         />
 
-        {/* Card face */}
-        <div className="absolute inset-0 flex flex-col" style={{ background: 'oklch(0.975 0.008 85)' }}>
-
-          {/* Top bar: manufacturer logo + sport pill */}
-          <div className="flex items-center justify-between px-3 py-2.5" style={{ zIndex: 4 }}>
-            <MfrLogo manufacturer={product.manufacturer} />
-            <span
-              className="text-[8px] font-bold uppercase tracking-widest"
-              style={{ color: 'oklch(0.28 0.08 250)' }}
-            >
-              {sport}
-            </span>
-          </div>
-
-          {/* Artwork area — sport geometry + year + ornament */}
-          <div
-            className="flex-1 relative flex flex-col items-center justify-center px-3 overflow-hidden"
-            style={{ zIndex: 3, ...artworkStyle(sport) }}
-          >
-            {/* Basketball lane */}
-            {sport.toLowerCase() === 'basketball' && (
-              <div
-                className="absolute bottom-0 left-1/2 -translate-x-1/2"
-                style={{
-                  width: '38%',
-                  height: '42%',
-                  border: '2px solid oklch(0.28 0.08 250 / 0.06)',
-                  borderBottom: 'none',
-                }}
-              />
-            )}
-
-            {/* Baseball diamond */}
-            {sport.toLowerCase() === 'baseball' && (
-              <div
-                className="absolute left-1/2 -translate-x-1/2"
-                style={{
-                  width: '55%',
-                  aspectRatio: '1',
-                  bottom: '15%',
-                  border: '2px solid oklch(0.28 0.08 250 / 0.06)',
-                  transform: 'translateX(-50%) rotate(45deg)',
-                }}
-              />
-            )}
-
-            {/* Year */}
-            <span
-              className="relative z-10 leading-none tracking-tight"
-              style={{
-                fontFamily: 'var(--font-playfair)',
-                fontWeight: 900,
-                fontSize: 'clamp(28px, 5vw, 44px)',
-                color: 'oklch(0.28 0.08 250)',
-                opacity: 0.25,
-              }}
-            >
-              {product.year}
-            </span>
-
-            {/* Ornament */}
-            <div className="relative z-10 flex items-center gap-2 w-full mt-1.5">
-              <div className="flex-1 h-px" style={{ background: 'oklch(0.52 0.02 250 / 0.35)' }} />
-              <div className="w-1.5 h-1.5 rotate-45 shrink-0" style={{ background: 'oklch(0.52 0.22 27)' }} />
-              <div className="flex-1 h-px" style={{ background: 'oklch(0.52 0.02 250 / 0.35)' }} />
+        <div className="relative p-5 pt-6">
+          {/* Header */}
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-2">
+                <span
+                  className="text-[10px] font-bold uppercase px-2 py-0.5 rounded"
+                  style={{ backgroundColor: `${primary}20`, color: primary, letterSpacing: '0.06em' }}
+                >
+                  {sport}
+                </span>
+                <span className="text-xs font-semibold" style={{ color: 'var(--text-t-tertiary)' }}>
+                  {product.year}
+                </span>
+              </div>
+              <h3 className="text-base font-bold leading-snug mb-1 truncate" style={{ color: 'var(--text-t-primary)' }}>
+                {product.name}
+              </h3>
+              <p className="text-xs" style={{ color: 'var(--text-t-secondary)' }}>{product.manufacturer}</p>
             </div>
 
-            {/* Set name */}
-            <span
-              className="relative z-10 mt-2 text-[9px] font-bold uppercase tracking-[0.18em]"
-              style={{ color: 'oklch(0.52 0.02 250)' }}
-            >
-              {product.name.replace(/^\d{4}(-\d{2,4})?\s+/i, '').replace(/\s+(basketball|baseball|football|hockey|soccer)/i, '')}
-            </span>
-
-            {/* Pre-release ribbon */}
-            {preRelease && (
+            {!preRelease && (
               <div
-                className="absolute bottom-2 right-0 z-20"
-                style={{
-                  background: 'oklch(0.75 0.15 65)',
-                  color: 'white',
-                  fontSize: '7px',
-                  fontWeight: 900,
-                  letterSpacing: '0.14em',
-                  textTransform: 'uppercase',
-                  padding: '3px 8px 3px 10px',
-                  borderRadius: '2px 0 0 2px',
-                  boxShadow: '-1px 1px 3px rgba(0,0,0,0.2)',
-                }}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-full shrink-0 ml-2"
+                style={{ backgroundColor: 'rgba(34,197,94,0.1)' }}
               >
-                Pre-Release
+                <div
+                  className="w-1.5 h-1.5 rounded-full animate-pulse"
+                  style={{ backgroundColor: '#22c55e', boxShadow: '0 0 6px rgba(34,197,94,0.6)' }}
+                />
+                <span className="text-[9px] font-bold uppercase" style={{ color: '#22c55e', letterSpacing: '0.06em' }}>
+                  LIVE
+                </span>
               </div>
             )}
           </div>
 
-          {/* Nameplate */}
-          <div
-            className="relative px-3.5 pt-2.5 pb-2"
-            style={{ background: 'oklch(0.28 0.08 250)', zIndex: 4 }}
-          >
+          {/* Case cost */}
+          <div className="mb-4 p-3 rounded-lg" style={{ backgroundColor: `${primary}0d` }}>
+            <p className="terminal-label mb-1.5">Case Cost</p>
+            <div className="flex items-baseline gap-2">
+              <span className="font-mono text-xl font-bold" style={{ color: primary }}>
+                ${product.hobby_case_cost?.toLocaleString() ?? '—'}
+              </span>
+              {product.bd_case_cost && (
+                <>
+                  <span style={{ color: '#6b7280' }}>·</span>
+                  <span className="font-mono text-sm" style={{ color: '#a8adb8' }}>
+                    BD ${product.bd_case_cost.toLocaleString()}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* CTA */}
+          {preRelease ? (
             <div
-              className="absolute top-0 left-0 right-0"
-              style={{ height: '2px', background: 'oklch(0.52 0.22 27)' }}
-            />
-            <p
-              className="leading-snug"
+              className="text-center py-2 px-3 rounded-lg text-xs font-bold"
               style={{
-                fontFamily: 'var(--font-playfair)',
-                fontWeight: 700,
-                fontSize: 'clamp(11px, 1.8vw, 13px)',
-                color: 'white',
+                backgroundColor: 'rgba(245,158,11,0.1)',
+                color: '#f59e0b',
+                border: '1px solid rgba(245,158,11,0.3)',
               }}
             >
-              {product.name}
-            </p>
-          </div>
-
-          {/* Stats strip */}
-          <div
-            className="flex gap-3 px-3.5 py-2"
-            style={{ background: 'oklch(0.93 0.012 85)', borderTop: '1px solid oklch(0.87 0.01 85)', zIndex: 4 }}
-          >
-            {product.hobby_case_cost ? (
-              <div>
-                <p className="text-[7px] font-bold uppercase tracking-wider mb-0.5" style={{ color: 'oklch(0.52 0.02 250)' }}>Hobby</p>
-                <p className="text-[11px] font-semibold font-mono" style={{ color: 'oklch(0.28 0.08 250)' }}>
-                  ${product.hobby_case_cost.toLocaleString()}
-                </p>
-              </div>
-            ) : null}
-            {product.bd_case_cost ? (
-              <div>
-                <p className="text-[7px] font-bold uppercase tracking-wider mb-0.5" style={{ color: 'oklch(0.52 0.02 250)' }}>BD</p>
-                <p className="text-[11px] font-semibold font-mono" style={{ color: 'oklch(0.28 0.08 250)' }}>
-                  ${product.bd_case_cost.toLocaleString()}
-                </p>
-              </div>
-            ) : null}
-          </div>
-
+              PRE-RELEASE · Coming Soon
+            </div>
+          ) : (
+            <div
+              className="flex items-center justify-between py-2 px-3 rounded-lg"
+              style={{
+                backgroundColor: `${primary}12`,
+                borderLeft: `3px solid ${primary}`,
+              }}
+            >
+              <span className="text-sm font-semibold" style={{ color: primary }}>View Slot Analysis</span>
+              <ChevronRight
+                className="w-4 h-4 group-hover:translate-x-1 transition-transform"
+                style={{ color: primary }}
+              />
+            </div>
+          )}
         </div>
       </div>
     </Link>
