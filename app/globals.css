@@ -44,40 +44,52 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
-/* ── Theme tokens (from Figma Make theme.css) ─────────────────── */
+/* ── shadcn semantic tokens — mapped to terminal design system ── */
 :root {
   --font-size: 16px;
-  --background: #ffffff;
-  --foreground: oklch(0.145 0 0);
-  --card: #ffffff;
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: #030213;
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.95 0.0058 264.53);
-  --secondary-foreground: #030213;
-  --muted: #ececf0;
-  --muted-foreground: #717182;
-  --accent: #e9ebef;
-  --accent-foreground: #030213;
-  --destructive: #d4183d;
-  --destructive-foreground: #ffffff;
-  --border: rgba(0, 0, 0, 0.1);
-  --input: transparent;
-  --input-background: #f3f3f5;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring: oklch(0.708 0 0);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: #030213;
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+
+  /* Surface */
+  --background: #0a0e1a;
+  --foreground: #f5f5f7;
+  --card: #131820;
+  --card-foreground: #f5f5f7;
+  --popover: #131820;
+  --popover-foreground: #f5f5f7;
+
+  /* Primary — accent-blue so buttons are visible */
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+
+  /* Secondary / muted */
+  --secondary: #1e2533;
+  --secondary-foreground: #f5f5f7;
+  --muted: #1e2533;
+  --muted-foreground: #a8adb8;
+  --accent: #1e2533;
+  --accent-foreground: #f5f5f7;
+
+  /* Destructive */
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+
+  /* Borders / inputs */
+  --border: #1e2533;
+  --input: #131820;
+  --input-background: #131820;
+  --ring: #3b82f6;
+
+  /* Sidebar */
+  --sidebar: #0d1117;
+  --sidebar-foreground: #f5f5f7;
+  --sidebar-primary: #3b82f6;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1e2533;
+  --sidebar-accent-foreground: #f5f5f7;
+  --sidebar-border: #1e2533;
+  --sidebar-ring: #3b82f6;
 }
 
 @layer base {
