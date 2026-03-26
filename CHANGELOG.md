@@ -5,7 +5,17 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
-## 2026-03-26
+## 2026-03-26 (2)
+
+### Fix: Admin UI buttons invisible after design system update
+
+Figma Make theme import had set shadcn semantic vars to light values (`--primary: #030213`, `--input: transparent`, `--border: rgba(0,0,0,0.1)`), making all shadcn-based admin buttons and inputs invisible. Remapped all shadcn vars (`--primary`, `--background`, `--card`, `--border`, `--input`, `--muted`, etc.) to terminal design system values in `globals.css`.
+
+**Modified:** `app/globals.css`
+
+---
+
+## 2026-03-26 (1)
 
 ### Terminal Design System + Full Consumer UI Redesign
 
