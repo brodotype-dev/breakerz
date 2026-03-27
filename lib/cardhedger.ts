@@ -47,6 +47,31 @@ export async function searchCards(query: string, sport?: string) {
   return post<SearchResponse>('/v1/cards/card-search', { search: query, sport });
 }
 
+// Look up a graded card by cert number (PSA, BGS, SGC, etc.)
+// Returns full card identity + chronological price history for that specific cert
+export async function pricesByCert(cert: string) {
+  return post<{
+    cert_info: {
+      grader: string;
+      cert: string;
+      grade: string;
+      description: string;
+      cert_details_cached?: string;
+    };
+    card: {
+      card_id: string;
+      description: string;
+      player: string;
+      set: string;
+      number: string;
+      variant: string;
+      image: string;
+      category: string;
+    };
+    prices: Array<{ closing_date: string; Grade: string; card_id: string; price: string }>;
+  }>('/v1/cards/prices-by-cert', { cert });
+}
+
 // Get all graded and raw prices for a card
 export async function getAllPrices(cardId: string) {
   return post<{ prices: Array<{ grade: string; price: string }> }>(
