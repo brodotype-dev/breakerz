@@ -78,6 +78,7 @@ See [CLAUDE.md](./CLAUDE.md) for full deploy instructions and known gotchas.
 | `/admin/products/[id]` | Product dashboard — readiness stats, odds upload, re-run matching, Breakerz Bets Debrief |
 | `/admin/import-checklist` | 3-step checklist import wizard |
 | `/admin/products/[id]/players` | Player management — roster, icon tier (★), high volatility (⚡), risk flags (⚑) |
+| `/admin/card-lookup` | **Card Lookup** — screenshot an auction listing → AI extracts cert number → CardHedger grade prices + comps + max bid calculator |
 | `/api/analysis` | GET: active product list · POST: run Breakerz Sayz analysis |
 | `/api/pricing` | Live pricing endpoint (Supabase + CardHedger, 24h cache) |
 | `/api/admin/parse-checklist` | PDF/CSV checklist parser |
@@ -117,4 +118,5 @@ node scripts/map-cards.mjs
 - [CHANGELOG.md](./CHANGELOG.md) — feature history and release notes
 - [CLAUDE.md](./CLAUDE.md) — context for Claude Code sessions (deploy, gotchas, schema)
 - [docs/prd-social-currency.md](./docs/prd-social-currency.md) — Social Currency Signal PRD (buzz score pipeline)
+- [docs/card-lookup/prd-card-lookup.md](./docs/card-lookup/prd-card-lookup.md) — Card Lookup tool PRD
 - [docs/plans/](./docs/plans/) — implementation plans for major features

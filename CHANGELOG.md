@@ -5,6 +5,40 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-03-27 — Card Lookup Tool
+
+### New feature: `/admin/card-lookup`
+
+Personal auction bidding aid — screenshot any graded card listing, get instant pricing from CardHedger before bidding.
+
+**Flow:**
+1. Drop a screenshot of an auction listing (eBay, Goldin, PWCC, etc.)
+2. Claude Haiku (vision) extracts: player name, set, year, card number, variant, grading company, grade, cert number
+3. Cert lookup via `POST /v1/cards/prices-by-cert` — confirms card identity
+4. If cert has no price history (common), auto-falls back to name-based search
+5. Grade-level price estimates (all PSA/BGS/SGC grades) + 90-day comps displayed
+6. Max bid calculator: enter your margin % → ceiling updates live
+
+**Key technical decisions:**
+- `prices-by-cert` returns sale history for the specific physical slab, not aggregate market data. Most certs return empty `prices[]`. Grade-level pricing (`all-prices-by-card`) and `comps` are the primary signals.
+- When cert lookup returns empty prices, the client automatically retries with name-based search using the extracted fields; an amber notice explains the fallback.
+- Card name search returns `player`/`set` field names (not `player_name`/`set_name`) — the route maps both.
+- Top-level try/catch in the route handler prevents empty 500 bodies; any crash returns structured `{ error }` JSON.
+- `comps` API returns `null` (not `[]`) when no results — all null guards added.
+
+**UI:**
+- Two-panel layout: left = screenshot + editable extracted fields; right = results
+- Extracted fields are editable — if Claude misreads a field, correct it and re-run
+- Card image shown when available from CardHedger
+- Grade Prices table: all available grades, matched grade highlighted in blue
+- Recent Comps table: sale price, grade, date, platform (when 90-day data exists)
+- "Last Sale (Exact Cert)" label clarifies this is cert-specific, not aggregate
+
+**New files:** `app/admin/card-lookup/page.tsx`, `app/admin/card-lookup/error.tsx`, `app/api/admin/card-lookup/route.ts`, `docs/card-lookup/prd-card-lookup.md`
+**Modified:** `lib/cardhedger.ts` (added `pricesByCert()`), `app/admin/layout.tsx` (Card Lookup nav link)
+
+---
+
 ## 2026-03-26 (2)
 
 ### Fix: Admin UI buttons invisible after design system update
