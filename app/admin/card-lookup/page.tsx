@@ -38,6 +38,7 @@ interface SearchResult {
   comps: Array<{ sale_price: number; sale_date: string; grade: string; platform: string }>;
   matchedGrade: string;
   matchedPrice: { grade: string; price: number } | null;
+  certFallback?: boolean;
 }
 
 type LookupResult = CertResult | SearchResult;
@@ -110,18 +111,32 @@ export default function CardLookupPage() {
     setLookupError(null);
     setResult(null);
     try {
-      // Prefer cert lookup — direct, exact, no ambiguity
+      // Prefer cert lookup — direct, exact identity
       if (extracted.certNumber.trim()) {
         const res = await fetch('/api/admin/card-lookup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'cert', cert: extracted.certNumber.trim() }),
         });
-        const data = await res.json();
-        if (data.error) throw new Error(data.error);
-        setResult(data);
+        const certData = await res.json();
+        if (certData.error) throw new Error(certData.error);
+
+        // If cert returned no price history, fall through to name-based search
+        if (certData.prices && certData.prices.length > 0) {
+          setResult(certData);
+        } else {
+          // Name-based fallback — cert confirms identity but has no sales
+          const res2 = await fetch('/api/admin/card-lookup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'price', ...extracted }),
+          });
+          const searchData = await res2.json();
+          if (searchData.error) throw new Error(`Cert found but no price data — name search also failed: ${searchData.error}`);
+          setResult({ ...searchData, certFallback: true });
+        }
       } else {
-        // Fallback: name-based search
+        // No cert — name-based search only
         const res = await fetch('/api/admin/card-lookup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -275,6 +290,12 @@ export default function CardLookupPage() {
 
             {result && !isFetching && (
               <div className="space-y-4">
+                {/* Cert fallback notice */}
+                {result.source === 'search' && result.certFallback && (
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-400">
+                    Cert found but no sale history — showing comps by card name instead
+                  </div>
+                )}
                 {/* Card identity */}
                 <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
                   <div className="flex items-start gap-3">
