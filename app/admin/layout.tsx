@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { LockIcon, PackageIcon, PlusCircleIcon, SearchCodeIcon } from 'lucide-react';
+import { LockIcon, PackageIcon, PlusCircleIcon, SearchCodeIcon, ScanLine } from 'lucide-react';
 import { logout } from './login/actions';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -29,6 +29,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           >
             <PlusCircleIcon className="size-4 shrink-0" />
             New Product
+          </Link>
+          <Link
+            href="/admin/card-lookup"
+            className="flex items-center gap-2 px-3 py-2 rounded text-sm hover:bg-white/10 transition-colors"
+          >
+            <ScanLine className="size-4 shrink-0" />
+            Card Lookup
           </Link>
           <Link
             href="/admin/api-debug"
