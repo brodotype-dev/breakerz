@@ -25,7 +25,7 @@ interface CertSale {
 interface CertResult {
   source: 'cert';
   certInfo: { grader: string; cert: string; grade: string; description: string };
-  card: { card_id: string; description: string; player: string; set: string; number: string; variant: string; image: string };
+  card: { card_id: string; description: string; player: string; set: string; number: string; variant: string; image: string } | null;
   prices: CertSale[];
   lastSale: CertSale | null;
   avgPrice: number | null;
@@ -278,7 +278,7 @@ export default function CardLookupPage() {
                 {/* Card identity */}
                 <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
                   <div className="flex items-start gap-3">
-                    {result.source === 'cert' && result.card.image && (
+                    {result.source === 'cert' && result.card?.image && (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={result.card.image} alt="Card" className="w-14 h-20 object-contain rounded flex-shrink-0" />
                     )}
@@ -294,11 +294,11 @@ export default function CardLookupPage() {
                         )}
                       </div>
                       <p className="font-bold text-foreground">
-                        {result.source === 'cert' ? result.card.player : result.card.player_name}
+                        {result.source === 'cert' ? (result.card?.player ?? result.certInfo.description) : result.card.player_name}
                       </p>
                       <p className="text-sm text-muted-foreground">
                         {result.source === 'cert'
-                          ? result.card.description
+                          ? (result.card?.description ?? `${result.certInfo.grader} ${result.certInfo.grade}`)
                           : `${result.card.year} ${result.card.set_name} #${result.card.number}${result.card.variant ? ` · ${result.card.variant}` : ''}`}
                       </p>
                     </div>
