@@ -344,7 +344,7 @@ export default function CardLookupPage() {
                     )}
                   </div>
                   <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
-                    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Last Sale</p>
+                    <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Last Sale (Exact Cert)</p>
                     <p className="text-2xl font-black font-mono text-foreground">
                       {result.source === 'cert' && result.lastSale
                         ? formatCurrency(parseFloat(result.lastSale.price))
