@@ -33,9 +33,9 @@ interface CertResult {
 
 interface SearchResult {
   source: 'search';
-  card: { card_id: string; player_name: string; set_name: string; year: string; number: string; variant: string; rookie: boolean };
+  card: { card_id: string; player_name: string; set_name: string; year: string; number: string; variant: string; rookie: boolean; image?: string };
   allPrices: Array<{ grade: string; price: string }>;
-  comps: Array<{ sale_price: number; sale_date: string; grade: string; platform: string }>;
+  comps: Array<{ sale_price: number; sale_date: string; grade: string; platform: string }> | null;
   matchedGrade: string;
   matchedPrice: { grade: string; price: number } | null;
   certFallback?: boolean;
@@ -299,9 +299,13 @@ export default function CardLookupPage() {
                 {/* Card identity */}
                 <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
                   <div className="flex items-start gap-3">
-                    {result.source === 'cert' && result.card?.image && (
+                    {((result.source === 'cert' && result.card?.image) || (result.source === 'search' && result.card.image)) && (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={result.card.image} alt="Card" className="w-14 h-20 object-contain rounded flex-shrink-0" />
+                      <img
+                        src={result.source === 'cert' ? result.card!.image! : result.card.image!}
+                        alt="Card"
+                        className="w-14 h-20 object-contain rounded flex-shrink-0"
+                      />
                     )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-0.5">
@@ -344,14 +348,14 @@ export default function CardLookupPage() {
                     <p className="text-2xl font-black font-mono text-foreground">
                       {result.source === 'cert' && result.lastSale
                         ? formatCurrency(parseFloat(result.lastSale.price))
-                        : result.source === 'search' && result.comps[0]
+                        : result.source === 'search' && result.comps?.[0]
                           ? formatCurrency(result.comps[0].sale_price)
                           : '—'}
                     </p>
                     <p className="text-xs text-muted-foreground mt-0.5">
                       {result.source === 'cert' && result.lastSale
                         ? new Date(result.lastSale.closing_date).toLocaleDateString()
-                        : result.source === 'search' && result.comps[0]
+                        : result.source === 'search' && result.comps?.[0]
                           ? `${new Date(result.comps[0].sale_date).toLocaleDateString()} · ${result.comps[0].platform}`
                           : ''}
                     </p>
@@ -383,7 +387,7 @@ export default function CardLookupPage() {
                   </div>
                 </div>
 
-                {/* Price history (cert) or grade prices (search) */}
+                {/* Cert: sale history for that specific cert */}
                 {result.source === 'cert' && result.prices.length > 0 && (
                   <div className="rounded-lg border" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
                     <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
@@ -402,7 +406,30 @@ export default function CardLookupPage() {
                   </div>
                 )}
 
-                {result.source === 'search' && result.comps.length > 0 && (
+                {/* Search: all grade prices */}
+                {result.source === 'search' && result.allPrices.length > 0 && (
+                  <div className="rounded-lg border" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
+                    <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
+                      <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Grade Prices</p>
+                    </div>
+                    <div className="divide-y max-h-64 overflow-y-auto" style={{ borderColor: 'var(--border)' }}>
+                      {result.allPrices.map((p, i) => (
+                        <div key={i} className="flex items-center justify-between px-4 py-2 text-sm">
+                          <span className="text-muted-foreground">{p.grade}</span>
+                          <span
+                            className="font-mono font-semibold"
+                            style={{ color: p.grade === result.matchedGrade ? 'var(--primary)' : 'var(--foreground)' }}
+                          >
+                            {formatCurrency(parseFloat(String(p.price)))}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Search: recent comps (when available) */}
+                {result.source === 'search' && (result.comps?.length ?? 0) > 0 && (
                   <div className="rounded-lg border" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
                     <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
                       <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -410,7 +437,7 @@ export default function CardLookupPage() {
                       </p>
                     </div>
                     <div className="divide-y max-h-64 overflow-y-auto" style={{ borderColor: 'var(--border)' }}>
-                      {result.comps.map((c, i) => (
+                      {result.comps!.map((c, i) => (
                         <div key={i} className="flex items-center justify-between px-4 py-2 text-sm">
                           <div>
                             <span className="font-mono font-semibold text-foreground">{formatCurrency(c.sale_price)}</span>
