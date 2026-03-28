@@ -98,8 +98,6 @@ export default function NewProductForm({ sports }: Props) {
     year: new Date().getFullYear().toString(),
     hobby_case_cost: '',
     bd_case_cost: '',
-    hobby_autos_per_case: '',
-    bd_autos_per_case: '',
   });
 
   function set(field: string, value: string) {
@@ -125,8 +123,8 @@ export default function NewProductForm({ sports }: Props) {
       year: form.year.trim(),
       hobby_case_cost: parseFloat(form.hobby_case_cost) || 0,
       bd_case_cost: form.bd_case_cost ? parseFloat(form.bd_case_cost) : null,
-      hobby_autos_per_case: parseInt(form.hobby_autos_per_case) || 0,
-      bd_autos_per_case: form.bd_autos_per_case ? parseInt(form.bd_autos_per_case) : null,
+      hobby_autos_per_case: null,
+      bd_autos_per_case: null,
       release_date: null,
     });
 
@@ -293,41 +291,6 @@ export default function NewProductForm({ sports }: Props) {
               placeholder="0.00"
               value={form.bd_case_cost}
               onChange={e => set('bd_case_cost', e.target.value)}
-              style={{ fontFamily: 'var(--font-mono)' }}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Autos per case */}
-      <div>
-        <p style={sectionLabelStyle}>Autos / Case</p>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label style={labelStyle}>Hobby</label>
-            <FocusInput
-              type="number"
-              required
-              min="0"
-              step="1"
-              placeholder="0"
-              value={form.hobby_autos_per_case}
-              onChange={e => set('hobby_autos_per_case', e.target.value)}
-              style={{ fontFamily: 'var(--font-mono)' }}
-            />
-          </div>
-          <div>
-            <label style={labelStyle}>
-              BD{' '}
-              <span style={{ color: 'var(--text-tertiary)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
-            </label>
-            <FocusInput
-              type="number"
-              min="0"
-              step="1"
-              placeholder="0"
-              value={form.bd_autos_per_case}
-              onChange={e => set('bd_autos_per_case', e.target.value)}
               style={{ fontFamily: 'var(--font-mono)' }}
             />
           </div>

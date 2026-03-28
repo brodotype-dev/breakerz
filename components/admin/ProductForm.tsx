@@ -142,8 +142,6 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
   const [slug, setSlug] = useState(product?.slug ?? '');
   const [hobbyCaseCost, setHobbyCaseCost] = useState(product?.hobby_case_cost?.toString() ?? '');
   const [bdCaseCost, setBdCaseCost] = useState(product?.bd_case_cost?.toString() ?? '');
-  const [hobbyAutos, setHobbyAutos] = useState(product?.hobby_autos_per_case?.toString() ?? '16');
-  const [bdAutos, setBdAutos] = useState(product?.bd_autos_per_case?.toString() ?? '');
   const [releaseDate, setReleaseDate] = useState(product?.release_date ?? '');
   const [isActive, setIsActive] = useState(product?.is_active ?? false);
 
@@ -177,8 +175,8 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
       slug,
       hobby_case_cost: hobbyCaseCost ? parseFloat(hobbyCaseCost) : null,
       bd_case_cost: bdCaseCost ? parseFloat(bdCaseCost) : null,
-      hobby_autos_per_case: hobbyAutos ? parseInt(hobbyAutos) : null,
-      bd_autos_per_case: bdAutos ? parseInt(bdAutos) : null,
+      hobby_autos_per_case: null,
+      bd_autos_per_case: null,
       release_date: releaseDate || null,
       is_active: publish ? true : isActive,
     };
@@ -268,8 +266,6 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
         <div className="grid grid-cols-2 gap-4">
           <FormInput label="Hobby / Case" value={hobbyCaseCost} onChange={e => setHobbyCaseCost(e.target.value)} prefix="$" placeholder="1200" type="number" mono />
           <FormInput label="BD / Case" value={bdCaseCost} onChange={e => setBdCaseCost(e.target.value)} prefix="$" placeholder="Optional" type="number" mono />
-          <FormInput label="Hobby Autos / Case" value={hobbyAutos} onChange={e => setHobbyAutos(e.target.value)} placeholder="16" type="number" mono />
-          <FormInput label="BD Autos / Case" value={bdAutos} onChange={e => setBdAutos(e.target.value)} placeholder="Optional" type="number" mono />
           <FormInput
             label="Release Date"
             hint="(used for pre-release banner)"
