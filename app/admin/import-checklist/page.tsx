@@ -511,9 +511,18 @@ function ImportChecklistInner() {
             <div className="bg-card border rounded overflow-hidden">
               <div className="h-1 bg-green-500" />
               <div className="p-6 space-y-4">
-                <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-                  3 — Import Complete
-                </h2>
+                <div className="flex items-start justify-between gap-4">
+                  <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+                    3 — Import Complete
+                  </h2>
+                  <a
+                    href={`/admin/products/${productId}`}
+                    className="shrink-0 rounded-lg px-4 py-2 text-sm font-semibold text-white transition-all hover:scale-[1.02]"
+                    style={{ background: 'var(--gradient-blue)', boxShadow: 'var(--glow-blue)' }}
+                  >
+                    Go to Product Dashboard →
+                  </a>
+                </div>
                 <div className="flex gap-8">
                   <div className="text-center">
                     <p className="text-2xl font-bold">{importResult.playersCreated}</p>
