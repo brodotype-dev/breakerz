@@ -413,7 +413,8 @@ export function parseChecklistCsv(text: string): ParsedChecklist {
 //   - First 1:\d+ = hobby odds
 //   - Second 1:\d+ (if present) = breaker odds
 // ---------------------------------------------------------------------------
-const ODDS_TOKEN_RE = /1:\d+/g;
+// Matches "1:24", "1: 10,243", "1:10,243" — captures just the number part
+const ODDS_TOKEN_RE = /1:\s*([\d,]+)/g;
 
 export function parseOddsPdf(text: string): ParsedOdds {
   const lines = text.split('\n');
@@ -431,8 +432,9 @@ export function parseOddsPdf(text: string): ParsedOdds {
 
     if (!subsetName) continue; // odds with no label — skip
 
-    const hobbyOdds = matches[0][0];
-    const breakerOdds = matches.length >= 2 ? matches[1][0] : null;
+    // Store just the denominator ("24" not "1:24") to match the coordinate-aware parser
+    const hobbyOdds = matches[0][1].replace(/,/g, '');
+    const breakerOdds = matches.length >= 2 ? matches[1][1].replace(/,/g, '') : null;
 
     rows.push({ subsetName, hobbyOdds, breakerOdds });
   }
