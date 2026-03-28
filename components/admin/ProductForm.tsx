@@ -10,7 +10,25 @@ interface Props {
   onSaved?: (id: string) => void;
 }
 
-const MANUFACTURERS = ['Topps', 'Bowman', 'Panini', 'Upper Deck', 'Leaf', 'Donruss', 'Fleer'];
+const MANUFACTURERS = [
+  'Topps',
+  'Bowman',
+  'Panini',
+  'Upper Deck',
+  'Leaf',
+  'Donruss',
+  'Fleer',
+  'O-Pee-Chee',
+  'Pacific Trading Cards',
+  'SkyBox',
+  'Pinnacle',
+  'Pro Set',
+  'In the Game',
+  'Tristar',
+  'Goodwin & Company',
+  'Allen & Ginter',
+  'Other',
+];
 
 function slugify(s: string) {
   return s.toLowerCase().trim().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
@@ -114,7 +132,11 @@ function FormSelect({
 
 export default function ProductForm({ sports, product, onSaved }: Props) {
   const [sportId, setSportId] = useState(product?.sport_id ?? '');
-  const [manufacturer, setManufacturer] = useState(product?.manufacturer ?? '');
+  // If the product's existing manufacturer isn't in our list, treat it as "Other"
+  const existingMfr = product?.manufacturer ?? '';
+  const knownMfr = MANUFACTURERS.filter(m => m !== 'Other').includes(existingMfr);
+  const [manufacturer, setManufacturer] = useState(knownMfr || !existingMfr ? existingMfr : 'Other');
+  const [manufacturerCustom, setManufacturerCustom] = useState(!knownMfr && existingMfr ? existingMfr : '');
   const [year, setYear] = useState(product?.year ?? '');
   const [name, setName] = useState(product?.name ?? '');
   const [slug, setSlug] = useState(product?.slug ?? '');
@@ -141,13 +163,15 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
     setSlug(slugify(name));
   }, [name, slugEdited]);
 
+  const effectiveManufacturer = manufacturer === 'Other' ? manufacturerCustom : manufacturer;
+
   async function handleSubmit(publish: boolean) {
     setSubmitting(true);
     setStatus(null);
 
     const data = {
       sport_id: sportId,
-      manufacturer,
+      manufacturer: effectiveManufacturer,
       year,
       name,
       slug,
@@ -193,16 +217,20 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
             ))}
           </FormSelect>
 
-          <FormInput
-            label="Manufacturer"
-            value={manufacturer}
-            onChange={e => setManufacturer(e.target.value)}
-            list="manufacturers-list"
-            placeholder="Topps"
-          />
-          <datalist id="manufacturers-list">
-            {MANUFACTURERS.map(m => <option key={m} value={m} />)}
-          </datalist>
+          <FormSelect label="Manufacturer" value={manufacturer} onChange={setManufacturer}>
+            <option value="" disabled>Select manufacturer…</option>
+            {MANUFACTURERS.map(m => <option key={m} value={m}>{m}</option>)}
+          </FormSelect>
+          {manufacturer === 'Other' && (
+            <div className="mt-2">
+              <FormInput
+                label="Custom Manufacturer"
+                value={manufacturerCustom}
+                onChange={e => setManufacturerCustom(e.target.value)}
+                placeholder="Enter manufacturer name"
+              />
+            </div>
+          )}
 
           <FormInput
             label="Year"
