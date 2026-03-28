@@ -149,6 +149,7 @@
   --gradient-blue: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
   --gradient-orange: linear-gradient(135deg, #f97316 0%, #ef4444 100%);
   --gradient-green: linear-gradient(135deg, #22c55e 0%, #10b981 100%);
+  --gradient-purple: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
   --gradient-hero: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
   --gradient-card: linear-gradient(180deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0) 100%);
 
@@ -183,6 +184,7 @@
   --signal-pass: #dc2626;
   --signal-pass-bg: rgba(220, 38, 38, 0.1);
   --signal-pass-border: rgba(220, 38, 38, 0.3);
+  --signal-fail: #dc2626;
 
   /* Badge colors */
   --badge-icon: #f59e0b;

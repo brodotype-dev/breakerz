@@ -173,24 +173,51 @@ export default function CardLookupPage() {
   const maxBid = fairValue != null ? fairValue * (1 - parseFloat(margin || '0') / 100) : null;
 
   return (
-    <div className="max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <ScanLine className="size-5 text-primary" />
-            <h1 className="text-2xl font-black">Card Lookup</h1>
+    <div className="max-w-5xl mx-auto space-y-6">
+      {/* Hero Header */}
+      <div
+        className="relative overflow-hidden rounded-2xl p-8"
+        style={{ background: 'var(--gradient-hero)', border: '1px solid var(--terminal-border)' }}
+      >
+        <div
+          className="absolute inset-0 opacity-5"
+          style={{
+            backgroundImage: 'radial-gradient(circle at 2px 2px, var(--accent-blue) 1px, transparent 0)',
+            backgroundSize: '40px 40px',
+          }}
+        />
+        <div
+          className="absolute top-0 right-0 w-96 h-96 blur-3xl opacity-20 pointer-events-none"
+          style={{ background: 'radial-gradient(circle, var(--accent-blue) 0%, transparent 70%)' }}
+        />
+        <div className="relative flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-12 h-12 rounded-xl flex items-center justify-center"
+              style={{ background: 'var(--gradient-blue)', boxShadow: 'var(--glow-blue)' }}
+            >
+              <ScanLine className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>
+                Card Lookup
+              </h1>
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                Screenshot a listing → AI reads the card → instant price data from CardHedger
+              </p>
+            </div>
           </div>
-          <p className="text-sm text-muted-foreground">
-            Screenshot a listing → AI reads cert number → instant price history from CardHedger
-          </p>
+          {imagePreview && (
+            <button
+              onClick={reset}
+              className="flex items-center gap-1.5 text-sm font-medium transition-colors"
+              style={{ color: 'var(--text-secondary)' }}
+            >
+              <RotateCcw className="size-3.5" />
+              Start over
+            </button>
+          )}
         </div>
-        {imagePreview && (
-          <button onClick={reset} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
-            <RotateCcw className="size-3.5" />
-            Start over
-          </button>
-        )}
       </div>
 
       {/* Upload zone */}

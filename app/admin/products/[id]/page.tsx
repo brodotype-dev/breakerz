@@ -88,22 +88,65 @@ export default async function ProductDashboardPage({ params }: PageProps) {
   const pricingStatus = cachedCount === 0 ? 'empty' : cachedCount >= autoEligibleCount ? 'ok' : 'warn';
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-card sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/admin/products" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-            ← Products
-          </Link>
-          <div className="text-right">
-            <p className="text-sm font-semibold">{product.name}</p>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-widest">
-              {product.sport?.name} · {product.year} · Admin
+    <div className="max-w-4xl mx-auto space-y-6">
+      {/* Back link */}
+      <Link
+        href="/admin"
+        className="inline-flex items-center gap-1.5 text-sm transition-colors"
+        style={{ color: 'var(--text-secondary)' }}
+      >
+        ← Products
+      </Link>
+
+      {/* Hero Header */}
+      <div
+        className="relative overflow-hidden rounded-2xl p-6"
+        style={{ background: 'var(--gradient-hero)', border: '1px solid var(--terminal-border)' }}
+      >
+        <div
+          className="absolute top-0 right-0 w-64 h-64 blur-3xl opacity-15 pointer-events-none"
+          style={{ background: 'radial-gradient(circle, var(--accent-blue) 0%, transparent 70%)' }}
+        />
+        <div className="relative flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <span
+                className="text-xs font-bold uppercase px-2 py-1 rounded"
+                style={{ backgroundColor: 'rgba(59,130,246,0.15)', color: 'var(--accent-blue)' }}
+              >
+                {product.sport?.name}
+              </span>
+              <span className="text-xs font-semibold" style={{ color: 'var(--text-tertiary)' }}>
+                {product.year}
+              </span>
+              {product.is_active ? (
+                <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full" style={{ backgroundColor: 'var(--signal-buy-bg)', color: 'var(--signal-buy)' }}>
+                  LIVE
+                </span>
+              ) : (
+                <span className="text-[9px] font-bold uppercase px-2 py-0.5 rounded-full" style={{ backgroundColor: 'var(--terminal-surface-hover)', color: 'var(--text-disabled)' }}>
+                  DRAFT
+                </span>
+              )}
+            </div>
+            <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
+              {product.name}
+            </h1>
+            <p className="text-sm mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+              {product.manufacturer} · Product Dashboard
             </p>
           </div>
+          <Link
+            href={product.slug ? `/break/${product.slug}` : '#'}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all"
+            style={{ backgroundColor: 'rgba(59,130,246,0.1)', borderLeft: '3px solid var(--accent-blue)', color: 'var(--accent-blue)' }}
+          >
+            View Break →
+          </Link>
         </div>
-      </header>
+      </div>
 
-      <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+      <div className="space-y-6">
         {/* Readiness summary */}
         <div className="bg-card border rounded overflow-hidden">
           <div className="h-1 bg-[var(--topps-red)]" />
@@ -313,7 +356,7 @@ export default async function ProductDashboardPage({ params }: PageProps) {
             </div>
           </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 }

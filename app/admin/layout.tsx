@@ -1,63 +1,57 @@
-import Link from 'next/link';
-import { LockIcon, PackageIcon, PlusCircleIcon, SearchCodeIcon, ScanLine } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { logout } from './login/actions';
+import AdminNav from './AdminNav';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-background flex">
+    <div className="min-h-screen flex" style={{ backgroundColor: 'var(--terminal-bg)' }}>
       {/* Sidebar */}
-      <aside className="w-52 bg-[oklch(0.28_0.08_250)] text-white flex-shrink-0 flex flex-col">
-        <div className="p-5 border-b border-white/10">
-          <div className="flex items-center gap-2 mb-0.5">
-            <LockIcon className="size-3 text-white/50" />
-            <p className="text-[10px] uppercase tracking-[0.2em] text-white/50">Admin</p>
+      <aside
+        className="w-64 flex-shrink-0 flex flex-col relative overflow-hidden"
+        style={{
+          background: 'linear-gradient(180deg, #131820 0%, #0a0e1a 100%)',
+          borderRight: '1px solid var(--terminal-border)',
+        }}
+      >
+        {/* Gradient accent bar */}
+        <div className="absolute top-0 left-0 right-0 h-1" style={{ background: 'var(--gradient-blue)' }} />
+
+        {/* Glow effect */}
+        <div
+          className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 blur-3xl opacity-15 pointer-events-none"
+          style={{ background: 'radial-gradient(circle, var(--accent-blue) 0%, transparent 70%)' }}
+        />
+
+        {/* Brand Header */}
+        <div className="relative p-6 border-b" style={{ borderColor: 'var(--terminal-border)' }}>
+          <div className="flex items-center gap-3">
+            <div
+              className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+              style={{ background: 'var(--gradient-blue)', boxShadow: 'var(--glow-blue)' }}
+            >
+              <Sparkles className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
+                Card Breakerz
+              </h1>
+              <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--accent-blue)' }}>
+                Admin Portal
+              </div>
+            </div>
           </div>
-          <p className="font-black text-lg">Break Terminal</p>
         </div>
 
-        <nav className="p-3 space-y-0.5 flex-1">
-          <Link
-            href="/admin"
-            className="flex items-center gap-2 px-3 py-2 rounded text-sm hover:bg-white/10 transition-colors"
-          >
-            <PackageIcon className="size-4 shrink-0" />
-            Products
-          </Link>
-          <Link
-            href="/admin/products/new"
-            className="flex items-center gap-2 px-3 py-2 rounded text-sm hover:bg-white/10 transition-colors"
-          >
-            <PlusCircleIcon className="size-4 shrink-0" />
-            New Product
-          </Link>
-          <Link
-            href="/admin/card-lookup"
-            className="flex items-center gap-2 px-3 py-2 rounded text-sm hover:bg-white/10 transition-colors"
-          >
-            <ScanLine className="size-4 shrink-0" />
-            Card Lookup
-          </Link>
-          <Link
-            href="/admin/api-debug"
-            className="flex items-center gap-2 px-3 py-2 rounded text-sm hover:bg-white/10 transition-colors"
-          >
-            <SearchCodeIcon className="size-4 shrink-0" />
-            API Debug
-          </Link>
-          <div className="border-t border-white/10 my-2" />
-          <Link
-            href="/"
-            className="flex items-center gap-2 px-3 py-2 rounded text-sm text-white/60 hover:bg-white/10 hover:text-white transition-colors"
-          >
-            ← Back to app
-          </Link>
-        </nav>
+        {/* Navigation — client component for usePathname */}
+        <AdminNav />
 
-        <div className="p-4 border-t border-white/10">
+        {/* Footer */}
+        <div className="p-4 border-t relative" style={{ borderColor: 'var(--terminal-border)' }}>
           <form action={logout}>
             <button
               type="submit"
-              className="text-xs text-white/40 hover:text-white/70 transition-colors"
+              className="w-full flex items-center justify-start gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all hover:bg-[var(--terminal-surface-hover)] hover:text-[var(--text-primary)]"
+              style={{ color: 'var(--text-secondary)', backgroundColor: 'transparent' }}
             >
               Sign out
             </button>
@@ -67,7 +61,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
-        <div className="h-1 bg-[var(--topps-red)]" />
+        <div className="h-1" style={{ background: 'var(--gradient-blue)' }} />
         <main className="flex-1 p-8 overflow-auto">{children}</main>
       </div>
     </div>
