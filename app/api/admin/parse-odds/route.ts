@@ -129,6 +129,50 @@ async function extractOddsPdfData(buffer: Buffer): Promise<ParsedOdds> {
   });
 }
 
+// Fallback: extract raw text from PDF then use the simple odds parser.
+// Used when the coordinate-aware extractor finds 0 rows (e.g. Bowman, which has
+// fewer product columns than Topps and never produces a ≥10-token calibration row).
+async function extractOddsPdfFallback(buffer: Buffer): Promise<import('@/lib/checklist-parser').ParsedOdds> {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const PDFParser = require('pdf2json');
+  const { parseOddsPdf } = await import('@/lib/checklist-parser');
+
+  return new Promise((resolve, reject) => {
+    const parser = new PDFParser();
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    parser.on('pdfParser_dataReady', (data: any) => {
+      const lines: string[] = [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const page of data.Pages) {
+        const lineMap = new Map<number, Array<{ x: number; text: string }>>();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const item of page.Texts) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const text = decodeURIComponent(item.R.map((r: any) => r.T).join(''));
+          if (!text.trim()) continue;
+          const y = Math.round(item.y * 10);
+          if (!lineMap.has(y)) lineMap.set(y, []);
+          lineMap.get(y)!.push({ x: item.x, text });
+        }
+        Array.from(lineMap.entries())
+          .sort(([a], [b]) => a - b)
+          .forEach(([, items]) => {
+            lines.push(items.sort((a, b) => a.x - b.x).map(i => i.text).join(' '));
+          });
+        lines.push('');
+      }
+      resolve(parseOddsPdf(lines.join('\n')));
+    });
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    parser.on('pdfParser_dataError', (err: any) =>
+      reject(new Error(err?.parserError ?? 'PDF parse error')));
+
+    parser.parseBuffer(buffer);
+  });
+}
+
 export async function POST(req: NextRequest) {
   const formData = await req.formData();
   const file = formData.get('file') as File | null;
@@ -136,7 +180,13 @@ export async function POST(req: NextRequest) {
 
   const buffer = Buffer.from(await file.arrayBuffer());
   try {
-    const odds = await extractOddsPdfData(buffer);
+    let odds = await extractOddsPdfData(buffer);
+    // If coordinate-aware parser found nothing, fall back to simple text parser.
+    // This handles simpler formats (Bowman, Panini) that don't have enough columns
+    // to trigger the hobby-column calibration heuristic.
+    if (odds.rows.length === 0) {
+      odds = await extractOddsPdfFallback(buffer);
+    }
     return NextResponse.json({ odds });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Parse failed';
