@@ -8,10 +8,82 @@ import BreakerzBetsDebrief from './BreakerzBetsDebrief';
 
 type PageProps = { params: Promise<{ id: string }> };
 
+function Section({
+  title,
+  accent,
+  badge,
+  children,
+}: {
+  title: string;
+  accent: string;
+  badge?: { label: string; color: string };
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className="rounded-xl overflow-hidden"
+      style={{ border: '1px solid var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
+    >
+      <div className="h-1" style={{ background: accent }} />
+      <div className="p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: 'var(--text-tertiary)' }}>
+            {title}
+          </h2>
+          {badge && (
+            <span className="text-xs font-medium" style={{ color: badge.color }}>
+              {badge.label}
+            </span>
+          )}
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function ReadinessStat({
+  label,
+  pill,
+  value,
+  sub,
+}: {
+  label: string;
+  pill: 'ok' | 'warn' | 'empty';
+  value: string;
+  sub: string;
+}) {
+  return (
+    <div
+      className="p-3 rounded-lg space-y-1"
+      style={{ backgroundColor: 'var(--terminal-surface-hover)' }}
+    >
+      <div className="flex items-center gap-2">
+        <StatusPill value={pill} />
+        <span className="terminal-label-muted">{label}</span>
+      </div>
+      <p className="text-2xl font-bold font-mono" style={{ color: 'var(--text-primary)' }}>{value}</p>
+      <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{sub}</p>
+    </div>
+  );
+}
+
+function ActionLink({ href, label }: { href: string; label: string }) {
+  return (
+    <Link
+      href={href}
+      className="rounded-lg px-4 py-2 text-sm font-medium transition-all hover:bg-[var(--terminal-surface-active)]"
+      style={{ border: '1px solid var(--terminal-border)', color: 'var(--text-secondary)' }}
+    >
+      {label}
+    </Link>
+  );
+}
+
 function StatusPill({ value }: { value: 'ok' | 'warn' | 'empty' }) {
-  if (value === 'ok') return <span className="inline-block h-2 w-2 rounded-full bg-green-500" />;
-  if (value === 'warn') return <span className="inline-block h-2 w-2 rounded-full bg-amber-400" />;
-  return <span className="inline-block h-2 w-2 rounded-full bg-muted-foreground/30" />;
+  if (value === 'ok') return <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: 'var(--signal-buy)', boxShadow: 'var(--glow-green)' }} />;
+  if (value === 'warn') return <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: 'var(--signal-watch)' }} />;
+  return <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: 'var(--text-disabled)' }} />;
 }
 
 export default async function ProductDashboardPage({ params }: PageProps) {
@@ -146,216 +218,102 @@ export default async function ProductDashboardPage({ params }: PageProps) {
         </div>
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-4">
+
         {/* Readiness summary */}
-        <div className="bg-card border rounded overflow-hidden">
-          <div className="h-1 bg-[var(--topps-red)]" />
-          <div className="p-6 space-y-4">
-            <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-              Product Readiness
-            </h2>
-
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              {/* Players */}
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <StatusPill value={playerStatus} />
-                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Players</span>
-                </div>
-                <p className="text-2xl font-bold">{autoEligibleCount}</p>
-                <p className="text-xs text-muted-foreground">{(playerProducts ?? []).length} total incl. inserts</p>
-              </div>
-
-              {/* Variants / CH match */}
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <StatusPill value={variantStatus} />
-                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">CH Matched</span>
-                </div>
-                <p className="text-2xl font-bold">
-                  {variantTotal > 0 ? `${Math.round(variantMatchPct * 100)}%` : '—'}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {variantMatched}/{variantTotal} variants
-                </p>
-              </div>
-
-              {/* Odds */}
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <StatusPill value={oddsStatus} />
-                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Odds</span>
-                </div>
-                <p className="text-2xl font-bold">
-                  {product.has_odds ? 'Imported' : variantWithOdds > 0 ? 'Partial' : 'Pending'}
-                </p>
-                <p className="text-xs text-muted-foreground">{variantWithOdds} variants have odds</p>
-              </div>
-
-              {/* Pricing */}
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <StatusPill value={pricingStatus} />
-                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Pricing</span>
-                </div>
-                <p className="text-2xl font-bold">{cachedCount}</p>
-                <p className="text-xs text-muted-foreground">
-                  {lastFetched
-                    ? `Last: ${new Date(lastFetched).toLocaleDateString()}`
-                    : 'Not yet fetched'}
-                </p>
-              </div>
-            </div>
+        <Section title="Product Readiness" accent="var(--gradient-blue)">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <ReadinessStat label="Players" pill={playerStatus} value={String(autoEligibleCount)} sub={`${(playerProducts ?? []).length} total incl. inserts`} />
+            <ReadinessStat label="CH Matched" pill={variantStatus} value={variantTotal > 0 ? `${Math.round(variantMatchPct * 100)}%` : '—'} sub={`${variantMatched}/${variantTotal} variants`} />
+            <ReadinessStat label="Odds" pill={oddsStatus} value={product.has_odds ? 'Imported' : variantWithOdds > 0 ? 'Partial' : 'Pending'} sub={`${variantWithOdds} variants`} />
+            <ReadinessStat label="Pricing" pill={pricingStatus} value={String(cachedCount)} sub={lastFetched ? `Last: ${new Date(lastFetched).toLocaleDateString()}` : 'Not yet fetched'} />
           </div>
-        </div>
+        </Section>
 
         {/* Quick actions */}
-        <div className="bg-card border rounded overflow-hidden">
-          <div className="h-1 bg-muted" />
-          <div className="p-6 space-y-3">
-            <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-              Quick Actions
-            </h2>
-            <div className="flex flex-wrap gap-3">
-              <Link
-                href={`/admin/products/${id}/players`}
-                className="rounded border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
-              >
-                Manage Players →
-              </Link>
-              <Link
-                href={`/admin/import-checklist?productId=${id}`}
-                className="rounded border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
-              >
-                Import Checklist →
-              </Link>
-              <Link
-                href={`/break/${product.slug}`}
-                className="rounded border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors"
-              >
-                View Break Page →
-              </Link>
-              <RunMatchingButton productId={id} />
-            </div>
+        <Section title="Quick Actions" accent="var(--gradient-green)">
+          <div className="flex flex-wrap gap-3">
+            <ActionLink href={`/admin/products/${id}/players`} label="Manage Players →" />
+            <ActionLink href={`/admin/import-checklist?productId=${id}`} label="Import Checklist →" />
+            <ActionLink href={`/break/${product.slug}`} label="View Break Page →" />
+            <RunMatchingButton productId={id} />
           </div>
-        </div>
+        </Section>
 
         {/* Odds upload */}
-        <div className="bg-card border rounded overflow-hidden">
-          <div className="h-1 bg-muted" />
-          <div className="p-6 space-y-3">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-                Import Odds
-              </h2>
-              {product.has_odds && (
-                <span className="text-xs text-green-600 font-medium">Odds imported</span>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Upload the manufacturer odds PDF to apply pull rates to variants. Can be run independently of the checklist import.
-            </p>
-            <OddsUpload productId={id} />
-          </div>
-        </div>
+        <Section
+          title="Import Odds"
+          accent="var(--gradient-orange)"
+          badge={product.has_odds ? { label: 'Odds imported', color: 'var(--signal-buy)' } : undefined}
+        >
+          <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
+            Upload the manufacturer odds PDF to apply pull rates to variants.
+          </p>
+          <OddsUpload productId={id} />
+        </Section>
 
         {/* Breakerz Bets debrief */}
-        <div className="bg-card border rounded overflow-hidden">
-          <div className="h-1" style={{ background: 'oklch(0.52 0.22 27)' }} />
-          <div className="p-6 space-y-3">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-                  Breakerz Bets
-                </h2>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Tell us what you{"'"}re seeing in the market — Claude extracts player mentions, scores sentiment, and drafts reason notes for your review.
-                </p>
-              </div>
-            </div>
-            <BreakerzBetsDebrief productId={id} />
-          </div>
-        </div>
+        <Section title="Breakerz Bets" accent="var(--gradient-purple)">
+          <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
+            Tell us what you{"'"}re seeing in the market — Claude extracts player mentions, scores sentiment, and drafts reason notes for your review.
+          </p>
+          <BreakerzBetsDebrief productId={id} />
+        </Section>
 
         {/* Unmatched variants */}
         {unmatchedVariants.length > 0 && (
-          <div className="bg-card border rounded overflow-hidden">
-            <div className="h-1 bg-amber-400" />
-            <div className="p-6 space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-                  Unmatched Variants
-                </h2>
-                <span className="text-xs text-amber-500 font-medium">
-                  {(variants ?? []).filter(v => !v.cardhedger_card_id).length} unmatched
-                </span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                These variants have no CardHedger card ID. Re-run matching from the import wizard, or import the checklist again if players are missing.
-              </p>
-              <div className="rounded border overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead className="bg-muted/50">
-                    <tr>
-                      <th className="text-left px-3 py-2 font-medium text-muted-foreground">Player</th>
-                      <th className="text-left px-3 py-2 font-medium text-muted-foreground">Variant</th>
-                      <th className="text-left px-3 py-2 font-medium text-muted-foreground">#</th>
+          <Section
+            title="Unmatched Variants"
+            accent="linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)"
+            badge={{ label: `${(variants ?? []).filter(v => !v.cardhedger_card_id).length} unmatched`, color: 'var(--signal-watch)' }}
+          >
+            <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
+              These variants have no CardHedger card ID. Re-run matching from the import wizard, or import the checklist again if players are missing.
+            </p>
+            <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--terminal-border)' }}>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr style={{ backgroundColor: 'var(--terminal-surface-hover)', color: 'var(--text-tertiary)' }}>
+                    <th className="text-left px-3 py-2 font-bold uppercase tracking-wider">Player</th>
+                    <th className="text-left px-3 py-2 font-bold uppercase tracking-wider">Variant</th>
+                    <th className="text-left px-3 py-2 font-bold uppercase tracking-wider">#</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y" style={{ borderColor: 'var(--terminal-border)' }}>
+                  {unmatchedVariants.map(v => (
+                    <tr key={v.id} className="hover:bg-[var(--terminal-surface-hover)] transition-colors">
+                      <td className="px-3 py-1.5 font-medium" style={{ color: 'var(--text-primary)' }}>{v.playerName}</td>
+                      <td className="px-3 py-1.5" style={{ color: 'var(--text-secondary)' }}>{v.variantName}</td>
+                      <td className="px-3 py-1.5 font-mono" style={{ color: 'var(--text-secondary)' }}>{v.cardNumber ?? '—'}</td>
                     </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {unmatchedVariants.map(v => (
-                      <tr key={v.id} className="hover:bg-muted/20">
-                        <td className="px-3 py-1.5 font-medium">{v.playerName}</td>
-                        <td className="px-3 py-1.5 text-muted-foreground">{v.variantName}</td>
-                        <td className="px-3 py-1.5 text-muted-foreground font-mono">{v.cardNumber ?? '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </div>
+          </Section>
         )}
 
         {/* Product details */}
-        <div className="bg-card border rounded overflow-hidden">
-          <div className="h-1 bg-muted" />
-          <div className="p-6 space-y-3">
-            <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-              Product Details
-            </h2>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm">
-              <div>
-                <p className="text-xs text-muted-foreground mb-0.5">Manufacturer</p>
-                <p className="font-medium">{product.manufacturer}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-0.5">Year</p>
-                <p className="font-medium">{product.year}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-0.5">Sport</p>
-                <p className="font-medium">{product.sport?.name}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground mb-0.5">Hobby / Case</p>
-                <p className="font-medium font-mono">${product.hobby_case_cost?.toLocaleString()}</p>
-              </div>
-              {product.bd_case_cost && (
-                <div>
-                  <p className="text-xs text-muted-foreground mb-0.5">BD / Case</p>
-                  <p className="font-medium font-mono">${product.bd_case_cost.toLocaleString()}</p>
-                </div>
-              )}
-              <div>
-                <p className="text-xs text-muted-foreground mb-0.5">Status</p>
-                <p className={`font-medium ${product.is_active ? 'text-green-600' : 'text-muted-foreground'}`}>
-                  {product.is_active ? 'Active' : 'Inactive'}
+        <Section title="Product Details" accent="var(--gradient-blue)">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+            {[
+              { label: 'Manufacturer', value: product.manufacturer },
+              { label: 'Year', value: String(product.year) },
+              { label: 'Sport', value: product.sport?.name ?? '—' },
+              { label: 'Hobby / Case', value: product.hobby_case_cost != null ? `$${product.hobby_case_cost.toLocaleString()}` : '—' },
+              ...(product.bd_case_cost ? [{ label: 'BD / Case', value: `$${product.bd_case_cost.toLocaleString()}` }] : []),
+              { label: 'Status', value: product.is_active ? 'Active' : 'Inactive', highlight: product.is_active ? 'var(--signal-buy)' : undefined },
+            ].map(field => (
+              <div key={field.label}>
+                <p className="terminal-label-muted mb-1">{field.label}</p>
+                <p className="text-sm font-medium font-mono" style={{ color: (field as any).highlight ?? 'var(--text-primary)' }}>
+                  {field.value}
                 </p>
               </div>
-            </div>
+            ))}
           </div>
-        </div>
+        </Section>
+
       </div>
     </div>
   );
