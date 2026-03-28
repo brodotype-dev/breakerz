@@ -64,26 +64,37 @@ async function extractPdfText(buffer: Buffer): Promise<string> {
 
 export async function POST(req: NextRequest) {
   const formData = await req.formData();
-  const file = formData.get('file') as File | null;
+  const files = formData.getAll('file') as File[];
 
-  if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 });
-
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const fileName = file.name.toLowerCase();
+  if (!files.length) return NextResponse.json({ error: 'No file provided' }, { status: 400 });
 
   try {
-    if (fileName.endsWith('.csv')) {
-      const text = buffer.toString('utf-8');
-      const checklist = parseChecklistCsv(text);
-      return NextResponse.json({ checklist });
-    } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
-      const checklist = parseChecklistXlsx(buffer);
-      return NextResponse.json({ checklist });
-    } else {
-      const text = await extractPdfText(buffer);
-      const checklist = parseChecklistPdf(text);
-      return NextResponse.json({ checklist });
+    const checklists: import('@/lib/checklist-parser').ParsedChecklist[] = [];
+
+    for (const file of files) {
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const fileName = file.name.toLowerCase();
+
+      let checklist: import('@/lib/checklist-parser').ParsedChecklist;
+      if (fileName.endsWith('.csv')) {
+        checklist = parseChecklistCsv(buffer.toString('utf-8'));
+      } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+        checklist = parseChecklistXlsx(buffer);
+      } else {
+        const text = await extractPdfText(buffer);
+        checklist = parseChecklistPdf(text);
+      }
+      checklists.push(checklist);
     }
+
+    // Merge: first non-empty product name, concat all sections
+    const merged: import('@/lib/checklist-parser').ParsedChecklist = {
+      productName: checklists.find(c => c.productName)?.productName ?? '',
+      detectedFormat: checklists[0]?.detectedFormat ?? 'generic',
+      sections: checklists.flatMap(c => c.sections),
+    };
+
+    return NextResponse.json({ checklist: merged });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Parse failed';
     return NextResponse.json({ error: message }, { status: 500 });

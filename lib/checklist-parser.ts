@@ -254,11 +254,80 @@ function parseCsvLine(line: string): string[] {
   return fields;
 }
 
+// ---------------------------------------------------------------------------
+// parseChecklistBowmanCsv  (Bowman / Topps positional CSV — no column headers)
+//
+// Format used by Bowman Chrome exports from xlsx:
+//   Base Set,,,              ← section title (col 0 only)
+//   ,,,                      ← empty separator
+//   100 cards,,,             ← metadata, skip
+//   1,Jacob Wilson,Athletics,RC   ← data: [card_num, player, team, flag?]
+//   BCP-153,Josuar Gonzalez,San Francisco Giants   ← code-based card num
+// ---------------------------------------------------------------------------
+function parseChecklistBowmanCsv(text: string): ParsedChecklist {
+  const rawLines = text.split('\n');
+  const sections: ParsedSection[] = [];
+  let currentSection: ParsedSection | null = null;
+  let productName = '';
+  let pendingHeader: string | null = null;
+
+  for (const rawLine of rawLines) {
+    if (!rawLine.trim()) continue;
+
+    const fields = parseCsvLine(rawLine);
+    const col0 = fields[0]?.trim() ?? '';
+    const col1 = fields[1]?.trim() ?? '';
+    const col2 = fields[2]?.trim() ?? '';
+    const col3 = fields[3]?.trim() ?? '';
+
+    if (!col0 && !col1) continue;
+    if (/^\d+\s+cards?$/i.test(col0) && !col1) continue;
+    if (/subject to change/i.test(col0) && !col1) continue;
+
+    // Card number: numeric ("1") or alphanumeric code ("BCP-153", "CPA-AC", "BA-1")
+    const isCardNumber = /^\d+$/.test(col0) || /^[A-Z]{1,5}-[A-Z0-9]{1,5}$/.test(col0);
+
+    if (isCardNumber && col1) {
+      if (pendingHeader !== null) {
+        if (currentSection && currentSection.cards.length > 0) sections.push(currentSection);
+        currentSection = { sectionName: pendingHeader, cards: [], flagged: [] };
+        pendingHeader = null;
+      }
+      if (!currentSection) currentSection = { sectionName: 'BASE', cards: [], flagged: [] };
+
+      const isRookie = /^(RC|Rookie)$/i.test(col3);
+      currentSection.cards.push({
+        playerName: stripTrademarkSymbols(col1.replace(/,\s*$/, '')),
+        team: col2 ? stripTrademarkSymbols(col2) : undefined,
+        cardNumber: col0,
+        isRookie,
+        isSP: false,
+        hasBackVariation: false,
+        rawLine,
+      });
+    } else if (col0 && !col1) {
+      if (!productName) productName = col0;
+      pendingHeader = col0;
+    }
+  }
+
+  if (currentSection && currentSection.cards.length > 0) sections.push(currentSection);
+  return { productName, detectedFormat: 'generic', sections };
+}
+
 export function parseChecklistCsv(text: string): ParsedChecklist {
   const lines = text.split('\n').filter(l => l.trim().length > 0);
   if (lines.length === 0) {
     return { productName: '', detectedFormat: 'panini-csv', sections: [] };
   }
+
+  // Detect format: Panini/Donruss CSVs have column headers (ATHLETE, CARD SET, etc.)
+  // Bowman-style CSVs have no header — first line is a section title or product name
+  const firstRow = parseCsvLine(lines[0]);
+  const hasPaniniHeader = firstRow.some(h =>
+    ['ATHLETE', 'CARD SET', 'CARD NUMBER', 'SEQUENCE'].includes(h.replace(/"/g, '').toUpperCase())
+  );
+  if (!hasPaniniHeader) return parseChecklistBowmanCsv(text);
 
   // Parse header row
   const headerRow = parseCsvLine(lines[0]);

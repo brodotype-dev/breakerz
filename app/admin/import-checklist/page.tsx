@@ -90,15 +90,15 @@ function ImportChecklistInner() {
   // ── Step 1: Parse ──────────────────────────────────────────────────────────
 
   async function handleParse() {
-    const file = fileRef.current?.files?.[0];
-    if (!file) { setParseError('Select a file first.'); return; }
+    const files = Array.from(fileRef.current?.files ?? []);
+    if (!files.length) { setParseError('Select a file first.'); return; }
     if (!productId) { setParseError('Select a product first.'); return; }
 
     setParseError(null);
     setParsing(true);
 
     const formData = new FormData();
-    formData.append('file', file);
+    for (const file of files) formData.append('file', file);
 
     try {
       const res = await fetch('/api/admin/parse-checklist', { method: 'POST', body: formData });
@@ -313,14 +313,15 @@ function ImportChecklistInner() {
 
               {/* File input */}
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">Checklist file</label>
+                <label className="text-sm font-medium">Checklist file(s)</label>
                 <p className="text-xs text-muted-foreground">
-                  Accepts Topps PDF (numbered or code-based), Panini/Donruss CSV, or Bowman-style XLSX
+                  Accepts Topps PDF, Panini/Donruss CSV, Bowman-style XLSX, or multiple CSVs (select all at once — Base, Prospects, Autographs, Inserts, Variations)
                 </p>
                 <input
                   ref={fileRef}
                   type="file"
                   accept=".pdf,.csv,.xlsx,.xls"
+                  multiple
                   className="text-sm text-muted-foreground file:mr-3 file:rounded file:border-0 file:bg-muted file:px-3 file:py-1.5 file:text-sm file:font-medium file:cursor-pointer"
                 />
               </div>
