@@ -7,7 +7,6 @@ import { createClient } from '@supabase/supabase-js';
 import DashboardConfig from '@/components/breakerz/DashboardConfig';
 import PlayerTable from '@/components/breakerz/PlayerTable';
 import TeamSlotsTable from '@/components/breakerz/TeamSlotsTable';
-import BreakerComparison from '@/components/breakerz/BreakerComparison';
 import { SegmentedControl } from '@/components/breakerz/ds';
 import { computeSlotPricing, computeTeamSlotPricing } from '@/lib/engine';
 import type { BreakConfig, PlayerWithPricing, Product, Sport } from '@/lib/types';
@@ -48,7 +47,7 @@ export default function BreakPage() {
   const [riskFlagMap, setRiskFlagMap] = useState<Map<string, Array<{ flagType: string; note: string }>>>(new Map());
 
   const [breakType, setBreakType] = useState<'hobby' | 'bd'>('hobby');
-  const [activeTab, setActiveTab] = useState<'teams' | 'players' | 'comparison'>('teams');
+  const [activeTab, setActiveTab] = useState<'teams' | 'players'>('teams');
 
   const [config, setConfig] = useState<BreakConfig>({
     hobbyCases: 10,
@@ -335,9 +334,9 @@ export default function BreakPage() {
 
         {/* Tab bar */}
         <div className="flex gap-1 p-1 rounded-lg" style={{ backgroundColor: 'var(--terminal-surface)', border: '1px solid var(--terminal-border)' }}>
-          {(['teams', 'players', 'comparison'] as const).map(tab => {
-            const label = tab === 'teams' ? 'Team Slots' : tab === 'players' ? 'Player Slots' : 'Breaker Compare';
-            const count = tab === 'teams' ? teamSlots.length : tab === 'players' ? players.length : null;
+          {(['teams', 'players'] as const).map(tab => {
+            const label = tab === 'teams' ? 'Team Slots' : 'Player Slots';
+            const count = tab === 'teams' ? teamSlots.length : players.length;
             const active = activeTab === tab;
             return (
               <button
@@ -371,7 +370,6 @@ export default function BreakPage() {
         <div className="mt-4">
           {activeTab === 'teams' && <TeamSlotsTable teams={teamSlots} breakType={breakType} riskFlagMap={riskFlagMap} />}
           {activeTab === 'players' && <PlayerTable players={players} fetching={fetching} breakType={breakType} riskFlagMap={riskFlagMap} />}
-          {activeTab === 'comparison' && <BreakerComparison players={players} />}
         </div>
       </main>
     </div>

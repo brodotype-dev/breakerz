@@ -90,7 +90,7 @@ export default function CardLookupPage() {
     setIsParsing(true);
     setParseError(null);
     try {
-      const res = await fetch('/api/admin/card-lookup', {
+      const res = await fetch('/api/card-lookup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'parse', imageBase64, mediaType }),
@@ -113,7 +113,7 @@ export default function CardLookupPage() {
     try {
       // Prefer cert lookup — direct, exact identity
       if (extracted.certNumber.trim()) {
-        const res = await fetch('/api/admin/card-lookup', {
+        const res = await fetch('/api/card-lookup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'cert', cert: extracted.certNumber.trim() }),
@@ -126,7 +126,7 @@ export default function CardLookupPage() {
           setResult(certData);
         } else {
           // Name-based fallback — cert confirms identity but has no sales
-          const res2 = await fetch('/api/admin/card-lookup', {
+          const res2 = await fetch('/api/card-lookup', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ action: 'price', ...extracted }),
@@ -137,7 +137,7 @@ export default function CardLookupPage() {
         }
       } else {
         // No cert — name-based search only
-        const res = await fetch('/api/admin/card-lookup', {
+        const res = await fetch('/api/card-lookup', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ action: 'price', ...extracted }),

@@ -5,6 +5,7 @@ import type { Product, Sport } from '@/lib/types';
 import OddsUpload from './OddsUpload';
 import RunMatchingButton from './RunMatchingButton';
 import BreakerzBetsDebrief from './BreakerzBetsDebrief';
+import BreakerComparisonPanel from './BreakerComparisonPanel';
 
 type PageProps = { params: Promise<{ id: string }> };
 
@@ -292,6 +293,11 @@ export default async function ProductDashboardPage({ params }: PageProps) {
             </div>
           </Section>
         )}
+
+        {/* Breaker Comparison */}
+        <Section title="Breaker Comparison" accent="var(--gradient-purple)">
+          <BreakerComparisonPanel productId={id} />
+        </Section>
 
         {/* Product details */}
         <Section title="Product Details" accent="var(--gradient-blue)">

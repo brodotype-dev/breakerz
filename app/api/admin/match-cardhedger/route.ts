@@ -25,33 +25,36 @@ export async function POST(req: NextRequest) {
   const { productId, offset = 0, limit = DEFAULT_CHUNK } = await req.json();
   if (!productId) return NextResponse.json({ error: 'productId required' }, { status: 400 });
 
-  // Fetch player name map for this product.
-  const { data: playerProducts } = await supabaseAdmin
+  // Verify product exists and has player_products.
+  const { count: ppCount } = await supabaseAdmin
     .from('player_products')
-    .select('id, player:players(name)')
+    .select('id', { count: 'exact', head: true })
     .eq('product_id', productId);
 
-  const ppPlayerMap = new Map(
-    (playerProducts ?? []).map((pp: any) => [pp.id, (pp.player as any)?.name ?? '']) // eslint-disable-line @typescript-eslint/no-explicit-any
-  );
-  const ppIds = [...ppPlayerMap.keys()];
+  if (!ppCount) return NextResponse.json({ results: [], total: 0, hasMore: false });
 
-  if (!ppIds.length) return NextResponse.json({ results: [], total: 0, hasMore: false });
-
-  // Count total unmatched variants (for progress display).
+  // Count total unmatched variants via join (avoids large .in() URL limit).
   const { count: total } = await supabaseAdmin
     .from('player_product_variants')
-    .select('id', { count: 'exact', head: true })
-    .in('player_product_id', ppIds)
+    .select('id, player_products!inner(product_id)', { count: 'exact', head: true })
+    .eq('player_products.product_id', productId)
     .is('cardhedger_card_id', null);
 
-  // Fetch this chunk of unmatched variants.
+  // Fetch this chunk of unmatched variants with player name joined.
   const { data: variants } = await supabaseAdmin
     .from('player_product_variants')
-    .select('id, variant_name, card_number, player_product_id')
-    .in('player_product_id', ppIds)
+    .select('id, variant_name, card_number, player_product_id, player_products!inner(product_id, player:players(name))')
+    .eq('player_products.product_id', productId)
     .is('cardhedger_card_id', null)
     .range(offset, offset + limit - 1);
+
+  // Build player name map from joined data (no separate query needed).
+  const ppPlayerMap = new Map(
+    (variants ?? []).map((v: any) => [ // eslint-disable-line @typescript-eslint/no-explicit-any
+      v.player_product_id,
+      (v.player_products as any)?.player?.name ?? '', // eslint-disable-line @typescript-eslint/no-explicit-any
+    ])
+  );
 
   if (!variants?.length) {
     return NextResponse.json({ results: [], total: total ?? 0, hasMore: false });

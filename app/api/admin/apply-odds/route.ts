@@ -13,20 +13,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'productId and odds.rows required' }, { status: 400 });
   }
 
-  // Load all player_product IDs for this product
-  const { data: playerProducts } = await supabaseAdmin
-    .from('player_products')
-    .select('id')
-    .eq('product_id', productId);
-
-  const ppIds = (playerProducts ?? []).map(pp => pp.id);
-  if (!ppIds.length) return NextResponse.json({ updatedCount: 0, matched: [], unmatched: [] });
-
-  // Load all variants for those player_products
+  // Load all variants for this product via join (avoids large .in() URL limit).
   const { data: variants, error } = await supabaseAdmin
     .from('player_product_variants')
-    .select('id, variant_name')
-    .in('player_product_id', ppIds);
+    .select('id, variant_name, player_products!inner(product_id)')
+    .eq('player_products.product_id', productId);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!variants?.length) return NextResponse.json({ updatedCount: 0, matched: [], unmatched: [] });

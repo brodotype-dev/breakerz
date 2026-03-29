@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Package, ScanLine, Sparkles, Home, PlusCircle } from 'lucide-react';
+import { Package, Sparkles, Home, PlusCircle } from 'lucide-react';
 
 interface NavLinkProps {
   icon: React.ElementType;
@@ -58,8 +58,7 @@ export default function AdminNav() {
     <nav className="flex-1 p-4 space-y-1 relative">
       <NavLink icon={Package} label="Products" href="/admin" exact />
       <NavLink icon={PlusCircle} label="New Product" href="/admin/products/new" />
-      <NavLink icon={ScanLine} label="Card Lookup" href="/admin/card-lookup" />
-      <NavLink icon={Sparkles} label="Breakerz Betz" href="/admin/breakerz-betz" />
+<NavLink icon={Sparkles} label="Breakerz Betz" href="/admin/breakerz-betz" />
       <div className="py-3">
         <div style={{ height: '1px', backgroundColor: 'var(--terminal-border)' }} />
       </div>
