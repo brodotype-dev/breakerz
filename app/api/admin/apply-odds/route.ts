@@ -2,9 +2,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { ParsedOdds } from '@/lib/checklist-parser';
 
-// Normalize a string for fuzzy matching: lowercase, collapse whitespace, strip punctuation
-function normalize(s: string) {
-  return s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+function tokenize(s: string): string[] {
+  return s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
+}
+
+// Score how well a DB variant name matches a PDF subset name.
+// Uses prefix-aware token overlap: fraction of variant tokens found in subset tokens.
+// "auto" matches "autographs", "refractor" matches "refractors", etc.
+function matchScore(subsetName: string, variantName: string): number {
+  const varToks = tokenize(variantName);
+  const oddsToks = tokenize(subsetName);
+  if (varToks.length === 0 || oddsToks.length === 0) return 0;
+
+  let matched = 0;
+  for (const vt of varToks) {
+    if (oddsToks.some(ot => ot === vt || ot.startsWith(vt) || vt.startsWith(ot))) {
+      matched++;
+    }
+  }
+  return matched / varToks.length;
 }
 
 export async function POST(req: NextRequest) {
@@ -26,19 +42,29 @@ export async function POST(req: NextRequest) {
   const matched: { subsetName: string; variantName: string; hobbyOdds: string; breakerOdds: string | null }[] = [];
   const unmatched: string[] = [];
 
+  // Deduplicate variants by name — odds apply per variant type, not per player row
+  const uniqueVariants = [...new Map(variants.map(v => [v.variant_name, v])).values()];
+
   for (const oddsRow of odds.rows) {
-    const normalizedOdds = normalize(oddsRow.subsetName);
+    // Find best-matching variant name by token overlap score
+    let bestMatch: typeof variants[0] | null = null;
+    let bestScore = 0;
 
-    // Find best-matching variant by normalized name substring
-    const match = variants.find(v => {
-      const normalizedVariant = normalize(v.variant_name);
-      return normalizedVariant.includes(normalizedOdds) || normalizedOdds.includes(normalizedVariant);
-    });
+    for (const v of uniqueVariants) {
+      const score = matchScore(oddsRow.subsetName, v.variant_name);
+      if (score > bestScore) {
+        bestScore = score;
+        bestMatch = v;
+      }
+    }
 
-    if (!match) {
+    // Require at least 50% of the variant's tokens to match
+    if (!bestMatch || bestScore < 0.5) {
       unmatched.push(oddsRow.subsetName);
       continue;
     }
+
+    const match = bestMatch;
 
     const variantIds = variants
       .filter(v => v.variant_name === match.variant_name)

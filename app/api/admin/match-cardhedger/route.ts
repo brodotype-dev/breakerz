@@ -66,11 +66,21 @@ export async function POST(req: NextRequest) {
     .eq('id', productId)
     .single();
 
+  // Strip year prefix and sport suffix from product name for cleaner CardHedger queries.
+  // "2025 Bowman Chrome Baseball" → "Bowman Chrome"
+  // "2025-26 Topps Chrome Basketball" → "Topps Chrome"
+  const shortSetName = (product?.name ?? '')
+    .replace(/^\d{4}(?:-\d{2})?\s+/, '')
+    .replace(/\s+(baseball|basketball|football|soccer)\s*$/i, '')
+    .trim();
+
   // Match all variants in this chunk concurrently.
   const results = await runConcurrent(
     variants.map(variant => async () => {
       const playerName = ppPlayerMap.get(variant.player_product_id) ?? '';
-      const query = [playerName, product?.name, variant.card_number].filter(Boolean).join(' ');
+      const query = [playerName, shortSetName, variant.card_number, variant.variant_name]
+        .filter(Boolean)
+        .join(' ');
 
       try {
         const match = await cardMatch(query);
