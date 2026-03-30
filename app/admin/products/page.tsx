@@ -22,8 +22,9 @@ const sportColors = {
   football: 'var(--sport-football-primary)',
 };
 
-export default async function AdminProductsPage() {
-  const [{ data: products }, { data: playerCountRows }] = await Promise.all([
+export default async function AdminProductsPage({ searchParams }: { searchParams: Promise<{ filter?: string }> }) {
+  const { filter } = await searchParams;
+  const [{ data: allProducts }, { data: playerCountRows }] = await Promise.all([
     supabaseAdmin
       .from('products')
       .select('id, name, slug, year, manufacturer, is_active, hobby_case_cost, sport:sports(name)')
@@ -41,7 +42,14 @@ export default async function AdminProductsPage() {
   }
 
   const totalPlayers = playerCountRows?.length ?? 0;
-  const activeCount = (products ?? []).filter((p: any) => p.is_active).length;
+  const activeCount = (allProducts ?? []).filter((p: any) => p.is_active).length;
+  const draftCount = (allProducts?.length ?? 0) - activeCount;
+
+  const products = filter === 'active'
+    ? (allProducts ?? []).filter((p: any) => p.is_active)
+    : filter === 'draft'
+      ? (allProducts ?? []).filter((p: any) => !p.is_active)
+      : (allProducts ?? []);
 
   return (
     <div className="max-w-7xl mx-auto space-y-8">
@@ -106,13 +114,33 @@ export default async function AdminProductsPage() {
       {/* Products Grid */}
       <div>
         <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
-              Products
-            </h2>
-            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-              Click a product to manage players, checklists, and settings
-            </p>
+          <div className="flex items-center gap-1 p-1 rounded-lg" style={{ backgroundColor: 'var(--terminal-surface)' }}>
+            {([
+              { label: 'All', value: undefined, count: allProducts?.length ?? 0 },
+              { label: 'Active', value: 'active', count: activeCount },
+              { label: 'Draft', value: 'draft', count: draftCount },
+            ] as const).map(tab => {
+              const active = (filter ?? undefined) === tab.value;
+              return (
+                <Link
+                  key={tab.label}
+                  href={tab.value ? `/admin/products?filter=${tab.value}` : '/admin/products'}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all"
+                  style={{
+                    backgroundColor: active ? 'var(--terminal-surface-hover)' : 'transparent',
+                    color: active ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                  }}
+                >
+                  {tab.label}
+                  <span
+                    className="text-xs font-mono px-1.5 py-0.5 rounded"
+                    style={{ backgroundColor: 'rgba(59,130,246,0.1)', color: 'var(--accent-blue)' }}
+                  >
+                    {tab.count}
+                  </span>
+                </Link>
+              );
+            })}
           </div>
           <Link
             href="/admin/import-checklist"
