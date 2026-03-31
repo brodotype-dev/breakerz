@@ -49,6 +49,18 @@ Consolidated list of known work, organized by priority. Items pulled from the So
 
 ## Priority 2 — High value, external dependency or more effort
 
+### CardHedger Matching — Manufacturer Knowledge System
+**Effort:** ~1 day
+**Why:** All manufacturer-specific matching rules are hardcoded regex in `cleanVariant()` and inline conditionals in the route. As Panini, Topps Finest, and other products are imported, this becomes unmaintainable. The system also has a structural blind spot: for card-code queries (BDC-91 etc.), CH correctly returns the right player but Claude rejects the match because there's no player name in the query to verify against.
+
+**Design:** `lib/card-knowledge/` module system — each manufacturer is one TypeScript class implementing a `ManufacturerKnowledge` interface with three methods: `cleanVariant()`, `reformulateQuery()`, `claudeContext()`. The context string is injected into the Claude Haiku prompt so it understands manufacturer-specific terminology (e.g. "BDC codes are unique per player — trust CH's result"). Full plan at `/Users/brody/.claude/plans/precious-hatching-sedgewick.md`.
+
+**Key insight from 2026-03-31 CSV analysis:** Card-code queries are working (CH finds the right player/set) but Claude has 0 confidence because the query has no player name. The manufacturer context fix — telling Claude that card codes uniquely identify players — should resolve most of the remaining ~28% unmatched.
+
+**Files:** `lib/card-knowledge/` (new dir), `lib/cardhedger.ts`, `app/api/admin/match-cardhedger/route.ts`
+
+---
+
 ### Phase 5 — C-score: CardHedger Top-Movers
 **Effort:** 2–3 days
 **Blocker:** Kyle needs to confirm `top-movers` endpoint response structure — specifically whether it includes volume data for normalization, or just relative rank. Normalization strategy changes depending on the answer.
