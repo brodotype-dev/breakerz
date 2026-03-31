@@ -123,6 +123,22 @@ Consolidated list of known work, organized by priority. Items pulled from the So
 
 ---
 
+## Known Limitations
+
+Problems we've identified but don't yet have a clear solution for. Not features — more like structural constraints to keep in mind when scoping future work.
+
+### CardHedger — Dual / Triple / Quad Autographs
+Multi-player autograph cards (e.g. `"Dylan Crews/James Wood 2025 Bowman's Best DA-WC"`) are unmatched because:
+1. The player name field contains a slash-delimited list of players, which no search query handles well
+2. CardHedger doesn't appear to index multi-player cards under a combined player name
+3. The card code (DA-WC, TA-CEC, QA-ADGS) is unique but CH returns wrong cards for multi-player queries
+
+**Impact:** Low volume (~2-3% of variants in Bowman's Best). High-end cards by value but low count.
+**Potential directions:** Search CH by the card code alone (no player name); match the first player name only and accept the result; or treat these as permanently manual-match candidates in the Review UI.
+**Not worth solving until** the Match Review UI exists, since manual correction is the fallback anyway.
+
+---
+
 ## Open Questions
 
 These need a decision before the relevant work can be scoped or started.

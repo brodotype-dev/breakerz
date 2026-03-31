@@ -161,6 +161,15 @@ export async function cardMatch(
 
   if (cards.length === 0) return { card_id: null, confidence: 0 };
 
+  // Hard year filter: if the query contains a 4-digit year, discard any candidate
+  // from a different year. A 2022 Bowman's Best card can never be a match for a
+  // 2025 product. Only filter if results remain after filtering.
+  const yearInQuery = query.match(/\b(20\d{2})\b/)?.[1];
+  if (yearInQuery) {
+    const yearFiltered = cards.filter(c => !c.year || c.year === yearInQuery);
+    if (yearFiltered.length > 0) cards = yearFiltered;
+  }
+
   const top = cards[0] as CardHedgerSearchCard & { player?: string; set?: string };
   const topResult = {
     player_name: top.player_name ?? top.player ?? '',
