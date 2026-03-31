@@ -81,14 +81,19 @@ export async function POST(req: NextRequest) {
   // where the XLSX parser stored the card number as the player name — skip matching entirely.
   const CARD_CODE_RE = /^[A-Z]+-[A-Z0-9]+$/;
 
-  // Clean variant_name for query: strip noise terms CardHedger doesn't use.
-  // "Base - Retrofractor Variation" → "" (skipped — CH calls these "Base" or "Lazer Refractor")
-  // "Gold Refractor /50"           → "Gold Refractor /50" (unchanged)
+  // Clean variant_name for query: strip insert set names and Bowman-specific terms
+  // that CardHedger doesn't use, so only meaningful parallel/variant words remain.
+  // "Base - Retrofractor Variation"              → "" (CH calls these "Base"/"Lazer Refractor")
+  // "2025 Draft Lottery Ping Pong Ball Autographs" → "" (insert set name, not a variant)
+  // "Bowman Spotlights"                          → "" (insert set name)
+  // "Gold Refractor /50"                         → "Gold Refractor /50" (unchanged)
   function cleanVariant(name: string): string {
     return name
-      .replace(/^Base\s*[-–]\s*/i, '')   // strip "Base - " prefix
-      .replace(/\s+Variation\s*$/i, '')   // strip trailing " Variation"
-      .replace(/\bRetrofractor\b/gi, '')  // CH doesn't use this Bowman term
+      .replace(/^Base\s*[-–]\s*/i, '')                           // strip "Base - " prefix
+      .replace(/\s+Variation\s*$/i, '')                          // strip trailing " Variation"
+      .replace(/\bRetrofractor\b/gi, '')                         // CH doesn't use this Bowman term
+      .replace(/\d{4}\s+Draft\s+Lottery\s+Ping\s+Pong\s+Ball\b/gi, '') // Bowman Draft Lottery insert
+      .replace(/\bBowman\s+Spotlights?\b/gi, '')                 // Bowman Spotlights insert
       .trim();
   }
 
