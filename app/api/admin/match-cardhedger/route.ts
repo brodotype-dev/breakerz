@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { cardMatch } from '@/lib/cardhedger';
+import { getManufacturerKnowledge } from '@/lib/card-knowledge';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -80,46 +81,36 @@ export async function POST(req: NextRequest) {
   // Sport filter for CardHedger search — narrows results and reduces cross-sport false matches
   const sportName = ((product as any)?.sport as { name?: string } | null)?.name?.toLowerCase();
 
-  // Card-code pattern: player names like "BDC-170", "CPA-KC", "AA-FA" are Team Sets inserts
-  // where the XLSX parser stored the card number as the player name — skip matching entirely.
-  const CARD_CODE_RE = /^[A-Z]+-[A-Z0-9]+$/;
-
-  // Clean variant_name for query: strip insert set names and Bowman-specific terms
-  // that CardHedger doesn't use, so only meaningful parallel/variant words remain.
-  // "Base - Retrofractor Variation"              → "" (CH calls these "Base"/"Lazer Refractor")
-  // "2025 Draft Lottery Ping Pong Ball Autographs" → "" (insert set name, not a variant)
-  // "Bowman Spotlights"                          → "" (insert set name)
-  // "Gold Refractor /50"                         → "Gold Refractor /50" (unchanged)
-  function cleanVariant(name: string): string {
-    return name
-      .replace(/^Base\s*[-–]\s*/i, '')                           // strip "Base - " prefix
-      .replace(/\s+Variation\s*$/i, '')                          // strip trailing " Variation"
-      .replace(/\bRetrofractor\b/gi, '')                         // CH doesn't use this Bowman term
-      .replace(/\d{4}\s+Draft\s+Lottery\s+Ping\s+Pong\s+Ball\b/gi, '') // Bowman Draft Lottery insert
-      .replace(/\bBowman\s+Spotlights?\b/gi, '')                 // Bowman Spotlights insert
-      .trim();
-  }
+  // Resolve the manufacturer knowledge module for this product.
+  // Handles variant cleaning, query reformulation, and Claude context injection.
+  const knowledge = getManufacturerKnowledge(productName);
 
   // Match all variants in this chunk concurrently.
   const results = await runConcurrent(
     variants.map(variant => async () => {
       const playerName = ppPlayerMap.get(variant.player_product_id) ?? '';
 
-      // Card-code player name (e.g. "BDC-170", "CPA-KC"): the XLSX parser stored the card
-      // number as the player name. CH indexes these by card number, so use the code as the
-      // search term — player + set + code uniquely identifies the card in the catalog.
-      const isCardCode = CARD_CODE_RE.test(playerName);
-      const cleanedVariant = isCardCode ? '' : cleanVariant(variant.variant_name ?? '');
-      const query = isCardCode
-        ? [productYear, shortSetName, playerName].filter(Boolean).join(' ')
-        : [playerName, productYear, shortSetName, variant.card_number, cleanedVariant || undefined].filter(Boolean).join(' ');
+      // Clean the variant name and optionally reformulate the full query.
+      const { cleanedVariant, isInsertSetName } = knowledge.cleanVariant(variant.variant_name ?? '');
+      const reformulation = knowledge.reformulateQuery({
+        playerName,
+        year: productYear,
+        shortSetName,
+        cardNumber: variant.card_number,
+        cleanedVariant,
+        isInsertSetName,
+      });
+
+      const query = reformulation.query ??
+        [playerName, productYear, shortSetName, variant.card_number, cleanedVariant || undefined]
+          .filter(Boolean)
+          .join(' ');
+
+      const matchPlayerName = reformulation.effectivePlayerName ?? playerName;
+      const matchCardNumber = reformulation.effectiveCardNumber ?? variant.card_number;
 
       try {
-        // For card-code variants, pass the code as cardNumber (for fallback retry);
-        // playerName is undefined so the fallback query is just the code itself.
-        const matchPlayerName = isCardCode ? undefined : playerName;
-        const matchCardNumber = isCardCode ? playerName : variant.card_number;
-        const match = await cardMatch(query, sportName, matchPlayerName, matchCardNumber);
+        const match = await cardMatch(query, sportName, matchPlayerName, matchCardNumber, knowledge.claudeContext());
         const status: 'auto' | 'review' | 'no-match' =
           match.confidence >= 0.7 && match.card_id ? 'auto'
           : match.confidence >= 0.5 ? 'review'

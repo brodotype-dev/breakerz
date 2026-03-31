@@ -147,6 +147,7 @@ export async function cardMatch(
   sport?: string,
   playerName?: string,
   cardNumber?: string,
+  context?: string,
 ): Promise<{ card_id: string | null; confidence: number; topResult?: { player_name: string; set_name: string; variant: string; year: string; number: string } }> {
   let result = await searchCards(query, sport);
   let cards = (result.cards ?? []).slice(0, 10);
@@ -171,7 +172,7 @@ export async function cardMatch(
 
   // Try Claude semantic matching first.
   try {
-    const match = await claudeCardMatch(query, cards);
+    const match = await claudeCardMatch(query, cards, context);
     if (match) return { ...match, topResult };
   } catch (err) {
     console.warn('[cardMatch] Claude fallback to token matcher:', err instanceof Error ? err.message : err);
@@ -196,7 +197,8 @@ function tokenCardMatch(
 /** Claude semantic matcher — reasons about which result best matches the query. */
 async function claudeCardMatch(
   query: string,
-  cards: CardHedgerSearchCard[]
+  cards: CardHedgerSearchCard[],
+  context?: string,
 ): Promise<{ card_id: string; confidence: number } | null> {
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -207,8 +209,11 @@ async function claudeCardMatch(
     )
     .join('\n');
 
-  const prompt = `You are matching a sports card query to a CardHedger catalog entry.
+  // Manufacturer context is injected between the role line and the query —
+  // Claude reads the briefing before seeing what it needs to match.
+  const contextBlock = context ? `\n${context}\n` : '';
 
+  const prompt = `You are matching a sports card query to a CardHedger catalog entry.${contextBlock}
 Query: "${query}"
 
 Candidates:
