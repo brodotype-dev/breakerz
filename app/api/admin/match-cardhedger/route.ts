@@ -81,13 +81,14 @@ export async function POST(req: NextRequest) {
   // where the XLSX parser stored the card number as the player name — skip matching entirely.
   const CARD_CODE_RE = /^[A-Z]+-[A-Z0-9]+$/;
 
-  // Clean variant_name for query: strip "Base - " prefix and trailing " Variation" noise.
-  // "Base - Retrofractor Variation" → "Retrofractor"
+  // Clean variant_name for query: strip noise terms CardHedger doesn't use.
+  // "Base - Retrofractor Variation" → "" (skipped — CH calls these "Base" or "Lazer Refractor")
   // "Gold Refractor /50"           → "Gold Refractor /50" (unchanged)
   function cleanVariant(name: string): string {
     return name
-      .replace(/^Base\s*[-–]\s*/i, '')
-      .replace(/\s+Variation\s*$/i, '')
+      .replace(/^Base\s*[-–]\s*/i, '')   // strip "Base - " prefix
+      .replace(/\s+Variation\s*$/i, '')   // strip trailing " Variation"
+      .replace(/\bRetrofractor\b/gi, '')  // CH doesn't use this Bowman term
       .trim();
   }
 
