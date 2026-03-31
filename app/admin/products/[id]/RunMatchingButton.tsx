@@ -5,20 +5,20 @@ import { useRouter } from 'next/navigation';
 
 type Progress = { completed: number; total: number; auto: number; review: number };
 type DebugRow = { playerName: string; query: string; status: string; confidence: number; topResult: Record<string, string> | null };
+type LastRun = { at: Date; progress: Progress; debugRows: DebugRow[] };
 
 export default function RunMatchingButton({ productId }: { productId: string }) {
-  const [status, setStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle');
+  const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<Progress>({ completed: 0, total: 0, auto: 0, review: 0 });
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [debugRows, setDebugRows] = useState<DebugRow[]>([]);
+  const [lastRun, setLastRun] = useState<LastRun | null>(null);
   const [showDebug, setShowDebug] = useState(false);
   const router = useRouter();
 
   async function run() {
-    setStatus('running');
+    setRunning(true);
     setProgress({ completed: 0, total: 0, auto: 0, review: 0 });
     setErrorMsg(null);
-    setDebugRows([]);
     setShowDebug(false);
 
     let offset = 0;
@@ -52,16 +52,35 @@ export default function RunMatchingButton({ productId }: { productId: string }) 
         await new Promise(r => setTimeout(r, 300));
       }
 
-      setDebugRows(accumulated);
-      setStatus('done');
+      const finalProgress = { completed: offset, total: grandTotal, auto: totalAuto, review: totalReview };
+      setLastRun({ at: new Date(), progress: finalProgress, debugRows: accumulated });
+      setRunning(false);
       router.refresh();
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Unknown error');
-      setStatus('error');
+      setRunning(false);
     }
   }
 
-  if (status === 'running') {
+  function downloadCsv(rows: DebugRow[]) {
+    const header = 'Player,Query,Status,Confidence,CH Player,CH Set,CH Variant';
+    const csvRows = rows.map(r => [
+      `"${r.playerName}"`,
+      `"${r.query}"`,
+      r.status,
+      r.confidence > 0 ? r.confidence.toFixed(2) : '',
+      `"${r.topResult?.player_name ?? ''}"`,
+      `"${r.topResult?.set_name ?? ''}"`,
+      `"${r.topResult?.variant ?? ''}"`,
+    ].join(','));
+    const csv = [header, ...csvRows].join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = 'unmatched-variants.csv';
+    a.click();
+  }
+
+  if (running) {
     const pct = progress.total > 0 ? Math.round((progress.completed / progress.total) * 100) : 0;
     return (
       <div className="flex items-center gap-3">
@@ -75,99 +94,78 @@ export default function RunMatchingButton({ productId }: { productId: string }) 
     );
   }
 
-  if (status === 'done') {
-    const noMatch = progress.total - progress.auto - progress.review;
-    return (
-      <div className="space-y-3">
-        <div className="flex items-center gap-3 text-xs text-muted-foreground">
-          <span>✓ {progress.auto} matched · {progress.review} review · {noMatch} no match</span>
-          {debugRows.length > 0 && (
-            <button onClick={() => setShowDebug(v => !v)} className="underline hover:text-foreground">
-              {showDebug ? 'Hide' : 'View'} {debugRows.length} unmatched
-            </button>
-          )}
-          <button onClick={() => { setStatus('idle'); setDebugRows([]); }} className="underline hover:text-foreground">
-            Run again
-          </button>
-        </div>
-
-        {showDebug && debugRows.length > 0 && (
-          <button
-            onClick={() => {
-              const header = 'Player,Query,Status,Confidence,CH Player,CH Set,CH Variant';
-              const rows = debugRows.map(r => [
-                `"${r.playerName}"`,
-                `"${r.query}"`,
-                r.status,
-                r.confidence > 0 ? r.confidence.toFixed(2) : '',
-                `"${r.topResult?.player_name ?? ''}"`,
-                `"${r.topResult?.set_name ?? ''}"`,
-                `"${r.topResult?.variant ?? ''}"`,
-              ].join(','));
-              const csv = [header, ...rows].join('\n');
-              const a = document.createElement('a');
-              a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-              a.download = 'unmatched-variants.csv';
-              a.click();
-            }}
-            className="text-xs underline hover:text-foreground"
-            style={{ color: 'var(--accent-blue)' }}
-          >
-            Export CSV
-          </button>
-        )}
-        {showDebug && debugRows.length > 0 && (
-          <div className="rounded border overflow-auto max-h-64" style={{ borderColor: 'var(--terminal-border)' }}>
-            <table className="w-full text-xs">
-              <thead style={{ backgroundColor: 'var(--terminal-surface-hover)' }}>
-                <tr>
-                  {['Player', 'Query sent', 'Status', 'Conf.', 'CH returned'].map(h => (
-                    <th key={h} className="text-left px-3 py-2 font-medium whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="divide-y" style={{ borderColor: 'var(--terminal-border)' }}>
-                {debugRows.map((r, i) => (
-                  <tr key={i} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : 'var(--terminal-surface-hover)' }}>
-                    <td className="px-3 py-1.5 font-medium whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>{r.playerName}</td>
-                    <td className="px-3 py-1.5 font-mono max-w-xs truncate" style={{ color: 'var(--text-secondary)' }}>{r.query}</td>
-                    <td className="px-3 py-1.5 whitespace-nowrap">
-                      <span style={{ color: r.status === 'review' ? 'var(--signal-watch)' : 'var(--text-disabled)' }}>
-                        {r.status}
-                      </span>
-                    </td>
-                    <td className="px-3 py-1.5 font-mono" style={{ color: 'var(--text-tertiary)' }}>
-                      {r.confidence > 0 ? r.confidence.toFixed(2) : '—'}
-                    </td>
-                    <td className="px-3 py-1.5 max-w-xs truncate" style={{ color: r.topResult ? 'var(--text-secondary)' : 'var(--text-disabled)' }}>
-                      {r.topResult
-                        ? `${r.topResult.player_name} · ${r.topResult.set_name} · ${r.topResult.variant}`
-                        : '(no results)'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  if (status === 'error') {
-    return (
-      <div className="flex items-center gap-2">
-        <button onClick={run} className="rounded border px-4 py-2 text-sm font-medium text-red-500 hover:bg-muted transition-colors">
-          Retry Matching
+  return (
+    <div className="space-y-3 w-full">
+      <div className="flex flex-wrap items-center gap-3">
+        <button onClick={run} className="rounded border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors">
+          Re-run Matching →
         </button>
         {errorMsg && <span className="text-xs text-red-500">{errorMsg}</span>}
       </div>
-    );
-  }
 
-  return (
-    <button onClick={run} className="rounded border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors">
-      Re-run Matching →
-    </button>
+      {lastRun && (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
+            <span style={{ color: 'var(--text-tertiary)' }}>
+              Last run {lastRun.at.toLocaleDateString()} {lastRun.at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </span>
+            <span>·</span>
+            <span>✓ {lastRun.progress.auto} matched</span>
+            <span>·</span>
+            <span style={{ color: 'var(--signal-watch)' }}>{lastRun.progress.review} review</span>
+            <span>·</span>
+            <span style={{ color: 'var(--text-disabled)' }}>
+              {lastRun.progress.total - lastRun.progress.auto - lastRun.progress.review} no match
+            </span>
+            {lastRun.debugRows.length > 0 && (
+              <>
+                <span>·</span>
+                <button onClick={() => downloadCsv(lastRun.debugRows)} className="underline hover:text-foreground" style={{ color: 'var(--accent-blue)' }}>
+                  Download CSV
+                </button>
+                <button onClick={() => setShowDebug(v => !v)} className="underline hover:text-foreground">
+                  {showDebug ? 'Hide' : 'View'} {lastRun.debugRows.length} unmatched
+                </button>
+              </>
+            )}
+          </div>
+
+          {showDebug && lastRun.debugRows.length > 0 && (
+            <div className="rounded border overflow-auto max-h-64" style={{ borderColor: 'var(--terminal-border)' }}>
+              <table className="w-full text-xs">
+                <thead style={{ backgroundColor: 'var(--terminal-surface-hover)' }}>
+                  <tr>
+                    {['Player', 'Query sent', 'Status', 'Conf.', 'CH returned'].map(h => (
+                      <th key={h} className="text-left px-3 py-2 font-medium whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y" style={{ borderColor: 'var(--terminal-border)' }}>
+                  {lastRun.debugRows.map((r, i) => (
+                    <tr key={i} style={{ backgroundColor: i % 2 === 0 ? 'transparent' : 'var(--terminal-surface-hover)' }}>
+                      <td className="px-3 py-1.5 font-medium whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>{r.playerName}</td>
+                      <td className="px-3 py-1.5 font-mono max-w-xs truncate" style={{ color: 'var(--text-secondary)' }}>{r.query}</td>
+                      <td className="px-3 py-1.5 whitespace-nowrap">
+                        <span style={{ color: r.status === 'review' ? 'var(--signal-watch)' : 'var(--text-disabled)' }}>
+                          {r.status}
+                        </span>
+                      </td>
+                      <td className="px-3 py-1.5 font-mono" style={{ color: 'var(--text-tertiary)' }}>
+                        {r.confidence > 0 ? r.confidence.toFixed(2) : '—'}
+                      </td>
+                      <td className="px-3 py-1.5 max-w-xs truncate" style={{ color: r.topResult ? 'var(--text-secondary)' : 'var(--text-disabled)' }}>
+                        {r.topResult
+                          ? `${r.topResult.player_name} · ${r.topResult.set_name} · ${r.topResult.variant}`
+                          : '(no results)'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

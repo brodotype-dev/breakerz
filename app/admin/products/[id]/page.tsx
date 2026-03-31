@@ -230,10 +230,12 @@ export default async function ProductDashboardPage({ params }: PageProps) {
 
         {/* Quick actions */}
         <Section title="Quick Actions" accent="var(--gradient-green)">
-          <div className="flex flex-wrap gap-3">
-            <ActionLink href={`/admin/products/${id}/players`} label="Manage Players →" />
-            <ActionLink href={`/admin/import-checklist?productId=${id}`} label="Import Checklist →" />
-            <ActionLink href={`/break/${product.slug}`} label="View Break Page →" />
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-3">
+              <ActionLink href={`/admin/products/${id}/players`} label="Manage Players →" />
+              <ActionLink href={`/admin/import-checklist?productId=${id}`} label="Import Checklist →" />
+              <ActionLink href={`/break/${product.slug}`} label="View Break Page →" />
+            </div>
             <RunMatchingButton productId={id} />
           </div>
         </Section>
