@@ -21,6 +21,9 @@ export default function RunMatchingButton({ productId }: { productId: string }) 
     let totalReview = 0;
     let grandTotal = 0;
 
+    type DebugRow = { playerName: string; query: string; status: string; confidence: number; topResult: Record<string, string> | null };
+    const debugRows: DebugRow[] = [];
+
     try {
       while (true) {
         const res = await fetch('/api/admin/match-cardhedger', {
@@ -38,19 +41,8 @@ export default function RunMatchingButton({ productId }: { productId: string }) 
         totalReview += json.results.filter((r: { status: string }) => r.status === 'review').length;
         offset += json.processed;
 
-        // Debug: log non-auto results so you can inspect query vs top CardHedger result
-        const needsReview = json.results.filter((r: { status: string }) => r.status !== 'auto');
-        if (needsReview.length > 0) {
-          console.table(needsReview.map((r: { playerName: string; query: string; status: string; confidence: number; topResult: Record<string, string> | null }) => ({
-            player: r.playerName,
-            query: r.query,
-            status: r.status,
-            confidence: r.confidence?.toFixed(2),
-            ch_player: r.topResult?.player_name ?? '—',
-            ch_set: r.topResult?.set_name ?? '—',
-            ch_variant: r.topResult?.variant ?? '—',
-          })));
-        }
+        // Accumulate non-auto results for end-of-run debug table
+        json.results.filter((r: DebugRow) => r.status !== 'auto').forEach((r: DebugRow) => debugRows.push(r));
 
         setProgress({
           completed: offset,
@@ -63,6 +55,20 @@ export default function RunMatchingButton({ productId }: { productId: string }) 
 
         // Small pause between chunks to avoid hammering APIs.
         await new Promise(r => setTimeout(r, 300));
+      }
+
+      // Log all non-auto results once at the end, before router.refresh() clears the console
+      if (debugRows.length > 0) {
+        console.log(`[CardHedger matching] ${debugRows.length} non-auto results:`);
+        console.table(debugRows.map(r => ({
+          player: r.playerName,
+          query: r.query,
+          status: r.status,
+          confidence: r.confidence?.toFixed(2),
+          ch_player: r.topResult?.player_name ?? '(no results)',
+          ch_set: r.topResult?.set_name ?? '—',
+          ch_variant: r.topResult?.variant ?? '—',
+        })));
       }
 
       setStatus('done');
