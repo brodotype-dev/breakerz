@@ -147,7 +147,7 @@ export async function cardMatch(
   sport?: string,
   playerName?: string,
   cardNumber?: string,
-): Promise<{ card_id: string | null; confidence: number }> {
+): Promise<{ card_id: string | null; confidence: number; topResult?: { player_name: string; set_name: string; variant: string; year: string; number: string } }> {
   let result = await searchCards(query, sport);
   let cards = (result.cards ?? []).slice(0, 10);
 
@@ -160,16 +160,19 @@ export async function cardMatch(
 
   if (cards.length === 0) return { card_id: null, confidence: 0 };
 
+  const top = cards[0];
+  const topResult = { player_name: top.player_name, set_name: top.set_name, variant: top.variant, year: top.year, number: top.number };
+
   // Try Claude semantic matching first.
   try {
     const match = await claudeCardMatch(query, cards);
-    if (match) return match;
+    if (match) return { ...match, topResult };
   } catch (err) {
     console.warn('[cardMatch] Claude fallback to token matcher:', err instanceof Error ? err.message : err);
   }
 
   // Fallback: token-based scoring against the top result.
-  return tokenCardMatch(query, cards[0]);
+  return { ...tokenCardMatch(query, cards[0]), topResult };
 }
 
 /** Token-based scorer — original logic, used as fallback. */

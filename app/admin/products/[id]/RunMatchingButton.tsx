@@ -38,6 +38,20 @@ export default function RunMatchingButton({ productId }: { productId: string }) 
         totalReview += json.results.filter((r: { status: string }) => r.status === 'review').length;
         offset += json.processed;
 
+        // Debug: log non-auto results so you can inspect query vs top CardHedger result
+        const needsReview = json.results.filter((r: { status: string }) => r.status !== 'auto');
+        if (needsReview.length > 0) {
+          console.table(needsReview.map((r: { playerName: string; query: string; status: string; confidence: number; topResult: Record<string, string> | null }) => ({
+            player: r.playerName,
+            query: r.query,
+            status: r.status,
+            confidence: r.confidence?.toFixed(2),
+            ch_player: r.topResult?.player_name ?? '—',
+            ch_set: r.topResult?.set_name ?? '—',
+            ch_variant: r.topResult?.variant ?? '—',
+          })));
+        }
+
         setProgress({
           completed: offset,
           total: grandTotal,

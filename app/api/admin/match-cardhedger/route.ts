@@ -103,14 +103,14 @@ export async function POST(req: NextRequest) {
 
         if (updateError) {
           console.error('[match-cardhedger] DB update failed for variant', variant.id, updateError.message);
-          return { variantId: variant.id, playerName, status: 'no-match' as const, confidence: 0, error: updateError.message };
+          return { variantId: variant.id, playerName, query, status: 'no-match' as const, confidence: 0, topResult: match.topResult, error: updateError.message };
         }
 
-        return { variantId: variant.id, playerName, status, confidence: match.confidence };
+        return { variantId: variant.id, playerName, query, status, confidence: match.confidence, topResult: match.topResult };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         console.error('[match-cardhedger] match failed for variant', variant.id, 'query:', query, '—', msg);
-        return { variantId: variant.id, playerName, status: 'no-match' as const, confidence: 0, error: msg };
+        return { variantId: variant.id, playerName, query, status: 'no-match' as const, confidence: 0, topResult: null, error: msg };
       }
     }),
     CONCURRENCY
