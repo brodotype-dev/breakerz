@@ -77,11 +77,32 @@ export async function POST(req: NextRequest) {
   // Sport filter for CardHedger search — narrows results and reduces cross-sport false matches
   const sportName = ((product as any)?.sport as { name?: string } | null)?.name?.toLowerCase();
 
+  // Card-code pattern: player names like "BDC-170", "CPA-KC", "AA-FA" are Team Sets inserts
+  // where the XLSX parser stored the card number as the player name — skip matching entirely.
+  const CARD_CODE_RE = /^[A-Z]+-[A-Z0-9]+$/;
+
+  // Clean variant_name for query: strip "Base - " prefix and trailing " Variation" noise.
+  // "Base - Retrofractor Variation" → "Retrofractor"
+  // "Gold Refractor /50"           → "Gold Refractor /50" (unchanged)
+  function cleanVariant(name: string): string {
+    return name
+      .replace(/^Base\s*[-–]\s*/i, '')
+      .replace(/\s+Variation\s*$/i, '')
+      .trim();
+  }
+
   // Match all variants in this chunk concurrently.
   const results = await runConcurrent(
     variants.map(variant => async () => {
       const playerName = ppPlayerMap.get(variant.player_product_id) ?? '';
-      const query = [playerName, shortSetName, variant.card_number, variant.variant_name]
+
+      // Skip Team Sets inserts where card number was stored as player name.
+      if (CARD_CODE_RE.test(playerName)) {
+        return { variantId: variant.id, playerName, query: '', status: 'no-match' as const, confidence: 0, topResult: null, skipped: true };
+      }
+
+      const cleanedVariant = cleanVariant(variant.variant_name ?? '');
+      const query = [playerName, shortSetName, variant.card_number, cleanedVariant || undefined]
         .filter(Boolean)
         .join(' ');
 
