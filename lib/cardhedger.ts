@@ -219,7 +219,8 @@ export async function cardMatch(
       const norm = (s: string) =>
         s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       const qFirst = norm(playerName).split(/\s+/)[0];
-      const chFirst = norm(cards[0].player_name ?? '').split(/\s+/)[0];
+      const c0 = cards[0] as CardHedgerSearchCard & { player?: string };
+      const chFirst = norm(c0.player_name ?? c0.player ?? '').split(/\s+/)[0];
       if (qFirst.length > 2 && qFirst === chFirst) {
         const best = cards.find(c => c.variant?.toLowerCase() === 'base')
           ?? cards.find(c => c.variant?.toLowerCase() === 'refractor')
