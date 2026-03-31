@@ -84,6 +84,7 @@ export async function POST(req: NextRequest) {
   // Resolve the manufacturer knowledge module for this product.
   // Handles variant cleaning, query reformulation, and Claude context injection.
   const knowledge = getManufacturerKnowledge(productName);
+  console.log(`[match-cardhedger] product="${productName}" module="${knowledge.name}" variants=${variants.length} offset=${offset}`);
 
   // Match all variants in this chunk concurrently.
   const results = await runConcurrent(

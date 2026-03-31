@@ -235,9 +235,19 @@ Respond with JSON only — no explanation:
   const text = (message.content[0] as { type: string; text: string }).text.trim();
   // Strip markdown code fences if present
   const json = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
-  const parsed = JSON.parse(json) as { card_id: string | null; confidence: number };
 
-  if (!parsed.card_id) return null;
+  let parsed: { card_id: string | null; confidence: number };
+  try {
+    parsed = JSON.parse(json) as { card_id: string | null; confidence: number };
+  } catch {
+    console.warn('[claudeCardMatch] JSON parse failed — raw response:', text, '| query:', query);
+    throw new Error(`Claude returned unparseable response: ${text}`);
+  }
+
+  if (!parsed.card_id) {
+    console.warn('[claudeCardMatch] no match — query:', query, '| confidence:', parsed.confidence);
+    return null;
+  }
   return { card_id: parsed.card_id, confidence: parsed.confidence };
 }
 
