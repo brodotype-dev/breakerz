@@ -49,6 +49,25 @@ Consolidated list of known work, organized by priority. Items pulled from the So
 
 ## Priority 2 — High value, external dependency or more effort
 
+### CardHedger Matching — Semi-Automated Knowledge Updates
+**Effort:** ~1–2 days
+**Why:** The manufacturer knowledge modules (`lib/card-knowledge/`) are currently updated manually — we read the unmatched CSV, spot patterns, update the code, redeploy. Semi-automation closes that loop: after a matching run, the system analyzes its own failures and proposes additions to the knowledge module for human review.
+
+**How it works:**
+1. After a matching run completes, the admin can trigger "Analyze failures" from the product dashboard
+2. A new API route sends the no-match/review results to Claude with a prompt like: *"Here are N failed card matches. Identify recurring patterns — terms in the query that don't appear in CH results, insert set names being treated as variants, etc. Propose specific additions to the Bowman knowledge module."*
+3. Claude returns a structured proposal (new terms to strip, new context lines, new card code patterns)
+4. Admin reviews the proposal in the UI — approve individual items or all at once
+5. Approved items write to a `pending_knowledge_updates` table; a dev merges them into the appropriate `lib/card-knowledge/*.ts` file on next deploy
+
+**Why not fully automated:** If Claude learns a bad rule, it silently corrupts future match runs across all products. Human review is the right gate.
+
+**Prerequisite:** Manufacturer knowledge system (below) must be live first.
+
+**Files:** New API route `app/api/admin/analyze-match-failures/route.ts`, new UI component on product dashboard, `pending_knowledge_updates` table in Supabase
+
+---
+
 ### CardHedger Matching — Manufacturer Knowledge System
 **Effort:** ~1 day
 **Why:** All manufacturer-specific matching rules are hardcoded regex in `cleanVariant()` and inline conditionals in the route. As Panini, Topps Finest, and other products are imported, this becomes unmaintainable. The system also has a structural blind spot: for card-code queries (BDC-91 etc.), CH correctly returns the right player but Claude rejects the match because there's no player name in the query to verify against.
