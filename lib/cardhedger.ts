@@ -179,17 +179,22 @@ export async function cardMatch(
     number: top.number ?? '',
   };
 
-  // Pre-Claude card-code bypass: if the query contains a card code that exactly
-  // matches a candidate's number field, skip Claude entirely.
+  // Pre-Claude card-code bypass: if the query contains a card code or short card
+  // number that exactly matches a candidate's number field, skip Claude entirely.
   //
-  // Why: Claude Haiku reliably rejects obvious card-code matches when multiple
-  // candidates share the same code (different variants) because it can't determine
-  // the variant from the query alone. The deterministic check below is more reliable.
+  // Why: Claude Haiku reliably rejects obvious matches when multiple candidates
+  // share the same number (different parallels) because the variant is unknown.
+  // The deterministic check below is more reliable than asking Claude to guess.
   //
-  // When multiple candidates share the same code (e.g. BPA-JWI Base, Refractor, Gold),
-  // prefer Base → Refractor → first available. Confidence 0.88 (not 1.0 because
-  // the exact parallel is uncertain when the variant was stripped as insert-set noise).
-  const codeInQuery = query.match(/\b([A-Z]{1,5}-[A-Z0-9]+)\b/);
+  // Covers two formats:
+  //   - Letter-prefixed codes: BPA-JWI, B25-SS, TP-19, SG-3, BDC-170, etc.
+  //   - Short numeric card numbers: 38, 1, 69 (Bowman's Best numbered inserts).
+  //     Uses \d{1,3} to avoid matching the 4-digit year in the query.
+  //
+  // When multiple candidates share the same number (Base, Refractor, Gold, etc.),
+  // prefer Base → Refractor → first available. Confidence 0.88 because the exact
+  // parallel is uncertain when the variant was stripped as insert-set noise.
+  const codeInQuery = query.match(/\b([A-Z]{1,5}-[A-Z0-9]+|\d{1,3})\b/);
   if (codeInQuery) {
     const code = codeInQuery[1];
     const codeMatches = cards.filter(c => c.number === code);
