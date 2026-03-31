@@ -102,11 +102,18 @@ CH appends variant color to autograph entries (e.g. `"Gold Ink"`, `"Refractor"`,
 | `TP-XX` | Top Prospects | Insert |
 | `SG-XX` | Stars of the Game | Insert |
 | `BP-XX` | Best Plays | Insert |
+| `BSA-XX` | Bowman Stars Autographs | Auto insert |
+| `CA-XX` | Champions Autographs | Auto insert |
 | `DA-XX` | Dual Autographs | Dual auto insert |
 | `TA-XX` | Triple Autographs | Triple auto insert |
+| `QA-XX` | Quad Autographs | Quad auto insert |
+| `FDA-XX` | Father/Son Dual Autographs | Dual auto insert |
+| `FTA-XX` | Father/Son/Grandson Triple Autographs | Triple auto insert |
 | `[number]` | Base Teams (e.g. "22", "67") | Team insert — pure numeric |
 
-All letter-prefixed codes match `/^[A-Z]+-[A-Z0-9]+$/`. Pure numeric codes (Base Teams) require `/^\d+$/`. Combined regex: `/^([A-Z]+-[A-Z0-9]+|\d+)$/`
+All letter-prefixed codes match `/^[A-Z][A-Z0-9]*-[A-Z0-9]+$/` (prefix may contain digits, e.g. B25-NK). Pure numeric codes (Base Teams) require `/^\d+$/`. Combined regex in code: `/^([A-Z][A-Z0-9]*-[A-Z0-9]+|\d+)$/`
+
+**Multi-player autograph cards (DA-/TA-/QA-/FDA-/FTA-):** The XLSX stores slash-delimited player names (e.g. `"Dylan Crews/James Wood"`). These are reformulated to code-only queries (`[year, setName, cardCode]`) since CH can't match slash-delimited names. These cards will generally remain unmatched — CH doesn't reliably return them via code search either. **Known structural limit.**
 
 ---
 
@@ -115,13 +122,17 @@ All letter-prefixed codes match `/^[A-Z]+-[A-Z0-9]+$/`. Pure numeric codes (Base
 This is the context block to inject into the Claude Haiku prompt for Bowman products. Tells Claude what it needs to know to match correctly.
 
 ```
-Bowman-specific matching rules:
-- Card codes (BDC-91, CPA-KK, AA-FA, BD-35, etc.) are unique per player in a given set. The query may contain ONLY the card code with no player name — this is intentional. If CardHedger returns ANY candidate whose card number matches the code in the query, that IS the correct card. Assign confidence 0.9 or higher. Do NOT require a player name in the query to confirm a match.
-- "Retrofractor" in the query = "Base" or "Lazer Refractor" in CardHedger. Do not reject a match because the candidate says "Base" when the query says "Retrofractor".
+Bowman/Topps-specific matching rules:
+- Year must match exactly. If the query says 2025, reject any candidate from 2022, 2023, or 2024 even if the player name and set name are similar.
+- Card numbers uniquely identify a player in a given set (both letter-prefixed codes like BDC-91, B25-SS, BMA-JG, TP-8 AND short numbers like 38, 1, 69). If a candidate's number field matches a number in the query AND the player name and set match, that IS the correct card. Assign confidence 0.9 or higher even if the variant differs — the exact parallel is not always known.
+- Accented characters in the query match unaccented names in CardHedger: "Jesús" = "Jesus", "Rodríguez" = "Rodriguez", "José" = "Jose", "Agustín" = "Agustin". Do not reject a match because of accent differences.
+- "Retrofractor" in the query = "Base" or "Lazer Refractor" in CardHedger. "Black" in the query = "Base" in CardHedger. Do not reject a match because the candidate says "Base" when the query says "Retrofractor" or "Black".
 - Print runs (/50, /99, /25) appear in source data but NOT in CardHedger variant names — ignore them when comparing.
-- Insert set names (Bowman Spotlights, Draft Lottery Ping Pong Ball) and the word "Autographs" may appear in the query but are not variant descriptors — focus on player, set, and card number.
+- Insert set names (Top Prospects, Stars of the Game, Best Of 2025, Bowman Spotlights, Draft Lottery Ping Pong Ball) and section labels ("Autographs", "Teams") may appear in the query but are not variant descriptors — focus on player, set, and card number.
 - Parallel names appear without "Variation" suffix in CardHedger.
 ```
+
+*(This is the live `claudeContext()` string from `lib/card-knowledge/bowman.ts` — keep in sync.)*
 
 ---
 
@@ -143,18 +154,19 @@ Applied in this order before calling `cardMatch()`:
 
 ---
 
-## Known Remaining Edge Cases
+## Known Remaining Edge Cases / Structural Limits
 
 | Case | Status | Notes |
 |---|---|---|
-| Steele Hall BDC-20 | Unresolved | CH returns "Lazer Refractor" variant; Claude rejects because query has no player name (card-code case). Manufacturer context injection should fix this. |
-| Franklin Arias AA-FA (Ping Pong Ball) | Partially resolved | CH finds correct player but returns "Gold" variant; confidence borderline. May need `review` status accepted. |
-| Print run in variant name | Not handled | `"/50"` still appears in some variant strings. CH doesn't include print run in variant field — strip it. |
-| Dual-player entries (`"Malachi Witherspoon/Kyson Witherspoon"`) | Unresolved | Player name contains two names for dual autograph cards. CH indexes these under the first player only. Need to test whether splitting on `/` and querying each helps. |
+| Print run in variant name | ✅ Fixed | Stripped in `cleanVariant()` via `/\s*\/\d+\s*/g` |
+| Dual/triple/quad autograph cards (DA-/TA-/QA-/FDA-/FTA-) | ⚠️ Structural limit | Reformulated to code-only queries; CH doesn't reliably match these via code search. ~3-4% of Bowman's Best variants. See BACKLOG for future direction. |
+| Code-only duplicate rows (BMA-XX, BPA-XX as player_name) | ⚠️ Structural limit | CH doesn't expose `number` field for autograph sets; Tier 1 fails, Tier 2 has no playerName. ~20% of Bowman's Best variants, many are parallel duplicates of already-matched cards. |
 
 ---
 
-## Match Rate History (2025 Bowman Draft)
+## Match Rate History
+
+### 2025 Bowman Draft
 
 | Date | Change | Match Rate |
 |---|---|---|
@@ -163,6 +175,16 @@ Applied in this order before calling `cardMatch()`:
 | 2026-03-30 | Strip "Base - " / "Variation", Retrofractor, card-code skip | ~72% |
 | 2026-03-30 | Strip Ping Pong Ball, Bowman Spotlights | ~72% (same — skips were in denominator) |
 | 2026-03-30 | Card-code → search by code, year added to all queries | ~88% |
-| 2026-03-31 | Manufacturer knowledge system live; claudeContext() injected into Haiku prompt | 95% |
-| 2026-04-01 | Strip "Autographs" after insert-set stripping; strengthen card-code Claude context | TBD (target: 97%+) |
-| 2026-04-01 | **Bowman's Best first run:** baseline 12% → running with updated knowledge (strip Superfractor, Top Prospects, SG, Base Teams, Best Of 2025; numeric card-code detection; year-match Claude rule) | TBD |
+| 2026-03-31 | Manufacturer knowledge system live; claudeContext() injected into Haiku prompt | **~95%** |
+
+### 2025 Bowman's Best Baseball
+
+| Date | Change | Match Rate |
+|---|---|---|
+| 2026-03-31 | First run (no Best-specific rules yet) | ~12% |
+| 2026-03-31 | Pre-Claude card-code bypass (Tier 1); hard year filter; Bowman's Best insert set names added | ~63% |
+| 2026-03-31 | CARD_CODE_RE extended for B25-* / FDA-* / QA-*; strip Superfractor + Autographs section labels | ~71% |
+| 2026-03-31 | Multi-player reformulation (DA-/TA-/QA-) | ~71% (structural, no rate gain) |
+| 2026-03-31 | Tier 2 first-name comparison; `player_name ?? player` runtime fallback fix | **~76% — practical ceiling** |
+
+Remaining ~24% is structural: multi-player autos + code-only duplicate rows CH can't resolve.
