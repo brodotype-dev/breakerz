@@ -84,7 +84,7 @@ export class BowmanKnowledge implements ManufacturerKnowledge {
   }
 
   reformulateQuery(params: Parameters<ManufacturerKnowledge['reformulateQuery']>[0]): QueryReformulation {
-    const { playerName, year, shortSetName } = params;
+    const { playerName, year, shortSetName, cardNumber } = params;
 
     // Card-code player name: the XLSX parser stored the card number as the player name.
     // CH indexes these by card number with the player name attached — query by code only.
