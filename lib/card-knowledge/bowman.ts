@@ -13,9 +13,11 @@ export class BowmanKnowledge implements ManufacturerKnowledge {
 
   // Card-code pattern: player names that are actually card numbers stored by the XLSX parser.
   // Covers two formats:
-  //   - Letter-prefixed codes: "BDC-170", "CPA-KC", "TP-8", "B25-SS", "BMA-JG", etc.
+  //   - Alphanumeric-prefixed codes: "BDC-170", "CPA-KC", "TP-8", "B25-SS", "B25-NK",
+  //     "BMA-JG", "BSA-JS", "FDA-GG", "QA-ADGS", etc.
+  //     Prefix must START with a letter ([A-Z]) but can contain digits (e.g. "B25").
   //   - Pure numeric codes: "22", "67" (Base Teams inserts in Bowman's Best)
-  private static readonly CARD_CODE_RE = /^([A-Z]+-[A-Z0-9]+|\d+)$/;
+  private static readonly CARD_CODE_RE = /^([A-Z][A-Z0-9]*-[A-Z0-9]+|\d+)$/;
 
   // Insert set names that Bowman/Topps XLSX stores in the variant_name field.
   // These are not parallel/variant descriptors — they're subsection labels.

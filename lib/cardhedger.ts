@@ -179,30 +179,52 @@ export async function cardMatch(
     number: top.number ?? '',
   };
 
-  // Pre-Claude card-code bypass: if the query contains a card code or short card
-  // number that exactly matches a candidate's number field, skip Claude entirely.
+  // Pre-Claude card-code bypass: skip Claude when the query contains a card code or
+  // short card number. Two tiers of matching:
   //
-  // Why: Claude Haiku reliably rejects obvious matches when multiple candidates
-  // share the same number (different parallels) because the variant is unknown.
-  // The deterministic check below is more reliable than asking Claude to guess.
+  // Tier 1 — Exact number match: a CH candidate's number field exactly matches the
+  // code in the query. Highest confidence (0.88).
   //
-  // Covers two formats:
-  //   - Letter-prefixed codes: BPA-JWI, B25-SS, TP-19, SG-3, BDC-170, etc.
-  //   - Short numeric card numbers: 38, 1, 69 (Bowman's Best numbered inserts).
-  //     Uses \d{1,3} to avoid matching the 4-digit year in the query.
+  // Tier 2 — Player-name fallback: code found in query but CH didn't expose a matching
+  // number field (common for autograph sets like BMA-, BSA-, CA-). If playerName is
+  // provided and the top CH candidate's player name matches, accept at 0.83 confidence.
+  // Uses accent-normalized comparison so "Jesús" matches "Jesus".
   //
-  // When multiple candidates share the same number (Base, Refractor, Gold, etc.),
-  // prefer Base → Refractor → first available. Confidence 0.88 because the exact
-  // parallel is uncertain when the variant was stripped as insert-set noise.
-  const codeInQuery = query.match(/\b([A-Z]{1,5}-[A-Z0-9]+|\d{1,3})\b/);
+  // Code formats covered:
+  //   - Alphanumeric-prefixed: BPA-JWI, B25-SS, B25-NK, TP-19, SG-3, BDC-170, BSA-JS
+  //     (prefix starts with a letter but may contain digits, e.g. "B25")
+  //   - Short numeric: 38, 1, 69 (\d{1,3} avoids matching the 4-digit year)
+  //
+  // When multiple candidates share the same number (different parallels),
+  // prefer Base → Refractor → first available.
+  const codeInQuery = query.match(/\b([A-Z][A-Z0-9]{0,4}-[A-Z0-9]+|\d{1,3})\b/);
   if (codeInQuery) {
     const code = codeInQuery[1];
+
+    // Tier 1: exact number match
     const codeMatches = cards.filter(c => c.number === code);
     if (codeMatches.length > 0) {
       const best = codeMatches.find(c => c.variant?.toLowerCase() === 'base')
         ?? codeMatches.find(c => c.variant?.toLowerCase() === 'refractor')
         ?? codeMatches[0];
       return { card_id: best.card_id, confidence: 0.88, topResult };
+    }
+
+    // Tier 2: player-name fallback (CH didn't expose card number in results)
+    if (playerName) {
+      const normalize = (s: string) =>
+        s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const parts = normalize(playerName).split(/\s+/);
+      const playerCards = cards.filter(c => {
+        const chName = normalize(c.player_name ?? '');
+        return parts.every(p => chName.includes(p));
+      });
+      if (playerCards.length > 0) {
+        const best = playerCards.find(c => c.variant?.toLowerCase() === 'base')
+          ?? playerCards.find(c => c.variant?.toLowerCase() === 'refractor')
+          ?? playerCards[0];
+        return { card_id: best.card_id, confidence: 0.83, topResult };
+      }
     }
   }
 
