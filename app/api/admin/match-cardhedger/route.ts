@@ -102,18 +102,21 @@ export async function POST(req: NextRequest) {
     variants.map(variant => async () => {
       const playerName = ppPlayerMap.get(variant.player_product_id) ?? '';
 
-      // Skip Team Sets inserts where card number was stored as player name.
-      if (CARD_CODE_RE.test(playerName)) {
-        return { variantId: variant.id, playerName, query: '', status: 'no-match' as const, confidence: 0, topResult: null, skipped: true };
-      }
-
-      const cleanedVariant = cleanVariant(variant.variant_name ?? '');
-      const query = [playerName, shortSetName, variant.card_number, cleanedVariant || undefined]
-        .filter(Boolean)
-        .join(' ');
+      // Card-code player name (e.g. "BDC-170", "CPA-KC"): the XLSX parser stored the card
+      // number as the player name. CH indexes these by card number, so use the code as the
+      // search term — player + set + code uniquely identifies the card in the catalog.
+      const isCardCode = CARD_CODE_RE.test(playerName);
+      const cleanedVariant = isCardCode ? '' : cleanVariant(variant.variant_name ?? '');
+      const query = isCardCode
+        ? [shortSetName, playerName].filter(Boolean).join(' ')
+        : [playerName, shortSetName, variant.card_number, cleanedVariant || undefined].filter(Boolean).join(' ');
 
       try {
-        const match = await cardMatch(query, sportName, playerName, variant.card_number);
+        // For card-code variants, pass the code as cardNumber (for fallback retry);
+        // playerName is undefined so the fallback query is just the code itself.
+        const matchPlayerName = isCardCode ? undefined : playerName;
+        const matchCardNumber = isCardCode ? playerName : variant.card_number;
+        const match = await cardMatch(query, sportName, matchPlayerName, matchCardNumber);
         const status: 'auto' | 'review' | 'no-match' =
           match.confidence >= 0.7 && match.card_id ? 'auto'
           : match.confidence >= 0.5 ? 'review'
