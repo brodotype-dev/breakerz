@@ -210,19 +210,20 @@ export async function cardMatch(
       return { card_id: best.card_id, confidence: 0.88, topResult };
     }
 
-    // Tier 2: player-name fallback (CH didn't expose card number in results)
-    if (playerName) {
-      const normalize = (s: string) =>
+    // Tier 2: player-name fallback (CH didn't expose card number in results).
+    // Compare first names only (accent-normalized) to avoid mismatches caused by
+    // middle names, suffixes, or accented characters in the XLSX data.
+    // Skip multi-player slash-delimited names — those are handled upstream by
+    // reformulateQuery() and shouldn't reach here with playerName set.
+    if (playerName && !playerName.includes('/') && cards.length > 0) {
+      const norm = (s: string) =>
         s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-      const parts = normalize(playerName).split(/\s+/);
-      const playerCards = cards.filter(c => {
-        const chName = normalize(c.player_name ?? '');
-        return parts.every(p => chName.includes(p));
-      });
-      if (playerCards.length > 0) {
-        const best = playerCards.find(c => c.variant?.toLowerCase() === 'base')
-          ?? playerCards.find(c => c.variant?.toLowerCase() === 'refractor')
-          ?? playerCards[0];
+      const qFirst = norm(playerName).split(/\s+/)[0];
+      const chFirst = norm(cards[0].player_name ?? '').split(/\s+/)[0];
+      if (qFirst.length > 2 && qFirst === chFirst) {
+        const best = cards.find(c => c.variant?.toLowerCase() === 'base')
+          ?? cards.find(c => c.variant?.toLowerCase() === 'refractor')
+          ?? cards[0];
         return { card_id: best.card_id, confidence: 0.83, topResult };
       }
     }

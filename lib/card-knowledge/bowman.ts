@@ -92,14 +92,23 @@ export class BowmanKnowledge implements ManufacturerKnowledge {
     if (BowmanKnowledge.CARD_CODE_RE.test(playerName)) {
       return {
         query: [year, shortSetName, playerName].filter(Boolean).join(' '),
-        // Pass the code as cardNumber for the fallback retry inside cardMatch().
-        // Pass undefined as playerName so the fallback doesn't use the code as a name.
         effectivePlayerName: undefined,
         effectiveCardNumber: playerName,
       };
     }
 
-    // No reformulation needed for normal cards — use default construction.
+    // Multi-player card: XLSX stores slash-delimited names (e.g. "Dylan Crews/James Wood").
+    // CH can't match multi-player queries reliably — search by card code + set only.
+    // The card code uniquely identifies the multi-player card in CH's catalog.
+    if (playerName.includes('/') && cardNumber) {
+      return {
+        query: [year, shortSetName, cardNumber].filter(Boolean).join(' '),
+        effectivePlayerName: undefined,
+        effectiveCardNumber: cardNumber,
+      };
+    }
+
+    // No reformulation needed for normal single-player cards — use default construction.
     return { query: null };
   }
 
