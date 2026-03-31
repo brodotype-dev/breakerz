@@ -114,6 +114,13 @@ The card code is passed as `cardNumber` to `cardMatch()` so the fallback retry a
 | "Ping Pong Ball Autographs" no-match | XLSX stores insert set name as variant_name | Strip from cleanVariant() | ✅ Fixed |
 | Cross-vintage false matches | No year in query; `BD-89` matches 2016, 2020, 2025 | Add productYear as standalone token | ✅ Fixed |
 | Odds matching returning 0 | Exact substring match fails on plurals ("autograph" vs "autographs") | Token-overlap scoring with prefix matching (≥0.5 threshold) | ✅ Fixed |
+| Wrong-year CH results (Paul Skenes 2024 in 2025 product) | Claude context insufficient; CH ranks by relevance not year | Hard programmatic year filter after CH results returned | ✅ Fixed |
+| B25-*, FDA-*, QA-* codes not detected as card codes | CARD_CODE_RE required all-letter prefix (`[A-Z]+`) | Extended to `[A-Z][A-Z0-9]*` (allows digits after first letter) | ✅ Fixed |
+| Bowman's Best insert set names in variant_name | XLSX uses "Top Prospects", "Stars of the Game", "Best Of 2025", "Base Teams" as section labels | Added to INSERT_SET_NAMES in BowmanKnowledge | ✅ Fixed |
+| "Superfractor" / "Autographs" as section label noise | XLSX stores these as variant_name in BMA-/BPA-/BTA- autograph sections | Strip standalone "Superfractor" and "Autographs" in cleanVariant() | ✅ Fixed |
+| Tier 2 player-name fallback never firing | `cards[0].player_name` was undefined at runtime — CH API returns `player` field, not `player_name`, for some result shapes | Use `player_name ?? player` fallback (matching topResult construction) | ✅ Fixed |
+| Multi-player autograph cards (DA-/TA-/QA-) unmatched | Slash-delimited player names can't match any CH candidate; wrong cards returned | Reformulate to code-only query in reformulateQuery(); accept that variant won't match (structural) | ⚠️ Structural limit |
+| Code-only duplicate rows unmatched (BMA-XX, BPA-XX as player_name) | CH doesn't expose `number` field for autograph sets; no playerName available for Tier 2 | No fix available within CH API constraints | ⚠️ Structural limit |
 
 ---
 
@@ -218,11 +225,19 @@ For card-code player names where CH returns 0 results (the code doesn't exist in
 
 This handles the edge case where CH's card number indexing doesn't cover a specific code format.
 
-### Recommended Path
+### Current State (2026-03-31)
 
-1. **Short term:** Keep expanding `cleanVariant()` and query rules per product as we learn. Document each rule here.
-2. **Medium term:** Build Option B (per-product matching config) once we have 3+ manufacturers with distinct quirks. Store in `product_matching_config` table.
-3. **Long term:** Option A (manufacturer knowledge skill) once the config approach has enough entries to generalize into semantic rules.
+Option A is built and live as `lib/card-knowledge/`. `BowmanKnowledge` handles all Bowman/Topps products. `PaniniKnowledge` is a stub. `DefaultKnowledge` is a no-op fallback.
+
+**Practical ceiling for Bowman's Best:** ~76%. The remaining ~24% breaks down as:
+- **Multi-player cards** (~3-4%): DA-/TA-/QA-/FDA-/FTA- autographs with slash-delimited player names. CH can't match these by player name, and code-only queries return wrong results. Structural limit.
+- **Code-only duplicate rows** (~20%): Variants where the XLSX stored the card code as the player name, AND CH doesn't expose the `number` field in autograph search results. Can't be resolved without CH API changes.
+
+### Recommended Next Steps
+
+1. **Panini products:** Fill in `PaniniKnowledge` once we have real Panini XLSX files to analyze.
+2. **Option B (per-product config):** Only worth building if 3+ manufacturers with distinct quirks exceed what TypeScript modules can handle cleanly.
+3. **Code-only matching (Option C):** If the code-only duplicate rate becomes a pricing problem, a Tier 3 initials-matcher could recover ~10-15% of those rows by comparing code suffix (e.g., `MT`) against CH candidate initials. Risk: ambiguous codes (JW = James Wood or JJ Wetherholt).
 
 ---
 
@@ -230,8 +245,14 @@ This handles the edge case where CH's card number indexing doesn't cover a speci
 
 | Date | Change | Impact |
 |---|---|---|
-| 2026-03-30 | Initial matching implementation | ~15–29% auto-match |
+| 2026-03-30 | Initial matching implementation | ~15–29% auto-match (Bowman Draft) |
 | 2026-03-30 | Shorter set name, sport param, 10 candidates, variant_name in query | ~62–69% |
 | 2026-03-30 | Card-code detection (skip), Retrofractor strip, "Base - " strip | ~72% |
 | 2026-03-30 | Ping Pong Ball / Bowman Spotlights strip | ~72% (same — skipped rows stayed 0) |
-| 2026-03-30 | Card-code search instead of skip, year added to all queries | TBD |
+| 2026-03-30 | Card-code search instead of skip, year added to all queries | ~88% |
+| 2026-03-30 | Manufacturer knowledge system (`lib/card-knowledge/`) built; Claude context injection | ~95% Bowman Draft |
+| 2026-03-31 | Bowman's Best first run | ~12% (new product baseline) |
+| 2026-03-31 | Pre-Claude card-code bypass (Tier 1 + Tier 2); hard year filter; insert set name expansion | ~63–71% Bowman's Best |
+| 2026-03-31 | CARD_CODE_RE extended to `[A-Z][A-Z0-9]*` (handles B25-*, FDA-*, QA-*) | ~71% |
+| 2026-03-31 | Multi-player reformulation (DA-/TA-/QA-/FDA-/FTA- slash-delimited names → code-only query) | No rate change (structural) |
+| 2026-03-31 | Tier 2 first-name comparison + `player_name ?? player` fallback fix | ~76% Bowman's Best — **practical ceiling** |
