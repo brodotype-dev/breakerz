@@ -66,10 +66,13 @@ export async function POST(req: NextRequest) {
     .eq('id', productId)
     .single();
 
-  // Strip year prefix and sport suffix from product name for cleaner CardHedger queries.
-  // "2025 Bowman Chrome Baseball" → "Bowman Chrome"
-  // "2025-26 Topps Chrome Basketball" → "Topps Chrome"
-  const shortSetName = (product?.name ?? '')
+  // Extract year and build short set name from product name.
+  // "2025 Bowman Chrome Baseball"    → year="2025", shortSetName="Bowman Chrome"
+  // "2025-26 Topps Chrome Basketball" → year="2025", shortSetName="Topps Chrome"
+  const productName = product?.name ?? '';
+  const yearMatch = productName.match(/^(\d{4})(?:-\d{2})?\s+/);
+  const productYear = yearMatch?.[1] ?? '';
+  const shortSetName = productName
     .replace(/^\d{4}(?:-\d{2})?\s+/, '')
     .replace(/\s+(baseball|basketball|football|soccer)\s*$/i, '')
     .trim();
@@ -108,8 +111,8 @@ export async function POST(req: NextRequest) {
       const isCardCode = CARD_CODE_RE.test(playerName);
       const cleanedVariant = isCardCode ? '' : cleanVariant(variant.variant_name ?? '');
       const query = isCardCode
-        ? [shortSetName, playerName].filter(Boolean).join(' ')
-        : [playerName, shortSetName, variant.card_number, cleanedVariant || undefined].filter(Boolean).join(' ');
+        ? [productYear, shortSetName, playerName].filter(Boolean).join(' ')
+        : [playerName, productYear, shortSetName, variant.card_number, cleanedVariant || undefined].filter(Boolean).join(' ');
 
       try {
         // For card-code variants, pass the code as cardNumber (for fallback retry);
