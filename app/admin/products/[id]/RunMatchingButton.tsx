@@ -92,6 +92,31 @@ export default function RunMatchingButton({ productId }: { productId: string }) 
         </div>
 
         {showDebug && debugRows.length > 0 && (
+          <button
+            onClick={() => {
+              const header = 'Player,Query,Status,Confidence,CH Player,CH Set,CH Variant';
+              const rows = debugRows.map(r => [
+                `"${r.playerName}"`,
+                `"${r.query}"`,
+                r.status,
+                r.confidence > 0 ? r.confidence.toFixed(2) : '',
+                `"${r.topResult?.player_name ?? ''}"`,
+                `"${r.topResult?.set_name ?? ''}"`,
+                `"${r.topResult?.variant ?? ''}"`,
+              ].join(','));
+              const csv = [header, ...rows].join('\n');
+              const a = document.createElement('a');
+              a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+              a.download = 'unmatched-variants.csv';
+              a.click();
+            }}
+            className="text-xs underline hover:text-foreground"
+            style={{ color: 'var(--accent-blue)' }}
+          >
+            Export CSV
+          </button>
+        )}
+        {showDebug && debugRows.length > 0 && (
           <div className="rounded border overflow-auto max-h-64" style={{ borderColor: 'var(--terminal-border)' }}>
             <table className="w-full text-xs">
               <thead style={{ backgroundColor: 'var(--terminal-surface-hover)' }}>
