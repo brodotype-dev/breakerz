@@ -72,7 +72,8 @@ export default function RunMatchingButton({ productId }: { productId: string }) 
       }
 
       setStatus('done');
-      router.refresh();
+      // Delay refresh so console.table stays visible long enough to read
+      setTimeout(() => router.refresh(), 3000);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Unknown error');
       setStatus('error');
