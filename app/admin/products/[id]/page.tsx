@@ -98,28 +98,27 @@ export default async function ProductDashboardPage({ params }: PageProps) {
 
   if (!product) notFound();
 
-  // Player/variant counts
+  // Player/variant counts — use joins to avoid .in() URL limit with large products
   const { data: playerProducts } = await supabaseAdmin
     .from('player_products')
     .select('id, insert_only')
     .eq('product_id', id);
 
-  const ppIds = (playerProducts ?? []).map(pp => pp.id);
   const autoEligibleCount = (playerProducts ?? []).filter(pp => !pp.insert_only).length;
 
-  const { data: variants } = ppIds.length
-    ? await supabaseAdmin
-        .from('player_product_variants')
-        .select('id, cardhedger_card_id, hobby_odds, breaker_odds, variant_name, card_number, player_product_id')
-        .in('player_product_id', ppIds)
-    : { data: [] };
+  // Join via player_products to avoid passing hundreds of UUIDs in .in()
+  const { data: variants } = await supabaseAdmin
+    .from('player_product_variants')
+    .select('id, cardhedger_card_id, hobby_odds, breaker_odds, variant_name, card_number, player_product_id, player_products!inner(product_id)')
+    .eq('player_products.product_id', id);
 
-  // For the unmatched list, join player names via player_products
+  // For the unmatched list, join player names
+  const ppIds = (playerProducts ?? []).map(pp => pp.id);
   const { data: playerProductsWithPlayers } = ppIds.length
     ? await supabaseAdmin
         .from('player_products')
         .select('id, player:players(name)')
-        .in('id', ppIds)
+        .eq('product_id', id)
     : { data: [] };
 
   const ppPlayerMap = new Map(
@@ -140,14 +139,12 @@ export default async function ProductDashboardPage({ params }: PageProps) {
   const variantMatched = variants?.filter(v => v.cardhedger_card_id).length ?? 0;
   const variantWithOdds = variants?.filter(v => v.hobby_odds != null || v.breaker_odds != null).length ?? 0;
 
-  // Pricing cache
-  const { data: pricingCache } = ppIds.length
-    ? await supabaseAdmin
-        .from('pricing_cache')
-        .select('player_product_id, fetched_at')
-        .in('player_product_id', ppIds)
-        .gt('expires_at', new Date().toISOString())
-    : { data: [] };
+  // Pricing cache — join to avoid .in() URL limit
+  const { data: pricingCache } = await supabaseAdmin
+    .from('pricing_cache')
+    .select('player_product_id, fetched_at, player_products!inner(product_id)')
+    .eq('player_products.product_id', id)
+    .gt('expires_at', new Date().toISOString());
 
   const cachedCount = pricingCache?.length ?? 0;
   const lastFetched = pricingCache?.sort((a, b) =>
