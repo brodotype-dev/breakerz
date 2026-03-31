@@ -87,6 +87,7 @@ export default async function HomePage() {
           src="https://images.unsplash.com/photo-1607310073276-9f48dec47340?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxzcG9ydHMlMjBtZW1vcmFiaWxpYSUyMGNhcmRzJTIwZGlzcGxheXxlbnwxfHx8fDE3NzQ1NTc4MzV8MA&ixlib=rb-4.1.0&q=80&w=1080"
           alt=""
           aria-hidden="true"
+          fetchPriority="low"
           className="absolute inset-0 w-full h-full object-cover opacity-20"
         />
         {/* Background dot pattern */}
