@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
 
   const { data: product } = await supabaseAdmin
     .from('products')
-    .select('name')
+    .select('name, sport:sports(name)')
     .eq('id', productId)
     .single();
 
@@ -74,6 +74,9 @@ export async function POST(req: NextRequest) {
     .replace(/\s+(baseball|basketball|football|soccer)\s*$/i, '')
     .trim();
 
+  // Sport filter for CardHedger search — narrows results and reduces cross-sport false matches
+  const sportName = ((product as any)?.sport as { name?: string } | null)?.name?.toLowerCase();
+
   // Match all variants in this chunk concurrently.
   const results = await runConcurrent(
     variants.map(variant => async () => {
@@ -83,7 +86,7 @@ export async function POST(req: NextRequest) {
         .join(' ');
 
       try {
-        const match = await cardMatch(query);
+        const match = await cardMatch(query, sportName, playerName, variant.card_number);
         const status: 'auto' | 'review' | 'no-match' =
           match.confidence >= 0.7 && match.card_id ? 'auto'
           : match.confidence >= 0.5 ? 'review'

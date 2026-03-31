@@ -136,12 +136,27 @@ export async function batchPriceEstimate(
  * correct match — handling abbreviations, synonym names, RC year validation, etc.
  *
  * Falls back to token-based scoring if the Claude call fails.
+ *
+ * @param query     - e.g. "Jacob Wilson Bowman Chrome 1 Refractor Auto"
+ * @param sport     - optional sport filter: 'baseball' | 'basketball' | 'football'
+ * @param playerName - used for fallback retry with minimal query (player + card number)
+ * @param cardNumber - used for fallback retry
  */
 export async function cardMatch(
-  query: string
+  query: string,
+  sport?: string,
+  playerName?: string,
+  cardNumber?: string,
 ): Promise<{ card_id: string | null; confidence: number }> {
-  const result = await searchCards(query);
-  const cards = (result.cards ?? []).slice(0, 5);
+  let result = await searchCards(query, sport);
+  let cards = (result.cards ?? []).slice(0, 10);
+
+  // Fallback: if no results, retry with player name + card number only
+  if (cards.length === 0 && playerName && cardNumber) {
+    const fallbackQuery = `${playerName} ${cardNumber}`;
+    result = await searchCards(fallbackQuery, sport);
+    cards = (result.cards ?? []).slice(0, 10);
+  }
 
   if (cards.length === 0) return { card_id: null, confidence: 0 };
 
