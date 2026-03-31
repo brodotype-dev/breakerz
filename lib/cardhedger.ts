@@ -170,6 +170,28 @@ export async function cardMatch(
     number: top.number ?? '',
   };
 
+  // Pre-Claude card-code bypass: if the query contains a card code that exactly
+  // matches a candidate's number field, skip Claude entirely.
+  //
+  // Why: Claude Haiku reliably rejects obvious card-code matches when multiple
+  // candidates share the same code (different variants) because it can't determine
+  // the variant from the query alone. The deterministic check below is more reliable.
+  //
+  // When multiple candidates share the same code (e.g. BPA-JWI Base, Refractor, Gold),
+  // prefer Base → Refractor → first available. Confidence 0.88 (not 1.0 because
+  // the exact parallel is uncertain when the variant was stripped as insert-set noise).
+  const codeInQuery = query.match(/\b([A-Z]{1,5}-[A-Z0-9]+)\b/);
+  if (codeInQuery) {
+    const code = codeInQuery[1];
+    const codeMatches = cards.filter(c => c.number === code);
+    if (codeMatches.length > 0) {
+      const best = codeMatches.find(c => c.variant?.toLowerCase() === 'base')
+        ?? codeMatches.find(c => c.variant?.toLowerCase() === 'refractor')
+        ?? codeMatches[0];
+      return { card_id: best.card_id, confidence: 0.88, topResult };
+    }
+  }
+
   // Try Claude semantic matching first.
   try {
     const match = await claudeCardMatch(query, cards, context);

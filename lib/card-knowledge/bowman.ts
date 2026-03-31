@@ -108,7 +108,7 @@ export class BowmanKnowledge implements ManufacturerKnowledge {
     return `Bowman/Topps-specific matching rules:
 - Year must match exactly. If the query says 2025, reject any candidate from 2022, 2023, or 2024 even if the player name and set name are similar.
 - Card codes (BDC-91, CPA-KK, B25-SS, BMA-JG, TP-8, SG-3, or plain numbers like 22) are unique per player in a given set. The query may contain ONLY the card code with no player name — this is intentional. If CardHedger returns ANY candidate whose card number matches the code in the query, that IS the correct card. Assign confidence 0.9 or higher. Do NOT require a player name in the query to confirm a match.
-- "Retrofractor" in the query = "Base" or "Lazer Refractor" in CardHedger. Do not reject a match because the candidate says "Base" when the query says "Retrofractor".
+- "Retrofractor" in the query = "Base" or "Lazer Refractor" in CardHedger. "Black" in the query = "Base" in CardHedger (Bowman's Best Black parallels are indexed as Base). Do not reject a match because the candidate says "Base" when the query says "Retrofractor" or "Black".
 - Print runs (/50, /99, /25) appear in source data but NOT in CardHedger variant names — ignore them when comparing.
 - Insert set names (Top Prospects, Stars of the Game, Best Of 2025, Bowman Spotlights, Draft Lottery Ping Pong Ball) and section labels ("Autographs", "Teams") may appear in the query but are not variant descriptors — focus on player, set, and card number.
 - Parallel names appear without "Variation" suffix in CardHedger.`;
