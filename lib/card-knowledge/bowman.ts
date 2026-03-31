@@ -11,19 +11,29 @@ import type { ManufacturerKnowledge, CleanVariantResult, QueryReformulation } fr
 export class BowmanKnowledge implements ManufacturerKnowledge {
   readonly name = 'Bowman';
 
-  // Card-code pattern: player names like "BDC-170", "CPA-KC", "AA-FA" are Team Sets
-  // inserts where the XLSX parser stored the card number as the player name.
-  // All known Bowman card code formats match this: letters, dash, letters+digits, no spaces.
-  private static readonly CARD_CODE_RE = /^[A-Z]+-[A-Z0-9]+$/;
+  // Card-code pattern: player names that are actually card numbers stored by the XLSX parser.
+  // Covers two formats:
+  //   - Letter-prefixed codes: "BDC-170", "CPA-KC", "TP-8", "B25-SS", "BMA-JG", etc.
+  //   - Pure numeric codes: "22", "67" (Base Teams inserts in Bowman's Best)
+  private static readonly CARD_CODE_RE = /^([A-Z]+-[A-Z0-9]+|\d+)$/;
 
-  // Insert set names that Bowman XLSX stores in the variant_name field.
+  // Insert set names that Bowman/Topps XLSX stores in the variant_name field.
   // These are not parallel/variant descriptors — they're subsection labels.
+  // Bowman Draft patterns:
+  //   "2025 Draft Lottery Ping Pong Ball", "Bowman Spotlights", "Bowman In Action Autographs",
+  //   "Chrome Team Sets", "Base Set Team Sets"
+  // Bowman's Best patterns:
+  //   "Top Prospects", "Stars of the Game", "Base Teams", "Best Of 2025 [Autographs]"
   private static readonly INSERT_SET_NAMES = [
     /\d{4}\s+Draft\s+Lottery\s+Ping\s+Pong\s+Ball\b/gi,
     /\bBowman\s+Spotlights?\b/gi,
     /\bBowman\s+In\s+Action\s+Autographs?\b/gi,
     /\bChrome\s+Team\s+Sets?\b/gi,
     /\bBase\s+Set\s+Team\s+Sets?\b/gi,
+    /\bTop\s+Prospects?\b/gi,
+    /\bStars?\s+of\s+the\s+Game\b/gi,
+    /\bBase\s+Teams?\b/gi,
+    /\bBest\s+Of\s+\d{4}\b/gi,
   ];
 
   matches(productNameLower: string): boolean {
@@ -58,6 +68,13 @@ export class BowmanKnowledge implements ManufacturerKnowledge {
       cleaned = cleaned.replace(re, '');
     }
 
+    // Strip standalone "Autographs" / "Autograph" and "Superfractor" — what remains
+    // after insert set name stripping. Both are used as section labels in Bowman XLSX
+    // (e.g. "Best Of 2025 Autographs", "BMA Superfractor"), not CH variant descriptors.
+    // CH uses specific parallel names (Base, Refractor, Gold Ink, etc.) instead.
+    cleaned = cleaned.replace(/\bAutographs?\b/gi, '');
+    cleaned = cleaned.replace(/\bSuperfractor\b/gi, '');
+
     return {
       cleanedVariant: cleaned.trim(),
       isInsertSetName,
@@ -88,11 +105,12 @@ export class BowmanKnowledge implements ManufacturerKnowledge {
     // This string is injected into the Claude Haiku matching prompt.
     // It teaches Claude the terminology gaps between Bowman XLSX data and CH's catalog.
     // Keep it concise — Claude reads this before reasoning about the candidates.
-    return `Bowman-specific matching rules:
-- Card codes (BDC-91, CPA-KK, AA-FA, etc.) uniquely identify one player per set. If CardHedger returns a result for a card code query, that IS the correct player — match with high confidence.
+    return `Bowman/Topps-specific matching rules:
+- Year must match exactly. If the query says 2025, reject any candidate from 2022, 2023, or 2024 even if the player name and set name are similar.
+- Card codes (BDC-91, CPA-KK, B25-SS, BMA-JG, TP-8, SG-3, or plain numbers like 22) are unique per player in a given set. The query may contain ONLY the card code with no player name — this is intentional. If CardHedger returns ANY candidate whose card number matches the code in the query, that IS the correct card. Assign confidence 0.9 or higher. Do NOT require a player name in the query to confirm a match.
 - "Retrofractor" in the query = "Base" or "Lazer Refractor" in CardHedger. Do not reject a match because the candidate says "Base" when the query says "Retrofractor".
 - Print runs (/50, /99, /25) appear in source data but NOT in CardHedger variant names — ignore them when comparing.
-- Insert set names (Bowman Spotlights, Draft Lottery Ping Pong Ball) may appear in the query but are not variant descriptors — focus on player, set, and card number.
+- Insert set names (Top Prospects, Stars of the Game, Best Of 2025, Bowman Spotlights, Draft Lottery Ping Pong Ball) and section labels ("Autographs", "Teams") may appear in the query but are not variant descriptors — focus on player, set, and card number.
 - Parallel names appear without "Variation" suffix in CardHedger.`;
   }
 }
