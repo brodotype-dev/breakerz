@@ -31,8 +31,10 @@ Given a sports card product (e.g. 2025-26 Topps Finest Basketball), Card Breaker
 |---|---|
 | Framework | Next.js 15 App Router (TypeScript) |
 | Styling | Tailwind CSS + shadcn/ui |
-| Database | Supabase (Postgres) |
+| Database | Supabase (Postgres) — Auth + Postgres |
 | Pricing API | CardHedger |
+| Email | Resend |
+| AI | Claude Haiku (`claude-haiku-4-5-20251001`) |
 | Deploy | Vercel (CLI) |
 
 ---
@@ -45,12 +47,22 @@ npm install
 
 # Add environment variables
 cp .env.example .env.local
-# Fill in: NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY,
-#          SUPABASE_SERVICE_ROLE_KEY, CARDHEDGER_API_KEY
+# Fill in:
+#   NEXT_PUBLIC_SUPABASE_URL       — Supabase project URL
+#   NEXT_PUBLIC_SUPABASE_ANON_KEY  — Supabase anon key
+#   SUPABASE_SERVICE_ROLE_KEY      — Supabase service role key (server only)
+#   SUPABASE_JWT_SECRET            — Supabase JWT secret
+#   CARDHEDGER_API_KEY             — CardHedger API key
+#   ANTHROPIC_API_KEY              — Anthropic API key (Claude features)
+#   RESEND_API_KEY                 — Resend API key (invite emails)
+#   FROM_EMAIL                     — Sender address for invite emails
+#   NEXT_PUBLIC_APP_URL            — Base URL (e.g. http://localhost:3000)
 
 # Run dev server
 npm run dev
 ```
+
+Local dev uses the staging Supabase project. See [CLAUDE.md](./CLAUDE.md) for environment details.
 
 ---
 
@@ -72,13 +84,19 @@ See [CLAUDE.md](./CLAUDE.md) for full deploy instructions and known gotchas.
 | Route | Purpose |
 |---|---|
 | `/` | Homepage — product grid by sport |
-| `/analysis` | **Breakerz Sayz** — consumer deal checker (BUY/WATCH/PASS) |
-| `/break/[slug]` | Break analysis page — team slots, player EV, deal checker column |
+| `/waitlist` | Public beta waitlist signup |
+| `/analysis` | **Breakerz Sayz** — consumer deal checker (BUY/WATCH/PASS) — auth required |
+| `/break/[slug]` | Break analysis page — team slots, player EV, deal checker — auth required |
+| `/auth/signup` | Consumer account creation (Phase 3 — coming soon) |
+| `/admin/login` | Admin login (Supabase Auth — email + password) |
 | `/admin/products` | Product listing |
 | `/admin/products/[id]` | Product dashboard — readiness stats, odds upload, re-run matching, Breakerz Bets Debrief |
 | `/admin/import-checklist` | 3-step checklist import wizard |
 | `/admin/products/[id]/players` | Player management — roster, icon tier (★), high volatility (⚡), risk flags (⚑) |
+| `/admin/waitlist` | Waitlist management — approve users, send invites |
 | `/admin/card-lookup` | **Card Lookup** — screenshot an auction listing → AI extracts cert number → CardHedger grade prices + comps + max bid calculator |
+| `/api/waitlist` | POST: public waitlist signup |
+| `/api/admin/waitlist/[id]/approve` | POST: approve user, generate invite code, send Resend email |
 | `/api/analysis` | GET: active product list · POST: run Breakerz Sayz analysis |
 | `/api/pricing` | Live pricing endpoint (Supabase + CardHedger, 24h cache) |
 | `/api/admin/parse-checklist` | PDF/CSV checklist parser |

@@ -5,6 +5,102 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-03-31 — Auth, Waitlist, Staging Environment
+
+### Admin auth — replaced cookie password with Supabase Auth
+
+The previous admin auth (password cookie via `proxy.ts`) was replaced with a proper Supabase Auth session. Admins now log in with email + password via `signInWithPassword`. Role-based access control is enforced via a `user_roles` table.
+
+**New tables (migration `20260331120000_auth_profiles_roles.sql`):**
+- `profiles` — mirrored from `auth.users` (id, full_name, avatar_url); auto-populated on user creation
+- `user_roles` — `(user_id, role)` where role is `admin` or `contributor`; admin must be seeded manually after creating a user in the Supabase dashboard
+
+**Middleware (`middleware.ts`):** Cookie-aware Supabase client (via `@supabase/ssr`) refreshes the session on every request. Protects `/admin/*` (except `/admin/login`) and `/api/admin/*` — unauthenticated requests are redirected to `/admin/login?from=<path>`.
+
+**`lib/supabase-server.ts`** (new): Cookie-aware server client for use in Server Components and Server Actions. Uses `@supabase/ssr`'s `createServerClient` with `cookies()` from `next/headers`.
+
+**`lib/auth.ts`** (new): `getCurrentUser()`, `getUserRoles()`, `requireRole(...roles)` — server-side auth helpers. `requireRole()` redirects to `/admin/login` if no session or missing role.
+
+**`app/admin/login/`**: Rewritten from password-only form to email + password form. `actions.ts` calls `signInWithPassword`, checks roles, redirects. `logout` server action calls `supabase.auth.signOut()`.
+
+**Deleted:** `proxy.ts` — old cookie-password protection. Was conflicting with `middleware.ts` (Next.js doesn't allow both simultaneously).
+
+---
+
+### Waitlist — public signup + admin approval + Resend invite
+
+Private beta gating via a waitlist. Visitors sign up at `/waitlist`; admins approve from `/admin/waitlist`; approved users receive a Resend invite email with a pre-filled invite link.
+
+**New table (migration `20260331130000_waitlist.sql`):**
+```
+waitlist (id, email, full_name, use_case, status, invite_code, invite_sent_at, converted_at, notes, created_at)
+```
+Status enum: `pending → approved → converted` (or `rejected`). `invite_code` is a 12-char hex string generated at approval time. `UNIQUE` on email.
+
+**New routes and files:**
+- `app/waitlist/page.tsx` — public signup form with success / already-on-list states
+- `app/admin/waitlist/page.tsx` — server component, calls `requireRole('admin')`, renders `WaitlistTable`
+- `app/admin/waitlist/WaitlistTable.tsx` — client component with tabs (pending / approved / converted / rejected), "Approve + Invite →" button with optimistic update
+- `app/api/waitlist/route.ts` — public POST; handles `23505` unique constraint as `already_on_list`
+- `app/api/admin/waitlist/[id]/approve/route.ts` — generates `randomBytes(6).toString('hex')` invite code, updates waitlist record, sends Resend email. Returns `{ ok: true, emailError: true }` if email fails but code was saved.
+- `lib/email.ts` — `sendInviteEmail()` using Resend SDK. Lazy `new Resend(key)` inside `getResend()` — avoids build failure when `RESEND_API_KEY` is not set.
+- `app/auth/signup/page.tsx` — Phase 3 placeholder (consumer signup coming in next cycle)
+- `app/admin/AdminNav.tsx` — added Waitlist nav link
+
+**New env vars:** `RESEND_API_KEY`, `FROM_EMAIL`, `NEXT_PUBLIC_APP_URL`
+
+---
+
+### Consumer route gating
+
+Unauthenticated visitors on `/break/*` or `/analysis/*` are now redirected to `/waitlist`. Admins (who have a Supabase session) pass through.
+
+Added to `middleware.ts`:
+```typescript
+const isConsumerRoute = pathname.startsWith('/break') || pathname.startsWith('/analysis');
+if (isConsumerRoute && !user) redirect('/waitlist');
+```
+Matcher updated to include `/break/:path*` and `/analysis/:path*`.
+
+---
+
+### Staging environment
+
+Separate Supabase project (`isqxqsznbozlipjvttha`) for Preview and Development Vercel environments. Production (`zucuzhtiitibsvryenpi`) remains unchanged.
+
+- **Initial schema migration** (`20260101000000_initial_schema.sql`) created — base tables (`sports`, `products`, `players`, `player_products`, `pricing_cache`) were previously applied manually to production. This migration makes staging reproducible and marks the baseline for future migration tracking. On production: marked as already-applied via `supabase migration repair --status applied`.
+- All subsequent migrations applied to staging via `supabase db push`.
+- Vercel Preview and Development env vars updated to point to staging Supabase.
+- `staging` git branch created and pushed — Vercel auto-deploys preview builds from this branch.
+
+---
+
+### CardHedger matching — manufacturer knowledge system + Bowman's Best ceiling
+
+**Manufacturer knowledge system (`lib/card-knowledge/`)** — extracted all manufacturer-specific matching logic from the route into a typed module system:
+- `types.ts` — `ManufacturerKnowledge` interface (`matches()`, `cleanVariant()`, `reformulateQuery()`, `claudeContext()`)
+- `default.ts` — no-op fallback (identity transforms, empty context)
+- `bowman.ts` — all Bowman/Topps logic: variant cleaning (strips "Base -", "Retrofractor", insert set names), card-code detection, multi-player reformulation (slash-delimited names → code-only query)
+- `panini.ts` — stub (matches returns false until Panini XLSX files have been analyzed)
+- `index.ts` — registry + `getManufacturerKnowledge(productName)`
+
+`lib/cardhedger.ts`: `claudeCardMatch()` and `cardMatch()` now accept an optional `context` string injected into the Claude Haiku prompt. `lib/supabase.ts` pattern used for `??` fallback.
+
+**Tier 2 player-name fallback fix:** The pre-Claude bypass in `cardMatch()` for autograph card codes (BMA-/BSA-/CA-) was comparing against `cards[0].player_name`, but the CH API returns a `player` field at runtime (not `player_name`). Fixed with `c0.player_name ?? c0.player ?? ''`. Also fixed Tier 2 to compare first name only (not all name parts) — avoids false negatives on accented/middle names.
+
+**Multi-player reformulation:** Slash-delimited player names (DA-/TA-/QA-/FDA-/FTA- card codes) now reformulate to a code-only query `[year, setName, cardCode]` — no player name in the query, which CH handles correctly for these sets.
+
+**Bowman's Best — practical ceiling analysis:** After iterative query tuning through CSV 1–10, match rate reached ~76%. Remaining ~24% is structural:
+- ~24 multi-player dual/triple/quad auto cards — CH doesn't index under combined names
+- ~173 code-only duplicate rows — CH doesn't expose a `number` field for autograph sets, so duplicate code rows (same code, different player) can't be disambiguated without manual intervention
+
+Calling ~76% the practical ceiling for automated matching on Bowman's Best. Full analysis documented in `docs/cardhedger-matching.md` and `docs/manufacturer-rules/bowman.md`.
+
+**New files:** `lib/card-knowledge/types.ts`, `lib/card-knowledge/default.ts`, `lib/card-knowledge/bowman.ts`, `lib/card-knowledge/panini.ts`, `lib/card-knowledge/index.ts`
+**Modified:** `lib/cardhedger.ts`, `app/api/admin/match-cardhedger/route.ts`, `docs/cardhedger-matching.md`, `docs/manufacturer-rules/bowman.md`
+
+---
+
 ## 2026-03-27 — Card Lookup Tool
 
 ### New feature: `/admin/card-lookup`

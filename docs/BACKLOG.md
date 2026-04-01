@@ -2,11 +2,44 @@
 
 Consolidated list of known work, organized by priority. Items pulled from the Social Currency PRD, CLAUDE.md known gaps, and open questions surfaced during development.
 
-**Last updated:** 2026-03-25
+**Last updated:** 2026-03-31
 
 ---
 
 ## Priority 1 — High value, no external blockers
+
+### Phase 3 — Consumer Auth (Google + Apple OAuth)
+**Effort:** ~1 day
+**Why now:** Waitlist is live, invite emails are going out. Phase 3 is the next gate before consumers can access the app. Invite codes are pre-filled in the signup URL; we need an actual account creation flow.
+
+**Flow:**
+1. User receives invite email → clicks link → lands on `/auth/signup?code=<code>`
+2. Invite code stored in a short-lived cookie before OAuth redirect (code is in URL, but OAuth bounces away)
+3. User chooses Google or Apple → Supabase OAuth redirect → callback route at `/auth/callback`
+4. Callback route reads invite code from cookie → validates against `waitlist` table → creates `profiles` row → marks waitlist entry as `converted`
+5. User lands on homepage with active session
+
+**Supabase setup needed:** Enable Google OAuth provider (Google Cloud Console OAuth credentials) and Apple OAuth provider (Apple Developer account) in Supabase Auth → Providers.
+
+**New files:** `app/auth/signup/page.tsx` (replace placeholder), `app/auth/callback/route.ts`
+
+---
+
+### Remove dead env vars from Vercel Production
+**Effort:** 5 minutes
+**Why:** `ADMIN_PASSWORD` and `ADMIN_SESSION_SECRET` are no longer used — the cookie-password auth was replaced with Supabase Auth. Leaving them is just noise.
+
+Remove from Vercel Production environment: `ADMIN_PASSWORD`, `ADMIN_SESSION_SECRET`
+
+---
+
+### Create staging admin user
+**Effort:** 5 minutes
+**Why:** Staging Supabase project has all migrations applied but no admin user seeded. Can't test the admin flow on staging without one.
+
+In staging Supabase dashboard: Auth → Users → Add user, then seed `profiles` + `user_roles` via SQL editor.
+
+---
 
 ### Phase 4 — Consumer Buzz Indicators on Break Page
 **Effort:** ~0.5 days
@@ -69,14 +102,11 @@ Consolidated list of known work, organized by priority. Items pulled from the So
 ---
 
 ### CardHedger Matching — Manufacturer Knowledge System
-**Effort:** ~1 day
-**Why:** All manufacturer-specific matching rules are hardcoded regex in `cleanVariant()` and inline conditionals in the route. As Panini, Topps Finest, and other products are imported, this becomes unmaintainable. The system also has a structural blind spot: for card-code queries (BDC-91 etc.), CH correctly returns the right player but Claude rejects the match because there's no player name in the query to verify against.
+**Status: ✅ Complete (2026-03-31)**
 
-**Design:** `lib/card-knowledge/` module system — each manufacturer is one TypeScript class implementing a `ManufacturerKnowledge` interface with three methods: `cleanVariant()`, `reformulateQuery()`, `claudeContext()`. The context string is injected into the Claude Haiku prompt so it understands manufacturer-specific terminology (e.g. "BDC codes are unique per player — trust CH's result"). Full plan at `/Users/brody/.claude/plans/precious-hatching-sedgewick.md`.
+`lib/card-knowledge/` is live with `BowmanKnowledge`, `DefaultKnowledge`, and `PaniniKnowledge` stub. Bowman's Best match rate reached ~76% practical ceiling. Full details in `docs/cardhedger-matching.md` and `docs/manufacturer-rules/bowman.md`.
 
-**Key insight from 2026-03-31 CSV analysis:** Card-code queries are working (CH finds the right player/set) but Claude has 0 confidence because the query has no player name. The manufacturer context fix — telling Claude that card codes uniquely identify players — should resolve most of the remaining ~28% unmatched.
-
-**Files:** `lib/card-knowledge/` (new dir), `lib/cardhedger.ts`, `app/api/admin/match-cardhedger/route.ts`
+Remaining known limitation: multi-player autos (DA-/TA-/QA-) and code-only duplicate rows (~24% of Bowman's Best) are structural — not solvable without CH exposing a `number` field for autograph sets or a Match Review UI for manual correction.
 
 ---
 

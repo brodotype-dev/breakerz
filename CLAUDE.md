@@ -13,15 +13,22 @@ Update CHANGELOG.md at the end of every session with what changed and why.
 
 ## Current State
 
-All core features and Social Currency Phases 1–4 are live at [breakerz.vercel.app](https://breakerz.vercel.app).
+All core features and Social Currency Phases 1–4 are live at [breakerz.vercel.app](https://breakerz.vercel.app). The app is in **private beta** — consumer routes (`/break/*`, `/analysis/*`) require a Supabase Auth session. Visitors are redirected to `/waitlist` to sign up.
 
 **Admin pipeline** ✅
 1. Product creation
-2. Checklist import — 3-step wizard, Topps PDF + Panini CSV
-3. CardHedger matching — Claude-powered (Haiku), chunked polling, ~90%+ auto-match rate
+2. Checklist import — 3-step wizard, Topps PDF + Panini CSV + Bowman XLSX
+3. CardHedger matching — Claude-powered (Haiku), chunked polling, manufacturer knowledge system, ~76–90%+ auto-match rate depending on product
 4. Odds import — coordinate-aware Topps PDF parser; standalone upload on product dashboard
 5. Product readiness dashboard — match %, odds status, unmatched variants list, re-run matching
 6. Breakerz Bets debrief — natural language → Claude parses player mentions + sentiment → admin review table → saves B-scores to DB
+
+**Auth + Waitlist** ✅
+- Admin auth via Supabase Auth (email + password, role-gated via `user_roles` table)
+- Public waitlist at `/waitlist` — email + name + use case
+- Admin waitlist management at `/admin/waitlist` — approve users, send Resend invite emails
+- Consumer routes gated: unauthenticated visitors on `/break/*` and `/analysis/*` redirected to `/waitlist`
+- Phase 3 consumer OAuth (Google + Apple) — next cycle
 
 **Social Currency** ✅
 - **Phase 1 — B-score:** `breakerz_score` + `breakerz_note` on `player_products`; editorial layer entered via debrief; feeds into slot cost formula
@@ -30,6 +37,7 @@ All core features and Social Currency Phases 1–4 are live at [breakerz.vercel.
 - **Phase 4 — Consumer indicators:** ★ / ↑↓ / ⚡ / ⚑ badges on break page TeamSlotsTable and PlayerTable
 
 **Next up (see BACKLOG.md):**
+- Phase 3 consumer auth — Google + Apple OAuth, invite code validation in callback
 - B-score decay / expiry indicator
 - Pricing cache scheduled refresh (Vercel Cron)
 - Phase 5: C-score from CardHedger top-movers (blocked on Kyle confirming API structure)
@@ -72,15 +80,22 @@ vercel --prod --yes
 
 Set in Vercel project dashboard (already configured — do not re-add):
 
-| Variable | Purpose |
-|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL (browser + server) |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon key (browser) |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (server only, bypasses RLS) |
-| `CARDHEDGER_API_KEY` | CardHedger API key (server only, provided by Kyle) |
-| `ANTHROPIC_API_KEY` | Anthropic API key (server only, used for Claude-powered features) |
+| Variable | Environments | Purpose |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | All | Supabase project URL (browser + server) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | All | Supabase anon key (browser) |
+| `SUPABASE_SERVICE_ROLE_KEY` | All | Supabase service role key (server only, bypasses RLS) |
+| `SUPABASE_JWT_SECRET` | All | Supabase JWT secret (middleware session verification) |
+| `CARDHEDGER_API_KEY` | All | CardHedger API key (server only, provided by Kyle) |
+| `ANTHROPIC_API_KEY` | All | Anthropic API key (server only, Claude-powered features) |
+| `RESEND_API_KEY` | All | Resend API key (invite emails) |
+| `FROM_EMAIL` | All | Sender address for invite emails |
+| `NEXT_PUBLIC_APP_URL` | All | Base URL — used to construct invite links in emails |
 
-For local dev, put these in `.env.local` (not committed).
+**Production** points to Supabase project `zucuzhtiitibsvryenpi`.
+**Preview + Development** point to staging Supabase project `isqxqsznbozlipjvttha`.
+
+For local dev, put these in `.env.local` (not committed). Use staging Supabase values locally.
 
 ---
 
@@ -162,18 +177,32 @@ The odds PDF parser is coordinate-aware: it detects the Hobby Box column x-posit
 
 ```
 lib/
-  supabase.ts          — Supabase client (see gotcha above)
+  supabase.ts          — Supabase admin client (service role, see gotcha above)
+  supabase-server.ts   — Cookie-aware server client (@supabase/ssr, for Server Components)
+  auth.ts              — getCurrentUser(), getUserRoles(), requireRole()
+  email.ts             — sendInviteEmail() via Resend (lazy init — avoids build crash)
   cardhedger.ts        — CardHedger API client (server-side only)
   engine.ts            — Break pricing engine; exports computeSlotPricing,
                          computeTeamSlotPricing, computeEffectiveScore
-  checklist-parser.ts  — PDF/CSV checklist parsers
-  types.ts             — Shared TypeScript types (Player, PlayerProduct,
-                         PlayerWithPricing, PlayerRiskFlag, etc.)
+  checklist-parser.ts  — PDF/CSV/XLSX checklist parsers
+  types.ts             — Shared TypeScript types
+  card-knowledge/
+    types.ts           — ManufacturerKnowledge interface
+    index.ts           — Registry + getManufacturerKnowledge(productName)
+    bowman.ts          — Bowman/Topps logic (cleanVariant, reformulateQuery, claudeContext)
+    panini.ts          — Panini stub
+    default.ts         — No-op fallback
+
+middleware.ts          — Session refresh; protects /admin/*, /api/admin/*, /break/*, /analysis/*
 
 app/
-  break/[slug]/        — Public break analysis page (Team Slots, Player Slots tabs)
-  analysis/            — Breakerz Sayz deal analyzer
+  waitlist/            — Public beta waitlist signup
+  auth/signup/         — Consumer signup placeholder (Phase 3)
+  break/[slug]/        — Break analysis page (auth required)
+  analysis/            — Breakerz Sayz deal analyzer (auth required)
   admin/
+    login/             — Email + password login (Supabase Auth)
+    waitlist/          — Waitlist management (approve + invite)
     products/          — Product listing
     products/[id]/     — Product readiness dashboard + Breakerz Bets debrief
       BreakerzBetsDebrief.tsx  — Debrief UI (narrative → Claude → review table → save)
@@ -183,9 +212,11 @@ app/
       PlayerFlagsManager.tsx   — Icon ★, HV ⚡, risk flag ⚑ per player
 
 app/api/
+  waitlist/            — POST: public waitlist signup
   pricing/             — GET: cached pricing; POST: live CardHedger fetch + cache write
   analysis/            — POST: full Sayz analysis (fair value + signal + Claude narrative)
   admin/
+    waitlist/[id]/approve/ — POST: generate invite code, send Resend email
     parse-bets-debrief/ — POST: narrative → Claude → matched player scores
     parse-checklist/   — POST: PDF or CSV → ParsedChecklist
     parse-odds/        — POST: Topps odds PDF → ParsedOdds
@@ -204,9 +235,11 @@ design-assets/
   figma-make-prompt.md — Full design brief for Figma Make concept generation
 
 docs/
-  BACKLOG.md           — Prioritized work queue + long-term vision
-  QA.md                — Manual test checklist (Round 1 results recorded)
-  prd-social-currency.md — Social Currency PRD (Phases 1–5)
+  BACKLOG.md                    — Prioritized work queue + long-term vision
+  QA.md                         — Manual test checklist (Round 1 results recorded)
+  prd-social-currency.md        — Social Currency PRD (Phases 1–5)
+  cardhedger-matching.md        — CH matching architecture, failure patterns, match rate history
+  manufacturer-rules/bowman.md  — Bowman-specific matching rules and known limits
 
 supabase/
   migrations/          — All schema migrations (apply with: supabase db push --linked)
@@ -226,6 +259,10 @@ player_products       → player × product; buzz_score, breakerz_score,
 player_product_variants → card types per player per product; hobby_odds, breaker_odds
 pricing_cache         → 24h TTL cache of EV low/mid/high per player_product
 player_risk_flags     → soft-delete risk flags (cleared_at); injury/suspension/legal/trade/retirement/off_field
+profiles              → mirrors auth.users (id, full_name, avatar_url)
+user_roles            → (user_id, role) — roles: admin, contributor
+waitlist              → (email, full_name, use_case, status, invite_code, invite_sent_at, converted_at)
+                        status: pending → approved → converted | rejected
 ```
 
 ---
