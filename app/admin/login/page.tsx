@@ -2,32 +2,28 @@
 
 import { useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { login } from './actions';
+
+const ERROR_MESSAGES: Record<string, string> = {
+  missing: 'Email and password are required.',
+  invalid: 'Incorrect email or password.',
+  unauthorized: 'Your account does not have admin access.',
+};
 
 function LoginForm() {
   const searchParams = useSearchParams();
-  const from = searchParams.get('from') || '/admin/products';
+  const from = searchParams.get('from') || '/admin';
+  const errorCode = searchParams.get('error');
 
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setLoading(true);
-    setError('');
-
-    const res = await fetch('/api/admin/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
-    });
-
-    if (res.ok) {
-      window.location.href = from;
-    } else {
-      setError('Incorrect password.');
-      setLoading(false);
-    }
+    const formData = new FormData(e.currentTarget);
+    formData.set('from', from);
+    await login(formData);
+    setLoading(false);
   }
 
   return (
@@ -44,22 +40,40 @@ function LoginForm() {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                  Password
+                  Email
                 </label>
                 <input
-                  type="password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
+                  name="email"
+                  type="email"
+                  autoComplete="email"
                   autoFocus
+                  required
                   className="w-full rounded border bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
 
-              {error && <p className="text-sm text-red-500">{error}</p>}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                  Password
+                </label>
+                <input
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  className="w-full rounded border bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+
+              {errorCode && (
+                <p className="text-sm text-red-500">
+                  {ERROR_MESSAGES[errorCode] ?? 'Something went wrong. Try again.'}
+                </p>
+              )}
 
               <button
                 type="submit"
-                disabled={loading || !password}
+                disabled={loading}
                 className="w-full rounded bg-[oklch(0.28_0.08_250)] px-4 py-2 text-sm font-bold text-white hover:bg-[oklch(0.22_0.08_250)] disabled:opacity-50 transition-colors"
               >
                 {loading ? 'Signing in…' : 'Sign in →'}
