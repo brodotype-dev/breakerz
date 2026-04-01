@@ -1,6 +1,10 @@
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Initialize lazily so missing env var doesn't crash the build
+function getResend() {
+  return new Resend(process.env.RESEND_API_KEY);
+}
+
 const FROM = process.env.FROM_EMAIL ?? 'invites@breakerz.vercel.app';
 
 export async function sendInviteEmail({
@@ -16,7 +20,7 @@ export async function sendInviteEmail({
   const inviteUrl = `${baseUrl}/auth/signup?code=${inviteCode}`;
   const firstName = fullName?.split(' ')[0] ?? 'there';
 
-  await resend.emails.send({
+  await getResend().emails.send({
     from: FROM,
     to,
     subject: "You're in — Breakerz Beta",
