@@ -37,8 +37,6 @@ export async function middleware(request: NextRequest) {
   const isAdminRoute = pathname.startsWith('/admin') && !pathname.startsWith('/admin/login');
   // Protect /api/admin/* routes
   const isAdminApi = pathname.startsWith('/api/admin');
-  // Gate consumer routes — unauthenticated visitors redirected to waitlist
-  const isConsumerRoute = pathname.startsWith('/break') || pathname.startsWith('/analysis');
 
   if ((isAdminRoute || isAdminApi) && !user) {
     const loginUrl = request.nextUrl.clone();
@@ -47,11 +45,8 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  if (isConsumerRoute && !user) {
-    const waitlistUrl = request.nextUrl.clone();
-    waitlistUrl.pathname = '/waitlist';
-    return NextResponse.redirect(waitlistUrl);
-  }
+  // Consumer route gating re-enabled once Phase 3 OAuth is live and
+  // consumers have a way to actually create accounts.
 
   return supabaseResponse;
 }
@@ -60,7 +55,5 @@ export const config = {
   matcher: [
     '/admin/:path*',
     '/api/admin/:path*',
-    '/break/:path*',
-    '/analysis/:path*',
   ],
 };
