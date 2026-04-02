@@ -129,7 +129,7 @@ export default async function HomePage() {
                   backgroundClip: 'text',
                 }}
               >
-                Card Breakerz
+                BreakIQ
               </h1>
             </div>
 

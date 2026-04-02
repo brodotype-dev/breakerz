@@ -1,4 +1,4 @@
-# Card Breakerz — Figma Make Design Prompt
+# BreakIQ — Figma Make Design Prompt
 
 **Last updated:** 2026-03-25
 
@@ -40,7 +40,7 @@ Bloomberg Terminal meets modern sports tech. Think: the data density and authori
 - Product name, sport pill, year
 - A "readiness" signal — is pricing live?
 - Hint of the slot cost range (e.g., "$45–$380 per slot")
-- "Breakerz Sayz" promo element — make it feel like a featured signal, not a banner ad
+- "BreakIQ Sayz" promo element — make it feel like a featured signal, not a banner ad
 
 ---
 
@@ -59,7 +59,7 @@ This is the core experience. A user is browsing slot prices before a break, comp
 
 ---
 
-## Screen 3 — Breakerz Sayz (Analysis Tool)
+## Screen 3 — BreakIQ Sayz (Analysis Tool)
 
 A single-page deal analyzer. The user picks a product, team, break type, case count, and enters the price they're being quoted. The result is a verdict card.
 

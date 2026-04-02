@@ -58,7 +58,7 @@ export default function AdminNav() {
     <nav className="flex-1 p-4 space-y-1 relative">
       <NavLink icon={Package} label="Products" href="/admin" exact />
       <NavLink icon={PlusCircle} label="New Product" href="/admin/products/new" />
-<NavLink icon={Sparkles} label="Breakerz Betz" href="/admin/breakerz-betz" />
+<NavLink icon={Sparkles} label="BreakIQ Bets" href="/admin/breakerz-betz" />
       <NavLink icon={Users} label="Waitlist" href="/admin/waitlist" />
       <div className="py-3">
         <div style={{ height: '1px', backgroundColor: 'var(--terminal-border)' }} />

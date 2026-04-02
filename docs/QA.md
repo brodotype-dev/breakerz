@@ -1,4 +1,4 @@
-# Card Breakerz — QA Checklist
+# BreakIQ — QA Checklist
 
 Manual test plan covering all shipped features. Work through each section on the live site at [breakerz.vercel.app](https://breakerz.vercel.app).
 
@@ -27,7 +27,7 @@ First full QA pass on the live site. Bugs found and fixed in commit `b61ca4c`. I
 | # | Test | Expected | Round 1 |
 |---|---|---|---|
 | 1.1 | Load `/` | Product grid renders, grouped by sport | ✅ |
-| 1.2 | Breakerz Sayz promo strip | Full-width strip visible between header and product grid — "Breakerz Sayz" red badge, tagline, "Check a deal →" button | ✅ |
+| 1.2 | BreakIQ Sayz promo strip | Full-width strip visible between header and product grid — "BreakIQ Sayz" red badge, tagline, "Check a deal →" button | ✅ |
 | 1.3 | Click "Check a deal →" | Navigates to `/analysis` | ✅ |
 | 1.4 | Click a product card | Navigates to `/break/[slug]` | ✅ Note: `/break/` URL is non-intuitive; consider `/products/[slug]` (backlog) |
 | 1.5 | Dark mode (if applicable) | Layout holds, no blown-out colors | — No dark mode implemented |
@@ -50,7 +50,7 @@ First full QA pass on the live site. Bugs found and fixed in commit `b61ca4c`. I
 
 ---
 
-## 3. Breakerz Sayz (`/analysis`)
+## 3. BreakIQ Sayz (`/analysis`)
 
 | # | Test | Expected | Round 1 |
 |---|---|---|---|
@@ -80,7 +80,7 @@ First full QA pass on the live site. Bugs found and fixed in commit `b61ca4c`. I
 |---|---|---|---|
 | 4.1 | Toggle ★ on a player | Button turns purple; page refreshes; state persists on reload | ⚠️ ~1s UI lag before state reflects — acceptable |
 | 4.2 | Toggle ★ off | Returns to dim state; persists | ⚠️ Same lag |
-| 4.3 | Run Breakerz Sayz on a team with an icon player | Purple "★ Icon" badge appears next to that player in the key players list | 🔁 Re-test — icon players now always included in topPlayers even if outside top 5 |
+| 4.3 | Run BreakIQ Sayz on a team with an icon player | Purple "★ Icon" badge appears next to that player in the key players list | 🔁 Re-test — icon players now always included in topPlayers even if outside top 5 |
 | 4.4 | Icon player with high `buzz_score` | Slot cost should NOT be amplified — icon guard skips the multiplier | — Buzz score not yet a manual input (Phase 4) |
 | 4.5 | AI narrative acknowledges icon player | Claude prompt includes icon context; narrative should mention the player's structural value | 🔁 Re-test alongside 4.3 |
 
@@ -94,7 +94,7 @@ First full QA pass on the live site. Bugs found and fixed in commit `b61ca4c`. I
 |---|---|---|---|
 | 5.1 | Toggle ⚡ on | Button turns amber; persists on reload | ⚠️ ~3s UI lag — acceptable |
 | 5.2 | Toggle ⚡ off | Returns to dim; persists | ⚠️ Same lag |
-| 5.3 | Run Breakerz Sayz on a team with an HV player | Amber ⚡ advisory block appears below key players — shows player name, "EVs may shift significantly" language | ✅ |
+| 5.3 | Run BreakIQ Sayz on a team with an HV player | Amber ⚡ advisory block appears below key players — shows player name, "EVs may shift significantly" language | ✅ |
 | 5.4 | AI narrative acknowledges HV | Claude should note the uncertainty | ✅ |
 | 5.5 | HV does NOT change fair value | The slot cost number itself should be identical whether HV is on or off — it's disclosure only | ✅ |
 
@@ -111,7 +111,7 @@ First full QA pass on the live site. Bugs found and fixed in commit `b61ca4c`. I
 | 6.3 | Add a second flag to same player | Both chips appear; both are independently clearable | ✅ |
 | 6.4 | Clear a flag (×) | Chip disappears; cleared flag no longer shows in Sayz | ✅ |
 | 6.5 | Flag persists on page reload | Cleared = gone, active = still there | ✅ |
-| 6.6 | Run Breakerz Sayz on flagged player's team | Flag banner shows with type-specific color (amber=injury, blue=trade, red=suspension/legal) | 🔁 Re-test — colors fixed in b61ca4c (was all-red) |
+| 6.6 | Run BreakIQ Sayz on flagged player's team | Flag banner shows with type-specific color (amber=injury, blue=trade, red=suspension/legal) | 🔁 Re-test — colors fixed in b61ca4c (was all-red) |
 | 6.7 | Multiple players flagged | Multiple banners, one per flag | ✅ |
 | 6.8 | Flag does NOT change fair value | Slot cost is identical whether a flag is set or not — disclosure only | ✅ |
 | 6.9 | AI narrative mentions the flag | Claude prompt includes flag; narrative should name the player and the risk | ✅ |
@@ -119,9 +119,9 @@ First full QA pass on the live site. Bugs found and fixed in commit `b61ca4c`. I
 
 ---
 
-## 7. Social Currency — Breakerz Bets (B-score)
+## 7. Social Currency — BreakIQ Bets (B-score)
 
-**Setup:** Go to `/admin/products/[id]`, scroll to Breakerz Bets section.
+**Setup:** Go to `/admin/products/[id]`, scroll to BreakIQ Bets section.
 
 | # | Test | Expected | Round 1 |
 |---|---|---|---|
@@ -138,7 +138,7 @@ First full QA pass on the live site. Bugs found and fixed in commit `b61ca4c`. I
 | 7.11 | "Run another debrief" | Prominent button appears in success state; resets to idle | 🔁 Re-test — promoted from tiny text link to bordered button in b61ca4c |
 | 7.12 | "← Edit narrative" | Goes back to textarea with narrative preserved | ✅ |
 | 7.13 | Narrative with no recognizable players | "No players were identified" error shown, not a crash | 🔁 Re-test — JSON parse crash fixed in b61ca4c |
-| 7.14 | Breakerz Bets score affects Sayz fair value | After setting a positive B-score for a player, fair value is higher vs score=0 baseline | 🔁 Re-test after 7.4 fix — previous failure likely caused by wrong player matching |
+| 7.14 | BreakIQ Bets score affects Sayz fair value | After setting a positive B-score for a player, fair value is higher vs score=0 baseline | 🔁 Re-test after 7.4 fix — previous failure likely caused by wrong player matching |
 | 7.15 | AI narrative references B-score note | If a note was set, Claude should mention it | 🔁 Re-test after 7.4 fix — same root cause |
 
 ---

@@ -33,7 +33,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </div>
             <div>
               <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
-                Card Breakerz
+                BreakIQ
               </h1>
               <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--accent-blue)' }}>
                 Admin Portal

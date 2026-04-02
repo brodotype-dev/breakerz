@@ -14,7 +14,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Card Breakerz",
+  title: "BreakIQ",
   description: "Break analysis engine",
 };
 

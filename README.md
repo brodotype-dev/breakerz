@@ -1,4 +1,4 @@
-# Card Breakerz
+# BreakIQ
 
 Break analysis and slot pricing tool for sports card group breaks. Computes fair-value slot costs per team using live card pricing, set structure, and break configuration.
 
@@ -10,7 +10,7 @@ Built in collaboration with Kyle (Town & Line / CardPulse).
 
 ## What it does
 
-Given a sports card product (e.g. 2025-26 Topps Finest Basketball), Card Breakerz:
+Given a sports card product (e.g. 2025-26 Topps Finest Basketball), BreakIQ:
 
 1. Loads each player's card data and set counts from Supabase
 2. Fetches live pricing from the CardHedger API (with 24h cache)
@@ -19,7 +19,7 @@ Given a sports card product (e.g. 2025-26 Topps Finest Basketball), Card Breaker
 5. Distributes break cost across teams proportionally
 6. Outputs per-team slot costs, RC counts, and BUY/WATCH/PASS signals
 
-**Breakerz Sayz** (`/analysis`) is the consumer-facing deal checker: pick a product, select your team, enter the case count and what the breaker is charging — Claude returns a BUY/WATCH/PASS verdict with a 2–3 sentence AI narrative. The result card surfaces icon-tier player badges, Breakerz Bets editorial scores, risk flag disclosures, and high volatility advisories.
+**BreakIQ Sayz** (`/analysis`) is the consumer-facing deal checker: pick a product, select your team, enter the case count and what the breaker is charging — Claude returns a BUY/WATCH/PASS verdict with a 2–3 sentence AI narrative. The result card surfaces icon-tier player badges, Breakerz Bets editorial scores, risk flag disclosures, and high volatility advisories.
 
 **Social Currency** is an ongoing signal layer on top of the EV model — see [docs/prd-social-currency.md](./docs/prd-social-currency.md). Currently live: Breakerz Bets (editorial B-score), Icon Tier, Risk Flags, and High Volatility. Automated pipeline (C-score from CardHedger top-movers, P-score from Reddit) is Phase 5–6.
 
@@ -85,7 +85,7 @@ See [CLAUDE.md](./CLAUDE.md) for full deploy instructions and known gotchas.
 |---|---|
 | `/` | Homepage — product grid by sport |
 | `/waitlist` | Public beta waitlist signup |
-| `/analysis` | **Breakerz Sayz** — consumer deal checker (BUY/WATCH/PASS) — auth required |
+| `/analysis` | **BreakIQ Sayz** — consumer deal checker (BUY/WATCH/PASS) — auth required |
 | `/break/[slug]` | Break analysis page — team slots, player EV, deal checker — auth required |
 | `/auth/signup` | Consumer account creation (Phase 3 — coming soon) |
 | `/admin/login` | Admin login (Supabase Auth — email + password) |
@@ -97,7 +97,7 @@ See [CLAUDE.md](./CLAUDE.md) for full deploy instructions and known gotchas.
 | `/admin/card-lookup` | **Card Lookup** — screenshot an auction listing → AI extracts cert number → CardHedger grade prices + comps + max bid calculator |
 | `/api/waitlist` | POST: public waitlist signup |
 | `/api/admin/waitlist/[id]/approve` | POST: approve user, generate invite code, send Resend email |
-| `/api/analysis` | GET: active product list · POST: run Breakerz Sayz analysis |
+| `/api/analysis` | GET: active product list · POST: run BreakIQ Sayz analysis |
 | `/api/pricing` | Live pricing endpoint (Supabase + CardHedger, 24h cache) |
 | `/api/admin/parse-checklist` | PDF/CSV checklist parser |
 | `/api/admin/import-checklist` | Upsert players, products, variants |

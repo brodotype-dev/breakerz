@@ -33,7 +33,7 @@ function LoginForm() {
           <div className="h-1 bg-[oklch(0.28_0.08_250)]" />
           <div className="p-8 space-y-5">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.15em] text-muted-foreground mb-1">Card Breakerz</p>
+              <p className="text-xs font-black uppercase tracking-[0.15em] text-muted-foreground mb-1">BreakIQ</p>
               <h1 className="text-xl font-bold">Admin</h1>
             </div>
 

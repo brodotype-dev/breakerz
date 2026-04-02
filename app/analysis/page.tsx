@@ -176,7 +176,7 @@ export default function AnalysisPage() {
                     WebkitTextFillColor: 'transparent',
                   }}
                 >
-                  Breakerz Sayz
+                  BreakIQ Sayz
                 </h1>
                 <Sparkles className="w-6 h-6 animate-pulse" style={{ color: 'var(--badge-icon)' }} />
               </div>

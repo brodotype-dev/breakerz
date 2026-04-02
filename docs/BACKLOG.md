@@ -1,4 +1,4 @@
-# Card Breakerz — Backlog
+# BreakIQ — Backlog
 
 Consolidated list of known work, organized by priority. Items pulled from the Social Currency PRD, CLAUDE.md known gaps, and open questions surfaced during development.
 
@@ -43,7 +43,7 @@ In staging Supabase dashboard: Auth → Users → Add user, then seed `profiles`
 
 ### Phase 4 — Consumer Buzz Indicators on Break Page
 **Effort:** ~0.5 days
-**Why now:** Phases 1–3 are live. The data exists in the DB. The break page currently shows none of it — buyers see no signal that a player is hot/cold/flagged until they run Breakerz Sayz. Phase 4 closes that gap.
+**Why now:** Phases 1–3 are live. The data exists in the DB. The break page currently shows none of it — buyers see no signal that a player is hot/cold/flagged until they run BreakIQ Sayz. Phase 4 closes that gap.
 
 - `components/breakerz/TeamSlotsTable.tsx`: add up/down arrow (↑↓) on team rows where `effective_score > 0.1` or `< -0.1`
 - `components/breakerz/TeamSlotsTable.tsx`: show purple ★ badge for icon-tier players on the team
@@ -54,7 +54,7 @@ In staging Supabase dashboard: Auth → Users → Add user, then seed `profiles`
 
 ---
 
-### Breakerz Bets Decay / Expiry Policy
+### BreakIQ Bets Decay / Expiry Policy
 **Effort:** ~0.5 days
 **Why:** `breakerz_score` has no expiry. A B-score set in March will still be affecting slot costs in June unless manually cleared. Either add a `breakerz_score_set_at` timestamp + auto-decay, or add a visible "set X days ago" indicator in the Debrief UI so admins know to refresh stale scores.
 
@@ -72,7 +72,7 @@ In staging Supabase dashboard: Auth → Users → Add user, then seed `profiles`
 
 ---
 
-### Baseline Fair Value in Breakerz Sayz
+### Baseline Fair Value in BreakIQ Sayz
 **Effort:** ~0.5 days
 **Why:** When `buzz_score` or `breakerz_score` adjusts fair value, buyers currently see the adjusted number with no indication of what the "raw" model says. Showing both (e.g., "Fair value: $42 · Baseline: $38 without signal adjustment") adds transparency and trust.
 
@@ -177,7 +177,7 @@ These need a decision before the relevant work can be scoped or started.
 |---|---|---|
 | 1 | **Score decay:** Should `buzz_score` auto-decay between pipeline runs (-20%/day), or persist until overwritten? Daily pipeline may make this moot. | Phase 5 design |
 | 2 | **Component columns:** Store `c_score`, `s_score`, `p_score` separately for auditability, or just write composite to `buzz_score`? Separate = better debugging, more schema. | Phase 5 |
-| 3 | **Breakerz Bets expiry:** Decay automatically or show "set N days ago" indicator + manual refresh? | Decay/expiry item above |
+| 3 | **BreakIQ Bets expiry:** Decay automatically or show "set N days ago" indicator + manual refresh? | Decay/expiry item above |
 | 4 | **Icon process:** Who can designate icon status? Criteria? Recommend: both Brody + Kyle must agree, reviewed once per product cycle. | Ongoing |
 | 5 | **Risk flag style guide:** Notes are consumer-facing. Define: past tense, factual, no speculation, source + date. E.g., *"Suspended 80 games for PED violation (MLB, March 2026)."* | Admin UX |
 | 6 | **Controversy vs. cold:** Player has a negative Risk Flag but positive buzz (dark curiosity buying). Show both? Let Claude decide in narrative? Likely: show both. | Phase 3 follow-up |
@@ -259,7 +259,7 @@ A content layer for collectors who are new to the hobby or learning to evaluate 
 
 **What this enables:**
 - SEO surface area — "how to grade cards," "what is a group break," etc. are high-intent hobby searches
-- Reduces buyer friction on Breakerz Sayz — a new collector who doesn't understand EV can click through to learn before buying
+- Reduces buyer friction on BreakIQ Sayz — a new collector who doesn't understand EV can click through to learn before buying
 - Trust signal — demonstrates expertise, not just a calculator
 
 ---

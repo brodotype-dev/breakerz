@@ -1,4 +1,4 @@
-# Card Breakerz Design System Export
+# BreakIQ Design System Export
 **Version 2.0 - Vibrant Sports Market Edition**  
 Last Updated: March 26, 2026
 
@@ -6,7 +6,7 @@ Last Updated: March 26, 2026
 
 ## 🎨 Design Philosophy
 
-Card Breakerz has evolved from a dark Bloomberg-inspired terminal aesthetic to a vibrant, energetic sports-market design that maintains analytical credibility. The system balances excitement with professionalism, using bold colors, glowing effects, and elevated components while preserving data clarity.
+BreakIQ has evolved from a dark Bloomberg-inspired terminal aesthetic to a vibrant, energetic sports-market design that maintains analytical credibility. The system balances excitement with professionalism, using bold colors, glowing effects, and elevated components while preserving data clarity.
 
 ---
 
@@ -772,7 +772,7 @@ Potential additions to consider:
 
 ## 📞 Support & Questions
 
-This design system was created for Card Breakerz using Figma Make.
+This design system was created for BreakIQ using Figma Make.
 
 For questions about implementation or extending the system, refer to:
 - Component files in `/src/app/components/`

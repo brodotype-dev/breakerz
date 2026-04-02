@@ -21,7 +21,7 @@ Social currency closes that gap in both directions: upward momentum *and* downwa
 
 Add a forward-looking signal layer on top of the EV model that reflects real-world demand — both hype and decline — before it hits sold prices.
 
-Primary user: the **consumer** on Breakerz Sayz evaluating whether a slot price is fair. A team with elevated buzz should be harder to call a BUY; a team with a key player on injured reserve should surface a risk flag.
+Primary user: the **consumer** on BreakIQ Sayz evaluating whether a slot price is fair. A team with elevated buzz should be harder to call a BUY; a team with a key player on injured reserve should surface a risk flag.
 
 Secondary user: the **breaker** setting slot prices. Social signal helps price fairly without getting burned by a player's stock crashing mid-break cycle.
 
@@ -34,19 +34,19 @@ Secondary user: the **breaker** setting slot prices. Social signal helps price f
 | `buzz_score` column on `player_products` | ✅ Deployed | Migration 20260324180000 |
 | `buzz_score` read by engine | ✅ Wired | `lib/engine.ts` — but always null/0 until populated |
 | `breakerz_score` + `breakerz_note` columns | ✅ Deployed | Migration 20260324200000 |
-| Breakerz Bets Debrief admin UI | ✅ Built | `/admin/products/[id]` — conversational input, review table, saves to DB |
+| BreakIQ Bets Debrief admin UI | ✅ Built | `/admin/products/[id]` — conversational input, review table, saves to DB |
 | `breakerz_score` read by engine | ✅ Wired | `effective_score = clamp(buzz_score + breakerz_score, -0.9, 1.0)` |
-| Breakerz Bets callout in Breakerz Sayz | ✅ Built | Editorial notes passed to Claude prompt; scores affect fair value |
+| BreakIQ Bets callout in BreakIQ Sayz | ✅ Built | Editorial notes passed to Claude prompt; scores affect fair value |
 | `is_icon` flag on `players` | ✅ Deployed | Migration 20260324210000 |
 | Icon engine guard | ✅ Built | `is_icon = true` → effectiveScore forced to 0 |
 | Icon admin toggle | ✅ Built | Purple ★ button on `/admin/products/[id]/players` |
-| Icon callout in Breakerz Sayz | ✅ Built | Purple "★ Icon" badge on key players list |
+| Icon callout in BreakIQ Sayz | ✅ Built | Purple "★ Icon" badge on key players list |
 | `player_risk_flags` table | ✅ Deployed | Migration 20260324210000 — soft-delete pattern |
 | Risk flag admin UI | ✅ Built | ⚑ Flag button per player — type + note, × to clear |
-| Risk flag display in Breakerz Sayz | ✅ Built | Red ⚑ banners per active flag; passed to Claude prompt |
+| Risk flag display in BreakIQ Sayz | ✅ Built | Red ⚑ banners per active flag; passed to Claude prompt |
 | `is_high_volatility` on `player_products` | ✅ Deployed | Migration 20260324210000 |
 | High Volatility admin toggle | ✅ Built | Amber ⚡ button on `/admin/products/[id]/players` |
-| High Volatility display in Breakerz Sayz | ✅ Built | Amber ⚡ advisory block in result card |
+| High Volatility display in BreakIQ Sayz | ✅ Built | Amber ⚡ advisory block in result card |
 | Buzz indicators on Team Slots / Player table | ❌ Not built | Phase 4 |
 | C-score (CardHedger top-movers) | ❌ Not built | Phase 5 — needs Kyle to confirm top-movers response structure |
 | P-score (Reddit sentiment) | ❌ Not built | Phase 6 — needs Reddit API key |
@@ -68,7 +68,7 @@ hobbyWeight = hobbyEVPerBox × (1 + effective_score)
 ```
 
 - **`buzz_score`** — the automated composite output (C + S + P layers). Written by the scheduled pipeline. When no pipeline exists, this is null/0 and has no effect.
-- **`breakerz_score`** — the editorial layer (B-score). Written via the Breakerz Bets Debrief admin UI. Always human-curated, never automated.
+- **`breakerz_score`** — the editorial layer (B-score). Written via the BreakIQ Bets Debrief admin UI. Always human-curated, never automated.
 
 They add additively so neither can fully override the other. The combined value is clamped to [-0.9, +1.0] to prevent zero/negative weights.
 
@@ -147,7 +147,7 @@ Injury status → auto-drafts a pending Risk Flag for admin review (never auto-p
 
 Permanent human-curated layer. Coexists with automation forever — it captures what no API can: breaker conversations, insider chatter, pattern recognition, upcoming YouTube drops.
 
-**Input mechanism:** Breakerz Bets Debrief (✅ built)
+**Input mechanism:** BreakIQ Bets Debrief (✅ built)
 - Admin pastes a market narrative in natural language
 - Claude parses against the product's full player roster, fuzzy-matches names (e.g., "Wemby" → "Victor Wembanyama")
 - Returns suggested scores (-0.5 to +0.5) and drafted reason notes for admin review
@@ -156,7 +156,7 @@ Permanent human-curated layer. Coexists with automation forever — it captures 
 
 **Score range: -0.5 to +0.5** — editorial opinion modifies the signal, doesn't dominate it.
 
-**Consumer label:** "Breakerz Bets" — displayed as a distinct callout in Breakerz Sayz with the reason note. Not an algorithm output. The team's read, attributed to the team.
+**Consumer label:** "BreakIQ Bets" — displayed as a distinct callout in BreakIQ Sayz with the reason note. Not an algorithm output. The team's read, attributed to the team.
 
 ---
 
@@ -213,7 +213,7 @@ S-score is null for pre-debut players. The composite rebalances:
 | Rookie (debut season, < 20 games) | C × 0.55 + P × 0.20 (S downweighted) |
 | Draft pick / college (pre-debut) | C × 0.60 + P × 0.40 (S excluded) |
 
-Prospects often have the highest P-score of anyone in the product — draft buzz, combine momentum, mock draft movement. The absence of S-score doesn't mean low signal; it means different signal. Claude's Breakerz Sayz prompt should know which regime it's in and frame the analysis accordingly.
+Prospects often have the highest P-score of anyone in the product — draft buzz, combine momentum, mock draft movement. The absence of S-score doesn't mean low signal; it means different signal. Claude's BreakIQ Sayz prompt should know which regime it's in and frame the analysis accordingly.
 
 ---
 
@@ -274,10 +274,10 @@ The `breakerz_score` data is collected but inert. This phase makes it real.
 - `app/api/pricing/route.ts`: add `breakerz_score, breakerz_note` to player_products select
 - `app/api/analysis/route.ts`: same select update + pass to Claude prompt
 
-**1b. Breakerz Sayz surfaces Breakerz Bets callout**
-- When any player on the selected team has `breakerz_score != null`, show a distinct "Breakerz Bets" block in the result card
+**1b. BreakIQ Sayz surfaces BreakIQ Bets callout**
+- When any player on the selected team has `breakerz_score != null`, show a distinct "BreakIQ Bets" block in the result card
 - Display the player name + reason note
-- Pass to Claude prompt: `"Breakerz Bets on [player]: [note]"` so the AI narrative can reference it
+- Pass to Claude prompt: `"BreakIQ Bets on [player]: [note]"` so the AI narrative can reference it
 
 **Files:** `lib/engine.ts`, `app/api/pricing/route.ts`, `app/api/analysis/route.ts`, `app/analysis/page.tsx`
 
@@ -289,7 +289,7 @@ The `breakerz_score` data is collected but inert. This phase makes it real.
 **2a.** Migration: `is_icon BOOLEAN` on `players`
 **2b.** Engine: `is_icon` guard — skip buzz multiplier when true
 **2c.** Admin: `is_icon` checkbox on player management page (`/admin/products/[id]/players`)
-**2d.** Breakerz Sayz: icon callout in result card + Claude prompt note
+**2d.** BreakIQ Sayz: icon callout in result card + Claude prompt note
 **2e.** `app/api/pricing/route.ts`: include `player.is_icon` in select
 
 **Files:** migration, `lib/engine.ts`, `app/api/pricing/route.ts`, player management page, `app/analysis/page.tsx`, `app/api/analysis/route.ts`
@@ -302,7 +302,7 @@ The `breakerz_score` data is collected but inert. This phase makes it real.
 **3a.** Migrations: `player_risk_flags` table + `is_high_volatility` on `player_products`
 **3b.** Admin: risk flag add/edit/clear UI on player management page
 **3c.** Admin: `is_high_volatility` toggle on player management page
-**3d.** Breakerz Sayz: risk flag banners (red ⚑) + high volatility advisory (⚡) in result card; pass flags to Claude prompt
+**3d.** BreakIQ Sayz: risk flag banners (red ⚑) + high volatility advisory (⚡) in result card; pass flags to Claude prompt
 **3e.** Break page Team Slots: flag icon on team row + player row tooltip
 
 **Files:** 2 migrations, player management page, `app/api/analysis/route.ts`, `app/analysis/page.tsx`, `components/breakerz/TeamSlotsTable.tsx`
@@ -365,12 +365,12 @@ The `breakerz_score` data is collected but inert. This phase makes it real.
 
 1. **Score decay:** Should `buzz_score` auto-decay toward 0.0 between pipeline runs (e.g., -20% per day without a refresh)? Or persist until overwritten? Daily pipeline runs may make this moot.
 2. **Component score columns:** Store `c_score`, `s_score`, `p_score` separately for auditability, or just write composite to `buzz_score`? Separate columns are better for debugging but add schema complexity. Decide before Phase 5.
-3. **Breakerz Bets decay:** `breakerz_score` has no expiry. Should a B-score set today still be active in 3 months? Need a `breakerz_score_set_at` timestamp and a decay or expiry policy.
-4. **Transparency to buyer:** When fair value is influenced by `buzz_score` or `breakerz_score`, should Breakerz Sayz show the "baseline" fair value (without adjustments) alongside the adjusted value? Lets the buyer see how much signal moved the number.
+3. **BreakIQ Bets decay:** `breakerz_score` has no expiry. Should a B-score set today still be active in 3 months? Need a `breakerz_score_set_at` timestamp and a decay or expiry policy.
+4. **Transparency to buyer:** When fair value is influenced by `buzz_score` or `breakerz_score`, should BreakIQ Sayz show the "baseline" fair value (without adjustments) alongside the adjusted value? Lets the buyer see how much signal moved the number.
 5. **Icon process:** Who decides icon status? What are the criteria? Suggest: admin-only designation, requires approval from both Brody and Kyle, reviewed once per product cycle.
 6. **Risk flag style guide:** Notes appear on a consumer-facing product. Need to define: past tense, factual, no speculation, include source/date in parentheses. E.g., *"Suspended 80 games for PED violation (MLB, March 2026)."*
 7. **Controversy vs. cold:** A scandal player may have negative Risk Flag but positive market demand (dark curiosity buying). How do we display when buzz and flag conflict? Likely: show both, let Claude contextualize in the narrative.
-8. ~~**`breakerz_score` in the pricing API:** The `/api/pricing` GET endpoint (used by the break page) should also include `breakerz_score` in the player data so the engine on the break page benefits, not just Breakerz Sayz.~~ ✅ Resolved — both GET and POST `/api/pricing` now select `breakerz_score`.
+8. ~~**`breakerz_score` in the pricing API:** The `/api/pricing` GET endpoint (used by the break page) should also include `breakerz_score` in the player data so the engine on the break page benefits, not just BreakIQ Sayz.~~ ✅ Resolved — both GET and POST `/api/pricing` now select `breakerz_score`.
 
 ---
 
@@ -385,8 +385,8 @@ The `breakerz_score` data is collected but inert. This phase makes it real.
 
 ## Success Criteria
 
-- **Phase 1:** A Breakerz Bet set via the debrief UI visibly shifts that player's team slot cost on the break page and changes the Breakerz Sayz fair value.
-- **Phase 3:** Admin can flag a player as injured in under 60 seconds. The flag appears in Breakerz Sayz output for that team.
+- **Phase 1:** A Breakerz Bet set via the debrief UI visibly shifts that player's team slot cost on the break page and changes the BreakIQ Sayz fair value.
+- **Phase 3:** Admin can flag a player as injured in under 60 seconds. The flag appears in BreakIQ Sayz output for that team.
 - **Phase 5:** C-score updates automatically once daily. A player appearing in CardHedger's top-movers surfaces a measurable positive buzz_score within 24 hours.
 - **Phase 7:** An NBA injury detected via stats API auto-drafts a Risk Flag for admin review within 24 hours.
 
@@ -398,8 +398,8 @@ The `breakerz_score` data is collected but inert. This phase makes it real.
 |---|---|
 | `lib/engine.ts` | Pricing formula — reads `buzz_score` + `breakerz_score` |
 | `app/api/pricing/route.ts` | Select includes `buzz_score`, `breakerz_score`, `breakerz_note` |
-| `app/api/analysis/route.ts` | Breakerz Sayz — passes social signals to Claude prompt |
-| `app/analysis/page.tsx` | Breakerz Sayz consumer UI |
+| `app/api/analysis/route.ts` | BreakIQ Sayz — passes social signals to Claude prompt |
+| `app/analysis/page.tsx` | BreakIQ Sayz consumer UI |
 | `app/admin/products/[id]/BreakerzBetsDebrief.tsx` | B-score conversational input ✅ |
 | `app/api/admin/parse-bets-debrief/route.ts` | B-score Claude parser ✅ |
 | `lib/cardhedger.ts` | CardHedger API client — needs top-movers + price-updates |

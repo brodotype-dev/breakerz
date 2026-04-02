@@ -56,7 +56,7 @@ export default async function BreakerzBetzPage() {
             </div>
             <div>
               <h1 className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>
-                Breakerz Betz
+                BreakIQ Bets
               </h1>
               <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
                 AI-powered market intelligence — scores apply across all products

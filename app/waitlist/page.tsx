@@ -69,7 +69,7 @@ export default function WaitlistPage() {
           <div className="p-8 space-y-6">
             <div>
               <p className="text-xs font-black uppercase tracking-[0.15em] mb-1" style={{ color: 'var(--accent-blue)' }}>
-                Card Breakerz
+                BreakIQ
               </p>
               <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
                 Request beta access

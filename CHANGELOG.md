@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Card Breakerz are documented here.
+All notable changes to BreakIQ are documented here.
 Format: newest first. Each entry covers what changed, why, and any important technical notes.
 
 ---
@@ -168,13 +168,13 @@ Major visual overhaul — "Bloomberg terminal for card breaks" direction applied
 **`app/page.tsx` — Homepage**
 - Full redesign: sticky terminal status bar (live count, pre-release count, version), hero section with cards photo background, gradient title, CTA buttons ("Analyze a Break" / "Browse Products"), feature pills
 - Products section: terminal-bordered card grid with sport-specific gradient accents, pre-release state, last updated timestamp
-- Breakerz Sayz promo card at bottom of hero area
+- BreakIQ Sayz promo card at bottom of hero area
 - Hero background: Unsplash sports card image at 20% opacity as base layer under gradient/dot overlays
 
 **`app/break/[slug]/page.tsx` — Break analysis page**
 - Redesigned with terminal aesthetic: dark header, tabbed TeamSlots/PlayerSlots with SegmentedControl-style tabs, DashboardConfig panel
 
-**`app/analysis/page.tsx` — Breakerz Sayz**
+**`app/analysis/page.tsx` — BreakIQ Sayz**
 - Full redesign to match Figma Make two-column layout
 - Hero header: dark gradient with dot pattern, TrendingUp icon, gradient title, Instant Analysis / Market Intelligence / Social Signals feature pills
 - Left column: "1 Configure Your Break" — `ElevatedCard` with `SegmentedControl` (Hobby/BD), `CounterInput` for cases, styled native selects for product/team, large price input, `LargeCTAButton`
@@ -198,9 +198,9 @@ Major visual overhaul — "Bloomberg terminal for card breaks" direction applied
 
 ## 2026-03-24 (6)
 
-### Social Currency — Breakerz Bets Debrief (B-score input)
+### Social Currency — BreakIQ Bets Debrief (B-score input)
 
-- New admin section on `/admin/products/[id]` — **Breakerz Bets Debrief**: conversational B-score input for the editorial scoring layer
+- New admin section on `/admin/products/[id]` — **BreakIQ Bets Debrief**: conversational B-score input for the editorial scoring layer
 - Flow: admin pastes a free-form market narrative ("Wemby is running hot, Cade's been quiet…") → Claude Haiku parses against the product's full player roster with fuzzy name matching → returns suggested scores (-0.5 to +0.5) and drafted reason notes → admin reviews in a table, edits scores/notes, unchecks any players to skip → clicks "Apply" → writes to DB
 - Review table: pill-selector for score (−0.5, −0.25, 0, +0.25, +0.5), editable reason note, include/exclude checkbox; low-confidence matches (< 0.7) flagged amber "Review"
 - Hallucination guard: API validates all returned `player_product_id`s against the actual roster — any IDs Claude fabricated are filtered out before returning to the client
@@ -215,9 +215,9 @@ Major visual overhaul — "Bloomberg terminal for card breaks" direction applied
 
 ## 2026-03-24 (7)
 
-### Social Currency — Phase 1: Breakerz Bets wired into engine; Phase 2: Icon tier; Phase 3: Risk flags + high volatility
+### Social Currency — Phase 1: BreakIQ Bets wired into engine; Phase 2: Icon tier; Phase 3: Risk flags + high volatility
 
-**Phase 1 — Breakerz Bets live**
+**Phase 1 — BreakIQ Bets live**
 - `lib/engine.ts`: engine now reads both `buzz_score` (automated composite) and `breakerz_score` (editorial), combining them as `effective_score = clamp(buzz_score + breakerz_score, -0.9, 1.0)` before applying the slot cost multiplier. Data was already being collected; now it affects actual prices.
 - `app/api/analysis/route.ts` + `app/api/pricing/route.ts`: both select `breakerz_score` from DB; Sayz passes editorial notes to Claude prompt when set
 - Migration `20260324200000_add_breakerz_bets.sql` was already applied in session (6)
@@ -243,17 +243,17 @@ Major visual overhaul — "Bloomberg terminal for card breaks" direction applied
 
 ## 2026-03-24 (5)
 
-### Breakerz Sayz — rename + case count input + homepage CTA
-- Renamed feature from "Breaker Says" → **"Breakerz Sayz"** everywhere (page title, header, nav links)
+### BreakIQ Sayz — rename + case count input + homepage CTA
+- Renamed feature from "Breaker Says" → **"BreakIQ Sayz"** everywhere (page title, header, nav links)
 - Added **Cases in the break** input on the analysis page (default 10, range 1–50); fair value now scales correctly for single-case vs multi-case group breaks
 - API (`POST /api/analysis`) accepts `numCases` param; feeds into `BreakConfig.hobbyCases` / `bdCases` — previously always assumed 10 cases
-- Homepage: replaced buried text link with a full-width promo strip between header and products — red "Breakerz Sayz" badge, tagline, and prominent "Check a deal →" CTA button
+- Homepage: replaced buried text link with a full-width promo strip between header and products — red "BreakIQ Sayz" badge, tagline, and prominent "Check a deal →" CTA button
 
 ---
 
 ## 2026-03-24 (4)
 
-### Breakerz Sayz — AI break slot analysis page
+### BreakIQ Sayz — AI break slot analysis page
 - New public page at `/analysis` — "Is this break worth it?"
 - Flow: select product → select team → enter break type + case count + what the breaker is charging → Run Analysis
 - Calls Claude Haiku with full player context (EV, RC flags, fair value, ask price) → returns 2–3 sentence BUY/WATCH/PASS narrative

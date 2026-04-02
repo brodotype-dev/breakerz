@@ -1,4 +1,4 @@
--- Card Breakerz — Supabase Schema
+-- BreakIQ — Supabase Schema
 -- Run this in the Supabase SQL editor: https://app.supabase.com > SQL Editor
 
 -- ─────────────────────────────────────────────

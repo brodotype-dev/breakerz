@@ -253,7 +253,7 @@ export default async function ProductDashboardPage({ params }: PageProps) {
         </Section>
 
         {/* Breakerz Bets debrief */}
-        <Section title="Breakerz Bets" accent="var(--gradient-purple)">
+        <Section title="BreakIQ Bets" accent="var(--gradient-purple)">
           <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
             Tell us what you{"'"}re seeing in the market — Claude extracts player mentions, scores sentiment, and drafts reason notes for your review.
           </p>

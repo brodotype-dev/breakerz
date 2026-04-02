@@ -1,4 +1,4 @@
-# Card Breakerz — Claude Context
+# BreakIQ — Claude Context
 
 Sports card break slot pricing and analysis tool. Built with Kyle (Town & Line / CardPulse).
 
@@ -21,7 +21,7 @@ All core features and Social Currency Phases 1–4 are live at [breakerz.vercel.
 3. CardHedger matching — Claude-powered (Haiku), chunked polling, manufacturer knowledge system, ~76–90%+ auto-match rate depending on product
 4. Odds import — coordinate-aware Topps PDF parser; standalone upload on product dashboard
 5. Product readiness dashboard — match %, odds status, unmatched variants list, re-run matching
-6. Breakerz Bets debrief — natural language → Claude parses player mentions + sentiment → admin review table → saves B-scores to DB
+6. BreakIQ Bets debrief — natural language → Claude parses player mentions + sentiment → admin review table → saves B-scores to DB
 
 **Auth + Waitlist** ✅
 - Admin auth via Supabase Auth (email + password, role-gated via `user_roles` table)
@@ -199,12 +199,12 @@ app/
   waitlist/            — Public beta waitlist signup
   auth/signup/         — Consumer signup placeholder (Phase 3)
   break/[slug]/        — Break analysis page (auth required)
-  analysis/            — Breakerz Sayz deal analyzer (auth required)
+  analysis/            — BreakIQ Sayz deal analyzer (auth required)
   admin/
     login/             — Email + password login (Supabase Auth)
     waitlist/          — Waitlist management (approve + invite)
     products/          — Product listing
-    products/[id]/     — Product readiness dashboard + Breakerz Bets debrief
+    products/[id]/     — Product readiness dashboard + BreakIQ Bets debrief
       BreakerzBetsDebrief.tsx  — Debrief UI (narrative → Claude → review table → save)
       OddsUpload.tsx           — Standalone odds PDF upload
       RunMatchingButton.tsx    — Re-run CardHedger matching
