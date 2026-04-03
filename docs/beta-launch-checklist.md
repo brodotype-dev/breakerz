@@ -6,16 +6,16 @@ Work through these in order. Each section is a logical group — don't move to t
 
 ## 1. Domain & Email
 
-- [ ] **name.com — email forwarding**
+- [x] **name.com — email forwarding**
   - Create forward: `hello@getbreakiq.com` → your personal email
   - Create forward: `invites@getbreakiq.com` → your personal email
 
-- [ ] **Resend — verify getbreakiq.com domain**
+- [x] **Resend — verify getbreakiq.com domain**
   - Resend dashboard → Domains → Add Domain → `getbreakiq.com`
   - Add the DNS records Resend provides (MX, TXT, DKIM) in name.com DNS
   - Wait for verification (usually a few minutes)
 
-- [ ] **Vercel — update FROM_EMAIL**
+- [x] **Vercel — update FROM_EMAIL**
   - Change `FROM_EMAIL` from `invites@breakerz.vercel.app` → `invites@getbreakiq.com`
   - Apply to Production, Preview, and Development environments
 
@@ -23,18 +23,18 @@ Work through these in order. Each section is a logical group — don't move to t
 
 ## 2. Custom Domain on Vercel
 
-- [ ] **Vercel — add custom domain**
+- [x] **Vercel — add custom domain**
   - Project Settings → Domains → Add `getbreakiq.com` and `www.getbreakiq.com`
   - Vercel will give you DNS records to add (A record or CNAME)
 
-- [ ] **name.com — point DNS to Vercel**
+- [x] **name.com — point DNS to Vercel**
   - Add the A record / CNAME Vercel provides
   - DNS propagation can take up to 24h but usually minutes
 
-- [ ] **Vercel — update NEXT_PUBLIC_APP_URL**
+- [x] **Vercel — update NEXT_PUBLIC_APP_URL**
   - Change from `https://breakerz.vercel.app` → `https://getbreakiq.com` in Production environment
 
-- [ ] **Supabase — update redirect URLs (both projects)**
+- [x] **Supabase — update redirect URLs (both projects)**
   - Production project: Auth → URL Configuration → Site URL → `https://getbreakiq.com`
   - Add `https://getbreakiq.com/auth/callback` to Redirect URLs
   - Staging project: keep as-is (`http://localhost:3000` / staging URL)
@@ -43,14 +43,14 @@ Work through these in order. Each section is a logical group — don't move to t
 
 ## 3. Google OAuth
 
-- [ ] **Google Cloud Console — OAuth consent screen**
+- [x] **Google Cloud Console — OAuth consent screen**
   - APIs & Services → OAuth consent screen
   - User type: External
   - App name: `BreakIQ`, support email, developer email
   - Scopes: email, profile, openid (defaults)
   - Add your own email as a test user for now
 
-- [ ] **Google Cloud Console — create OAuth credentials**
+- [x] **Google Cloud Console — create OAuth credentials**
   - APIs & Services → Credentials → Create → OAuth 2.0 Client ID
   - Application type: Web application
   - Authorized redirect URIs:
@@ -58,7 +58,7 @@ Work through these in order. Each section is a logical group — don't move to t
     - `https://isqxqsznbozlipjvttha.supabase.co/auth/v1/callback` (staging)
   - Save the Client ID and Client Secret
 
-- [ ] **Supabase — enable Google provider (both projects)**
+- [x] **Supabase — enable Google provider (both projects)**
   - Auth → Providers → Google → enable, paste Client ID + Secret → Save
   - Do this for both production and staging Supabase projects
 
@@ -66,11 +66,11 @@ Work through these in order. Each section is a logical group — don't move to t
 
 ## 4. Supabase Cleanup
 
-- [ ] **Staging — create admin user**
+- [x] **Staging — create admin user**
   - Staging Supabase dashboard → Auth → Users → Add user
   - SQL editor: insert into `profiles` + `user_roles` (role: 'admin')
 
-- [ ] **Production — verify migration repair was applied**
+- [x] **Production — verify migration repair was applied**
   - Confirm `20260101000000_initial_schema.sql` is marked as applied
   - Run: `supabase link --project-ref zucuzhtiitibsvryenpi && supabase migration list`
 
@@ -78,7 +78,7 @@ Work through these in order. Each section is a logical group — don't move to t
 
 ## 5. Vercel Cleanup
 
-- [ ] **Remove dead env vars from Production**
+- [x] **Remove dead env vars from Production**
   - Delete `ADMIN_PASSWORD`
   - Delete `ADMIN_SESSION_SECRET`
 
@@ -86,11 +86,7 @@ Work through these in order. Each section is a logical group — don't move to t
 
 ## 6. Deploy & Smoke Test
 
-- [ ] **Push and deploy**
-  ```bash
-  git push origin main
-  vercel --prod --yes
-  ```
+- [x] **Push and deploy** *(completed 2026-04-03)*
 
 - [ ] **Test waitlist flow (incognito)**
   - Go to `getbreakiq.com/waitlist` → submit → confirm success state
