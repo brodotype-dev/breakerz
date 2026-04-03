@@ -6,6 +6,7 @@ Sports card break slot pricing and analysis tool. Built with Kyle (Town & Line /
 - [CHANGELOG.md](./CHANGELOG.md) — full feature history
 - [docs/BACKLOG.md](./docs/BACKLOG.md) — prioritized work queue
 - [docs/cardhedger-matching.md](./docs/cardhedger-matching.md) — CH matching architecture
+- [docs/cardhedger-questions.md](./docs/cardhedger-questions.md) — running list of questions for the CH team
 - [docs/beta-launch-checklist.md](./docs/beta-launch-checklist.md) — pre-launch todo list
 
 Update CHANGELOG.md at the end of every session with what changed and why.

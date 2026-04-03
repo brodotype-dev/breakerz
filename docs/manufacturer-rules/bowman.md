@@ -2,12 +2,52 @@
 
 Covers all Bowman and Topps baseball products. Updated as new patterns are discovered during import and matching runs.
 
-**Last updated:** 2026-04-01
-**Products imported so far:** 2025 Bowman Draft, 2025 Bowman Draft Chrome, 2025 Bowman's Best Baseball
+**Last updated:** 2026-04-02
+**Products imported so far:** 2025 Bowman Draft, 2025 Bowman Draft Chrome, 2025 Bowman's Best Baseball, 2025 Bowman Chrome Baseball
 
 ---
 
 ## XLSX Structure Quirks
+
+### Index sheets to skip (XLSX_SKIP_SHEETS)
+
+Some Bowman/Topps XLSX files contain aggregate/index sheets that should not be imported as cards. These are in the `XLSX_SKIP_SHEETS` set in `lib/checklist-parser.ts`:
+
+| Sheet name | Why skip |
+|---|---|
+| `Full Checklist` | Master index of all cards across all sheets — duplicates every row |
+| `NBA Teams` | Team index sheet for basketball products — different column layout |
+| `College Teams` | College index sheet — different column layout |
+| `Teams` | MLB team index for Bowman Chrome Baseball — different column layout (player names land in `team` field if processed) |
+| `MLB Teams` | Variant name for the Teams index sheet |
+| `Topps Master Checklist` | Cross-product master checklist covering ALL Topps products — importing it bloats the players table with thousands of unrelated players |
+
+**Discovered during 2025 Bowman Chrome Baseball import (2026-04-02):**
+- The `Teams` sheet (857 rows) caused `players.team` to be populated with player names instead of MLB teams
+- The `Topps Master Checklist` sheet (not specific to this product) added ~16,000 extra players before it was added to the skip list
+- Recovery: delete all `player_products` for the affected product + orphaned players, then re-import
+
+### XLSX column layout (Bowman Chrome Baseball)
+
+Confirmed column order from 2025 Bowman Chrome Baseball XLSX:
+
+| col | field | example |
+|---|---|---|
+| 0 | card number or code | `1`, `"BCP-153"`, `"CPA-AC"` |
+| 1 | player name (no trailing comma) | `"Jacob Wilson"` |
+| 2 | team or org | `"Athletics"`, `"San Francisco Giants"` |
+| 3 | flag (optional) | `"RC"`, `"Rookie"` |
+
+Note: Bowman Draft XLSX uses trailing commas on player names (`"Aaron Judge,"`); Bowman Chrome Baseball does not. The parser strips trailing commas from both player name and team fields defensively.
+
+**Sheet names in 2025 Bowman Chrome Baseball:**
+- `Base` — base set
+- `Prospects` — Bowman Chrome Prospects
+- `Variations` — short print / image variations
+- `Autographs` — Chrome Autograph Relics
+- `Inserts` — insert sets
+- `Teams` ← skip
+- `Topps Master Checklist` ← skip
 
 ### Team Sets inserts — card code stored as player name
 In Team Sets insert sections of Bowman Draft checklists, the parser stores the **card number as the player name** instead of a real player name.
@@ -160,6 +200,7 @@ Applied in this order before calling `cardMatch()`:
 |---|---|---|
 | Print run in variant name | ✅ Fixed | Stripped in `cleanVariant()` via `/\s*\/\d+\s*/g` |
 | Dual/triple/quad autograph cards (DA-/TA-/QA-/FDA-/FTA-) | ⚠️ Structural limit | Reformulated to code-only queries; CH doesn't reliably match these via code search. ~3-4% of Bowman's Best variants. See BACKLOG for future direction. |
+| `CPA-*` Chrome Prospect Autographs in Bowman Chrome Baseball | ⚠️ Structural limit | CH returns `BCP-*` base card numbers for these players, not CPA codes. No match found via code query. Cards remain unmatched on the product dashboard. |
 | Code-only duplicate rows (BMA-XX, BPA-XX as player_name) | ⚠️ Structural limit | CH doesn't expose `number` field for autograph sets; Tier 1 fails, Tier 2 has no playerName. ~20% of Bowman's Best variants, many are parallel duplicates of already-matched cards. |
 
 ---
@@ -176,6 +217,13 @@ Applied in this order before calling `cardMatch()`:
 | 2026-03-30 | Strip Ping Pong Ball, Bowman Spotlights | ~72% (same — skips were in denominator) |
 | 2026-03-30 | Card-code → search by code, year added to all queries | ~88% |
 | 2026-03-31 | Manufacturer knowledge system live; claudeContext() injected into Haiku prompt | **~95%** |
+
+### 2025 Bowman Chrome Baseball
+
+| Date | Change | Match Rate |
+|---|---|---|
+| 2026-04-02 | First import — discovered Teams + Topps Master Checklist sheets cause data corruption | — |
+| 2026-04-02 | Added Teams + Topps Master Checklist to skip list; re-import with correct XLSX | TBD after matching run |
 
 ### 2025 Bowman's Best Baseball
 

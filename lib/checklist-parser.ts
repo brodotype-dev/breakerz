@@ -450,7 +450,7 @@ export function parseOddsPdf(text: string): ParsedOdds {
 // Sheets skipped: Full Checklist, NBA Teams, College Teams (aggregates/indexes)
 // ---------------------------------------------------------------------------
 
-const XLSX_SKIP_SHEETS = new Set(['Full Checklist', 'NBA Teams', 'College Teams']);
+const XLSX_SKIP_SHEETS = new Set(['Full Checklist', 'NBA Teams', 'College Teams', 'Teams', 'MLB Teams', 'Topps Master Checklist']);
 
 export function parseChecklistXlsx(buffer: Buffer): ParsedChecklist {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -484,7 +484,7 @@ export function parseChecklistXlsx(buffer: Buffer): ParsedChecklist {
       // Data row: [card_number_or_code, player_name, team, flag?]
       const cardNumber = row[0] != null ? String(row[0]).trim() : '';
       const rawName = row[1] != null ? String(row[1]).trim() : '';
-      const team = row[2] != null ? String(row[2]).trim() : undefined;
+      const team = row[2] != null ? String(row[2]).trim().replace(/,\s*$/, '') || undefined : undefined;
       const flag = row[3] != null ? String(row[3]).trim() : '';
 
       if (!rawName) continue;

@@ -288,13 +288,15 @@ Respond with JSON only — no explanation:
 
   const message = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 64,
+    max_tokens: 128,
     messages: [{ role: 'user', content: prompt }],
   }, { timeout: 10_000 });
 
   const text = (message.content[0] as { type: string; text: string }).text.trim();
-  // Strip markdown code fences if present
-  const json = text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+  // Extract JSON object from response — handles markdown fences and trailing explanation text
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  const json = start !== -1 && end > start ? text.slice(start, end + 1) : text;
 
   let parsed: { card_id: string | null; confidence: number };
   try {

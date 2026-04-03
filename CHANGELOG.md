@@ -5,6 +5,33 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-02 — Team Slots bug fix, XLSX parser improvements, CH matching fixes
+
+### Claude JSON parse failures in card matching
+Claude Haiku was occasionally returning explanation text after the JSON object (e.g. `{"card_id": null, "confidence": 0}\n\nThe query specifies...`). The closing fence strip regex `/\n?```$/` failed because the string didn't end with backticks, causing a parse error and unnecessary fallback to the token matcher.
+
+**Fix (`lib/cardhedger.ts`):** Replaced fence-strip regex with `indexOf('{')` / `lastIndexOf('}')` extraction — robust to any wrapping or trailing text. Also bumped `max_tokens` from 64 → 128 so the response isn't truncated mid-fence.
+
+### CardHedger questions doc
+Created `docs/cardhedger-questions.md` — a running list of 13 questions for the CH team across catalog coverage, API behavior, terminology, and partnership. Seeded from real issues hit during 2025 Bowman Chrome Baseball matching (CPA-* autos not in catalog, missing `number` field on autos, multi-player card handling, etc.).
+
+## 2026-04-02 — Team Slots bug fix + XLSX parser improvements
+
+### Team Slots showing player names instead of team names
+The Team Slots table was grouping by `players.team`, which was populated with player names instead of MLB team/college names after importing certain Bowman XLSX files.
+
+**Root cause:** The 2025 Bowman Chrome Baseball XLSX contains two index sheets (`Teams`, `Topps Master Checklist`) with different column layouts or cross-product scope. When processed as regular card data, the `Teams` sheet wrote player names into the `team` field; the `Topps Master Checklist` sheet added ~16,000 unrelated players from all Topps products.
+
+**Fix (`lib/checklist-parser.ts`):**
+- Added `"Teams"`, `"MLB Teams"`, and `"Topps Master Checklist"` to `XLSX_SKIP_SHEETS`
+- Also strips trailing commas from the `team` field (same cleanup already applied to player names)
+
+**Recovery:** Deleted all `player_products` + orphaned players for the affected product via SQL, then re-imported with the corrected parser.
+
+**Documented in:** `docs/manufacturer-rules/bowman.md` — new "Index sheets to skip" section with full sheet inventory for 2025 Bowman Chrome Baseball.
+
+---
+
 ## 2026-03-31 — Auth, Waitlist, Staging Environment
 
 ### Admin auth — replaced cookie password with Supabase Auth
