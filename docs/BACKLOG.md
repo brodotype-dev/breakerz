@@ -2,7 +2,7 @@
 
 Consolidated list of known work, organized by priority. Items pulled from the Social Currency PRD, CLAUDE.md known gaps, and open questions surfaced during development.
 
-**Last updated:** 2026-04-03
+**Last updated:** 2026-04-04
 
 ---
 

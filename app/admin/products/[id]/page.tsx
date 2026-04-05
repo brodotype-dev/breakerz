@@ -6,6 +6,7 @@ import OddsUpload from './OddsUpload';
 import RunMatchingButton from './RunMatchingButton';
 import BreakerzBetsDebrief from './BreakerzBetsDebrief';
 import BreakerComparisonPanel from './BreakerComparisonPanel';
+import PricingBreakdownPanel from './PricingBreakdownPanel';
 
 type PageProps = { params: Promise<{ id: string }> };
 
@@ -292,6 +293,13 @@ export default async function ProductDashboardPage({ params }: PageProps) {
             </div>
           </Section>
         )}
+
+        {/* Pricing Audit */}
+        <PricingBreakdownPanel
+          productId={id}
+          hobbyCaseCost={product.hobby_case_cost}
+          bdCaseCost={product.bd_case_cost}
+        />
 
         {/* Breaker Comparison */}
         <Section title="Breaker Comparison" accent="var(--gradient-purple)">
