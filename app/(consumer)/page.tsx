@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { TrendingUp, ArrowRight, Zap, Target, Sparkles, ChevronRight } from 'lucide-react';
+import { TrendingUp, Zap, Target, Sparkles, ChevronRight, Search } from 'lucide-react';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { Product, Sport } from '@/lib/types';
 
@@ -140,7 +140,7 @@ export default async function HomePage() {
                   <ChevronRight className="w-5 h-5" />
                 </button>
               </Link>
-              <a href="#products">
+              <Link href="/card-lookup">
                 <button
                   className="px-6 py-3 rounded-lg font-semibold text-base flex items-center gap-2 border-2 transition-all hover:scale-105"
                   style={{
@@ -149,10 +149,11 @@ export default async function HomePage() {
                     backgroundColor: 'rgba(59, 130, 246, 0.1)',
                   }}
                 >
-                  Browse Products
-                  <ArrowRight className="w-5 h-5" />
+                  <Search className="w-5 h-5" />
+                  Cert Analysis
+                  <ChevronRight className="w-5 h-5" />
                 </button>
-              </a>
+              </Link>
             </div>
           </div>
 
