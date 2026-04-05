@@ -21,7 +21,30 @@ Work through these in order. Each section is a logical group — don't move to t
 
 ---
 
-## 2. Custom Domain on Vercel
+## 2. Staging Subdomain
+
+- [ ] **name.com — add CNAME for staging**
+  - Add CNAME: `staging` → `cname.vercel-dns.com` (or the A record Vercel provides)
+
+- [ ] **Vercel — assign staging.getbreakiq.com to staging branch**
+  - Project Settings → Domains → Add `staging.getbreakiq.com`
+  - Set Git branch to `staging` (not main)
+
+- [ ] **Vercel — update NEXT_PUBLIC_APP_URL for staging environment**
+  - Change from preview URL → `https://staging.getbreakiq.com`
+  - Apply to Preview environment only
+
+- [ ] **Supabase staging project — update URLs**
+  - Auth → URL Configuration → Site URL → `https://staging.getbreakiq.com`
+  - Add `https://staging.getbreakiq.com/auth/callback` to Redirect URLs
+
+- [ ] **Google Cloud Console — add staging callback URI**
+  - APIs & Services → Credentials → your OAuth client → Authorized redirect URIs
+  - Confirm `https://isqxqsznbozlipjvttha.supabase.co/auth/v1/callback` is present (staging Supabase project)
+
+---
+
+## 3. Custom Domain on Vercel
 
 - [x] **Vercel — add custom domain**
   - Project Settings → Domains → Add `getbreakiq.com` and `www.getbreakiq.com`
@@ -41,7 +64,7 @@ Work through these in order. Each section is a logical group — don't move to t
 
 ---
 
-## 3. Google OAuth
+## 4. Google OAuth
 
 - [x] **Google Cloud Console — OAuth consent screen**
   - APIs & Services → OAuth consent screen
@@ -64,7 +87,7 @@ Work through these in order. Each section is a logical group — don't move to t
 
 ---
 
-## 4. Supabase Cleanup
+## 5. Supabase Cleanup
 
 - [x] **Staging — create admin user**
   - Staging Supabase dashboard → Auth → Users → Add user
@@ -76,7 +99,7 @@ Work through these in order. Each section is a logical group — don't move to t
 
 ---
 
-## 5. Vercel Cleanup
+## 6. Vercel Cleanup
 
 - [x] **Remove dead env vars from Production**
   - Delete `ADMIN_PASSWORD`
@@ -84,7 +107,7 @@ Work through these in order. Each section is a logical group — don't move to t
 
 ---
 
-## 6. Deploy & Smoke Test
+## 7. Deploy & Smoke Test
 
 - [x] **Push and deploy** *(completed 2026-04-03)*
 
@@ -99,7 +122,7 @@ Work through these in order. Each section is a logical group — don't move to t
   - Confirm invite link works and lands on `/auth/signup?code=...`
 
 - [ ] **Test Google OAuth (staging first)**
-  - Use staging URL with a test invite code
+  - Use `staging.getbreakiq.com` with a test invite code
   - Click "Continue with Google" → complete OAuth → confirm redirect to home
   - Confirm `profiles` row created in staging Supabase
   - Confirm waitlist entry marked as `converted`
@@ -109,7 +132,7 @@ Work through these in order. Each section is a logical group — don't move to t
 
 ---
 
-## 7. Before Inviting Real Users
+## 8. Before Inviting Real Users
 
 - [ ] **Google OAuth consent screen — publish the app**
   - While in "Testing" mode, only listed test users can sign in

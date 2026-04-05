@@ -5,6 +5,22 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-03 — Consumer auth gating + nav bar
+
+### Consumer routes were publicly accessible
+`/`, `/break/*`, and `/analysis/*` had no auth protection — anyone with the URL could access everything. The middleware comment noted this was disabled pending Phase 3 OAuth, which is now live.
+
+**Fix:** Added a `(consumer)` Next.js route group wrapping all three routes. The shared layout (`app/(consumer)/layout.tsx`) checks the Supabase session server-side and redirects to `/waitlist` if not authenticated. Middleware updated to also gate these routes at the edge as a first-line defense.
+
+### No visible login/logout UI on consumer pages
+Authenticated users had no way to see their auth state or sign out without manually navigating to `/admin/login`.
+
+**Fix:** Added `ConsumerNav` — a slim sticky header rendered by the consumer layout. Shows the BreakIQ brand and a Sign Out button. For admin/contributor users, also shows a "Consumer View / Admin Portal" mode switcher dropdown. Sign out redirects to `/waitlist` (not `/admin/login`).
+
+**Files changed:** `middleware.ts`, `app/(consumer)/layout.tsx` (new), `app/(consumer)/ConsumerNav.tsx` (new), `app/(consumer)/actions.ts` (new), `app/(consumer)/page.tsx` (moved from `app/page.tsx`), `app/(consumer)/break/[slug]/page.tsx` (moved), `app/(consumer)/analysis/page.tsx` (moved).
+
+---
+
 ## 2026-04-02 — Team Slots bug fix, XLSX parser improvements, CH matching fixes
 
 ### Claude JSON parse failures in card matching

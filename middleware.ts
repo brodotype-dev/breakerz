@@ -45,8 +45,18 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Consumer route gating re-enabled once Phase 3 OAuth is live and
-  // consumers have a way to actually create accounts.
+  // Protect consumer routes — redirect unauthenticated visitors to waitlist
+  // Skipped in local dev so you can work without auth friction
+  const isConsumerRoute =
+    pathname === '/' ||
+    pathname.startsWith('/break') ||
+    pathname.startsWith('/analysis');
+
+  if (isConsumerRoute && !user && process.env.NODE_ENV !== 'development') {
+    const waitlistUrl = request.nextUrl.clone();
+    waitlistUrl.pathname = '/waitlist';
+    return NextResponse.redirect(waitlistUrl);
+  }
 
   return supabaseResponse;
 }
@@ -55,5 +65,8 @@ export const config = {
   matcher: [
     '/admin/:path*',
     '/api/admin/:path*',
+    '/',
+    '/break/:path*',
+    '/analysis/:path*',
   ],
 };

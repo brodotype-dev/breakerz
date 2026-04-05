@@ -44,36 +44,6 @@ export default async function HomePage() {
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--terminal-bg)' }}>
 
-      {/* Status Bar */}
-      <div
-        className="border-b px-6 py-3 flex items-center justify-between backdrop-blur-sm"
-        style={{
-          borderColor: 'var(--terminal-border)',
-          backgroundColor: 'rgba(19, 24, 32, 0.95)',
-          position: 'sticky',
-          top: 0,
-          zIndex: 50,
-        }}
-      >
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <div
-              className="w-2 h-2 rounded-full animate-pulse"
-              style={{ backgroundColor: 'var(--signal-buy)', boxShadow: 'var(--glow-green)' }}
-            />
-            <span className="terminal-label font-semibold" style={{ color: 'var(--signal-buy)' }}>
-              {liveCount} LIVE
-            </span>
-          </div>
-          {preReleaseCount > 0 && (
-            <div className="terminal-label" style={{ color: 'var(--accent-orange)' }}>
-              {preReleaseCount} PRE-RELEASE
-            </div>
-          )}
-        </div>
-        <div className="terminal-label">v2.1</div>
-      </div>
-
       {/* Hero Section */}
       <div
         className="relative overflow-hidden"
@@ -112,6 +82,24 @@ export default async function HomePage() {
         {/* Content */}
         <div className="relative px-6 py-10 md:py-14 max-w-6xl mx-auto">
           <div className="text-center mb-8">
+            {/* Live / pre-release counts */}
+            <div className="flex items-center justify-center gap-4 mb-6">
+              <div className="flex items-center gap-2">
+                <div
+                  className="w-2 h-2 rounded-full animate-pulse"
+                  style={{ backgroundColor: 'var(--signal-buy)', boxShadow: 'var(--glow-green)' }}
+                />
+                <span className="terminal-label font-semibold" style={{ color: 'var(--signal-buy)' }}>
+                  {liveCount} LIVE
+                </span>
+              </div>
+              {preReleaseCount > 0 && (
+                <div className="terminal-label" style={{ color: 'var(--accent-orange)' }}>
+                  {preReleaseCount} PRE-RELEASE
+                </div>
+              )}
+            </div>
+
             {/* Brand */}
             <div className="flex items-center justify-center gap-3 mb-4">
               <div
