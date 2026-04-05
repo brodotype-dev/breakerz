@@ -150,7 +150,7 @@ export default async function HomePage() {
                   }}
                 >
                   <Search className="w-5 h-5" />
-                  Cert Analysis
+                  Slab Analysis
                   <ChevronRight className="w-5 h-5" />
                 </button>
               </Link>
