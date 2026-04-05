@@ -144,6 +144,12 @@ export default function WaitlistPage() {
             Create your account →
           </Link>
         </p>
+
+        <p className="text-center text-xs mt-3" style={{ color: 'var(--text-disabled)' }}>
+          <Link href="/admin/login" style={{ color: 'var(--text-disabled)' }}>
+            Admin login
+          </Link>
+        </p>
       </div>
     </div>
   );
