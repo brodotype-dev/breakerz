@@ -85,7 +85,7 @@ export async function GET(_req: NextRequest, { params }: PageProps) {
 
     // 4. Assemble rows
     const rows: PricingBreakdownRow[] = playerProducts.map(pp => {
-      const player = pp.player as { id: string; name: string; team: string; is_icon: boolean; is_rookie: boolean } | null;
+      const player = pp.player as unknown as { id: string; name: string; team: string; is_icon: boolean; is_rookie: boolean } | null;
       const cached = cacheMap.get(pp.id);
       const agg = variantAggMap.get(pp.id) ?? { count: 0, oddsCount: 0, sumInverseOdds: 0 };
 
