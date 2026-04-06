@@ -5,6 +5,43 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-06 — Pricing Audit Panel, Slab Analysis, profile page, staging tooling
+
+### Pricing Audit Panel — admin product dashboard
+Kyle needed a spreadsheet-like view of the full pricing calculation to verify the math and compare against his manual Excel model. Added a collapsible "Pricing Audit" section to `/admin/products/[id]/` that shows every player with EV Low/Mid/High, odds coverage, effective score, weight, weight %, hobby slot cost, and BD slot cost.
+
+Break config (cases × cost) is editable inline — changing a value recalculates all slot costs client-side instantly with no new API calls. Export to CSV for direct comparison against Kyle's spreadsheet.
+
+**Key implementation detail:** Fetching pricing_cache and variants with `.in(player_product_id, ppIds)` for large products (866 players on Topps Finest) generates URLs that exceed PostgREST's limit and return 400 Bad Request. Fixed by using join-based filters (`player_products!inner(product_id)`) instead, matching the pattern already used in the product dashboard page.
+
+**Files:** `app/api/admin/pricing-breakdown/[productId]/route.ts` (new), `app/admin/products/[id]/PricingBreakdownPanel.tsx` (new), `app/admin/products/[id]/page.tsx` (updated).
+
+---
+
+### Consumer profile page
+Added `/profile` for beta users. Fields: first name, last name, date of birth (used to compute `is_over_18` boolean — DOB is not stored), favorite sports, chasing teams, chasing players (free text → TEXT[] arrays). Age verification badge renders live as DOB is entered.
+
+**Files:** `app/(consumer)/profile/page.tsx` (new), `app/api/profile/route.ts` (new GET + PUT), `supabase/migrations/20260403140000_profiles_consumer_fields.sql` (adds `first_name`, `last_name`, `is_over_18`, `favorite_sports`, `chasing_teams`, `chasing_players` to profiles + self-update RLS policy).
+
+---
+
+### Slab Analysis on consumer hero
+Replaced the "Browse Products" CTA with a "Slab Analysis" button linking to `/card-lookup`. Moved `card-lookup` page into the `(consumer)` route group so it gets the nav bar and auth gating. Added `/card-lookup` to middleware matcher and `isConsumerRoute` check.
+
+---
+
+### Admin login link on waitlist page
+Added a dim "Admin login" link at the bottom of `/waitlist` so admins can find their way in without knowing the direct URL.
+
+---
+
+### Copy-prod-to-staging script
+`scripts/copy-prod-to-staging.mjs` — Node.js script using `@supabase/supabase-js` to copy product data (sports, products, players, player_products, player_product_variants) from production to staging. Clears staging tables in reverse dependency order first (so foreign keys don't block deletes), then paginates fetches with `.range()` to handle Supabase's 1000-row default limit. Uses `columnsExclude` to strip staging-only generated columns (e.g. `total_sets`) from upsert payloads.
+
+**Usage:** `STAGING_SERVICE_ROLE_KEY=<key> node scripts/copy-prod-to-staging.mjs`
+
+---
+
 ## 2026-04-03 — Consumer auth gating + nav bar
 
 ### Consumer routes were publicly accessible

@@ -23,7 +23,7 @@ Live at [breakerz.vercel.app](https://breakerz.vercel.app) (domain: getbreakiq.c
 
 **Social Currency** ✅ B-score (breakerz_score), Icon tier (is_icon), Risk Flags (player_risk_flags), HV (is_high_volatility), consumer badges (★ ↑↓ ⚡ ⚑)
 
-**Next up:** Google OAuth consent screen publish, getbreakiq.com domain setup, B-score decay, pricing cache cron, Phase 5 C-score (blocked on Kyle)
+**Next up:** Google OAuth consent screen publish (currently in Testing mode — real users can't sign in), beta launch smoke tests, Phase 4 buzz indicators on break page, pricing cache cron, Phase 5 C-score (blocked on Kyle)
 
 ---
 
@@ -85,9 +85,15 @@ app/auth/signup/                 — consumer OAuth entry (invite code validatio
 app/auth/callback/route.ts       — OAuth callback: exchange code, validate invite, create profile
 app/admin/login/                 — admin auth
 app/admin/waitlist/              — approve users, send invites
-app/admin/products/[id]/         — product dashboard (matching, odds, BreakIQ Bets)
+app/admin/products/[id]/         — product dashboard (matching, odds, BreakIQ Bets, Pricing Audit)
+app/(consumer)/                  — auth-gated consumer route group (layout, nav, actions)
+app/(consumer)/profile/          — beta user profile page (name, DOB/age, hobby prefs)
+app/(consumer)/card-lookup/      — Slab Analysis tool (auth-gated)
 app/break/[slug]/                — consumer break analysis (auth required)
 app/analysis/                    — BreakIQ Sayz deal checker (auth required)
+app/api/admin/pricing-breakdown/ — per-player pricing inputs for Pricing Audit Panel
+app/api/profile/                 — GET + PUT consumer profile (RLS-scoped)
+scripts/copy-prod-to-staging.mjs — copy product data from prod to staging Supabase
 ```
 
 ---
