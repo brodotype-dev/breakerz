@@ -5,6 +5,7 @@ export interface PSACert {
   SpecID: number;
   SpecNumber: string;
   LabelType: string;
+  ReverseBarCode: boolean;
   Year: string;
   Brand: string;
   Category: string;

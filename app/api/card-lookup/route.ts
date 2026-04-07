@@ -69,47 +69,59 @@ Use empty strings for any field not visible or not applicable.`,
       const certTrimmed = cert.trim();
       const isPSA = !grader || grader.toUpperCase() === 'PSA';
 
-      // Run PSA lookup and CH cert lookup in parallel when it's a PSA cert
-      const [psaResult, chResult] = await Promise.allSettled([
-        isPSA ? getCertByNumber(certTrimmed) : Promise.reject(new Error('not PSA')),
-        pricesByCert(certTrimmed),
-      ]);
+      // Step 1: PSA lookup for authoritative identity + pop data
+      const psaResult = await (isPSA ? getCertByNumber(certTrimmed).catch(() => null) : Promise.resolve(null));
+      const psaCert = psaResult?.PSACert ?? null;
 
-      const psaCert = psaResult.status === 'fulfilled' ? psaResult.value.PSACert : null;
-      const chData = chResult.status === 'fulfilled' ? chResult.value : null;
-
-      // Derive cert identity: prefer PSA (authoritative), fall back to CH
+      // Step 2: derive card identity — PSA first, fall back to CH cert lookup
+      let playerName = psaCert?.Subject ?? null;
+      let year = psaCert?.Year ?? null;
+      let brand = psaCert?.Brand ?? null;
+      let cardNum = psaCert?.CardNumber ?? null;
+      let variety = psaCert?.Variety ?? null;
+      const grade = psaCert?.CardGrade ?? null;
       const certInfo = psaCert
-        ? {
-            grader: 'PSA',
-            cert: certTrimmed,
-            grade: psaCert.CardGrade,
-            description: psaCert.GradeDescription,
+        ? { grader: 'PSA', cert: certTrimmed, grade: psaCert.CardGrade, description: psaCert.GradeDescription }
+        : { grader: grader ?? '', cert: certTrimmed, grade: '', description: '' };
+
+      // If PSA failed, try CH cert lookup for identity
+      type CardShape = { card_id: string; description: string; player: string; set: string; number: string; variant: string; image: string; category: string };
+      let card: CardShape | null = null;
+
+      if (!playerName) {
+        try {
+          const chData = await pricesByCert(certTrimmed);
+          if (chData.card) {
+            playerName = chData.card.player;
+            brand = chData.card.set;
+            cardNum = chData.card.number;
+            variety = chData.card.variant;
+            card = { ...chData.card };
           }
-        : (chData?.cert_info ?? { grader: grader ?? '', cert: certTrimmed, grade: '', description: '' });
+          if (!certInfo.grade && chData.cert_info?.grade) {
+            certInfo.grade = chData.cert_info.grade;
+            certInfo.description = chData.cert_info.description;
+            certInfo.grader = chData.cert_info.grader;
+          }
+        } catch {
+          // CH cert lookup failed too
+        }
+      }
 
-      // If CH has prices, use them. If not, try a name-based CH search using PSA identity
-      // (or CH cert identity if PSA failed but CH returned card info).
-      let prices = chData?.prices ?? [];
-      let card = chData?.card ?? null;
+      // Step 3: search CH by card identity to get card_id for market-wide pricing
+      let allPrices: Array<{ grade: string; price: string }> = [];
+      let comps: Array<{ sale_price: number; sale_date: string; grade: string; platform: string }> = [];
+      let matchedPrice: { grade: string; price: number } | null = null;
 
-      if (prices.length === 0) {
-        // Prefer PSA identity; fall back to CH cert card info
-        const playerName = psaCert?.Subject ?? chData?.card?.player ?? null;
-        const year = psaCert?.Year ?? null;
-        const brand = psaCert?.Brand ?? chData?.card?.set ?? null;
-        const cardNum = psaCert?.CardNumber ?? chData?.card?.number ?? null;
-        const variety = psaCert?.Variety ?? chData?.card?.variant ?? null;
-        const grade = psaCert?.CardGrade ?? certInfo.grade ?? null;
-
-        if (playerName) {
-          const query = [playerName, year, brand, cardNum, variety].filter(Boolean).join(' ');
-          try {
-            const searchResult = await searchCards(query);
-            const found = searchResult.cards?.[0];
-            if (found) {
-              const foundRaw = found as unknown as Record<string, unknown>;
-              card = card ?? {
+      if (playerName) {
+        const query = [playerName, year, brand, cardNum, variety].filter(Boolean).join(' ');
+        try {
+          const searchResult = await searchCards(query);
+          const found = searchResult.cards?.[0];
+          if (found) {
+            const foundRaw = found as unknown as Record<string, unknown>;
+            if (!card) {
+              card = {
                 card_id: found.card_id,
                 description: [year, brand, cardNum].filter(Boolean).join(' '),
                 player: playerName,
@@ -119,25 +131,30 @@ Use empty strings for any field not visible or not applicable.`,
                 image: (foundRaw.image ?? '') as string,
                 category: (foundRaw.category ?? psaCert?.Category ?? '') as string,
               };
-              const allPricesResult = await getAllPrices(found.card_id);
-              const gradeStr = grade ? `PSA ${grade}` : null;
-              const matched = gradeStr
-                ? (allPricesResult.prices ?? []).find(p => p.grade.toLowerCase().includes(grade!.toLowerCase()))
-                : null;
-              if (matched) {
-                prices = [{ closing_date: new Date().toISOString(), Grade: gradeStr!, card_id: found.card_id, price: String(matched.price) }];
-              }
             }
-          } catch {
-            // Name search failed — return what we have
+
+            const gradeStr = certInfo.grade
+              ? `${certInfo.grader || 'PSA'} ${certInfo.grade}`
+              : 'Raw';
+
+            const [pricesResult, compsResult] = await Promise.allSettled([
+              getAllPrices(found.card_id),
+              getComps(found.card_id, 90, gradeStr, 20),
+            ]);
+
+            allPrices = pricesResult.status === 'fulfilled' ? (pricesResult.value.prices ?? []) : [];
+            comps = compsResult.status === 'fulfilled' ? (compsResult.value.comps ?? []) : [];
+
+            const gradeNum = certInfo.grade;
+            const rawMatch = gradeNum
+              ? (allPrices.find(p => p.grade.toLowerCase().includes(gradeNum.toLowerCase())) ?? allPrices[0] ?? null)
+              : (allPrices[0] ?? null);
+            matchedPrice = rawMatch ? { grade: rawMatch.grade, price: parseFloat(String(rawMatch.price)) } : null;
           }
+        } catch {
+          // Search failed — return identity data without prices
         }
       }
-
-      const salePrices = prices.map(p => parseFloat(p.price)).filter(p => p > 0);
-      const avg = salePrices.length > 0
-        ? salePrices.reduce((a, b) => a + b, 0) / salePrices.length
-        : null;
 
       return NextResponse.json({
         source: 'cert',
@@ -145,9 +162,10 @@ Use empty strings for any field not visible or not applicable.`,
         psaCert: psaCert ?? null,
         certInfo,
         card,
-        prices,
-        lastSale: prices[0] ?? null,
-        avgPrice: avg ? Math.round(avg * 100) / 100 : null,
+        allPrices,
+        comps,
+        matchedPrice,
+        matchedGrade: certInfo.grade ? `${certInfo.grader || 'PSA'} ${certInfo.grade}` : 'Unknown',
       });
     }
 

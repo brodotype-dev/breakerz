@@ -18,13 +18,6 @@ interface ExtractedCard {
   certNumber: string;
 }
 
-interface CertSale {
-  closing_date: string;
-  Grade: string;
-  card_id: string;
-  price: string;
-}
-
 interface PSACert {
   CertNumber: string;
   Year: string;
@@ -35,7 +28,9 @@ interface PSACert {
   Variety: string;
   CardGrade: string;
   GradeDescription: string;
+  LabelType: string;
   TotalPopulation: number;
+  TotalPopulationWithQualifier: number;
   PopulationHigher: number;
   ItemStatus: string;
 }
@@ -46,9 +41,10 @@ interface CertResult {
   psaCert: PSACert | null;
   certInfo: { grader: string; cert: string; grade: string; description: string };
   card: { card_id: string; description: string; player: string; set: string; number: string; variant: string; image: string } | null;
-  prices: CertSale[];
-  lastSale: CertSale | null;
-  avgPrice: number | null;
+  allPrices: Array<{ grade: string; price: string }>;
+  comps: Array<{ sale_price: number; sale_date: string; grade: string; platform: string }> | null;
+  matchedPrice: { grade: string; price: number } | null;
+  matchedGrade: string;
 }
 
 interface SearchResult {
@@ -228,7 +224,6 @@ export default function CardLookupPage() {
 
   const fairValue: number | null = (() => {
     if (!result) return null;
-    if (result.source === 'cert') return result.avgPrice;
     return result.matchedPrice?.price ?? null;
   })();
 
@@ -520,26 +515,33 @@ function ResultsPanel({
             </div>
           )}
 
-          {/* PSA Verified badge */}
+          {/* PSA Insights panel */}
           {result.source === 'cert' && result.psaVerified && result.psaCert && (
             <div
-              className="rounded-lg px-4 py-3 flex items-center justify-between"
-              style={{ backgroundColor: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)' }}
+              className="rounded-lg overflow-hidden"
+              style={{ border: '1px solid rgba(34,197,94,0.3)', backgroundColor: 'rgba(34,197,94,0.05)' }}
             >
-              <div className="flex items-center gap-2">
+              {/* Header */}
+              <div
+                className="px-4 py-2.5 flex items-center gap-2"
+                style={{ backgroundColor: 'rgba(34,197,94,0.12)', borderBottom: '1px solid rgba(34,197,94,0.2)' }}
+              >
                 <ShieldCheck className="size-4" style={{ color: 'rgb(34,197,94)' }} />
                 <span className="text-sm font-bold" style={{ color: 'rgb(34,197,94)' }}>PSA Verified</span>
-                <span className="text-sm text-muted-foreground">·</span>
-                <span className="text-sm font-mono font-bold text-foreground">{result.psaCert.GradeDescription}</span>
+                <span className="text-xs font-mono font-bold ml-auto" style={{ color: 'var(--text-primary)' }}>
+                  {result.psaCert.GradeDescription}
+                </span>
               </div>
-              {result.psaCert.TotalPopulation > 0 && (
-                <div className="text-xs text-right" style={{ color: 'var(--text-secondary)' }}>
-                  <span>Pop {result.psaCert.TotalPopulation}</span>
-                  {result.psaCert.PopulationHigher > 0 && (
-                    <span className="ml-2 text-amber-400">↑ Higher {result.psaCert.PopulationHigher}</span>
-                  )}
-                </div>
-              )}
+              {/* Data grid */}
+              <div className="grid grid-cols-2 gap-px" style={{ backgroundColor: 'rgba(34,197,94,0.1)' }}>
+                <PSAField label="Cert #" value={result.certInfo.cert} mono />
+                <PSAField label="Label Type" value={result.psaCert.LabelType || '—'} />
+                <PSAField label="Pop at This Grade" value={result.psaCert.TotalPopulation > 0 ? String(result.psaCert.TotalPopulation) : '—'} mono />
+                <PSAField label="Pop Higher" value={result.psaCert.PopulationHigher > 0 ? String(result.psaCert.PopulationHigher) : '—'} mono highlight="amber" />
+                {result.psaCert.TotalPopulationWithQualifier > 0 && result.psaCert.TotalPopulationWithQualifier !== result.psaCert.TotalPopulation && (
+                  <PSAField label="With Qualifier" value={String(result.psaCert.TotalPopulationWithQualifier)} mono className="col-span-2" />
+                )}
+              </div>
             </div>
           )}
 
@@ -556,11 +558,7 @@ function ResultsPanel({
               )}
               <div className="flex-1 min-w-0">
                 <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-0.5">
-                  {result.source === 'cert' && result.psaVerified
-                    ? 'PSA Cert Match'
-                    : result.source === 'cert'
-                      ? 'Cert Match'
-                      : 'CardHedger Match'}
+                  {result.source === 'cert' && result.psaVerified ? 'PSA Cert Match' : result.source === 'cert' ? 'Cert Match' : 'CardHedger Match'}
                 </p>
                 <p className="font-bold text-foreground">
                   {result.source === 'cert'
@@ -582,30 +580,21 @@ function ResultsPanel({
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">
-                {result.source === 'cert' ? 'Avg Sale Price' : `Fair Value (${result.matchedPrice?.grade ?? ''})`}
+                Market Value ({result.matchedPrice?.grade ?? result.matchedGrade ?? ''})
               </p>
               <p className="text-2xl font-black font-mono text-foreground">
                 {fairValue != null ? formatCurrency(fairValue) : '—'}
               </p>
-              {result.source === 'cert' && result.prices.length > 0 && (
-                <p className="text-xs text-muted-foreground mt-0.5">{result.prices.length} sales</p>
-              )}
             </div>
             <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
-              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Last Sale</p>
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Last Comp</p>
               <p className="text-2xl font-black font-mono text-foreground">
-                {result.source === 'cert' && result.lastSale
-                  ? formatCurrency(parseFloat(result.lastSale.price))
-                  : result.source === 'search' && result.comps?.[0]
-                    ? formatCurrency(result.comps[0].sale_price)
-                    : '—'}
+                {result.comps?.[0] ? formatCurrency(result.comps[0].sale_price) : '—'}
               </p>
               <p className="text-xs text-muted-foreground mt-0.5">
-                {result.source === 'cert' && result.lastSale
-                  ? new Date(result.lastSale.closing_date).toLocaleDateString()
-                  : result.source === 'search' && result.comps?.[0]
-                    ? `${new Date(result.comps[0].sale_date).toLocaleDateString()} · ${result.comps[0].platform}`
-                    : ''}
+                {result.comps?.[0]
+                  ? `${new Date(result.comps[0].sale_date).toLocaleDateString()} · ${result.comps[0].platform}`
+                  : ''}
               </p>
             </div>
           </div>
@@ -635,27 +624,8 @@ function ResultsPanel({
             </div>
           </div>
 
-          {/* Cert: sale history */}
-          {result.source === 'cert' && result.prices.length > 0 && (
-            <div className="rounded-lg border" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
-              <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
-                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Sale History — {result.certInfo.description || result.certInfo.grade}
-                </p>
-              </div>
-              <div className="divide-y max-h-64 overflow-y-auto" style={{ borderColor: 'var(--border)' }}>
-                {result.prices.map((p, i) => (
-                  <div key={i} className="flex items-center justify-between px-4 py-2 text-sm">
-                    <span className="font-mono font-semibold text-foreground">{formatCurrency(parseFloat(p.price))}</span>
-                    <span className="text-xs text-muted-foreground">{new Date(p.closing_date).toLocaleDateString()}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Search: all grade prices */}
-          {result.source === 'search' && result.allPrices.length > 0 && (
+          {/* All grade prices — shown for both cert and search results */}
+          {result.allPrices.length > 0 && (
             <div className="rounded-lg border" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
               <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
                 <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Grade Prices</p>
@@ -666,7 +636,7 @@ function ResultsPanel({
                     <span className="text-muted-foreground">{p.grade}</span>
                     <span
                       className="font-mono font-semibold"
-                      style={{ color: p.grade === result.matchedGrade ? 'var(--primary)' : 'var(--foreground)' }}
+                      style={{ color: result.matchedPrice && p.grade === result.matchedPrice.grade ? 'var(--primary)' : 'var(--foreground)' }}
                     >
                       {formatCurrency(parseFloat(String(p.price)))}
                     </span>
@@ -676,8 +646,8 @@ function ResultsPanel({
             </div>
           )}
 
-          {/* Search: recent comps */}
-          {result.source === 'search' && (result.comps?.length ?? 0) > 0 && (
+          {/* Recent comps — shown for both cert and search */}
+          {(result.comps?.length ?? 0) > 0 && (
             <div className="rounded-lg border" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
               <div className="px-4 py-3 border-b" style={{ borderColor: 'var(--border)' }}>
                 <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -712,6 +682,24 @@ function ResultsPanel({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── PSA insights field ────────────────────────────────────────────────────────
+
+function PSAField({ label, value, mono, highlight, className = '' }: {
+  label: string; value: string; mono?: boolean; highlight?: 'amber'; className?: string;
+}) {
+  return (
+    <div className={`px-4 py-2.5 ${className}`} style={{ backgroundColor: 'rgba(0,0,0,0.2)' }}>
+      <p className="text-[10px] font-bold uppercase tracking-wider mb-0.5" style={{ color: 'rgba(34,197,94,0.6)' }}>{label}</p>
+      <p
+        className={`text-sm font-semibold ${mono ? 'font-mono' : ''}`}
+        style={{ color: highlight === 'amber' ? 'rgb(251,191,36)' : 'var(--text-primary)' }}
+      >
+        {value}
+      </p>
     </div>
   );
 }
