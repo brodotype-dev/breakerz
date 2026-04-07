@@ -5,6 +5,41 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-06 — PSA API integration, Slab Analysis UX redesign, CardHedger matching strategy
+
+### PSA API integration — Slab Analysis cert verification
+Slab Analysis now calls the PSA public API (`api.psacard.com`) in parallel with CardHedger's cert endpoint for PSA certs. PSA provides authoritative card identity (player, year, brand, card #, variant) and population data (pop total + pop higher). CardHedger provides sale history.
+
+Fallback chain: (1) CH cert prices if available, (2) if no CH prices but PSA confirmed identity, falls back to CH name search using PSA data, (3) returns whatever we have. The PSA Verified green badge + population data displays whenever PSA confirms the cert.
+
+**Env var:** `PSA_API_KEY` — bearer token for `api.psacard.com`. Set in Vercel (all environments) and `.env.local`.
+
+**Files:** `lib/psa.ts` (new — `getCertByNumber()`), `app/api/card-lookup/route.ts` (updated cert action).
+
+---
+
+### Slab Analysis UX redesign
+- Renamed "Card Lookup" → "Slab Analysis" throughout
+- Added **Enter Cert #** tab alongside Upload Image — users can look up a cert directly without an image (enter cert number + select PSA/BGS/SGC grader, press Enter or Look Up)
+- PSA Verified badge shows grade description (e.g. "GEM-MT 10") + pop count + pop higher when PSA confirms
+- Extracted `ResultsPanel` as a shared component used by both input paths
+
+**File:** `app/(consumer)/card-lookup/page.tsx`
+
+---
+
+### CardHedger matching strategy doc + refined questions list
+First-principles analysis of the CH entity matching problem saved to `docs/cardhedger-matching-strategy.md`. Refined questions/scenarios list for the CH team conversation at `docs/cardhedger-questions.md` — organized into Priority 1 (blocking, 3 questions), Priority 2 (structural, 4 questions), Priority 3 (efficiency/partnership, 4 questions).
+
+---
+
+### Waitlist redesigned as landing page
+Full landing page layout replacing the minimal form. Two-column desktop layout: left = BreakIQ brand + "Private Beta" pill + feature list (BreakIQ Sayz, Live Slot Pricing, Slab Analysis), right = beta access form. Background gradient with glow effects. Updated success state copy.
+
+**File:** `app/waitlist/page.tsx`
+
+---
+
 ## 2026-04-06 — Pricing Audit Panel, Slab Analysis, profile page, staging tooling
 
 ### Pricing Audit Panel — admin product dashboard

@@ -23,7 +23,9 @@ Live at [breakerz.vercel.app](https://breakerz.vercel.app) (domain: getbreakiq.c
 
 **Social Currency** ✅ B-score (breakerz_score), Icon tier (is_icon), Risk Flags (player_risk_flags), HV (is_high_volatility), consumer badges (★ ↑↓ ⚡ ⚑)
 
-**Next up:** Google OAuth consent screen publish (currently in Testing mode — real users can't sign in), beta launch smoke tests, Phase 4 buzz indicators on break page, pricing cache cron, Phase 5 C-score (blocked on Kyle)
+**Slab Analysis** ✅ Upload cert image or enter cert # directly → Claude parses → PSA API verifies (grade + pop data) → CardHedger prices + comps → max bid calculator
+
+**Next up:** Google OAuth consent screen publish (currently in Testing mode — real users can't sign in), beta launch smoke tests, Phase 4 buzz indicators on break page, pricing cache cron, Phase 5 C-score (blocked on Kyle), CH team conversation (see docs/cardhedger-questions.md)
 
 ---
 
@@ -53,7 +55,7 @@ Production: `breakerz.vercel.app` | Staging branch: `staging` | Repo: `github.co
 | URL | `breakerz.vercel.app` | staging preview URLs |
 
 **Env vars** (set in Vercel, use `.env.local` for local dev):
-`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `CARDHEDGER_API_KEY`, `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `FROM_EMAIL`, `NEXT_PUBLIC_APP_URL`
+`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `CARDHEDGER_API_KEY`, `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `FROM_EMAIL`, `NEXT_PUBLIC_APP_URL`, `PSA_API_KEY`
 
 Supabase Vercel integration injects both `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_URL` — `lib/supabase.ts` uses `??` fallbacks for both. Don't remove them.
 
@@ -78,6 +80,7 @@ lib/auth.ts                      — getCurrentUser(), requireRole()
 lib/email.ts                     — sendInviteEmail() via Resend
 lib/engine.ts                    — pricing engine: computeSlotPricing, computeEffectiveScore
 lib/cardhedger.ts                — CardHedger API + Claude matching
+lib/psa.ts                       — PSA public API: getCertByNumber() (bearer token auth)
 lib/card-knowledge/              — manufacturer matching modules (bowman, panini, default)
 lib/checklist-parser.ts          — PDF/CSV/XLSX checklist parsers
 app/waitlist/                    — public signup
