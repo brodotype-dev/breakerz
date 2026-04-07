@@ -31,8 +31,6 @@ export async function getCertByNumber(certNumber: string): Promise<PSACertRespon
 
   const res = await fetch(`${PSA_API_BASE}/cert/GetByCertNumber/${encodeURIComponent(certNumber)}`, {
     headers: { Authorization: `bearer ${key}` },
-    // PSA responses are cacheable — 1 hour is fine
-    next: { revalidate: 3600 },
   });
 
   if (res.status === 404) throw new Error('PSA cert not found');
