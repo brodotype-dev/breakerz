@@ -419,6 +419,19 @@ export default async function HomePage() {
           </div>
         </div>
       </div>
+
+      {/* Responsible gambling footer */}
+      <div
+        className="border-t px-6 py-3 text-center"
+        style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
+      >
+        <p className="text-xs" style={{ color: 'var(--text-disabled)' }}>
+          Gambling problem? Call or text{' '}
+          <a href="tel:18004262537" className="font-medium hover:underline" style={{ color: 'var(--text-tertiary)' }}>
+            1-800-GAMBLER
+          </a>
+        </p>
+      </div>
     </div>
   );
 }
