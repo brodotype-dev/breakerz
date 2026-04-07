@@ -8,11 +8,15 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 ## 2026-04-06 — PSA API integration, Slab Analysis UX redesign, CardHedger matching strategy
 
 ### PSA API integration — Slab Analysis cert verification
-Slab Analysis now calls the PSA public API (`api.psacard.com`) in parallel with CardHedger's cert endpoint for PSA certs. PSA provides authoritative card identity (player, year, brand, card #, variant) and population data (pop total + pop higher). CardHedger provides sale history.
+Slab Analysis now calls the PSA public API (`api.psacard.com`) for PSA cert lookups. PSA provides authoritative card identity + population data. CardHedger provides market-wide grade pricing and recent comps.
 
-Fallback chain: (1) CH cert prices if available, (2) if no CH prices but PSA confirmed identity, falls back to CH name search using PSA data, (3) returns whatever we have. The PSA Verified green badge + population data displays whenever PSA confirms the cert.
+**Lookup flow:** PSA API → card identity + pop data → CH name search for card_id → `getAllPrices` + `getComps` at the cert's grade. If PSA fails, falls back to CH cert identity for the name search.
 
-**Env var:** `PSA_API_KEY` — bearer token for `api.psacard.com`. Set in Vercel (all environments) and `.env.local`.
+**Pricing change:** switched from cert-specific sale history (`pricesByCert`) to market-wide grade pricing (`getAllPrices` + `getComps`). Avg of all PSA 7 sales is more reliable than the history of one specific cert.
+
+**PSA Insights panel:** cert #, label type, pop at this grade, pop higher (in amber). Mirrors eBay's PSA insights modal.
+
+**Env var:** `PSA_API_KEY` — bearer token for `api.psacard.com`. Set in Vercel (all environments) and `.env.local`. Gotcha: variable name typo in Vercel will silently fall back to CH identity only — watch for "PSA_API_KEY not configured" in the amber debug strip.
 
 **Files:** `lib/psa.ts` (new — `getCertByNumber()`), `app/api/card-lookup/route.ts` (updated cert action).
 
