@@ -70,8 +70,17 @@ Use empty strings for any field not visible or not applicable.`,
       const isPSA = !grader || grader.toUpperCase() === 'PSA';
 
       // Step 1: PSA lookup for authoritative identity + pop data
-      const psaResult = await (isPSA ? getCertByNumber(certTrimmed).catch(() => null) : Promise.resolve(null));
-      const psaCert = psaResult?.PSACert ?? null;
+      let psaCert = null;
+      let psaError: string | null = null;
+      if (isPSA) {
+        try {
+          const psaResult = await getCertByNumber(certTrimmed);
+          psaCert = psaResult?.PSACert ?? null;
+        } catch (err) {
+          psaError = err instanceof Error ? err.message : String(err);
+          console.error('[card-lookup] PSA API failed:', psaError);
+        }
+      }
 
       // Step 2: derive card identity — PSA first, fall back to CH cert lookup
       let playerName = psaCert?.Subject ?? null;
@@ -160,6 +169,7 @@ Use empty strings for any field not visible or not applicable.`,
         source: 'cert',
         psaVerified: psaCert !== null,
         psaCert: psaCert ?? null,
+        psaError,
         certInfo,
         card,
         allPrices,

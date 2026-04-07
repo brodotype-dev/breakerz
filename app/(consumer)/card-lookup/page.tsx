@@ -39,6 +39,7 @@ interface CertResult {
   source: 'cert';
   psaVerified: boolean;
   psaCert: PSACert | null;
+  psaError?: string | null;
   certInfo: { grader: string; cert: string; grade: string; description: string };
   card: { card_id: string; description: string; player: string; set: string; number: string; variant: string; image: string } | null;
   allPrices: Array<{ grade: string; price: string }>;
@@ -486,6 +487,13 @@ function ResultsPanel({
           {result.source === 'search' && result.certFallback && (
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-400">
               PSA cert confirmed — showing market comps by card (no cert-specific sale history)
+            </div>
+          )}
+
+          {/* PSA debug — temporary */}
+          {result.source === 'cert' && !result.psaVerified && result.psaError && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-400">
+              PSA: {result.psaError}
             </div>
           )}
 
