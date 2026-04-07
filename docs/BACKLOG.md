@@ -232,6 +232,30 @@ If we're surfacing links to Alt, Golden, Fanatics Collect, eBay, and others thro
 
 ---
 
+### Vision 5 — My Chase
+
+A personalized player watchlist. Users save/favorite players they're actively chasing and get a persistent view of everything relevant to those players in one place.
+
+**Core experience:**
+- Save players to a personal chase list (star/heart on any player row across the app)
+- "My Chase" dashboard: one card per player showing current market value (PSA 9/10 price from CardHedger), live buzz indicators (B-score, C-score, risk flags), and recent comp movement
+- Products they appear in: which breaks are available to buy into for that player, with slot EV pulled live from the pricing engine
+- Eventually: direct links to live breaks on Fanatics Collect, Whatnot, eBay — shows you exactly where you can buy a slot containing that player right now
+
+**What it enables:**
+- Moves BreakIQ from "tool you open once to analyze a break" to "dashboard you check daily"
+- Natural hook for push notifications: "A break containing Wander Franco just went live on Whatnot — your max slot cost is $47"
+- Affiliate revenue layer: links to Fanatics/Whatnot/eBay are natural affiliate opportunities (see Vision 3)
+- Strong retention driver — personalization creates habit
+
+**Data already exists:** players, pricing_cache, buzz scores, risk flags, and CardHedger card_ids are all in the DB. The personalization layer (saved players per user) is the new piece — likely a simple `user_chase_list` table (user_id, player_id, added_at).
+
+**Phase 1 scope (MVP):** save players, show current market value + buzz indicators per player.
+**Phase 2:** products they appear in + slot EV.
+**Phase 3:** live break links (Fanatics/Whatnot/eBay API integrations or curated links).
+
+---
+
 ### Vision 4 — Hobby Education Hub
 
 A content layer for collectors who are new to the hobby or learning to evaluate breaks more carefully.
