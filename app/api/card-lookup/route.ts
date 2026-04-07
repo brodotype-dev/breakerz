@@ -3,9 +3,8 @@ import Anthropic from '@anthropic-ai/sdk';
 import { pricesByCert, searchCards, getAllPrices, getComps } from '@/lib/cardhedger';
 import { getCertByNumber } from '@/lib/psa';
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
 export async function POST(req: Request) {
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   try {
     const body = await req.json();
 
