@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { pricesByCert, searchCards, getAllPrices, getComps } from '@/lib/cardhedger';
+import { getCertByNumber } from '@/lib/psa';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -61,25 +62,86 @@ Use empty strings for any field not visible or not applicable.`,
       return NextResponse.json(parsed);
     }
 
-    // ── Mode 2a: Cert lookup — direct, exact, no search ambiguity ──
+    // ── Mode 2a: Cert lookup ─────────────────────────────────────────
     if (body.action === 'cert') {
-      const { cert } = body as { cert: string };
+      const { cert, grader } = body as { cert: string; grader?: string };
       if (!cert) return NextResponse.json({ error: 'cert required' }, { status: 400 });
 
-      const data = await pricesByCert(cert.trim());
+      const certTrimmed = cert.trim();
+      const isPSA = !grader || grader.toUpperCase() === 'PSA';
 
-      const salePrices = (data.prices ?? []).map(p => parseFloat(p.price)).filter(p => p > 0);
+      // Run PSA lookup and CH cert lookup in parallel when it's a PSA cert
+      const [psaResult, chResult] = await Promise.allSettled([
+        isPSA ? getCertByNumber(certTrimmed) : Promise.reject(new Error('not PSA')),
+        pricesByCert(certTrimmed),
+      ]);
+
+      const psaCert = psaResult.status === 'fulfilled' ? psaResult.value.PSACert : null;
+      const chData = chResult.status === 'fulfilled' ? chResult.value : null;
+
+      // Derive cert identity: prefer PSA (authoritative), fall back to CH
+      const certInfo = psaCert
+        ? {
+            grader: 'PSA',
+            cert: certTrimmed,
+            grade: psaCert.CardGrade,
+            description: psaCert.GradeDescription,
+          }
+        : (chData?.cert_info ?? { grader: grader ?? '', cert: certTrimmed, grade: '', description: '' });
+
+      // If CH has prices, use them. If not and we have PSA identity, do a name-based CH search.
+      let prices = chData?.prices ?? [];
+      let card = chData?.card ?? null;
+
+      if (prices.length === 0 && psaCert) {
+        // Fall back to CH name search using PSA card identity
+        const query = [psaCert.Subject, psaCert.Year, psaCert.Brand, psaCert.CardNumber, psaCert.Variety]
+          .filter(Boolean)
+          .join(' ');
+
+        try {
+          const searchResult = await searchCards(query);
+          const found = searchResult.cards?.[0];
+          if (found) {
+            const foundRaw = found as unknown as Record<string, unknown>;
+            card = {
+              card_id: found.card_id,
+              description: `${psaCert.Year} ${psaCert.Brand} ${psaCert.CardNumber}`,
+              player: psaCert.Subject,
+              set: psaCert.Brand,
+              number: psaCert.CardNumber,
+              variant: psaCert.Variety,
+              image: (foundRaw.image ?? '') as string,
+              category: (foundRaw.category ?? psaCert.Category ?? '') as string,
+            };
+            // Get prices for the matched card
+            const allPricesResult = await getAllPrices(found.card_id);
+            const gradeStr = `PSA ${psaCert.CardGrade}`;
+            const matched = (allPricesResult.prices ?? []).find(p =>
+              p.grade.toLowerCase().includes(psaCert.CardGrade)
+            );
+            if (matched) {
+              prices = [{ closing_date: new Date().toISOString(), Grade: gradeStr, card_id: found.card_id, price: String(matched.price) }];
+            }
+          }
+        } catch {
+          // Name search failed — return what we have
+        }
+      }
+
+      const salePrices = prices.map(p => parseFloat(p.price)).filter(p => p > 0);
       const avg = salePrices.length > 0
         ? salePrices.reduce((a, b) => a + b, 0) / salePrices.length
         : null;
-      const lastSale = data.prices?.[0] ?? null;
 
       return NextResponse.json({
         source: 'cert',
-        certInfo: data.cert_info,
-        card: data.card,
-        prices: data.prices ?? [],
-        lastSale,
+        psaVerified: psaCert !== null,
+        psaCert: psaCert ?? null,
+        certInfo,
+        card,
+        prices,
+        lastSale: prices[0] ?? null,
         avgPrice: avg ? Math.round(avg * 100) / 100 : null,
       });
     }
@@ -98,7 +160,6 @@ Use empty strings for any field not visible or not applicable.`,
       const card = searchResult.cards?.[0];
       if (!card) return NextResponse.json({ error: 'No matching card found in CardHedger' }, { status: 404 });
 
-      // The search response already includes prices — use them if we don't need to go deeper
       const searchPrices = (card as unknown as { prices?: Array<{ grade: string; price: string }> }).prices ?? [];
 
       const gradeString = gradingCompany && grade ? `${gradingCompany} ${grade}` : 'Raw';
@@ -120,7 +181,6 @@ Use empty strings for any field not visible or not applicable.`,
         (gradingCompany ? p.grade.toLowerCase().includes(gradingCompany.toLowerCase()) : true)
       ) ?? allPrices[0] ?? null;
 
-      // CardHedger search returns `player` and `set` (not player_name / set_name)
       const cardRaw = card as unknown as Record<string, unknown>;
 
       return NextResponse.json({
