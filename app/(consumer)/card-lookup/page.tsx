@@ -177,33 +177,7 @@ export default function CardLookupPage() {
     });
     const certData = await res.json();
     if (certData.error) throw new Error(certData.error);
-
-    if (certData.prices && certData.prices.length > 0) {
-      setResult(certData);
-    } else if (certData.psaVerified && certData.psaCert) {
-      // PSA confirmed identity but no sale history — fall through to name search
-      const psa = certData.psaCert as PSACert;
-      const res2 = await fetch('/api/card-lookup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'price',
-          playerName: psa.Subject,
-          setName: psa.Brand,
-          year: psa.Year,
-          cardNumber: psa.CardNumber,
-          variant: psa.Variety,
-          gradingCompany: 'PSA',
-          grade: psa.CardGrade,
-        }),
-      });
-      const searchData = await res2.json();
-      if (searchData.error) throw new Error(`PSA verified but no price data: ${searchData.error}`);
-      setResult({ ...searchData, certFallback: true });
-    } else {
-      // No PSA, no prices — fall back to name search if we have identity from CH
-      setResult(certData);
-    }
+    setResult(certData);
   }
 
   function reset() {
