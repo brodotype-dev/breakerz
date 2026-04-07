@@ -1,99 +1,144 @@
-# CardHedger — Questions for the Team
+# CardHedger — Questions & Scenarios for the Team
 
-Running list of questions to bring to the CardHedger team. Goal: build a good relationship, understand the API deeply, and unblock matching issues we've hit in production.
+Refined list for a focused conversation with the CH team. Organized by priority and grouped by theme. Each section includes the business impact so we can triage together.
 
-Add new questions as they come up. Mark answered ones with ✅ and the date + what we learned.
-
----
-
-## Catalog Coverage
-
-**1. Do you carry Chrome Prospect Autographs (CPA-* codes) for Bowman Chrome Baseball?**
-
-We're importing 2025 Bowman Chrome Baseball and finding that CPA-* autograph variants (e.g. CPA-DL, CPA-DG, CPA-MG) return no candidates via card-search. Your search returns the player's BCP-* base card instead. Are CPA-* autographs indexed separately, under a different number format, or not yet in the catalog?
-
-*Discovered: 2026-04-02 during 2025 Bowman Chrome Baseball import.*
+*Last updated: 2026-04-06*
 
 ---
 
-**2. What's your coverage lag for new products?**
+## Priority 1 — Blocking matching accuracy
 
-When a new set releases (e.g. 2025 Bowman Chrome), how long until cards appear in card-search results? Is there a way to check coverage status for a specific set before running matching?
-
----
-
-**3. Is there a way to query "all cards in a given set"?**
-
-Right now we use free-text card-search and can only find cards we already know the name/number of. A `?set=2025 Bowman Chrome&limit=500` endpoint (or similar) would let us validate our checklist imports against your catalog directly. Is anything like that on your roadmap?
+These are the specific gaps causing our current ~24% failure rate. Fixing any one of them meaningfully moves the needle.
 
 ---
 
-## API Behavior
+### 1. Does `card-search` return a `number` field for autograph sets?
 
-**4. Why do card-search results for autograph codes (BMA-*, CPA-*, etc.) not include a `number` field?**
+For base/prospect cards (BCP-*, BD-*), `number` comes back populated and our matching is highly accurate. For autograph sets (BMA-*, CPA-*, BPA-*, FDA-*), we consistently get `number: ""` or null from candidates.
 
-For Bowman's Best autograph sets, candidates come back with `number: ""` or null. For base/prospect cards, the `number` field is populated correctly. Is the number field intentionally omitted for autos, or is this a data gap?
+**Why it matters:** Without a number to compare, we can't do code-based disambiguation. A query for `BMA-MT` returns candidates but we have no way to confirm which one is "MT" — we're left comparing player names against a code, which fails for players where the name isn't derivable from the initials.
 
-*This affects our matching: without a number to compare, we can't do code-based disambiguation for autos.*
+**Question:** Is the `number` field intentionally omitted for autograph sets, or is this a data gap? If it's a data gap, is it on the roadmap to fix?
 
----
-
-**5. How should we handle multi-player cards?**
-
-We have dual/triple autograph cards (e.g. `"Dylan Crews/James Wood"`, stored under codes like DA-XX, TA-XX). Card-search doesn't return reliable results for slash-delimited names. Is there a recommended query pattern for multi-player cards, or a card_id lookup by code?
-
----
-
-**6. Is there a batch card-search endpoint?**
-
-We currently call `/v1/cards/card-search` once per variant. For a product with 1000+ variants, that's 1000+ sequential searches. A batch endpoint (send N queries, get N result sets back) would dramatically speed up our matching runs.
+**Scenario:**
+> Query: `"2025 Bowman's Best BMA-MT"`  
+> We get back 3–5 candidates, all with `number: null`.  
+> We have no way to confirm which candidate is the "MT" player.  
+> With `number` populated, we'd match by code suffix and hit ~95%+ confidence instantly.
 
 ---
 
-**7. What's the intended use of the `sport` parameter in card-search?**
+### 2. Are CPA-* Chrome Prospect Autographs indexed in card-search?
 
-We pass `sport: "baseball"` on all queries. Does this filter results or just rank them? We've occasionally seen cross-sport candidates surface — wondering if the filter is strict or soft.
+For 2025 Bowman Chrome Baseball, queries for CPA-* autographs (e.g. `"CPA-DL 2025 Bowman Chrome"`) return the player's BCP-* base card instead of an autograph result. It's unclear whether CPA cards exist in the catalog under a different code, a different format, or not at all.
 
----
+**Question:** Are CPA-* autographs in your catalog? If yes, what's the right query pattern to surface them? If no, is there a timeline for coverage?
 
-## Terminology & Naming
-
-**8. How do you handle Bowman's "Retrofractor" parallel?**
-
-We've mapped `Retrofractor` → `Base` or `Lazer Refractor` based on trial and error. Is there an official mapping, or does it depend on the specific set?
-
----
-
-**9. What's the canonical variant name for a base Bowman Chrome Prospect card?**
-
-We've seen `"Base"`, `"Refractor"`, and sometimes nothing in the `variant` field for what the checklist calls a base BCP card. What's the ground truth here?
+**Scenario:**
+> Query: `"Dylan Listi CPA-DL 2025 Bowman Chrome Baseball"`  
+> Expected: a Bowman Chrome autograph card for Dylan Listi  
+> Actual: returns BCP-123 base card or nothing  
+> Workaround we'd want: either CPA codes indexed separately, or a way to filter by category (auto vs. base)
 
 ---
 
-**10. Do you follow Topps' official parallel naming or your own taxonomy?**
+### 3. Is there an endpoint to retrieve all cards in a given set?
 
-Topps uses names like `"Sky Blue Refractor"`, `"Aqua Refractor"`, `"Gold Mini-Diamond"`. Do you normalize these or index them as-is from Topps' official names?
+Our current approach: search for each card individually using player name + year + set + card number. This is 1000+ API calls per product import, each returning at most 10 candidates.
 
----
+A "cards by set" endpoint — even something as simple as `?set_name=2025 Bowman Chrome&limit=500` — would let us:
+- Pre-load the full CH catalog for a product before matching
+- Do our matching client-side (exact `number` + `player_name` comparison), dramatically improving accuracy
+- Validate our checklist imports against your data directly
 
-## Relationship / Partnership
-
-**11. Is there a developer Slack, Discord, or forum?**
-
-We'd love to stay connected with other builders using your API and get earlier visibility into catalog updates and breaking changes.
-
----
-
-**12. Is there a webhook or feed for new card additions?**
-
-Our pricing cache has a 24h TTL. For newly released products, knowing when new cards hit your catalog would let us invalidate cache and re-run matching automatically rather than relying on manual re-runs.
+**Question:** Is anything like this available or planned? Even a paginated search filtered by `set_name` would transform our pipeline.
 
 ---
 
-**13. Are you open to sharing test/fixture data for a few known sets?**
+## Priority 2 — Structural understanding
 
-For integration testing our matching pipeline, a small known-good dataset (e.g. 50 cards from 2025 Bowman Draft with expected card_ids) would let us regression-test query changes without burning API calls.
+These don't block us today but the answers will inform how we architect Phase 2 of our matching (variant-level card_id assignment).
 
 ---
 
-*Last updated: 2026-04-02*
+### 4. For a given card number, how many card_ids exist — one per parallel?
+
+Example: Jacob Wilson BCP-153 in 2025 Bowman Chrome. The Topps checklist has 100+ parallels (Base, Refractor, Gold /50, Superfractor 1/1, etc.).
+
+**Question:** Does CH have a separate `card_id` for each parallel, or does one `card_id` represent the card across all finishes? And if separate: which parallels do you index? (All of them, or just the ones with enough sales data?)
+
+**Why it matters:** If each parallel has its own `card_id`, we want to search for parallel-specific cards for high-value finishes (Gold /50 and up). For low-value parallels with sparse data, falling back to the base card_id is fine. Knowing your coverage model helps us decide which variants are worth a dedicated search vs. which should just inherit the base card_id.
+
+**Scenario:**
+> We have BCP-153 base (card_id: ch_aaa) confirmed via matching.  
+> We also have a "Gold Refractor /50" variant row for the same player.  
+> Query: `"Jacob Wilson 2025 Bowman Chrome Gold Refractor"`  
+> Does this return a distinct card_id for the Gold, or the same as Base?
+
+---
+
+### 5. How do you handle multi-player autograph cards?
+
+We have dual (DA-), triple (TA-), and quad auto (QA-) cards where the XLSX stores the player field as slash-delimited names (e.g. `"Dylan Crews/James Wood"`). Searching by combined name doesn't work. Searching by code alone is inconsistent.
+
+**Question:** Is there a recommended pattern for these? A lookup by card code (`DA-WC`) would be ideal if you index by `number` for multi-player sets.
+
+**Scenario:**
+> Card: `DA-WC` — Dylan Crews / James Wood, 2025 Bowman's Best  
+> Query by combined name: no reliable results  
+> Query by code: `"DA-WC 2025 Bowman's Best"` — returns candidates but `number` is null, can't confirm  
+> Ideal: direct lookup by `number: "DA-WC"` within the set
+
+---
+
+### 6. What does the `variant` field contain for base Bowman Chrome Prospect cards?
+
+We've seen `"Base"`, `"Refractor"`, and sometimes empty for cards that Topps calls the base BCP card. Our Claude matching context teaches it that `Retrofractor` (Bowman's term) maps to `Base` or `Lazer Refractor` in your catalog — but we derived this from trial and error.
+
+**Question:** What's your canonical variant name for:
+- The base Bowman Chrome Prospect card (BCP-*)
+- The standard Refractor parallel
+- The Retrofractor (if you index it)
+
+Do you follow Topps' official parallel naming or a normalized taxonomy?
+
+---
+
+## Priority 3 — Efficiency & partnership
+
+Lower urgency, but worth raising if the conversation goes well.
+
+---
+
+### 7. Is there a batch card-search endpoint?
+
+We call `/v1/cards/card-search` once per variant. For a 1000-variant product, that's 1000 sequential API calls per matching run. A batch endpoint (array of queries → array of result sets) would reduce matching time from ~15 minutes to ~2 minutes.
+
+---
+
+### 8. Is there a webhook or event feed for new card additions?
+
+Our pricing cache has a 24h TTL. For newly released products, a webhook when cards from a new set are added would let us invalidate cache and re-run matching automatically rather than waiting for a manual refresh.
+
+---
+
+### 9. Are you open to a small test fixture for regression testing?
+
+A known-good dataset — e.g. 50 cards from 2025 Bowman Draft with expected `card_id`s — would let us regression-test query changes without burning live API calls. Happy to share our test queries back if useful.
+
+---
+
+### 10. Is there a developer channel (Slack / Discord)?
+
+We'd love visibility into catalog updates, breaking changes, and what other builders are seeing. Even a low-traffic changelog channel would help.
+
+---
+
+## Context We Should Share With Them
+
+Before or during the conversation, it's worth giving CH a quick picture of what we're doing so the questions land with context:
+
+- We're building a break pricing and deal analysis platform (BreakIQ). We import manufacturer checklists (Topps PDFs, Bowman XLSX, Panini CSV) and match every variant row to a CH `card_id` so we can pull live EV for slot pricing.
+- Our current match rate: ~95% on Bowman Draft, ~76% on Bowman's Best. The remaining 24% on Best is almost entirely autograph sets where `number` is null.
+- We're running ~1,000–17,000 variants per product import, using a Claude Haiku semantic matching layer on top of your search results.
+- Our goal is to get to 95%+ across all product types. The three asks in Priority 1 would likely get us there.
