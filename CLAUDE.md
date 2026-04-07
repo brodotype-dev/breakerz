@@ -55,7 +55,7 @@ Production: `breakerz.vercel.app` | Staging branch: `staging` | Repo: `github.co
 | URL | `breakerz.vercel.app` | staging preview URLs |
 
 **Env vars** (set in Vercel, use `.env.local` for local dev):
-`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `CARDHEDGER_API_KEY`, `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `FROM_EMAIL`, `NEXT_PUBLIC_APP_URL`, `PSA_API_KEY`
+`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `CARDHEDGER_API_KEY`, `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `FROM_EMAIL`, `NEXT_PUBLIC_APP_URL`, `PSA_API_KEY`, `CRON_SECRET`
 
 Supabase Vercel integration injects both `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_URL` — `lib/supabase.ts` uses `??` fallbacks for both. Don't remove them.
 
@@ -95,6 +95,7 @@ app/(consumer)/card-lookup/      — Slab Analysis tool (auth-gated)
 app/break/[slug]/                — consumer break analysis (auth required)
 app/analysis/                    — BreakIQ Sayz deal checker (auth required)
 app/api/admin/pricing-breakdown/ — per-player pricing inputs for Pricing Audit Panel
+app/api/cron/refresh-pricing/    — nightly cron (4 AM UTC) to refresh pricing cache for active products
 app/api/profile/                 — GET + PUT consumer profile (RLS-scoped)
 scripts/copy-prod-to-staging.mjs — copy product data from prod to staging Supabase
 ```

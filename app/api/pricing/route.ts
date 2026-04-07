@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   try {
     const { data: playerProducts, error } = await supabaseAdmin
       .from('player_products')
-      .select('*, player:players(*)')
+      .select('*, player:players(*), buzz_score, breakerz_score, is_high_volatility')
       .eq('product_id', productId)
       .eq('insert_only', false)
       .order('id');
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
 
     const { data: playerProducts, error } = await supabaseAdmin
       .from('player_products')
-      .select('*, player:players(*), buzz_score, breakerz_score')
+      .select('*, player:players(*), buzz_score, breakerz_score, is_high_volatility')
       .eq('product_id', productId)
       .eq('insert_only', false)
       .order('id');
