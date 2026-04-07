@@ -387,6 +387,19 @@ export default async function HomePage() {
         )}
       </div>
 
+      {/* Responsible gambling banner */}
+      <div
+        className="border-t px-6 py-4 text-center"
+        style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
+      >
+        <p className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>
+          Gambling problem? Call or text{' '}
+          <a href="tel:18004262537" className="underline" style={{ color: 'var(--text-primary)' }}>
+            1-800-GAMBLER
+          </a>
+        </p>
+      </div>
+
       {/* Footer Stats */}
       <div className="px-6 py-12 border-t" style={{ borderColor: 'var(--terminal-border)' }}>
         <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
@@ -418,19 +431,6 @@ export default async function HomePage() {
             <div className="terminal-label">Market Tracking</div>
           </div>
         </div>
-      </div>
-
-      {/* Responsible gambling footer */}
-      <div
-        className="border-t px-6 py-3 text-center"
-        style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
-      >
-        <p className="text-xs" style={{ color: 'var(--text-disabled)' }}>
-          Gambling problem? Call or text{' '}
-          <a href="tel:18004262537" className="font-medium hover:underline" style={{ color: 'var(--text-tertiary)' }}>
-            1-800-GAMBLER
-          </a>
-        </p>
       </div>
     </div>
   );
