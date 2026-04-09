@@ -4,10 +4,10 @@ import { useEffect, useState, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
-import DashboardConfig from '@/components/breakerz/DashboardConfig';
-import PlayerTable from '@/components/breakerz/PlayerTable';
-import TeamSlotsTable from '@/components/breakerz/TeamSlotsTable';
-import { SegmentedControl } from '@/components/breakerz/ds';
+import DashboardConfig from '@/components/breakiq/DashboardConfig';
+import PlayerTable from '@/components/breakiq/PlayerTable';
+import TeamSlotsTable from '@/components/breakiq/TeamSlotsTable';
+import { SegmentedControl } from '@/components/breakiq/ds';
 import { computeSlotPricing, computeTeamSlotPricing } from '@/lib/engine';
 import type { BreakConfig, PlayerWithPricing, Product, Sport } from '@/lib/types';
 

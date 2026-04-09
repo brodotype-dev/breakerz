@@ -1,8 +1,8 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { Sparkles, TrendingUp, Users } from 'lucide-react';
-import GlobalBreakerzBetsDebrief from './GlobalBreakerzBetsDebrief';
+import GlobalBreakIQBetsDebrief from './GlobalBreakIQBetsDebrief';
 
-export default async function BreakerzBetzPage() {
+export default async function BreakIQBetsPage() {
   // Fetch global stats
   const [
     { count: totalPlayers },
@@ -114,7 +114,7 @@ export default async function BreakerzBetzPage() {
               </p>
             </div>
           </div>
-          <GlobalBreakerzBetsDebrief />
+          <GlobalBreakIQBetsDebrief />
         </div>
       </div>
 

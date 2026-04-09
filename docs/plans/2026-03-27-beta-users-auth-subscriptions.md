@@ -51,7 +51,7 @@ Someone running a break and pricing their slots. The Breaker Comparison tool liv
 | Role | Access |
 |---|---|
 | `admin` | Full `/admin/*` — products, import, odds, Breakerz Bets, player flags, user management, waitlist |
-| `contributor` | `/admin/breakerz-betz` + player flags/risk notes only |
+| `contributor` | `/admin/breakiq-betz` + player flags/risk notes only |
 
 ---
 

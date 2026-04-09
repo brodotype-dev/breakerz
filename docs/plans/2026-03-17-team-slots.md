@@ -27,10 +27,10 @@ Click a team row → inline player list expands, showing that team's individual 
 ## Files
 
 ### New
-- `components/breakerz/TeamSlotsTable.tsx` — team-level table with expandable player rows
+- `components/breakiq/TeamSlotsTable.tsx` — team-level table with expandable player rows
 
 ### Modified
 - `lib/types.ts` — add `TeamSlot` type
 - `lib/engine.ts` — add `computeTeamSlotPricing()` function
-- `components/breakerz/DashboardConfig.tsx` — remove eBay Fee Rate + Shipping/Card fields
+- `components/breakiq/DashboardConfig.tsx` — remove eBay Fee Rate + Shipping/Card fields
 - `app/break/[slug]/page.tsx` — add Team Slots tab (default), reorder tabs

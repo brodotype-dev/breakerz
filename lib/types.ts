@@ -121,6 +121,45 @@ export type TeamSlot = {
   players: PlayerWithPricing[];
 };
 
+// --- My Breaks ---
+
+export type Platform =
+  | 'fanatics_live'
+  | 'whatnot'
+  | 'ebay'
+  | 'dave_adams'
+  | 'layton_sports'
+  | 'local_card_shop'
+  | 'other';
+
+export type BreakOutcome = 'win' | 'mediocre' | 'bust';
+export type BreakStatus = 'pending' | 'completed' | 'abandoned';
+
+export interface UserBreak {
+  id: string;
+  user_id: string;
+  product_id: string;
+  team: string;
+  break_type: 'hobby' | 'bd';
+  num_cases: number;
+  ask_price: number;
+  platform: Platform;
+  platform_other: string | null;
+  snapshot_signal: Signal | null;
+  snapshot_value_pct: number | null;
+  snapshot_fair_value: number | null;
+  snapshot_analysis: string | null;
+  snapshot_top_players: Array<{ name: string; isRookie: boolean; isIcon: boolean; evMid: number; evHigh: number }> | null;
+  snapshot_risk_flags: Array<{ playerName: string; flagType: string; note: string }> | null;
+  snapshot_hv_players: string[] | null;
+  outcome: BreakOutcome | null;
+  outcome_notes: string | null;
+  status: BreakStatus;
+  created_at: string;
+  completed_at: string | null;
+  updated_at: string;
+}
+
 // --- CardHedger API types ---
 
 export interface CardHedgerPrice {

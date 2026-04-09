@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { formatCurrency, computeSignal, formatPct, computeEffectiveScore } from '@/lib/engine';
-import SignalBadge from '@/components/breakerz/SignalBadge';
-import { IconPlayerBadge, BullishBadge, BearishBadge, HighVolatilityBadge, RiskFlagBadge } from '@/components/breakerz/SocialBadges';
+import SignalBadge from '@/components/breakiq/SignalBadge';
+import { IconPlayerBadge, BullishBadge, BearishBadge, HighVolatilityBadge, RiskFlagBadge } from '@/components/breakiq/SocialBadges';
 import type { TeamSlot } from '@/lib/types';
 
 type RiskFlagEntry = { flagType: string; note: string };

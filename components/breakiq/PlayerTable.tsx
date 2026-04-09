@@ -1,7 +1,7 @@
 'use client';
 
 import { formatCurrency, computeEffectiveScore } from '@/lib/engine';
-import { IconPlayerBadge, BullishBadge, BearishBadge, HighVolatilityBadge, RiskFlagBadge } from '@/components/breakerz/SocialBadges';
+import { IconPlayerBadge, BullishBadge, BearishBadge, HighVolatilityBadge, RiskFlagBadge } from '@/components/breakiq/SocialBadges';
 import type { PlayerWithPricing } from '@/lib/types';
 
 type RiskFlagEntry = { flagType: string; note: string };

@@ -305,7 +305,7 @@ The `breakerz_score` data is collected but inert. This phase makes it real.
 **3d.** BreakIQ Sayz: risk flag banners (red ⚑) + high volatility advisory (⚡) in result card; pass flags to Claude prompt
 **3e.** Break page Team Slots: flag icon on team row + player row tooltip
 
-**Files:** 2 migrations, player management page, `app/api/analysis/route.ts`, `app/analysis/page.tsx`, `components/breakerz/TeamSlotsTable.tsx`
+**Files:** 2 migrations, player management page, `app/api/analysis/route.ts`, `app/analysis/page.tsx`, `components/breakiq/TeamSlotsTable.tsx`
 
 ---
 
@@ -316,7 +316,7 @@ The `breakerz_score` data is collected but inert. This phase makes it real.
 **4b.** Team Slots table: show icon badge for icon-tier players
 **4c.** Player table: buzz indicator badge, icon badge, high volatility ⚡ badge
 
-**Files:** `components/breakerz/TeamSlotsTable.tsx`, `components/breakerz/PlayerTable.tsx`
+**Files:** `components/breakiq/TeamSlotsTable.tsx`, `components/breakiq/PlayerTable.tsx`
 **Dependency:** Phases 1–3 must be complete (needs the data to display)
 
 ---
@@ -403,8 +403,8 @@ The `breakerz_score` data is collected but inert. This phase makes it real.
 | `app/admin/products/[id]/BreakerzBetsDebrief.tsx` | B-score conversational input ✅ |
 | `app/api/admin/parse-bets-debrief/route.ts` | B-score Claude parser ✅ |
 | `lib/cardhedger.ts` | CardHedger API client — needs top-movers + price-updates |
-| `components/breakerz/TeamSlotsTable.tsx` | Break page team rows — needs buzz indicators |
-| `components/breakerz/PlayerTable.tsx` | Break page player rows — needs buzz indicators |
+| `components/breakiq/TeamSlotsTable.tsx` | Break page team rows — needs buzz indicators |
+| `components/breakiq/PlayerTable.tsx` | Break page player rows — needs buzz indicators |
 | `supabase/migrations/` | All schema changes |
 
 ---

@@ -270,10 +270,10 @@ Figma Make theme import had set shadcn semantic vars to light values (`--primary
 
 Major visual overhaul — "Bloomberg terminal for card breaks" direction applied across all consumer-facing pages. The design system is now codified in the repo and sourced from Figma Make.
 
-**Design system (`components/breakerz/ds/`)**
+**Design system (`components/breakiq/ds/`)**
 - New DS component library: `ElevatedCard`, `StepHeader`, `FormLabel`, `SegmentedControl`, `CounterInput`, `LargeCTAButton` — all using terminal CSS custom properties
 - Design tokens stored at `design-assets/design-system-tokens.json`; component specs at `design-assets/DESIGN_SYSTEM_EXPORT.md`
-- All DS components exported from `components/breakerz/ds/index.ts`
+- All DS components exported from `components/breakiq/ds/index.ts`
 - Workflow: Figma Make → export source zip → copy CSS/components → adapt for Next.js (Link href, useParams from next/navigation, real data)
 
 **`app/globals.css`**
@@ -301,17 +301,17 @@ Major visual overhaul — "Bloomberg terminal for card breaks" direction applied
 - Result panel: signal verdict card (color-coded border/bg by BUY/WATCH/PASS), fair value vs asking price grid, AI narrative, key players table, HV advisory, risk flags
 - All existing data logic preserved (API calls, Supabase team fetch, result types)
 
-**`components/breakerz/DashboardConfig.tsx`**
+**`components/breakiq/DashboardConfig.tsx`**
 - Rebuilt using DS components: `ElevatedCard`, `FormLabel`, `CounterInput`
 
-**`components/breakerz/TeamSlotsTable.tsx`, `PlayerTable.tsx`**
+**`components/breakiq/TeamSlotsTable.tsx`, `PlayerTable.tsx`**
 - Restyled with terminal design system vars, Social Currency badges updated
 
-**`components/breakerz/ProductCard.tsx`**
+**`components/breakiq/ProductCard.tsx`**
 - New component matching Figma Make product card design
 
-**New files:** `components/breakerz/ds/` (6 DS components + index), `components/breakerz/SignalBadge.tsx`, `components/breakerz/SocialBadges.tsx`, `design-assets/DESIGN_SYSTEM_EXPORT.md`, `design-assets/design-system-tokens.json`
-**Modified:** `app/analysis/page.tsx`, `app/break/[slug]/page.tsx`, `app/globals.css`, `app/layout.tsx`, `app/page.tsx`, `components/breakerz/DashboardConfig.tsx`, `components/breakerz/PlayerTable.tsx`, `components/breakerz/TeamSlotsTable.tsx`
+**New files:** `components/breakiq/ds/` (6 DS components + index), `components/breakiq/SignalBadge.tsx`, `components/breakiq/SocialBadges.tsx`, `design-assets/DESIGN_SYSTEM_EXPORT.md`, `design-assets/design-system-tokens.json`
+**Modified:** `app/analysis/page.tsx`, `app/break/[slug]/page.tsx`, `app/globals.css`, `app/layout.tsx`, `app/page.tsx`, `components/breakiq/DashboardConfig.tsx`, `components/breakiq/PlayerTable.tsx`, `components/breakiq/TeamSlotsTable.tsx`
 
 ---
 

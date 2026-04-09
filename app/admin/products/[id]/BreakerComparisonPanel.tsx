@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import BreakerComparison from '@/components/breakerz/BreakerComparison';
+import BreakerComparison from '@/components/breakiq/BreakerComparison';
 import type { PlayerWithPricing } from '@/lib/types';
 
 export default function BreakerComparisonPanel({ productId }: { productId: string }) {

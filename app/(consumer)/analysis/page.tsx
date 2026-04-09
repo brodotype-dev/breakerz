@@ -13,7 +13,7 @@ import {
   SegmentedControl,
   CounterInput,
   LargeCTAButton,
-} from '@/components/breakerz/ds';
+} from '@/components/breakiq/ds';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,

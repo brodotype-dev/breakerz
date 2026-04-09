@@ -33,12 +33,12 @@ Apple OAuth deferred — requires Apple Developer account ($99/yr).
 **Effort:** ~0.5 days
 **Why now:** Phases 1–3 are live. The data exists in the DB. The break page currently shows none of it — buyers see no signal that a player is hot/cold/flagged until they run BreakIQ Sayz. Phase 4 closes that gap.
 
-- `components/breakerz/TeamSlotsTable.tsx`: add up/down arrow (↑↓) on team rows where `effective_score > 0.1` or `< -0.1`
-- `components/breakerz/TeamSlotsTable.tsx`: show purple ★ badge for icon-tier players on the team
-- `components/breakerz/PlayerTable.tsx`: buzz indicator badge, icon badge, ⚡ high volatility badge per player row
+- `components/breakiq/TeamSlotsTable.tsx`: add up/down arrow (↑↓) on team rows where `effective_score > 0.1` or `< -0.1`
+- `components/breakiq/TeamSlotsTable.tsx`: show purple ★ badge for icon-tier players on the team
+- `components/breakiq/PlayerTable.tsx`: buzz indicator badge, icon badge, ⚡ high volatility badge per player row
 - Risk flags: show ⚑ icon on team row + tooltip with flag note on hover
 
-**Files:** `components/breakerz/TeamSlotsTable.tsx`, `components/breakerz/PlayerTable.tsx`
+**Files:** `components/breakiq/TeamSlotsTable.tsx`, `components/breakiq/PlayerTable.tsx`
 
 ---
 

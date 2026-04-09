@@ -1,7 +1,7 @@
 'use client';
 
 import { formatCurrency } from '@/lib/engine';
-import { ElevatedCard, FormLabel, CounterInput } from '@/components/breakerz/ds';
+import { ElevatedCard, FormLabel, CounterInput } from '@/components/breakiq/ds';
 import type { BreakConfig } from '@/lib/types';
 
 interface Props {

@@ -106,8 +106,6 @@ Do you follow Topps' official parallel naming or a normalized taxonomy?
 
 ## Priority 3 — Efficiency & partnership
 
-Lower urgency, but worth raising if the conversation goes well.
-
 ---
 
 ### 7. Is there a batch card-search endpoint?

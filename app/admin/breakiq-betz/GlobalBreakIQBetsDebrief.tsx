@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { saveBreakerzBetsGlobal } from './actions';
+import { saveBreakIQBetsGlobal } from './actions';
 
 interface ParsedResult {
   player_id: string;
@@ -32,7 +32,7 @@ function snapScore(raw: number): number {
   ).value;
 }
 
-export default function GlobalBreakerzBetsDebrief() {
+export default function GlobalBreakIQBetsDebrief() {
   const router = useRouter();
   const [narrative, setNarrative] = useState('');
   const [status, setStatus] = useState<'idle' | 'parsing' | 'reviewing' | 'done' | 'error'>('idle');
@@ -80,7 +80,7 @@ export default function GlobalBreakerzBetsDebrief() {
     setSaving(true);
     setError(null);
 
-    const result = await saveBreakerzBetsGlobal(
+    const result = await saveBreakIQBetsGlobal(
       toSave.map(r => ({ playerId: r.player_id, score: r.score, note: r.note }))
     );
 

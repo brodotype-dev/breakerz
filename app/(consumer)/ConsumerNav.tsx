@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { Sparkles, ChevronDown, LogOut, Settings, Monitor, User } from 'lucide-react';
+import { Sparkles, ChevronDown, LogOut, Settings, Monitor, User, ClipboardList } from 'lucide-react';
 import { logout } from './actions';
 
 interface ConsumerNavProps {
@@ -46,6 +46,14 @@ export default function ConsumerNav({ isAdmin }: ConsumerNavProps) {
 
       {/* Right side */}
       <div className="flex items-center gap-2">
+        <Link
+          href="/my-breaks"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors hover:bg-[var(--terminal-surface)]"
+          style={{ color: 'var(--text-secondary)' }}
+        >
+          <ClipboardList className="w-3 h-3" />
+          My Breaks
+        </Link>
         <Link
           href="/profile"
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors hover:bg-[var(--terminal-surface)]"

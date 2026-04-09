@@ -51,7 +51,8 @@ export async function middleware(request: NextRequest) {
     pathname === '/' ||
     pathname.startsWith('/break') ||
     pathname.startsWith('/analysis') ||
-    pathname.startsWith('/card-lookup');
+    pathname.startsWith('/card-lookup') ||
+    pathname.startsWith('/my-breaks');
 
   if (isConsumerRoute && !user && process.env.NODE_ENV !== 'development') {
     const waitlistUrl = request.nextUrl.clone();
@@ -71,5 +72,7 @@ export const config = {
     '/analysis/:path*',
     '/card-lookup/:path*',
     '/card-lookup',
+    '/my-breaks/:path*',
+    '/my-breaks',
   ],
 };

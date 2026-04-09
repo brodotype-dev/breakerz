@@ -7,7 +7,7 @@ import { revalidatePath } from 'next/cache';
  * Apply Breakerz Betz scores globally — updates ALL player_products for each player.
  * This is the global version (not per-product).
  */
-export async function saveBreakerzBetsGlobal(
+export async function saveBreakIQBetsGlobal(
   updates: Array<{ playerId: string; score: number; note: string }>
 ): Promise<{ saved: number; error?: string }> {
   try {
@@ -23,7 +23,7 @@ export async function saveBreakerzBetsGlobal(
       }
       saved++;
     }
-    revalidatePath('/admin/breakerz-betz');
+    revalidatePath('/admin/breakiq-betz');
     return { saved };
   } catch (err) {
     return { saved: 0, error: err instanceof Error ? err.message : 'Unknown error' };
