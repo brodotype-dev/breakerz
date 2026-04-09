@@ -249,107 +249,17 @@ export default function MyBreaksPage() {
 function BreakList({ breaks, products, onRefresh }: { breaks: BreakRecord[]; products: Product[]; onRefresh: () => void }) {
   const pending = breaks.filter(b => b.status === 'pending');
   const completed = breaks.filter(b => b.status === 'completed');
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [importing, setImporting] = useState(false);
-  const [importError, setImportError] = useState<string | null>(null);
-  const [importSuccess, setImportSuccess] = useState<string | null>(null);
 
   const stats = computeStats(breaks);
 
-  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImporting(true);
-    setImportError(null);
-    setImportSuccess(null);
-
-    try {
-      const text = await file.text();
-      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-      if (lines.length < 2) throw new Error('CSV must have a header row and at least one data row');
-
-      const rows = lines.slice(1).map(line => {
-        const cols: string[] = [];
-        let current = '';
-        let inQuotes = false;
-        for (const ch of line) {
-          if (ch === '"') { inQuotes = !inQuotes; continue; }
-          if (ch === ',' && !inQuotes) { cols.push(current.trim()); current = ''; continue; }
-          current += ch;
-        }
-        cols.push(current.trim());
-        return cols;
-      });
-
-      let imported = 0;
-      for (const row of rows) {
-        const [productName, , team, breakType, cases, askPrice, platform, outcome, notes] = row;
-        if (!productName || !team || !askPrice) continue;
-
-        // Fuzzy match product by name
-        const matchedProduct = products.find(p =>
-          p.name.toLowerCase().includes(productName.toLowerCase()) ||
-          productName.toLowerCase().includes(p.name.toLowerCase())
-        );
-        if (!matchedProduct) continue;
-
-        const validPlatform = PLATFORMS.find(p => p.value === platform)?.value ?? 'other';
-        const validOutcome = (['win', 'mediocre', 'bust'] as const).find(o => o === outcome) ?? null;
-
-        const res = await fetch('/api/my-breaks', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            mode: validOutcome ? 'log' : 'new',
-            productId: matchedProduct.id,
-            team,
-            breakType: breakType === 'bd' ? 'bd' : 'hobby',
-            numCases: parseInt(cases) || 1,
-            askPrice: parseFloat(askPrice),
-            platform: validPlatform,
-            outcome: validOutcome,
-            outcomeNotes: notes || undefined,
-          }),
-        });
-        if (res.ok) imported++;
-      }
-
-      setImportSuccess(`Imported ${imported} of ${rows.length} breaks`);
-      onRefresh();
-    } catch (err) {
-      setImportError(err instanceof Error ? err.message : 'Import failed');
-    } finally {
-      setImporting(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  }
-
   if (breaks.length === 0) {
     return (
-      <div className="space-y-4">
-        <div className="rounded-xl border-2 border-dashed p-12 text-center" style={{ borderColor: 'var(--terminal-border)' }}>
-          <ClipboardList className="w-12 h-12 mx-auto mb-4 opacity-20" style={{ color: 'var(--text-secondary)' }} />
-          <p className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>No breaks logged yet</p>
-          <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
-            Track your breaks to see how your spending compares to actual results over time.
-          </p>
-          <div className="flex items-center justify-center gap-3">
-            <button
-              onClick={() => downloadImportTemplate()}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all hover:opacity-80"
-              style={{ backgroundColor: 'var(--terminal-surface)', color: 'var(--text-secondary)', border: '1px solid var(--terminal-border)' }}
-            >
-              <Download className="w-4 h-4" /> Download Template
-            </button>
-            <label
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all hover:opacity-80 cursor-pointer"
-              style={{ backgroundColor: 'var(--terminal-surface)', color: 'var(--text-secondary)', border: '1px solid var(--terminal-border)' }}
-            >
-              <Upload className="w-4 h-4" /> {importing ? 'Importing…' : 'Import CSV'}
-              <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImport} disabled={importing} />
-            </label>
-          </div>
-        </div>
+      <div className="rounded-xl border-2 border-dashed p-12 text-center" style={{ borderColor: 'var(--terminal-border)' }}>
+        <ClipboardList className="w-12 h-12 mx-auto mb-4 opacity-20" style={{ color: 'var(--text-secondary)' }} />
+        <p className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>No breaks logged yet</p>
+        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+          Track your breaks to see how your spending compares to actual results over time.
+        </p>
       </div>
     );
   }
@@ -372,26 +282,6 @@ function BreakList({ breaks, products, onRefresh }: { breaks: BreakRecord[]; pro
           </p>
           <p className="text-xs font-semibold uppercase tracking-wider mt-1" style={{ color: 'var(--text-tertiary)' }}>Success Rate</p>
         </div>
-      </div>
-
-      {/* Import/Export bar */}
-      <div className="flex items-center gap-2">
-        <button
-          onClick={() => downloadImportTemplate()}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all hover:opacity-80"
-          style={{ color: 'var(--text-tertiary)' }}
-        >
-          <Download className="w-3 h-3" /> Template
-        </button>
-        <label
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all hover:opacity-80 cursor-pointer"
-          style={{ color: 'var(--text-tertiary)' }}
-        >
-          <Upload className="w-3 h-3" /> {importing ? 'Importing…' : 'Import CSV'}
-          <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImport} disabled={importing} />
-        </label>
-        {importError && <span className="text-xs" style={{ color: 'var(--signal-pass)' }}>{importError}</span>}
-        {importSuccess && <span className="text-xs" style={{ color: 'var(--signal-buy)' }}>{importSuccess}</span>}
       </div>
 
       {pending.length > 0 && (
@@ -607,6 +497,72 @@ function BreakForm({
   const [error, setError] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<any | null>(null);
 
+  // CSV import (log mode only)
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importSuccess, setImportSuccess] = useState<string | null>(null);
+
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportError(null);
+    setImportSuccess(null);
+    try {
+      const text = await file.text();
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+      if (lines.length < 2) throw new Error('CSV must have a header row and at least one data row');
+      const rows = lines.slice(1).map(line => {
+        const cols: string[] = [];
+        let current = '';
+        let inQuotes = false;
+        for (const ch of line) {
+          if (ch === '"') { inQuotes = !inQuotes; continue; }
+          if (ch === ',' && !inQuotes) { cols.push(current.trim()); current = ''; continue; }
+          current += ch;
+        }
+        cols.push(current.trim());
+        return cols;
+      });
+      let imported = 0;
+      for (const row of rows) {
+        const [productName, , team, breakType, cases, askPrice, platform, outcome, notes] = row;
+        if (!productName || !team || !askPrice) continue;
+        const matchedProduct = products.find(p =>
+          p.name.toLowerCase().includes(productName.toLowerCase()) ||
+          productName.toLowerCase().includes(p.name.toLowerCase())
+        );
+        if (!matchedProduct) continue;
+        const validPlatform = PLATFORMS.find(p => p.value === platform)?.value ?? 'other';
+        const validOutcome = (['win', 'mediocre', 'bust'] as const).find(o => o === outcome) ?? null;
+        const res = await fetch('/api/my-breaks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: validOutcome ? 'log' : 'new',
+            productId: matchedProduct.id,
+            team,
+            breakType: breakType === 'bd' ? 'bd' : 'hobby',
+            numCases: parseInt(cases) || 1,
+            askPrice: parseFloat(askPrice),
+            platform: validPlatform,
+            outcome: validOutcome,
+            outcomeNotes: notes || undefined,
+          }),
+        });
+        if (res.ok) imported++;
+      }
+      setImportSuccess(`Imported ${imported} of ${rows.length} breaks`);
+      onSaved();
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Import failed');
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
   useEffect(() => {
     if (!productId) { setTeams([]); setTeam(''); return; }
     setTeam('');
@@ -673,8 +629,59 @@ function BreakForm({
             <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
               {mode === 'new'
                 ? "We'll run a live analysis and save it. Come back after to log how it went."
-                : 'Record a break you already did. We\'ll still run the analysis for your records.'}
+                : 'Record a break you already did, or import from a CSV.'}
             </p>
+          </div>
+
+          {/* CSV Import zone (log mode only) */}
+          {mode === 'log' && (
+            <div
+              className="border-2 border-dashed rounded-lg p-5 text-center"
+              style={{ borderColor: 'var(--terminal-border)' }}
+              onDrop={e => {
+                e.preventDefault();
+                const file = e.dataTransfer.files?.[0];
+                if (file && file.name.endsWith('.csv')) {
+                  const dt = new DataTransfer();
+                  dt.items.add(file);
+                  if (fileInputRef.current) {
+                    fileInputRef.current.files = dt.files;
+                    fileInputRef.current.dispatchEvent(new Event('change', { bubbles: true }));
+                  }
+                }
+              }}
+              onDragOver={e => e.preventDefault()}
+            >
+              <Upload className="w-8 h-8 mx-auto mb-2 opacity-30" style={{ color: 'var(--text-secondary)' }} />
+              <p className="text-sm font-medium mb-1" style={{ color: 'var(--text-primary)' }}>
+                {importing ? 'Importing…' : 'Import from CSV'}
+              </p>
+              <p className="text-xs mb-3" style={{ color: 'var(--text-tertiary)' }}>
+                Drop a file here or click to browse.{' '}
+                <button onClick={() => downloadImportTemplate()} className="underline" style={{ color: 'var(--accent-blue)' }}>
+                  Download template
+                </button>
+              </p>
+              <label
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold cursor-pointer transition-all hover:opacity-80"
+                style={{ backgroundColor: 'var(--terminal-bg)', color: 'var(--text-secondary)', border: '1px solid var(--terminal-border)' }}
+              >
+                <Upload className="w-4 h-4" /> Choose File
+                <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImport} disabled={importing} />
+              </label>
+              {importError && <p className="text-xs mt-2" style={{ color: 'var(--signal-pass)' }}>{importError}</p>}
+              {importSuccess && <p className="text-xs mt-2" style={{ color: 'var(--signal-buy)' }}>{importSuccess}</p>}
+            </div>
+          )}
+
+          <div className="relative flex items-center gap-3" style={{ color: 'var(--text-tertiary)' }}>
+            {mode === 'log' && (
+              <>
+                <div className="flex-1 border-t" style={{ borderColor: 'var(--terminal-border)' }} />
+                <span className="text-xs font-medium">or log one break</span>
+                <div className="flex-1 border-t" style={{ borderColor: 'var(--terminal-border)' }} />
+              </>
+            )}
           </div>
 
           {/* Product */}
