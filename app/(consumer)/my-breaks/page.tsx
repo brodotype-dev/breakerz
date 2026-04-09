@@ -319,6 +319,7 @@ function PendingBreakCard({ brk, onComplete }: { brk: BreakRecord; onComplete: (
   const [expanded, setExpanded] = useState(false);
   const [outcome, setOutcome] = useState<BreakOutcome | null>(null);
   const [notes, setNotes] = useState('');
+  const [analysisFeedback, setAnalysisFeedback] = useState<'helpful' | 'not_helpful' | null>(null);
   const [saving, setSaving] = useState(false);
 
   const [completeError, setCompleteError] = useState<string | null>(null);
@@ -331,7 +332,7 @@ function PendingBreakCard({ brk, onComplete }: { brk: BreakRecord; onComplete: (
       const res = await fetch(`/api/my-breaks/${brk.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ outcome, outcomeNotes: notes || null }),
+        body: JSON.stringify({ outcome, outcomeNotes: notes || null, analysisFeedback }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
@@ -426,6 +427,35 @@ function PendingBreakCard({ brk, onComplete }: { brk: BreakRecord; onComplete: (
             className="w-full rounded-lg border px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-blue-500"
             style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-bg)', color: 'var(--text-primary)' }}
           />
+          {/* Analysis feedback */}
+          {brk.snapshot_analysis && (
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Was our analysis helpful?</p>
+              <div className="flex gap-2">
+                {([
+                  { value: 'helpful' as const, label: 'Yes', emoji: '👍' },
+                  { value: 'not_helpful' as const, label: 'No', emoji: '👎' },
+                ] as const).map(o => {
+                  const selected = analysisFeedback === o.value;
+                  return (
+                    <button
+                      key={o.value}
+                      onClick={() => setAnalysisFeedback(selected ? null : o.value)}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all"
+                      style={{
+                        backgroundColor: selected ? 'rgba(59,130,246,0.15)' : 'var(--terminal-bg)',
+                        border: `1px solid ${selected ? 'var(--accent-blue)' : 'var(--terminal-border)'}`,
+                        color: selected ? 'var(--accent-blue)' : 'var(--text-tertiary)',
+                      }}
+                    >
+                      <span>{o.emoji}</span> {o.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {completeError && (
             <p className="text-sm" style={{ color: 'var(--signal-pass)' }}>{completeError}</p>
           )}

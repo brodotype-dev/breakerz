@@ -45,7 +45,7 @@ export async function PUT(
     }
 
     // Complete with outcome
-    const { outcome, outcomeNotes } = body;
+    const { outcome, outcomeNotes, analysisFeedback } = body;
 
     if (!outcome || !VALID_OUTCOMES.includes(outcome)) {
       return NextResponse.json({ error: 'Valid outcome required (win, mediocre, bust)' }, { status: 400 });
@@ -56,6 +56,7 @@ export async function PUT(
       .update({
         outcome,
         outcome_notes: outcomeNotes ?? null,
+        analysis_feedback: analysisFeedback === 'helpful' || analysisFeedback === 'not_helpful' ? analysisFeedback : null,
         status: 'completed',
         completed_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
