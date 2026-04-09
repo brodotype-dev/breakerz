@@ -321,27 +321,45 @@ function PendingBreakCard({ brk, onComplete }: { brk: BreakRecord; onComplete: (
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const [completeError, setCompleteError] = useState<string | null>(null);
+
   async function handleComplete() {
     if (!outcome) return;
     setSaving(true);
-    const res = await fetch(`/api/my-breaks/${brk.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ outcome, outcomeNotes: notes || null }),
-    });
-    if (res.ok) onComplete();
-    setSaving(false);
+    setCompleteError(null);
+    try {
+      const res = await fetch(`/api/my-breaks/${brk.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outcome, outcomeNotes: notes || null }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      onComplete();
+    } catch (err) {
+      setCompleteError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleDidntBuyIn() {
     setSaving(true);
-    const res = await fetch(`/api/my-breaks/${brk.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ abandon: true }),
-    });
-    if (res.ok) onComplete();
-    setSaving(false);
+    setCompleteError(null);
+    try {
+      const res = await fetch(`/api/my-breaks/${brk.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ abandon: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      onComplete();
+    } catch (err) {
+      setCompleteError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setSaving(false);
+    }
   }
 
   const platformLabel = PLATFORMS.find(p => p.value === brk.platform)?.label ?? brk.platform;
@@ -408,6 +426,9 @@ function PendingBreakCard({ brk, onComplete }: { brk: BreakRecord; onComplete: (
             className="w-full rounded-lg border px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-blue-500"
             style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-bg)', color: 'var(--text-primary)' }}
           />
+          {completeError && (
+            <p className="text-sm" style={{ color: 'var(--signal-pass)' }}>{completeError}</p>
+          )}
           <div className="flex gap-3">
             <button
               onClick={handleDidntBuyIn}
