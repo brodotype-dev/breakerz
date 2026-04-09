@@ -15,13 +15,33 @@ export async function PUT(
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
-    const { outcome, outcomeNotes } = await req.json();
+    const body = await req.json();
+
+    // Abandon (didn't buy in)
+    if (body.abandon) {
+      const { data, error } = await supabase
+        .from('user_breaks')
+        .update({
+          status: 'abandoned',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('status', 'pending')
+        .select()
+        .single();
+
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (!data) return NextResponse.json({ error: 'Break not found or already completed' }, { status: 404 });
+      return NextResponse.json({ break: data });
+    }
+
+    // Complete with outcome
+    const { outcome, outcomeNotes } = body;
 
     if (!outcome || !VALID_OUTCOMES.includes(outcome)) {
       return NextResponse.json({ error: 'Valid outcome required (win, mediocre, bust)' }, { status: 400 });
     }
 
-    // RLS ensures user can only update their own breaks
     const { data, error } = await supabase
       .from('user_breaks')
       .update({

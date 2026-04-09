@@ -232,6 +232,17 @@ function PendingBreakCard({ brk, onComplete }: { brk: BreakRecord; onComplete: (
     setSaving(false);
   }
 
+  async function handleDidntBuyIn() {
+    setSaving(true);
+    const res = await fetch(`/api/my-breaks/${brk.id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ abandon: true }),
+    });
+    if (res.ok) onComplete();
+    setSaving(false);
+  }
+
   const platformLabel = PLATFORMS.find(p => p.value === brk.platform)?.label ?? brk.platform;
 
   return (
@@ -296,14 +307,24 @@ function PendingBreakCard({ brk, onComplete }: { brk: BreakRecord; onComplete: (
             className="w-full rounded-lg border px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-blue-500"
             style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-bg)', color: 'var(--text-primary)' }}
           />
-          <button
-            onClick={handleComplete}
-            disabled={!outcome || saving}
-            className="w-full py-2.5 rounded-lg text-sm font-bold text-white transition-all hover:opacity-90 disabled:opacity-40"
-            style={{ background: 'var(--gradient-blue)' }}
-          >
-            {saving ? 'Saving…' : 'Complete Break'}
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={handleDidntBuyIn}
+              disabled={saving}
+              className="px-4 py-2.5 rounded-lg text-sm font-semibold transition-all hover:opacity-80 disabled:opacity-40"
+              style={{ backgroundColor: 'var(--terminal-bg)', color: 'var(--text-tertiary)', border: '1px solid var(--terminal-border)' }}
+            >
+              Didn{"'"}t buy in
+            </button>
+            <button
+              onClick={handleComplete}
+              disabled={!outcome || saving}
+              className="flex-1 py-2.5 rounded-lg text-sm font-bold text-white transition-all hover:opacity-90 disabled:opacity-40"
+              style={{ background: 'var(--gradient-blue)' }}
+            >
+              {saving ? 'Saving…' : 'Complete Break'}
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -510,7 +531,7 @@ function BreakForm({
           {/* Asking price */}
           <div>
             <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
-              What did you pay?
+              {mode === 'new' ? 'What are you about to pay?' : 'What did you pay?'}
             </label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-mono" style={{ color: 'var(--text-tertiary)' }}>$</span>

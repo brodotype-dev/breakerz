@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { TrendingUp, Zap, Target, Sparkles, ChevronRight, Search } from 'lucide-react';
+import { TrendingUp, Zap, Target, Sparkles, ChevronRight, Search, ClipboardList } from 'lucide-react';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { Product, Sport } from '@/lib/types';
 
@@ -177,15 +177,15 @@ export default async function HomePage() {
         </div>
       </div>
 
-      {/* Breakerz Sayz Promo */}
+      {/* My Breaks Promo */}
       <div className="px-6 py-8">
-        <Link href="/analysis">
+        <Link href="/my-breaks">
           <div
             className="relative overflow-hidden rounded-xl border-2 transition-all cursor-pointer group hover:scale-[1.02]"
             style={{
-              borderColor: 'var(--accent-blue)',
+              borderColor: 'var(--signal-buy)',
               background: 'var(--gradient-card)',
-              boxShadow: '0 4px 20px rgba(59, 130, 246, 0.1)',
+              boxShadow: '0 4px 20px rgba(34, 197, 94, 0.1)',
             }}
           >
             <div className="relative p-6 md:p-8">
@@ -194,42 +194,46 @@ export default async function HomePage() {
                   <div className="flex items-center gap-3 mb-3">
                     <div
                       className="w-10 h-10 rounded-lg flex items-center justify-center"
-                      style={{ background: 'var(--gradient-blue)', boxShadow: 'var(--glow-blue)' }}
+                      style={{ background: 'var(--gradient-green)' }}
                     >
-                      <TrendingUp className="w-5 h-5 text-white" />
+                      <ClipboardList className="w-5 h-5 text-white" />
                     </div>
                     <div>
                       <span
                         className="text-sm font-bold uppercase tracking-wider"
-                        style={{ color: 'var(--accent-blue)' }}
+                        style={{ color: 'var(--signal-buy)' }}
                       >
-                        BREAKERZ SAYZ
+                        MY BREAKS
                       </span>
                       <div className="text-xs font-medium" style={{ color: 'var(--text-tertiary)' }}>
-                        Powered by AI
+                        Track every break
                       </div>
                     </div>
                   </div>
 
                   <h2 className="text-2xl font-bold mb-2" style={{ color: 'var(--text-primary)' }}>
-                    Get Instant Deal Analysis
+                    Log Your Breaks, See How You Did
                   </h2>
                   <p className="text-base mb-4" style={{ color: 'var(--text-secondary)' }}>
-                    Enter any break price and get BUY/WATCH/PASS signals with analyst-grade narratives in seconds.
+                    Get AI analysis before you buy in, then come back to log your results. Track your wins, busts, and spending patterns over time.
                   </p>
 
                   <div className="flex items-center gap-3">
-                    {(['BUY', 'WATCH', 'PASS'] as const).map(s => (
+                    {[
+                      { label: 'Pre-Break Analysis', color: 'var(--accent-blue)' },
+                      { label: 'Track Results', color: 'var(--signal-buy)' },
+                      { label: 'Win / Mediocre / Bust', color: 'var(--signal-watch)' },
+                    ].map(({ label, color }) => (
                       <div
-                        key={s}
+                        key={label}
                         className="px-3 py-1.5 rounded-md text-xs font-bold"
                         style={{
-                          backgroundColor: `var(--signal-${s.toLowerCase()}-bg)`,
-                          color: `var(--signal-${s.toLowerCase()})`,
-                          border: `1px solid var(--signal-${s.toLowerCase()}-border)`,
+                          backgroundColor: `${color}15`,
+                          color,
+                          border: `1px solid ${color}30`,
                         }}
                       >
-                        {s}
+                        {label}
                       </div>
                     ))}
                   </div>
@@ -237,7 +241,7 @@ export default async function HomePage() {
 
                 <ChevronRight
                   className="w-8 h-8 opacity-50 group-hover:opacity-100 group-hover:translate-x-1 transition-all"
-                  style={{ color: 'var(--accent-blue)' }}
+                  style={{ color: 'var(--signal-buy)' }}
                 />
               </div>
             </div>
