@@ -81,17 +81,16 @@ function computeStats(breaks: BreakRecord[]) {
   const completed = breaks.filter(b => b.status === 'completed' && b.outcome);
   const totalSpent = active.reduce((sum, b) => sum + Number(b.ask_price), 0);
 
-  // Subjective Success Rate: win=10, mediocre=5, bust=1, averaged
-  const outcomeScores: Record<string, number> = { win: 10, mediocre: 5, bust: 1 };
-  const scored = completed.map(b => outcomeScores[b.outcome!] ?? 5);
-  const successRate = scored.length > 0
-    ? scored.reduce((a, b) => a + b, 0) / scored.length
-    : null;
+  const wins = completed.filter(b => b.outcome === 'win').length;
+  const mediocres = completed.filter(b => b.outcome === 'mediocre').length;
+  const busts = completed.filter(b => b.outcome === 'bust').length;
 
   return {
     totalBreaks: active.length,
     totalSpent,
-    successRate,
+    wins,
+    mediocres,
+    busts,
   };
 }
 
@@ -277,10 +276,14 @@ function BreakList({ breaks, products, onRefresh }: { breaks: BreakRecord[]; pro
           <p className="text-xs font-semibold uppercase tracking-wider mt-1" style={{ color: 'var(--text-tertiary)' }}>Total Spent</p>
         </div>
         <div className="rounded-lg p-4 text-center" style={{ border: '1px solid var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
-          <p className="text-2xl font-bold font-mono" style={{ color: stats.successRate !== null ? (stats.successRate >= 7 ? 'var(--signal-buy)' : stats.successRate >= 4 ? 'var(--signal-watch)' : 'var(--signal-pass)') : 'var(--text-disabled)' }}>
-            {stats.successRate !== null ? stats.successRate.toFixed(1) : '—'}
-          </p>
-          <p className="text-xs font-semibold uppercase tracking-wider mt-1" style={{ color: 'var(--text-tertiary)' }}>Success Rate</p>
+          <div className="flex items-center justify-center gap-2 text-lg font-bold font-mono">
+            <span style={{ color: 'var(--signal-buy)' }}>{stats.wins}W</span>
+            <span style={{ color: 'var(--text-disabled)' }}>/</span>
+            <span style={{ color: 'var(--signal-watch)' }}>{stats.mediocres}M</span>
+            <span style={{ color: 'var(--text-disabled)' }}>/</span>
+            <span style={{ color: 'var(--signal-pass)' }}>{stats.busts}B</span>
+          </div>
+          <p className="text-xs font-semibold uppercase tracking-wider mt-1" style={{ color: 'var(--text-tertiary)' }}>Record</p>
         </div>
       </div>
 
