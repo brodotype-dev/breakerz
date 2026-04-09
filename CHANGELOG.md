@@ -5,6 +5,54 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-09 — My Breaks feature, buzz indicators fix, pricing cache cron
+
+### My Breaks — consumer break tracking
+New consumer feature at `/my-breaks`. Users log breaks they've participated in with product, team, break type, cases, asking price, and platform (Fanatics Live, Whatnot, eBay, Dave & Adam's, Layton Sports, Local Card Shop, Other). Two entry points:
+
+- **"New Break"** (pre-break) — runs live BreakIQ analysis, snapshots signal/fair value/narrative to the DB, status=pending. User comes back after to rate the outcome.
+- **"Log Previous"** (post-break) — logs everything at once including outcome rating (Win/Mediocre/Bust).
+
+Pending breaks can be completed (outcome + optional notes + analysis feedback) or abandoned ("Didn't buy in" — outbid, changed mind, etc.).
+
+**Analysis snapshot:** Every break stores `snapshot_signal`, `snapshot_value_pct`, `snapshot_fair_value`, `snapshot_analysis`, `snapshot_top_players` (JSONB), `snapshot_risk_flags` (JSONB), `snapshot_hv_players` at creation time. Frozen — doesn't shift as prices change.
+
+**Analysis feedback:** "Was our analysis helpful?" (thumbs up/down) asked during break completion. Stored as `analysis_feedback` column. Enables measuring analysis quality separate from break outcomes.
+
+**Stats row:** Breaks count, Total Spent (excludes abandoned), W/M/B record breakdown (color-coded).
+
+**Filters:** Time (Week/Month/Quarter/6 Months/Year), Platform, Outcome. Filters apply to both stats and break list.
+
+**CSV export:** Downloads all non-abandoned breaks. **CSV import:** Drag-and-drop upload zone on "Log Previous" form with downloadable template. Fuzzy-matches product names.
+
+**Shared analysis module:** Extracted `runBreakAnalysis()` from the analysis route into `lib/analysis.ts`. Both BreakIQ Sayz and My Breaks call this function.
+
+**Schema:** `user_breaks` table with RLS (self read/insert/update), indexes on user_id, status, product_id, platform, created_at. Chase/hit card tables designed but deferred to Phase 2.
+
+**Files:** `supabase/migrations/20260409120000_my_breaks.sql`, `supabase/migrations/20260409140000_analysis_feedback.sql`, `lib/analysis.ts` (new), `lib/types.ts` (UserBreak, Platform, BreakOutcome types), `app/api/my-breaks/route.ts` (new), `app/api/my-breaks/[id]/route.ts` (new), `app/(consumer)/my-breaks/page.tsx` (new), `app/api/analysis/route.ts` (refactored to thin wrapper), `app/(consumer)/ConsumerNav.tsx` (My Breaks link), `middleware.ts` (/my-breaks route), `app/(consumer)/page.tsx` (My Breaks promo replacing BreakIQ Sayz promo)
+
+---
+
+### Buzz indicators data fix
+The social currency badges (↑↓ ★ ⚡ ⚑) were already implemented in PlayerTable and TeamSlotsTable but `buzz_score`, `breakerz_score`, and `is_high_volatility` weren't being selected in the pricing API's GET path. Fixed both GET and POST selects.
+
+---
+
+### Pricing cache nightly cron
+`app/api/cron/refresh-pricing/route.ts` — loops through all `is_active` products with matched card IDs, calls the pricing POST for each. `vercel.json` schedules at 4 AM UTC daily. Protected with `CRON_SECRET` bearer token.
+
+---
+
+### Responsible gambling footer
+"Gambling problem? Call or text 1-800-GAMBLER" banner on homepage above the stats footer.
+
+---
+
+### Component rename
+`components/breakerz/` → `components/breakiq/` for brand consistency.
+
+---
+
 ## 2026-04-06 — PSA API integration, Slab Analysis UX redesign, CardHedger matching strategy
 
 ### PSA API integration — Slab Analysis cert verification

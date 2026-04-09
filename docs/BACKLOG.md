@@ -30,15 +30,7 @@ Apple OAuth deferred — requires Apple Developer account ($99/yr).
 ---
 
 ### Phase 4 — Consumer Buzz Indicators on Break Page
-**Effort:** ~0.5 days
-**Why now:** Phases 1–3 are live. The data exists in the DB. The break page currently shows none of it — buyers see no signal that a player is hot/cold/flagged until they run BreakIQ Sayz. Phase 4 closes that gap.
-
-- `components/breakiq/TeamSlotsTable.tsx`: add up/down arrow (↑↓) on team rows where `effective_score > 0.1` or `< -0.1`
-- `components/breakiq/TeamSlotsTable.tsx`: show purple ★ badge for icon-tier players on the team
-- `components/breakiq/PlayerTable.tsx`: buzz indicator badge, icon badge, ⚡ high volatility badge per player row
-- Risk flags: show ⚑ icon on team row + tooltip with flag note on hover
-
-**Files:** `components/breakiq/TeamSlotsTable.tsx`, `components/breakiq/PlayerTable.tsx`
+**Status: ✅ Complete (2026-04-09)** — badges were already implemented in components; fixed the data gap by adding `buzz_score`, `breakerz_score`, `is_high_volatility` to the pricing API GET/POST selects.
 
 ---
 
@@ -51,12 +43,7 @@ Apple OAuth deferred — requires Apple Developer account ($99/yr).
 ---
 
 ### Pricing Cache — Scheduled Refresh
-**Effort:** ~1 day
-**Why:** Pricing cache has a 24h TTL but there's no scheduled job to refresh it. After expiry, the first user to hit the break page triggers a live CardHedger fetch — adds latency and occasionally fails. A nightly Vercel Cron job refreshing active products would fix this.
-
-- New cron route: `app/api/cron/refresh-pricing/route.ts`
-- Vercel cron config in `vercel.json`
-- Scope: only active products with players that have a `cardhedger_card_id`
+**Status: ✅ Complete (2026-04-09)** — `app/api/cron/refresh-pricing/route.ts` + `vercel.json` cron at 4 AM UTC daily. Protected with `CRON_SECRET`.
 
 ---
 

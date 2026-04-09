@@ -25,7 +25,11 @@ Live at [breakerz.vercel.app](https://breakerz.vercel.app) (domain: getbreakiq.c
 
 **Slab Analysis** ✅ Upload cert image or enter cert # directly → Claude parses → PSA API verifies (grade + pop data) → CardHedger prices + comps → max bid calculator
 
-**Next up:** Google OAuth consent screen publish (currently in Testing mode — real users can't sign in), beta launch smoke tests, Phase 4 buzz indicators on break page, pricing cache cron, Phase 5 C-score (blocked on Kyle), CH team conversation (see docs/cardhedger-questions.md)
+**My Breaks** ✅ Consumer break tracking: log pre-break (with live analysis snapshot) or post-break. Rate outcome (Win/Mediocre/Bust), select platform, analysis feedback (helpful/not helpful). Stats row + time/platform/outcome filters. CSV export + import. Chase/hit card tracking designed, deferred to Phase 2.
+
+**Pricing Cache Cron** ✅ Nightly at 4 AM UTC via `vercel.json`. Refreshes active products with matched card IDs.
+
+**Next up:** Google OAuth consent screen publish (currently in Testing mode — real users can't sign in), beta launch smoke tests, Phase 5 C-score (blocked on Kyle), CH team conversation (see docs/cardhedger-questions.md), My Breaks Phase 2 (chase/hit card tracking)
 
 ---
 
@@ -96,6 +100,10 @@ app/break/[slug]/                — consumer break analysis (auth required)
 app/analysis/                    — BreakIQ Sayz deal checker (auth required)
 app/api/admin/pricing-breakdown/ — per-player pricing inputs for Pricing Audit Panel
 app/api/cron/refresh-pricing/    — nightly cron (4 AM UTC) to refresh pricing cache for active products
+app/api/my-breaks/               — GET (list), POST (create with analysis snapshot)
+app/api/my-breaks/[id]/          — PUT (complete or abandon a pending break)
+app/(consumer)/my-breaks/        — consumer break tracking page (list, new break, log previous)
+lib/analysis.ts                  — shared runBreakAnalysis() used by BreakIQ Sayz + My Breaks
 app/api/profile/                 — GET + PUT consumer profile (RLS-scoped)
 scripts/copy-prod-to-staging.mjs — copy product data from prod to staging Supabase
 ```
@@ -108,6 +116,7 @@ scripts/copy-prod-to-staging.mjs — copy product data from prod to staging Supa
 sports, products, players, player_products, player_product_variants
 pricing_cache         — 24h TTL, ev_low/mid/high per player_product
 player_risk_flags     — soft-delete (cleared_at); injury/suspension/legal/trade/retirement
+user_breaks           — consumer break log: analysis snapshot, platform, outcome, feedback, status lifecycle
 profiles              — mirrors auth.users
 user_roles            — (user_id, role): admin | contributor
 waitlist              — status: pending → approved → converted | rejected
