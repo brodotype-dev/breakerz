@@ -245,11 +245,49 @@ export default function MyBreaksPage() {
 
 // ── Break List ────────────────────────────────────────────────────────────────
 
-function BreakList({ breaks, products, onRefresh }: { breaks: BreakRecord[]; products: Product[]; onRefresh: () => void }) {
-  const pending = breaks.filter(b => b.status === 'pending');
-  const completed = breaks.filter(b => b.status === 'completed');
+type TimeFilter = 'all' | '1w' | '1m' | '3m' | '6m' | '1y';
 
-  const stats = computeStats(breaks);
+const TIME_OPTIONS: { value: TimeFilter; label: string }[] = [
+  { value: 'all', label: 'All Time' },
+  { value: '1w', label: 'Week' },
+  { value: '1m', label: 'Month' },
+  { value: '3m', label: 'Quarter' },
+  { value: '6m', label: '6 Months' },
+  { value: '1y', label: 'Year' },
+];
+
+function getTimeFilterDate(filter: TimeFilter): Date | null {
+  if (filter === 'all') return null;
+  const now = new Date();
+  const ms: Record<string, number> = {
+    '1w': 7 * 86400000,
+    '1m': 30 * 86400000,
+    '3m': 90 * 86400000,
+    '6m': 180 * 86400000,
+    '1y': 365 * 86400000,
+  };
+  return new Date(now.getTime() - ms[filter]);
+}
+
+function BreakList({ breaks, products, onRefresh }: { breaks: BreakRecord[]; products: Product[]; onRefresh: () => void }) {
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
+  const [platformFilter, setPlatformFilter] = useState<Platform | ''>('');
+  const [outcomeFilter, setOutcomeFilter] = useState<BreakOutcome | ''>('');
+
+  // Apply filters
+  const cutoff = getTimeFilterDate(timeFilter);
+  const filtered = breaks.filter(b => {
+    if (cutoff && new Date(b.created_at) < cutoff) return false;
+    if (platformFilter && b.platform !== platformFilter) return false;
+    if (outcomeFilter && b.outcome !== outcomeFilter) return false;
+    return true;
+  });
+
+  const pending = filtered.filter(b => b.status === 'pending');
+  const completed = filtered.filter(b => b.status === 'completed');
+
+  const stats = computeStats(filtered);
+  const hasFilters = timeFilter !== 'all' || platformFilter !== '' || outcomeFilter !== '';
 
   if (breaks.length === 0) {
     return (
@@ -285,6 +323,60 @@ function BreakList({ breaks, products, onRefresh }: { breaks: BreakRecord[]; pro
           </div>
           <p className="text-xs font-semibold uppercase tracking-wider mt-1" style={{ color: 'var(--text-tertiary)' }}>Record</p>
         </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap items-center gap-3">
+        {/* Time */}
+        <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--terminal-border)' }}>
+          {TIME_OPTIONS.map(t => (
+            <button
+              key={t.value}
+              onClick={() => setTimeFilter(t.value)}
+              className="px-3 py-1.5 text-xs font-semibold transition-all"
+              style={{
+                backgroundColor: timeFilter === t.value ? 'var(--accent-blue)' : 'transparent',
+                color: timeFilter === t.value ? 'white' : 'var(--text-tertiary)',
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Platform */}
+        <select
+          value={platformFilter}
+          onChange={e => setPlatformFilter(e.target.value as Platform | '')}
+          className="rounded-lg border px-3 py-1.5 text-xs font-medium focus:outline-none"
+          style={{ borderColor: 'var(--terminal-border)', backgroundColor: platformFilter ? 'rgba(59,130,246,0.1)' : 'transparent', color: platformFilter ? 'var(--accent-blue)' : 'var(--text-tertiary)' }}
+        >
+          <option value="">All Platforms</option>
+          {PLATFORMS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+        </select>
+
+        {/* Outcome */}
+        <select
+          value={outcomeFilter}
+          onChange={e => setOutcomeFilter(e.target.value as BreakOutcome | '')}
+          className="rounded-lg border px-3 py-1.5 text-xs font-medium focus:outline-none"
+          style={{ borderColor: 'var(--terminal-border)', backgroundColor: outcomeFilter ? 'rgba(59,130,246,0.1)' : 'transparent', color: outcomeFilter ? 'var(--accent-blue)' : 'var(--text-tertiary)' }}
+        >
+          <option value="">All Outcomes</option>
+          <option value="win">Win</option>
+          <option value="mediocre">Mediocre</option>
+          <option value="bust">Bust</option>
+        </select>
+
+        {hasFilters && (
+          <button
+            onClick={() => { setTimeFilter('all'); setPlatformFilter(''); setOutcomeFilter(''); }}
+            className="text-xs font-medium underline"
+            style={{ color: 'var(--text-tertiary)' }}
+          >
+            Clear
+          </button>
+        )}
       </div>
 
       {pending.length > 0 && (
