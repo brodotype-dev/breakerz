@@ -9,7 +9,7 @@ export default async function ConsumerLayout({ children }: { children: React.Rea
   const roles = user ? await getUserRoles(user.id) : [];
   const isAdmin = roles.some(r => r === 'admin' || r === 'contributor');
 
-  const showNav = !!user;
+  const showNav = !!user || process.env.NODE_ENV === 'development';
 
   return (
     <>
