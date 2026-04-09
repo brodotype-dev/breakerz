@@ -1,25 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
+import { supabaseAdmin } from '@/lib/supabase';
 import type { BreakOutcome } from '@/lib/types';
 
 const VALID_OUTCOMES: BreakOutcome[] = ['win', 'mediocre', 'bust'];
+const isDev = process.env.NODE_ENV === 'development';
 
-// PUT — complete a pending break (set outcome + notes)
+// PUT — complete or abandon a pending break
 export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+
+  // Auth check — dev mode falls back to supabaseAdmin (bypasses RLS)
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (!user && !isDev) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Use admin client in dev (no RLS session), cookie client in prod
+  const db = isDev && !user ? supabaseAdmin : supabase;
 
   try {
     const body = await req.json();
 
     // Abandon (didn't buy in)
     if (body.abandon) {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('user_breaks')
         .update({
           status: 'abandoned',
@@ -42,7 +51,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Valid outcome required (win, mediocre, bust)' }, { status: 400 });
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('user_breaks')
       .update({
         outcome,
