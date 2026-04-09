@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
-import { ClipboardList, Plus, Clock, ArrowLeft, Sparkles, Trophy, Meh, ThumbsDown, ChevronDown } from 'lucide-react';
+import { ClipboardList, Plus, Clock, ArrowLeft, Sparkles, Trophy, Meh, ThumbsDown, ChevronDown, Download, Upload } from 'lucide-react';
 import { formatCurrency } from '@/lib/engine';
 import type { Signal, Platform, BreakOutcome, BreakStatus } from '@/lib/types';
 
@@ -65,6 +65,76 @@ const signalColors: Record<Signal, string> = {
   WATCH: 'var(--signal-watch)',
   PASS: 'var(--signal-pass)',
 };
+
+const PLATFORM_LABELS: Record<Platform, string> = {
+  fanatics_live: 'Fanatics Live',
+  whatnot: 'Whatnot',
+  ebay: 'eBay',
+  dave_adams: "Dave & Adam's",
+  layton_sports: 'Layton Sports Cards',
+  local_card_shop: 'Local Card Shop',
+  other: 'Other / Private',
+};
+
+function computeStats(breaks: BreakRecord[]) {
+  const active = breaks.filter(b => b.status !== 'abandoned');
+  const completed = breaks.filter(b => b.status === 'completed' && b.outcome);
+  const totalSpent = active.reduce((sum, b) => sum + Number(b.ask_price), 0);
+
+  // Subjective Success Rate: win=10, mediocre=5, bust=1, averaged
+  const outcomeScores: Record<string, number> = { win: 10, mediocre: 5, bust: 1 };
+  const scored = completed.map(b => outcomeScores[b.outcome!] ?? 5);
+  const successRate = scored.length > 0
+    ? scored.reduce((a, b) => a + b, 0) / scored.length
+    : null;
+
+  return {
+    totalBreaks: active.length,
+    totalSpent,
+    successRate,
+  };
+}
+
+function exportBreaksCSV(breaks: BreakRecord[]) {
+  const headers = ['Date', 'Product', 'Team', 'Break Type', 'Cases', 'Ask Price', 'Platform', 'Signal', 'Fair Value', 'Value %', 'Outcome', 'Notes', 'Status'];
+  const rows = breaks.filter(b => b.status !== 'abandoned').map(b => [
+    new Date(b.created_at).toLocaleDateString(),
+    b.product?.name ?? '',
+    b.team,
+    b.break_type,
+    b.num_cases,
+    b.ask_price,
+    PLATFORM_LABELS[b.platform] ?? b.platform,
+    b.snapshot_signal ?? '',
+    b.snapshot_fair_value ?? '',
+    b.snapshot_value_pct ? `${Number(b.snapshot_value_pct).toFixed(1)}%` : '',
+    b.outcome ?? '',
+    (b.outcome_notes ?? '').replace(/"/g, '""'),
+    b.status,
+  ]);
+
+  const csv = [headers, ...rows].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `my-breaks-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function downloadImportTemplate() {
+  const headers = ['Product Name', 'Year', 'Team', 'Break Type (hobby/bd)', 'Cases', 'Ask Price', 'Platform (fanatics_live/whatnot/ebay/dave_adams/layton_sports/local_card_shop/other)', 'Outcome (win/mediocre/bust)', 'Notes'];
+  const example = ['2025 Bowman Chrome', '2025', 'New York Yankees', 'hobby', '1', '125', 'whatnot', 'win', 'Pulled a nice auto'];
+  const csv = [headers, example].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'breakiq-import-template.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 export default function MyBreaksPage() {
   const [view, setView] = useState<View>('list');
@@ -129,6 +199,16 @@ export default function MyBreaksPage() {
               >
                 <Clock className="w-4 h-4" /> Log Previous
               </button>
+              {breaks.length > 0 && (
+                <button
+                  onClick={() => exportBreaksCSV(breaks)}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all hover:opacity-80"
+                  style={{ backgroundColor: 'var(--terminal-surface)', color: 'var(--text-tertiary)', border: '1px solid var(--terminal-border)' }}
+                  title="Export CSV"
+                >
+                  <Download className="w-4 h-4" />
+                </button>
+              )}
             </div>
           )}
           {view !== 'list' && (
@@ -147,6 +227,7 @@ export default function MyBreaksPage() {
         {view === 'list' && (
           <BreakList
             breaks={breaks}
+            products={products}
             onRefresh={refreshBreaks}
           />
         )}
@@ -165,24 +246,154 @@ export default function MyBreaksPage() {
 
 // ── Break List ────────────────────────────────────────────────────────────────
 
-function BreakList({ breaks, onRefresh }: { breaks: BreakRecord[]; onRefresh: () => void }) {
+function BreakList({ breaks, products, onRefresh }: { breaks: BreakRecord[]; products: Product[]; onRefresh: () => void }) {
   const pending = breaks.filter(b => b.status === 'pending');
   const completed = breaks.filter(b => b.status === 'completed');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importSuccess, setImportSuccess] = useState<string | null>(null);
+
+  const stats = computeStats(breaks);
+
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportError(null);
+    setImportSuccess(null);
+
+    try {
+      const text = await file.text();
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+      if (lines.length < 2) throw new Error('CSV must have a header row and at least one data row');
+
+      const rows = lines.slice(1).map(line => {
+        const cols: string[] = [];
+        let current = '';
+        let inQuotes = false;
+        for (const ch of line) {
+          if (ch === '"') { inQuotes = !inQuotes; continue; }
+          if (ch === ',' && !inQuotes) { cols.push(current.trim()); current = ''; continue; }
+          current += ch;
+        }
+        cols.push(current.trim());
+        return cols;
+      });
+
+      let imported = 0;
+      for (const row of rows) {
+        const [productName, , team, breakType, cases, askPrice, platform, outcome, notes] = row;
+        if (!productName || !team || !askPrice) continue;
+
+        // Fuzzy match product by name
+        const matchedProduct = products.find(p =>
+          p.name.toLowerCase().includes(productName.toLowerCase()) ||
+          productName.toLowerCase().includes(p.name.toLowerCase())
+        );
+        if (!matchedProduct) continue;
+
+        const validPlatform = PLATFORMS.find(p => p.value === platform)?.value ?? 'other';
+        const validOutcome = (['win', 'mediocre', 'bust'] as const).find(o => o === outcome) ?? null;
+
+        const res = await fetch('/api/my-breaks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode: validOutcome ? 'log' : 'new',
+            productId: matchedProduct.id,
+            team,
+            breakType: breakType === 'bd' ? 'bd' : 'hobby',
+            numCases: parseInt(cases) || 1,
+            askPrice: parseFloat(askPrice),
+            platform: validPlatform,
+            outcome: validOutcome,
+            outcomeNotes: notes || undefined,
+          }),
+        });
+        if (res.ok) imported++;
+      }
+
+      setImportSuccess(`Imported ${imported} of ${rows.length} breaks`);
+      onRefresh();
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Import failed');
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
 
   if (breaks.length === 0) {
     return (
-      <div className="rounded-xl border-2 border-dashed p-12 text-center" style={{ borderColor: 'var(--terminal-border)' }}>
-        <ClipboardList className="w-12 h-12 mx-auto mb-4 opacity-20" style={{ color: 'var(--text-secondary)' }} />
-        <p className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>No breaks logged yet</p>
-        <p className="text-sm mb-6" style={{ color: 'var(--text-secondary)' }}>
-          Track your breaks to see how your spending compares to actual results over time.
-        </p>
+      <div className="space-y-4">
+        <div className="rounded-xl border-2 border-dashed p-12 text-center" style={{ borderColor: 'var(--terminal-border)' }}>
+          <ClipboardList className="w-12 h-12 mx-auto mb-4 opacity-20" style={{ color: 'var(--text-secondary)' }} />
+          <p className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>No breaks logged yet</p>
+          <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>
+            Track your breaks to see how your spending compares to actual results over time.
+          </p>
+          <div className="flex items-center justify-center gap-3">
+            <button
+              onClick={() => downloadImportTemplate()}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all hover:opacity-80"
+              style={{ backgroundColor: 'var(--terminal-surface)', color: 'var(--text-secondary)', border: '1px solid var(--terminal-border)' }}
+            >
+              <Download className="w-4 h-4" /> Download Template
+            </button>
+            <label
+              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all hover:opacity-80 cursor-pointer"
+              style={{ backgroundColor: 'var(--terminal-surface)', color: 'var(--text-secondary)', border: '1px solid var(--terminal-border)' }}
+            >
+              <Upload className="w-4 h-4" /> {importing ? 'Importing…' : 'Import CSV'}
+              <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImport} disabled={importing} />
+            </label>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="rounded-lg p-4 text-center" style={{ border: '1px solid var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
+          <p className="text-2xl font-bold font-mono" style={{ color: 'var(--text-primary)' }}>{stats.totalBreaks}</p>
+          <p className="text-xs font-semibold uppercase tracking-wider mt-1" style={{ color: 'var(--text-tertiary)' }}>Breaks</p>
+        </div>
+        <div className="rounded-lg p-4 text-center" style={{ border: '1px solid var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
+          <p className="text-2xl font-bold font-mono" style={{ color: 'var(--text-primary)' }}>{formatCurrency(stats.totalSpent)}</p>
+          <p className="text-xs font-semibold uppercase tracking-wider mt-1" style={{ color: 'var(--text-tertiary)' }}>Total Spent</p>
+        </div>
+        <div className="rounded-lg p-4 text-center" style={{ border: '1px solid var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
+          <p className="text-2xl font-bold font-mono" style={{ color: stats.successRate !== null ? (stats.successRate >= 7 ? 'var(--signal-buy)' : stats.successRate >= 4 ? 'var(--signal-watch)' : 'var(--signal-pass)') : 'var(--text-disabled)' }}>
+            {stats.successRate !== null ? stats.successRate.toFixed(1) : '—'}
+          </p>
+          <p className="text-xs font-semibold uppercase tracking-wider mt-1" style={{ color: 'var(--text-tertiary)' }}>Success Rate</p>
+        </div>
+      </div>
+
+      {/* Import/Export bar */}
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => downloadImportTemplate()}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all hover:opacity-80"
+          style={{ color: 'var(--text-tertiary)' }}
+        >
+          <Download className="w-3 h-3" /> Template
+        </button>
+        <label
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all hover:opacity-80 cursor-pointer"
+          style={{ color: 'var(--text-tertiary)' }}
+        >
+          <Upload className="w-3 h-3" /> {importing ? 'Importing…' : 'Import CSV'}
+          <input ref={fileInputRef} type="file" accept=".csv" className="hidden" onChange={handleImport} disabled={importing} />
+        </label>
+        {importError && <span className="text-xs" style={{ color: 'var(--signal-pass)' }}>{importError}</span>}
+        {importSuccess && <span className="text-xs" style={{ color: 'var(--signal-buy)' }}>{importSuccess}</span>}
+      </div>
+
       {pending.length > 0 && (
         <div>
           <h2 className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: 'var(--text-tertiary)' }}>
