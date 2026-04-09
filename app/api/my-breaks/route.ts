@@ -11,16 +11,29 @@ const VALID_PLATFORMS: Platform[] = [
   'dave_adams', 'layton_sports', 'local_card_shop', 'other',
 ];
 
-// GET — list the authenticated user's breaks
-export async function GET() {
+const isDev = process.env.NODE_ENV === 'development';
+
+async function getAuthUserId(): Promise<string | null> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  if (user) return user.id;
+  if (isDev) {
+    // Dev mode: use first available profile so you can test without signing in
+    const { data } = await supabaseAdmin.from('profiles').select('id').limit(1).single();
+    return data?.id ?? null;
+  }
+  return null;
+}
 
-  const { data: breaks, error } = await supabase
+// GET — list the authenticated user's breaks
+export async function GET() {
+  const userId = await getAuthUserId();
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { data: breaks, error } = await supabaseAdmin
     .from('user_breaks')
     .select('*, product:products(id, name, year, slug, sport:sports(name))')
-    .eq('user_id', user.id)
+    .eq('user_id', userId)
     .order('created_at', { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -30,9 +43,8 @@ export async function GET() {
 
 // POST — create a new break
 export async function POST(req: NextRequest) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const userId = await getAuthUserId();
+  if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   try {
     const body = await req.json();
@@ -73,7 +85,7 @@ export async function POST(req: NextRequest) {
     const { data: newBreak, error } = await supabaseAdmin
       .from('user_breaks')
       .insert({
-        user_id: user.id,
+        user_id: userId,
         product_id: productId,
         team,
         break_type: breakType,
