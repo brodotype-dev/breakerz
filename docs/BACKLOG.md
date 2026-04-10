@@ -144,6 +144,32 @@ Multi-player autograph cards (e.g. `"Dylan Crews/James Wood 2025 Bowman's Best D
 
 ---
 
+## Security — Post-Launch Hardening
+
+Addressed in the pre-beta security audit (2026-04-10). Criticals and highs are fixed. These remain as defense-in-depth improvements.
+
+### RLS on Core Business Tables
+**Effort:** ~0.5 days
+**Why:** `products`, `players`, `player_products`, `player_product_variants`, `pricing_cache`, `player_risk_flags`, and `waitlist` have no RLS policies. The app uses `supabaseAdmin` (service role) for all writes, so RLS isn't the primary gate — but if the anon key is used incorrectly, these tables are wide open. `waitlist` is the highest priority since it contains emails and invite codes.
+**Approach:** Enable RLS on all tables. Add read-only policies for anon on public-facing tables (products, players, pricing_cache). Admin-only tables get no anon policies — only accessible via service role.
+
+### Rate Limiting
+**Effort:** ~0.5 days
+**Why:** No rate limiting on any endpoint. The waitlist, analysis (Anthropic API calls), and CardHedger proxy routes are all unlimited. An attacker could burn API quota or spam the waitlist.
+**Approach:** `@upstash/ratelimit` with Redis. Priority endpoints: `/api/waitlist` (IP-based, 5/min), `/api/analysis` (user-based, 20/hr), `/api/card-lookup` (user-based, 30/hr), `/api/cardhedger/*` (user-based, 60/hr).
+
+### File Upload Validation
+**Effort:** ~0.25 days
+**Why:** Admin upload endpoints (`parse-odds`, `parse-checklist`) accept arbitrary files with no MIME type or size validation. `card-lookup` accepts unbounded base64 image payloads. Malformed files could crash parsers or consume excessive memory.
+**Approach:** Validate MIME types, add file size limits (10MB for admin uploads, 5MB for card images), reject unexpected extensions.
+
+### Error Message Sanitization
+**Effort:** ~0.25 days
+**Why:** Many API routes return `err.message` directly in JSON responses. Supabase errors can leak database structure, query details, or stack traces to the client.
+**Approach:** Log full errors server-side, return generic messages to clients. Keep specific messages only in development.
+
+---
+
 ## Open Questions
 
 These need a decision before the relevant work can be scoped or started.
