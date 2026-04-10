@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { ParsedOdds } from '@/lib/checklist-parser';
+import { checkRole } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -174,6 +175,9 @@ async function extractOddsPdfFallback(buffer: Buffer): Promise<import('@/lib/che
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await checkRole('admin', 'contributor');
+  if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
   const formData = await req.formData();
   const file = formData.get('file') as File | null;
   if (!file) return NextResponse.json({ error: 'No file provided' }, { status: 400 });

@@ -1,6 +1,7 @@
 'use server';
 
 import { supabaseAdmin } from '@/lib/supabase';
+import { requireRole } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 
 /**
@@ -10,6 +11,7 @@ import { revalidatePath } from 'next/cache';
 export async function saveBreakIQBetsGlobal(
   updates: Array<{ playerId: string; score: number; note: string }>
 ): Promise<{ saved: number; error?: string }> {
+  await requireRole('admin', 'contributor');
   try {
     let saved = 0;
     for (const u of updates) {

@@ -2,8 +2,15 @@ import { NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import { pricesByCert, searchCards, getAllPrices, getComps } from '@/lib/cardhedger';
 import { getCertByNumber } from '@/lib/psa';
+import { createClient } from '@/lib/supabase-server';
 
 export async function POST(req: Request) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user && process.env.NODE_ENV !== 'development') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   try {
     const body = await req.json();

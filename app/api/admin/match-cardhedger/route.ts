@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { cardMatch } from '@/lib/cardhedger';
 import { getManufacturerKnowledge } from '@/lib/card-knowledge';
+import { checkRole } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -23,6 +24,9 @@ async function runConcurrent<T>(tasks: (() => Promise<T>)[], limit: number): Pro
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await checkRole('admin', 'contributor');
+  if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
   const { productId, offset = 0, limit = DEFAULT_CHUNK } = await req.json();
   if (!productId) return NextResponse.json({ error: 'productId required' }, { status: 400 });
 

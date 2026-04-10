@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { createClient } from '@/lib/supabase-server';
 import { computeLiveEV, searchAndComputeEV, get90DayPrices } from '@/lib/cardhedger';
 import type { PlayerWithPricing } from '@/lib/types';
 
@@ -7,6 +8,12 @@ const CACHE_TTL_HOURS = 24;
 
 // GET — load roster with cached pricing only (fast, no CardHedger calls)
 export async function GET(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user && process.env.NODE_ENV !== 'development') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const productId = req.nextUrl.searchParams.get('productId');
   if (!productId) return NextResponse.json({ error: 'productId required' }, { status: 400 });
 
@@ -61,6 +68,12 @@ export async function GET(req: NextRequest) {
 
 // POST — fetch live pricing from CardHedger for all unpriced players
 export async function POST(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user && process.env.NODE_ENV !== 'development') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const { productId } = await req.json();
   if (!productId) return NextResponse.json({ error: 'productId required' }, { status: 400 });
 

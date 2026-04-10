@@ -28,6 +28,20 @@ export async function getUserRoles(userId: string): Promise<UserRole[]> {
 }
 
 /**
+ * Returns the authenticated user if they have one of the required roles.
+ * Returns null if not authenticated or wrong role.
+ * Use in API routes where you need to return a JSON error (not redirect).
+ */
+export async function checkRole(...roles: UserRole[]): Promise<{ user: { id: string }; roles: UserRole[] } | null> {
+  const user = await getCurrentUser();
+  if (!user) return null;
+  const userRoles = await getUserRoles(user.id);
+  const hasRole = roles.some(r => userRoles.includes(r));
+  if (!hasRole) return null;
+  return { user, roles: userRoles };
+}
+
+/**
  * Asserts the current user is authenticated and has one of the required roles.
  * Redirects to /admin/login if not authenticated, or throws if wrong role.
  * Use in server components and server actions that need protection.

@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { checkRole } from '@/lib/auth';
 
 export const maxDuration = 30;
 
 export async function POST(req: NextRequest) {
+  const auth = await checkRole('admin', 'contributor');
+  if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
   try {
     const { narrative } = await req.json();
     if (!narrative?.trim()) {

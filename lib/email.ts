@@ -18,7 +18,8 @@ export async function sendInviteEmail({
 }) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://breakerz.vercel.app';
   const inviteUrl = `${baseUrl}/auth/signup?code=${inviteCode}`;
-  const firstName = fullName?.split(' ')[0] ?? 'there';
+  const rawFirst = fullName?.split(' ')[0] ?? 'there';
+  const firstName = rawFirst.replace(/[<>"'&]/g, c => ({ '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '&': '&amp;' }[c] ?? c));
 
   await getResend().emails.send({
     from: FROM,

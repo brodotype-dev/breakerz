@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { computeLiveEV } from '@/lib/cardhedger';
 import { supabaseAdmin } from '@/lib/supabase';
+import { createClient } from '@/lib/supabase-server';
 
 const CACHE_TTL_HOURS = 24;
 
 export async function POST(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user && process.env.NODE_ENV !== 'development') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const { cardId, playerProductId } = await req.json();
     if (!cardId) return NextResponse.json({ error: 'cardId required' }, { status: 400 });

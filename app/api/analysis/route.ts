@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { createClient } from '@/lib/supabase-server';
 import { runBreakAnalysis } from '@/lib/analysis';
 
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user && process.env.NODE_ENV !== 'development') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const { productId, team, askPrice, breakType = 'hobby', numCases = 10 } = await req.json();
     if (!productId || !team || askPrice == null) {
@@ -28,6 +35,12 @@ export async function POST(req: NextRequest) {
 
 // GET — return active products and their teams (for the analysis page dropdowns)
 export async function GET() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user && process.env.NODE_ENV !== 'development') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const { data: products } = await supabaseAdmin
     .from('products')
     .select('id, name, year, sport:sports(name), hobby_case_cost, bd_case_cost')

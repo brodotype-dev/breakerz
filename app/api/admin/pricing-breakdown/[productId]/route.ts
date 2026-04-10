@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { checkRole } from '@/lib/auth';
 
 export interface PricingBreakdownRow {
   playerProductId: string;
@@ -26,6 +27,9 @@ export interface PricingBreakdownRow {
 type PageProps = { params: Promise<{ productId: string }> };
 
 export async function GET(_req: NextRequest, { params }: PageProps) {
+  const auth = await checkRole('admin', 'contributor');
+  if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
   const { productId } = await params;
 
   try {

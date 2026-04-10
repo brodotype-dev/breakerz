@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { ParsedOdds } from '@/lib/checklist-parser';
+import { checkRole } from '@/lib/auth';
 
 function tokenize(s: string): string[] {
   return s.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
@@ -24,6 +25,9 @@ function matchScore(subsetName: string, variantName: string): number {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await checkRole('admin', 'contributor');
+  if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
   const { productId, odds }: { productId: string; odds: ParsedOdds } = await req.json();
   if (!productId || !odds?.rows?.length) {
     return NextResponse.json({ error: 'productId and odds.rows required' }, { status: 400 });

@@ -1,6 +1,7 @@
 'use server';
 
 import { supabaseAdmin } from '@/lib/supabase';
+import { requireRole } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 
 export async function createProduct(formData: {
@@ -15,6 +16,7 @@ export async function createProduct(formData: {
   release_date: string | null;
   is_active?: boolean;
 }): Promise<{ id?: string; error?: string }> {
+  await requireRole('admin', 'contributor');
   const slug = formData.name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
@@ -51,6 +53,7 @@ export async function updateProduct(
     is_active: boolean;
   }
 ): Promise<{ error?: string }> {
+  await requireRole('admin', 'contributor');
   const { error } = await supabaseAdmin
     .from('products')
     .update(formData)
@@ -66,6 +69,7 @@ export async function saveBreakerzBets(
   productId: string,
   updates: Array<{ playerProductId: string; score: number; note: string }>
 ): Promise<{ saved: number; error?: string }> {
+  await requireRole('admin', 'contributor');
   try {
     let saved = 0;
     for (const u of updates) {
@@ -88,6 +92,7 @@ export async function setPlayerIcon(
   playerId: string,
   isIcon: boolean
 ): Promise<{ error?: string }> {
+  await requireRole('admin', 'contributor');
   const { error } = await supabaseAdmin
     .from('players')
     .update({ is_icon: isIcon })
@@ -102,6 +107,7 @@ export async function setPlayerHighVolatility(
   playerProductId: string,
   isHV: boolean
 ): Promise<{ error?: string }> {
+  await requireRole('admin', 'contributor');
   const { error } = await supabaseAdmin
     .from('player_products')
     .update({ is_high_volatility: isHV })
@@ -117,6 +123,7 @@ export async function addPlayerRiskFlag(
   flagType: string,
   note: string
 ): Promise<{ error?: string }> {
+  await requireRole('admin', 'contributor');
   const { error } = await supabaseAdmin
     .from('player_risk_flags')
     .insert({ player_product_id: playerProductId, flag_type: flagType, note: note.trim() });
@@ -129,6 +136,7 @@ export async function clearPlayerRiskFlag(
   productId: string,
   flagId: string
 ): Promise<{ error?: string }> {
+  await requireRole('admin', 'contributor');
   const { error } = await supabaseAdmin
     .from('player_risk_flags')
     .update({ cleared_at: new Date().toISOString() })
@@ -139,6 +147,7 @@ export async function clearPlayerRiskFlag(
 }
 
 export async function deleteProduct(productId: string): Promise<{ error?: string }> {
+  await requireRole('admin');
   const { error } = await supabaseAdmin
     .from('products')
     .delete()
@@ -163,6 +172,7 @@ export async function bulkAddPlayers(
   sportId: string,
   rows: BulkPlayerRow[]
 ): Promise<{ added: number; error?: string }> {
+  await requireRole('admin', 'contributor');
   try {
     let added = 0;
 

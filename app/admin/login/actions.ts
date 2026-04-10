@@ -7,7 +7,9 @@ import { getUserRoles } from '@/lib/auth';
 export async function login(formData: FormData) {
   const email = formData.get('email') as string;
   const password = formData.get('password') as string;
-  const from = (formData.get('from') as string) || '/admin';
+  let from = (formData.get('from') as string) || '/admin';
+  // Prevent open redirect — only allow relative paths
+  if (!from.startsWith('/') || from.startsWith('//')) from = '/admin';
 
   if (!email || !password) {
     redirect(`/admin/login?error=missing&from=${encodeURIComponent(from)}`);

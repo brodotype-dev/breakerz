@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { ParsedCard } from '@/lib/checklist-parser';
+import { checkRole } from '@/lib/auth';
 
 type SectionConfig = {
   sectionName: string;
@@ -15,6 +16,9 @@ type ImportRequest = {
 };
 
 export async function POST(req: NextRequest) {
+  const auth = await checkRole('admin', 'contributor');
+  if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+
   const body: ImportRequest = await req.json();
   const { productId, sections } = body;
 
