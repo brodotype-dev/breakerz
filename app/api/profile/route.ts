@@ -8,7 +8,7 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from('profiles')
-    .select('first_name, last_name, is_over_18, favorite_sports, chasing_teams, chasing_players')
+    .select('first_name, last_name, is_over_18, favorite_sports, chasing_teams, chasing_players, experience_level, collecting_eras, monthly_spend, primary_platform, referral_source, best_pull, onboarding_completed_at')
     .eq('id', user.id)
     .single();
 

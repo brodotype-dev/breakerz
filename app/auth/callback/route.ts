@@ -61,5 +61,16 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // Check if onboarding is complete — redirect new users to /onboarding
+  const { data: profile } = await supabaseAdmin
+    .from('profiles')
+    .select('onboarding_completed_at')
+    .eq('id', user.id)
+    .single();
+
+  if (!profile?.onboarding_completed_at) {
+    return NextResponse.redirect(`${origin}/onboarding`);
+  }
+
   return NextResponse.redirect(`${origin}/`);
 }

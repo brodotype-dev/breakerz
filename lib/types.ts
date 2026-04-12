@@ -121,6 +121,13 @@ export type TeamSlot = {
   players: PlayerWithPricing[];
 };
 
+// --- Onboarding ---
+
+export type ExperienceLevel = 'beginner' | 'casual' | 'regular' | 'serious';
+export type MonthlySpend = 'under_150' | '150_500' | '500_1000' | '1000_5000' | '5000_plus';
+export type ReferralSource = 'word_of_mouth' | 'youtube' | 'social_media' | 'google' | 'reddit' | 'referral' | 'other';
+export type CollectingEra = 'modern' | '2010s' | '2000s' | '90s' | '80s_earlier';
+
 // --- My Breaks ---
 
 export type Platform =
