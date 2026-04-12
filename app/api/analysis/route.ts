@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createClient } from '@/lib/supabase-server';
 import { runBreakAnalysis } from '@/lib/analysis';
+import { checkAndIncrementUsage } from '@/lib/usage';
 
 export const maxDuration = 60;
 
@@ -10,6 +11,14 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user && process.env.NODE_ENV !== 'development') {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  // Usage gate (skip in dev without auth)
+  if (user) {
+    const usage = await checkAndIncrementUsage(user.id);
+    if (!usage.allowed) {
+      return NextResponse.json({ error: 'Usage limit reached', upgrade: true, plan: usage.plan }, { status: 403 });
+    }
   }
 
   try {

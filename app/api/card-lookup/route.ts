@@ -3,12 +3,20 @@ import Anthropic from '@anthropic-ai/sdk';
 import { pricesByCert, searchCards, getAllPrices, getComps } from '@/lib/cardhedger';
 import { getCertByNumber } from '@/lib/psa';
 import { createClient } from '@/lib/supabase-server';
+import { checkAndIncrementUsage } from '@/lib/usage';
 
 export async function POST(req: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user && process.env.NODE_ENV !== 'development') {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  if (user) {
+    const usage = await checkAndIncrementUsage(user.id);
+    if (!usage.allowed) {
+      return NextResponse.json({ error: 'Usage limit reached', upgrade: true, plan: usage.plan }, { status: 403 });
+    }
   }
 
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });

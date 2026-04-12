@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { runBreakAnalysis } from '@/lib/analysis';
+import { checkAndIncrementUsage } from '@/lib/usage';
 import type { Platform, BreakOutcome } from '@/lib/types';
 
 export const maxDuration = 60;
@@ -69,6 +70,15 @@ export async function POST(req: NextRequest) {
     }
     if (mode === 'log' && !outcome) {
       return NextResponse.json({ error: 'outcome required for log mode' }, { status: 400 });
+    }
+
+    // Usage gate — both 'new' and 'log' modes run analysis
+    const authUserId = userId; // from getAuthUserId()
+    if (authUserId && process.env.NODE_ENV !== 'development') {
+      const usage = await checkAndIncrementUsage(authUserId);
+      if (!usage.allowed) {
+        return NextResponse.json({ error: 'Usage limit reached', upgrade: true, plan: usage.plan }, { status: 403 });
+      }
     }
 
     // Run analysis to capture snapshot
