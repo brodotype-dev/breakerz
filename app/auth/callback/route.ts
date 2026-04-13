@@ -11,9 +11,11 @@ const supabaseAnonKey =
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
+  const tokenHash = searchParams.get('token_hash');
+  const type = searchParams.get('type');
   const inviteCode = searchParams.get('invite_code');
 
-  if (!code) {
+  if (!code && !tokenHash) {
     return NextResponse.redirect(`${origin}/auth/signup?error=missing_code`);
   }
 
@@ -30,13 +32,28 @@ export async function GET(request: NextRequest) {
     },
   });
 
-  const { data: sessionData, error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
+  // Handle both OAuth code exchange and email confirmation token
+  let sessionData;
+  let sessionError;
 
-  if (sessionError || !sessionData.user) {
+  if (code) {
+    const result = await supabase.auth.exchangeCodeForSession(code);
+    sessionData = result.data;
+    sessionError = result.error;
+  } else if (tokenHash && type) {
+    const result = await supabase.auth.verifyOtp({
+      token_hash: tokenHash,
+      type: type as 'signup' | 'email',
+    });
+    sessionData = result.data;
+    sessionError = result.error;
+  }
+
+  if (sessionError || !sessionData?.user) {
     return NextResponse.redirect(`${origin}/auth/signup?error=session_failed`);
   }
 
-  const user = sessionData.user;
+  const user = sessionData.user!;
 
   // Upsert profile
   await supabaseAdmin.from('profiles').upsert({
