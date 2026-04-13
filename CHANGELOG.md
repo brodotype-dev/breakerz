@@ -5,6 +5,56 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-13 — Stripe subscriptions, cost analysis
+
+### Stripe subscriptions — Hobby / Pro tiers
+Two-tier subscription model: Hobby ($9.99/mo, 10 analyses + 10 slab lookups) and Pro ($24.99/mo, unlimited). 3 free lifetime analyses as trial before paywall. Promo codes enabled on Stripe Checkout.
+
+**Infrastructure:** `lib/stripe.ts` (checkout sessions, customer portal), `lib/usage.ts` (plan-aware usage gating with atomic counter), `/api/checkout` (create session / portal), `/api/webhooks/stripe` (handles checkout.session.completed, invoice.paid, subscription.updated, subscription.deleted). Usage gates on `/api/analysis`, `/api/card-lookup`, `/api/my-breaks`.
+
+**Schema:** `profiles` extended with `stripe_customer_id`, `stripe_subscription_id`, `subscription_plan` (free/hobby/pro), `subscription_status`, `current_period_end`, `analyses_used`, `analyses_reset_at`. Counter resets on each `invoice.paid` webhook.
+
+**Subscribe page** at `/subscribe` — plan cards with feature comparison, "Continue with free trial" option. Onboarding now redirects to `/subscribe` after completion.
+
+**Env vars:** `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_HOBBY`, `STRIPE_PRICE_PRO`
+
+---
+
+### Cost analysis doc
+`docs/cost-analysis.md` — full unit economics: fixed costs, variable costs per action, revenue vs. cost at 50/200/500 users (80/20 Hobby/Pro split), breakeven at ~27 paying users (COGS) or ~76 (with dev). Claude API costs negligible (~$12/mo at 500 users); CardHedger $300/mo flat is the only real COGS.
+
+---
+
+## 2026-04-11 — Onboarding wizard, security hardening, Discord + email signup
+
+### Onboarding wizard — 3-step post-signup flow
+New users redirect to `/onboarding` after OAuth callback (checks `onboarding_completed_at` on profiles). Step 1: age gate (hard block under 18). Step 2: experience level, what you collect (baseball through Other TCG), collecting eras (modern through 80s), primary break platform, monthly spend (under $150 through $5k+). Step 3: attribution source, best pull (optional free text).
+
+**Schema:** `experience_level`, `collecting_eras TEXT[]`, `monthly_spend`, `primary_platform`, `referral_source`, `best_pull`, `onboarding_completed_at` added to profiles.
+
+**Files:** `supabase/migrations/20260411120000_onboarding_fields.sql`, `app/api/onboarding/route.ts`, `app/(consumer)/onboarding/page.tsx`, `app/auth/callback/route.ts` (redirect logic).
+
+---
+
+### Security hardening — pre-beta audit
+**Critical fixes:** Deleted legacy password-based admin auth route. Added `requireRole('admin','contributor')` to all 10 admin server actions. Added `checkRole()` helper in `lib/auth.ts` for API routes.
+
+**High fixes:** Auth guards on all 9 admin API routes (403 if not admin). Auth checks on all 7 consumer API routes (401 if unauthenticated, dev bypass). 
+
+**Medium fixes:** Security headers (X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy, Permissions-Policy). Open redirect fix in admin login. XSS fix in email template (HTML-escape firstName).
+
+---
+
+### Discord OAuth + email signup
+Replaced Apple OAuth with Discord on signup page. Added email+password signup with confirmation flow. Auth callback updated to handle both OAuth code exchange and email confirmation (token_hash + verifyOtp).
+
+---
+
+### PostHog analytics
+PostHog installed via wizard. Server-side user identification + `user_signed_up` event tracking in auth callback.
+
+---
+
 ## 2026-04-09 — My Breaks feature, buzz indicators fix, pricing cache cron
 
 ### My Breaks — consumer break tracking

@@ -8,6 +8,7 @@ Sports card break slot pricing and analysis tool. Built with Kyle (Town & Line /
 - [docs/cardhedger-matching.md](./docs/cardhedger-matching.md) — CH matching architecture
 - [docs/cardhedger-questions.md](./docs/cardhedger-questions.md) — running list of questions for the CH team
 - [docs/beta-launch-checklist.md](./docs/beta-launch-checklist.md) — pre-launch todo list
+- [docs/cost-analysis.md](./docs/cost-analysis.md) — unit economics, breakeven, service costs
 
 Update CHANGELOG.md at the end of every session with what changed and why.
 
@@ -15,11 +16,11 @@ Update CHANGELOG.md at the end of every session with what changed and why.
 
 ## Current State
 
-Live at [breakerz.vercel.app](https://breakerz.vercel.app) (domain: getbreakiq.com pending). Private beta — `/break/*` and `/analysis/*` require auth; unauthenticated visitors redirected to `/waitlist`.
+Live at [getbreakiq.com](https://getbreakiq.com). Private beta — consumer routes require auth; unauthenticated visitors redirected to `/waitlist`.
 
 **Admin pipeline** ✅ Product creation → checklist import (Topps PDF/CSV, Bowman XLSX) → CardHedger matching (Claude Haiku, ~76–90% auto-match) → odds import → readiness dashboard → BreakIQ Bets debrief
 
-**Auth + Waitlist** ✅ Supabase Auth (email+password for admins, Google/Apple OAuth for consumers). Public waitlist → admin approval → Resend invite email → `/auth/signup?code=` → OAuth → `/auth/callback` validates invite, creates profile, marks converted.
+**Auth + Waitlist** ✅ Supabase Auth (email+password for admins, Google/Discord/email OAuth for consumers). Public waitlist → admin approval → Resend invite email → `/auth/signup?code=` → OAuth or email signup → `/auth/callback` validates invite, creates profile, marks converted. Test invite code: `beta-test-2026`.
 
 **Social Currency** ✅ B-score (breakerz_score), Icon tier (is_icon), Risk Flags (player_risk_flags), HV (is_high_volatility), consumer badges (★ ↑↓ ⚡ ⚑)
 
@@ -29,13 +30,21 @@ Live at [breakerz.vercel.app](https://breakerz.vercel.app) (domain: getbreakiq.c
 
 **Pricing Cache Cron** ✅ Nightly at 4 AM UTC via `vercel.json`. Refreshes active products with matched card IDs.
 
-**Next up:** Google OAuth consent screen publish (currently in Testing mode — real users can't sign in), beta launch smoke tests, Phase 5 C-score (blocked on Kyle), CH team conversation (see docs/cardhedger-questions.md), My Breaks Phase 2 (chase/hit card tracking)
+**Onboarding** ✅ 3-step wizard at `/onboarding`: age gate (hard block under 18), about you (experience level, collecting interests including TCGs, eras, platform, monthly spend), quick hits (attribution, best pull). OAuth callback redirects new users to onboarding; returning users skip it.
+
+**Subscriptions** ✅ Stripe integration — Hobby ($9.99/mo, 10 analyses), Pro ($24.99/mo, unlimited). 3 free lifetime analyses as trial. Usage gates on `/api/analysis`, `/api/card-lookup`, `/api/my-breaks`. Promo codes enabled. Webhook handles checkout, invoice, subscription lifecycle.
+
+**Security** ✅ Pre-beta audit (2026-04-10): auth guards on all admin server actions + API routes, consumer API auth, security headers (X-Frame-Options, CSP, etc.), XSS fix in email, open redirect fix, legacy auth backdoor deleted.
+
+**Analytics** ✅ PostHog installed — server-side user identification + `user_signed_up` event in auth callback.
+
+**Next up:** Phase 5 C-score (blocked on Kyle), CH team conversation (see docs/cardhedger-questions.md), My Breaks Phase 2 (chase/hit card tracking), Sentry error tracking, PostHog MCP setup
 
 ---
 
 ## Stack
 
-Next.js 15 App Router · TypeScript · Tailwind + shadcn/ui · Supabase (Postgres + Auth) · CardHedger API · Claude Haiku · Resend · Vercel
+Next.js 15 App Router · TypeScript · Tailwind + shadcn/ui · Supabase (Postgres + Auth) · Stripe · CardHedger API · PSA API · Claude Haiku · Resend · PostHog · Vercel
 
 ---
 
@@ -59,7 +68,7 @@ Production: `breakerz.vercel.app` | Staging branch: `staging` | Repo: `github.co
 | URL | `breakerz.vercel.app` | staging preview URLs |
 
 **Env vars** (set in Vercel, use `.env.local` for local dev):
-`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `CARDHEDGER_API_KEY`, `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `FROM_EMAIL`, `NEXT_PUBLIC_APP_URL`, `PSA_API_KEY`, `CRON_SECRET`
+`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `CARDHEDGER_API_KEY`, `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `FROM_EMAIL`, `NEXT_PUBLIC_APP_URL`, `PSA_API_KEY`, `CRON_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_HOBBY`, `STRIPE_PRICE_PRO`, `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST`
 
 Supabase Vercel integration injects both `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_URL` — `lib/supabase.ts` uses `??` fallbacks for both. Don't remove them.
 
@@ -71,6 +80,10 @@ Supabase Vercel integration injects both `NEXT_PUBLIC_SUPABASE_URL` and `SUPABAS
 2. **Resend lazy init** — `new Resend(key)` must be inside a function, not module-level, or builds fail when `RESEND_API_KEY` is absent.
 3. **hobbyEVPerBox not cached** — pricing_cache stores ev_low/mid/high but not odds-weighted EV. Cached GET falls back to evMid. Schema change needed to fix (in backlog).
 4. **Supabase migrations** — CLI linked to production. To push: `supabase db push`. To repair a failed migration: `supabase migration repair --status reverted <timestamp>`. Files in `supabase/migrations/`.
+5. **Stripe webhook** — raw body required for signature verification. Route uses `request.text()` + `export const dynamic = 'force-dynamic'`. Webhook endpoint: `/api/webhooks/stripe`.
+6. **Stripe SDK types** — v22+ uses `2026-03-25.dahlia` API version. Webhook event data objects cast to local interfaces to avoid SDK type drift.
+7. **Dev mode auth bypass** — consumer API routes (`my-breaks`, `onboarding`) fall back to first profile in dev mode when no auth session. Never deploy with `NODE_ENV=development`.
+8. **Supabase email rate limit** — free tier limits ~4 confirmation emails/hour. Hits during testing but not an issue in production.
 
 ---
 
@@ -104,6 +117,13 @@ app/api/my-breaks/               — GET (list), POST (create with analysis snap
 app/api/my-breaks/[id]/          — PUT (complete or abandon a pending break)
 app/(consumer)/my-breaks/        — consumer break tracking page (list, new break, log previous)
 lib/analysis.ts                  — shared runBreakAnalysis() used by BreakIQ Sayz + My Breaks
+lib/stripe.ts                    — Stripe client, checkout sessions, customer portal
+lib/usage.ts                     — checkAndIncrementUsage() with plan-aware limits
+app/api/checkout/                — POST (Stripe checkout session), GET (customer portal)
+app/api/webhooks/stripe/         — Stripe webhook handler (checkout, invoice, subscription events)
+app/api/onboarding/              — PUT (save onboarding fields, set onboarding_completed_at)
+app/(consumer)/onboarding/       — 3-step onboarding wizard (age, preferences, attribution)
+app/(consumer)/subscribe/        — plan selection page (Hobby/Pro + free trial)
 app/api/profile/                 — GET + PUT consumer profile (RLS-scoped)
 scripts/copy-prod-to-staging.mjs — copy product data from prod to staging Supabase
 ```
@@ -117,7 +137,7 @@ sports, products, players, player_products, player_product_variants
 pricing_cache         — 24h TTL, ev_low/mid/high per player_product
 player_risk_flags     — soft-delete (cleared_at); injury/suspension/legal/trade/retirement
 user_breaks           — consumer break log: analysis snapshot, platform, outcome, feedback, status lifecycle
-profiles              — mirrors auth.users
+profiles              — mirrors auth.users + onboarding fields + subscription (stripe_customer_id, subscription_plan, analyses_used)
 user_roles            — (user_id, role): admin | contributor
 waitlist              — status: pending → approved → converted | rejected
 ```
