@@ -52,7 +52,7 @@ Claude costs are effectively negligible with Haiku. CardHedger is the real varia
 ## Revenue vs. Cost at Scale
 
 **Assumptions:**
-- 60% Hobby ($9.99), 40% Pro ($24.99) split
+- 80% Hobby ($9.99), 20% Pro ($24.99) split (conservative — shifts toward Pro as value is demonstrated)
 - Hobby users average 7 analyses/mo, Pro users average 25
 - 10 active products, ~50 players each (nightly cron)
 
@@ -60,11 +60,11 @@ Claude costs are effectively negligible with Haiku. CardHedger is the real varia
 |---|---|---|---|
 | | | | |
 | **Revenue** | | | |
-| Hobby (60%) | 30 × $9.99 = $300 | 120 × $9.99 = $1,199 | 300 × $9.99 = $2,997 |
-| Pro (40%) | 20 × $24.99 = $500 | 80 × $24.99 = $1,999 | 200 × $24.99 = $4,998 |
-| **Gross Revenue** | **$800** | **$3,198** | **$7,995** |
-| Stripe fees | -$38 | -$108 | -$247 |
-| **Net Revenue** | **$762** | **$3,090** | **$7,748** |
+| Hobby (80%) | 40 × $9.99 = $400 | 160 × $9.99 = $1,598 | 400 × $9.99 = $3,996 |
+| Pro (20%) | 10 × $24.99 = $250 | 40 × $24.99 = $1,000 | 100 × $24.99 = $2,499 |
+| **Gross Revenue** | **$650** | **$2,598** | **$6,495** |
+| Stripe fees | -$34 | -$135 | -$295 |
+| **Net Revenue** | **$616** | **$2,463** | **$6,200** |
 | | | | |
 | **COGS** | | | |
 | CardHedger API | $300 | $300 | $300 |
@@ -74,23 +74,23 @@ Claude costs are effectively negligible with Haiku. CardHedger is the real varia
 | Resend | $0 | $0 | $20 |
 | **Total COGS** | **$301** | **$349** | **$377** |
 | | | | |
-| **Gross Margin** | **$461 (61%)** | **$2,741 (86%)** | **$7,371 (92%)** |
+| **Gross Margin** | **$315 (48%)** | **$2,114 (81%)** | **$5,823 (90%)** |
 | | | | |
 | **Dev Costs** | | | |
 | Claude Code (active) | $600–900 | $300–600 | $150–300 |
 | | | | |
-| **Net after dev** | **-$139 to -$439** | **$2,141 to $2,441** | **$7,071 to $7,221** |
+| **Net after dev** | **-$285 to -$585** | **$1,514 to $1,814** | **$5,523 to $5,673** |
 
 ---
 
 ## Breakeven Analysis
 
 - **Fixed costs:** ~$325/mo (CardHedger + Supabase Pro)
-- **Average revenue per user:** $9.99 × 0.6 + $24.99 × 0.4 = **$16.00/mo**
-- **Stripe fee per user:** ~$0.76
-- **Net per user:** ~$15.24
-- **Breakeven (COGS only): ~22 paying users**
-- **Breakeven (including $600/mo dev): ~61 paying users**
+- **Average revenue per user:** $9.99 × 0.8 + $24.99 × 0.2 = **$12.99/mo**
+- **Stripe fee per user:** ~$0.68
+- **Net per user:** ~$12.31
+- **Breakeven (COGS only): ~27 paying users**
+- **Breakeven (including $600/mo dev): ~76 paying users**
 
 ---
 
