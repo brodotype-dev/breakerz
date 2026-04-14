@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { Sparkles, Zap, TrendingUp, Search, ChevronRight } from 'lucide-react';
+import posthog from 'posthog-js';
 
 type State = 'idle' | 'loading' | 'success' | 'already' | 'error';
 
@@ -25,10 +26,17 @@ export default function WaitlistPage() {
     });
 
     if (res.ok) {
+      posthog.capture('waitlist_signup_submitted', {
+        has_name: !!formData.get('full_name'),
+        has_use_case: !!formData.get('use_case'),
+        result: 'success',
+      });
       setState('success');
     } else if (res.status === 409) {
+      posthog.capture('waitlist_signup_submitted', { result: 'already_exists' });
       setState('already');
     } else {
+      posthog.capture('waitlist_signup_submitted', { result: 'error' });
       setState('error');
     }
   }

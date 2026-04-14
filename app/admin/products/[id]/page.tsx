@@ -4,7 +4,7 @@ import Link from 'next/link';
 import type { Product, Sport } from '@/lib/types';
 import OddsUpload from './OddsUpload';
 import RunMatchingButton from './RunMatchingButton';
-import BreakerzBetsDebrief from './BreakerzBetsDebrief';
+import BreakIQBetsDebrief from './BreakIQBetsDebrief';
 import BreakerComparisonPanel from './BreakerComparisonPanel';
 import PricingBreakdownPanel from './PricingBreakdownPanel';
 
@@ -258,7 +258,7 @@ export default async function ProductDashboardPage({ params }: PageProps) {
           <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
             Tell us what you{"'"}re seeing in the market — Claude extracts player mentions, scores sentiment, and drafts reason notes for your review.
           </p>
-          <BreakerzBetsDebrief productId={id} />
+          <BreakIQBetsDebrief productId={id} />
         </Section>
 
         {/* Unmatched variants */}

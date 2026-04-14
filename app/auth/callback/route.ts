@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr';
 import { supabaseAdmin } from '@/lib/supabase';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
+import { getPostHogClient } from '@/lib/posthog-server';
 
 const supabaseUrl =
   process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL!;
@@ -56,11 +57,32 @@ export async function GET(request: NextRequest) {
   const user = sessionData.user!;
 
   // Upsert profile
+  const isNewProfile = (await supabaseAdmin.from('profiles').select('id').eq('id', user.id).single()).data === null;
   await supabaseAdmin.from('profiles').upsert({
     id: user.id,
     full_name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
     avatar_url: user.user_metadata?.avatar_url ?? null,
   }, { onConflict: 'id' });
+
+  // Identify user server-side
+  const posthog = getPostHogClient();
+  posthog.identify({
+    distinctId: user.id,
+    properties: {
+      email: user.email,
+      name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
+    },
+  });
+  if (isNewProfile) {
+    posthog.capture({
+      distinctId: user.id,
+      event: 'user_signed_up',
+      properties: {
+        provider: user.app_metadata?.provider ?? 'email',
+        email: user.email,
+      },
+    });
+  }
 
   // Validate and consume invite code
   if (inviteCode) {

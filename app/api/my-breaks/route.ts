@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase-server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { runBreakAnalysis } from '@/lib/analysis';
 import { checkAndIncrementUsage } from '@/lib/usage';
+import { getPostHogClient } from '@/lib/posthog-server';
 import type { Platform, BreakOutcome } from '@/lib/types';
 
 export const maxDuration = 60;
@@ -119,6 +120,24 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    const posthog = getPostHogClient();
+    posthog.capture({
+      distinctId: userId,
+      event: 'break_logged',
+      properties: {
+        mode,
+        product_id: productId,
+        team,
+        break_type: breakType,
+        num_cases: Math.max(1, Math.min(50, parseInt(numCases) || 1)),
+        ask_price: parseFloat(askPrice),
+        platform,
+        signal: analysis.signal,
+        value_pct: analysis.valuePct,
+        outcome: isLog ? outcome : null,
+      },
+    });
 
     return NextResponse.json({ break: newBreak, analysis });
   } catch (err) {

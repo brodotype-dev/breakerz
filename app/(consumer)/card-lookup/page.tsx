@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react';
 import { ScanLine, Search, Upload, RotateCcw, ShieldCheck, Hash } from 'lucide-react';
 import { formatCurrency } from '@/lib/engine';
+import posthog from 'posthog-js';
 
 type InputMethod = 'image' | 'cert';
 type Grader = 'PSA' | 'BGS' | 'SGC';
@@ -147,6 +148,10 @@ export default function CardLookupPage() {
         });
         const data = await res.json();
         if (data.error) throw new Error(data.error);
+        posthog.capture('slab_analysis_lookup_completed', {
+          method: 'image_name_search',
+          has_price: !!data.matchedPrice,
+        });
         setResult(data);
       }
     } catch (err) {
@@ -178,6 +183,12 @@ export default function CardLookupPage() {
     });
     const certData = await res.json();
     if (certData.error) throw new Error(certData.error);
+    posthog.capture('slab_analysis_lookup_completed', {
+      method: 'cert',
+      grader,
+      psa_verified: certData.psaVerified ?? false,
+      has_price: !!certData.matchedPrice,
+    });
     setResult(certData);
   }
 

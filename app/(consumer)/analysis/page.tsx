@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
 import { TrendingUp, Sparkles, Zap, ArrowLeft } from 'lucide-react';
+import posthog from 'posthog-js';
 import { formatCurrency } from '@/lib/engine';
 import type { Signal } from '@/lib/types';
 import {
@@ -105,8 +106,19 @@ export default function AnalysisPage() {
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
+      posthog.capture('break_analysis_run', {
+        product_id: productId,
+        team,
+        break_type: breakType,
+        num_cases: numCases,
+        ask_price: parseFloat(askPrice),
+        signal: data.signal,
+        value_pct: data.valuePct,
+        fair_value: data.fairValue,
+      });
       setResult(data);
     } catch (err) {
+      posthog.captureException(err);
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setRunning(false);

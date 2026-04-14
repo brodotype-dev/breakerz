@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sparkles, ShieldCheck, XCircle } from 'lucide-react';
+import posthog from 'posthog-js';
 
 type Step = 1 | 2 | 3;
 
@@ -108,6 +109,14 @@ export default function OnboardingPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Failed to save');
+      posthog.capture('onboarding_completed', {
+        experience_level: experience,
+        favorite_sports: sports,
+        primary_platform: platform,
+        monthly_spend: spend,
+        referral_source: referral,
+        is_over_18: isOver18,
+      });
       router.replace('/subscribe');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');

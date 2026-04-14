@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { constructWebhookEvent } from '@/lib/stripe';
+import { getPostHogClient } from '@/lib/posthog-server';
 
 export const dynamic = 'force-dynamic';
 
@@ -59,6 +60,13 @@ export async function POST(req: Request) {
           analyses_used: 0,
           analyses_reset_at: new Date().toISOString(),
         }).eq('id', userId);
+
+        const posthog = getPostHogClient();
+        posthog.capture({
+          distinctId: userId,
+          event: 'subscription_activated',
+          properties: { plan, source: 'stripe_webhook' },
+        });
         break;
       }
 
@@ -117,6 +125,13 @@ export async function POST(req: Request) {
           stripe_subscription_id: null,
           current_period_end: null,
         }).eq('id', userId);
+
+        const posthog = getPostHogClient();
+        posthog.capture({
+          distinctId: userId,
+          event: 'subscription_canceled',
+          properties: { source: 'stripe_webhook' },
+        });
         break;
       }
     }

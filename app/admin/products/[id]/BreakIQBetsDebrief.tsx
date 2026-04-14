@@ -38,7 +38,7 @@ interface Props {
   productId: string;
 }
 
-export default function BreakerzBetsDebrief({ productId }: Props) {
+export default function BreakIQBetsDebrief({ productId }: Props) {
   const router = useRouter();
   const [narrative, setNarrative] = useState('');
   const [status, setStatus] = useState<'idle' | 'parsing' | 'reviewing' | 'done' | 'error'>('idle');

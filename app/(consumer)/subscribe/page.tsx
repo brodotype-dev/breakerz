@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sparkles, Zap, Check, Crown } from 'lucide-react';
+import posthog from 'posthog-js';
 
 export default function SubscribePage() {
   const router = useRouter();
@@ -25,6 +26,7 @@ export default function SubscribePage() {
   async function handleSubscribe(selectedPlan: 'hobby' | 'pro') {
     setLoading(selectedPlan);
     setError(null);
+    posthog.capture('subscription_checkout_started', { plan: selectedPlan });
     try {
       const res = await fetch('/api/checkout', {
         method: 'POST',
@@ -35,6 +37,7 @@ export default function SubscribePage() {
       if (data.error) throw new Error(data.error);
       if (data.url) window.location.href = data.url;
     } catch (err) {
+      posthog.captureException(err);
       setError(err instanceof Error ? err.message : 'Something went wrong');
       setLoading(null);
     }
