@@ -14,6 +14,15 @@ const LIMITS: Record<string, number> = {
 };
 
 export async function checkAndIncrementUsage(userId: string): Promise<UsageResult> {
+  // Admin/contributor users always have unlimited access
+  const { data: roles } = await supabaseAdmin
+    .from('user_roles')
+    .select('role')
+    .eq('user_id', userId);
+  if (roles && roles.length > 0) {
+    return { allowed: true, remaining: null, plan: 'admin' };
+  }
+
   const { data: profile } = await supabaseAdmin
     .from('profiles')
     .select('subscription_plan, subscription_status, analyses_used, analyses_reset_at, current_period_end')
