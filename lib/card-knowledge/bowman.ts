@@ -24,7 +24,7 @@ export class BowmanKnowledge implements ManufacturerKnowledge {
   // BMA = Bowman Mega Box Auto, CPA = Chrome Prospect Auto, BPA = Bowman Prospect Auto,
   // FDA = Father-Day Auto, BSA/BRA/CRA = various Chrome/rookie autos,
   // QA/DA/TA = quad/dual/triple autos
-  private static readonly AUTO_CODE_RE = /^(BMA|CPA|BPA|FDA|BSA|BRA|CRA|QA|DA|TA)-/i;
+  private static readonly AUTO_CODE_RE = /^(BMA|CPA|BPA|FDA|BSA|BRA|CRA|CA|QA|DA|TA)-/i;
 
   // Insert set names that Bowman/Topps XLSX stores in the variant_name field.
   // These are not parallel/variant descriptors — they're subsection labels.

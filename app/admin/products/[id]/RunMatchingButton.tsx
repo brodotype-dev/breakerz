@@ -32,7 +32,7 @@ export default function RunMatchingButton({ productId }: { productId: string }) 
         const res = await fetch('/api/admin/match-cardhedger', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ productId, offset }),
+          body: JSON.stringify({ productId, offset, mode: 'set-catalog' }),
         });
 
         if (!res.ok) throw new Error(`Request failed: ${res.status}`);
