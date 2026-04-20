@@ -21,9 +21,9 @@ export class BowmanKnowledge implements ManufacturerKnowledge {
 
   // Autograph card code prefixes — per CardHedger: always append "Autograph" to the query.
   // Dash format (CPA-JH) required; "CPA JH" degrades search accuracy significantly.
-  // BMA = Bowman Mega Box Auto, CPA = Chrome Prospect Auto, BPA = Bowman Prospect Auto,
-  // FDA = Father-Day Auto, BSA/BRA/CRA = various Chrome/rookie autos,
-  // QA/DA/TA = quad/dual/triple autos
+  // BMA = Best Mix Auto, CPA = Chrome Prospect Auto, BPA = Best Performances Auto,
+  // FDA = Family Tree Dual Auto, BSA/BRA/CRA = various Chrome/rookie autos,
+  // CA = Chrome Auto, QA/DA/TA = quad/dual/triple autos
   private static readonly AUTO_CODE_RE = /^(BMA|CPA|BPA|FDA|BSA|BRA|CRA|CA|QA|DA|TA)-/i;
 
   // Insert set names that Bowman/Topps XLSX stores in the variant_name field.
