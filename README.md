@@ -1,27 +1,27 @@
 # BreakIQ
 
-Break analysis and slot pricing tool for sports card group breaks. Computes fair-value slot costs per team using live card pricing, set structure, and break configuration.
+AI-powered intelligence platform for sports card breaks. Real-time slot pricing, deal analysis, and market signals — built for breakers and serious collectors.
 
-Built in collaboration with Kyle (Town & Line / CardPulse).
-
-**Live:** [breakerz.vercel.app](https://breakerz.vercel.app)
+**Live:** [getbreakiq.com](https://getbreakiq.com) · Private beta
 
 ---
 
 ## What it does
 
-Given a sports card product (e.g. 2025-26 Topps Finest Basketball), BreakIQ:
+Given a sports card product (e.g. 2025 Bowman Chrome Baseball), BreakIQ:
 
-1. Loads each player's card data and set counts from Supabase
-2. Fetches live pricing from the CardHedger API (with 24h cache)
+1. Imports the manufacturer checklist (Topps PDF, Bowman XLSX, Panini CSV) and links every variant to a CardHedger `card_id`
+2. Fetches live card pricing from CardHedger (24h cache, nightly cron refresh)
 3. Computes odds-weighted EV per player: `hobbyEVPerBox = Σ(variantEV × 1/hobby_odds)`
-4. Applies social signal adjustments: `effective_score = clamp(buzz_score + breakerz_score, -0.9, 1.0)`
-5. Distributes break cost across teams proportionally
+4. Applies social signal adjustments: `effectiveScore = clamp(buzz_score + breakerz_score, -0.9, 1.0)`
+5. Distributes break cost across teams proportionally by weighted EV
 6. Outputs per-team slot costs, RC counts, and BUY/WATCH/PASS signals
 
-**BreakIQ Sayz** (`/analysis`) is the consumer-facing deal checker: pick a product, select your team, enter the case count and what the breaker is charging — Claude returns a BUY/WATCH/PASS verdict with a 2–3 sentence AI narrative. The result card surfaces icon-tier player badges, Breakerz Bets editorial scores, risk flag disclosures, and high volatility advisories.
+**BreakIQ Sayz** (`/analysis`) — consumer deal checker: pick a product, select a team, enter the asking price — Claude returns a BUY/WATCH/PASS verdict with a 2–3 sentence AI narrative, risk flag disclosures, and social signal badges.
 
-**Social Currency** is an ongoing signal layer on top of the EV model — see [docs/prd-social-currency.md](./docs/prd-social-currency.md). Currently live: Breakerz Bets (editorial B-score), Icon Tier, Risk Flags, and High Volatility. Automated pipeline (C-score from CardHedger top-movers, P-score from Reddit) is Phase 5–6.
+**Slab Analysis** (`/card-lookup`) — upload a cert image or enter a cert number directly. Claude parses the image, PSA API verifies grade + population data, CardHedger returns market-wide grade pricing and recent comps.
+
+**My Breaks** (`/my-breaks`) — log breaks before or after they happen. Captures the BreakIQ analysis snapshot at decision time. Rate outcome (Win/Mediocre/Bust), record platform, give feedback on the analysis. Stats, filters, CSV export/import.
 
 ---
 
@@ -31,110 +31,145 @@ Given a sports card product (e.g. 2025-26 Topps Finest Basketball), BreakIQ:
 |---|---|
 | Framework | Next.js 15 App Router (TypeScript) |
 | Styling | Tailwind CSS + shadcn/ui |
-| Database | Supabase (Postgres) — Auth + Postgres |
+| Database | Supabase (Postgres + Auth) |
+| Payments | Stripe (Hobby $9.99/mo, Pro $24.99/mo) |
 | Pricing API | CardHedger |
+| Cert Verification | PSA Public API |
 | Email | Resend |
 | AI | Claude Haiku (`claude-haiku-4-5-20251001`) |
-| Deploy | Vercel (CLI) |
+| Analytics | PostHog |
+| Deploy | Vercel |
 
 ---
 
 ## Local development
 
 ```bash
-# Install dependencies
 npm install
-
-# Add environment variables
-cp .env.example .env.local
-# Fill in:
-#   NEXT_PUBLIC_SUPABASE_URL       — Supabase project URL
-#   NEXT_PUBLIC_SUPABASE_ANON_KEY  — Supabase anon key
-#   SUPABASE_SERVICE_ROLE_KEY      — Supabase service role key (server only)
-#   SUPABASE_JWT_SECRET            — Supabase JWT secret
-#   CARDHEDGER_API_KEY             — CardHedger API key
-#   ANTHROPIC_API_KEY              — Anthropic API key (Claude features)
-#   RESEND_API_KEY                 — Resend API key (invite emails)
-#   FROM_EMAIL                     — Sender address for invite emails
-#   NEXT_PUBLIC_APP_URL            — Base URL (e.g. http://localhost:3000)
-
-# Run dev server
 npm run dev
 ```
 
-Local dev uses the staging Supabase project. See [CLAUDE.md](./CLAUDE.md) for environment details.
+Copy env vars from Vercel or ask for `.env.local`. Required vars:
+
+```
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY
+SUPABASE_SERVICE_ROLE_KEY
+SUPABASE_JWT_SECRET
+CARDHEDGER_API_KEY
+ANTHROPIC_API_KEY
+PSA_API_KEY
+RESEND_API_KEY
+FROM_EMAIL
+NEXT_PUBLIC_APP_URL
+STRIPE_SECRET_KEY
+STRIPE_WEBHOOK_SECRET
+STRIPE_PRICE_HOBBY
+STRIPE_PRICE_PRO
+CRON_SECRET
+NEXT_PUBLIC_POSTHOG_KEY
+NEXT_PUBLIC_POSTHOG_HOST
+```
+
+Local dev bypasses auth (middleware skips redirect, API routes fall back to first profile). See [CLAUDE.md](./CLAUDE.md) for full environment details and known gotchas.
 
 ---
 
 ## Deploy
-
-Push to GitHub first, then deploy via CLI:
 
 ```bash
 git push origin main
 vercel --prod --yes
 ```
 
-See [CLAUDE.md](./CLAUDE.md) for full deploy instructions and known gotchas.
+Staging branch: `staging` | Repo: `github.com/brodotype-dev/breakerz`
 
 ---
 
 ## Key routes
 
+### Consumer (auth required)
+
 | Route | Purpose |
 |---|---|
-| `/` | Homepage — product grid by sport |
-| `/waitlist` | Public beta waitlist signup |
-| `/analysis` | **BreakIQ Sayz** — consumer deal checker (BUY/WATCH/PASS) — auth required |
-| `/break/[slug]` | Break analysis page — team slots, player EV, deal checker — auth required |
-| `/auth/signup` | Consumer account creation (Phase 3 — coming soon) |
-| `/admin/login` | Admin login (Supabase Auth — email + password) |
+| `/` | Homepage — product grid, My Breaks promo |
+| `/break/[slug]` | Break analysis — team slots, player EV, buzz badges |
+| `/analysis` | BreakIQ Sayz — enter a price, get BUY/WATCH/PASS + AI narrative |
+| `/card-lookup` | Slab Analysis — cert image or cert # → PSA verification + market pricing |
+| `/my-breaks` | Break history — log, track outcomes, export CSV |
+| `/onboarding` | Post-signup wizard (age gate, preferences, attribution) |
+| `/subscribe` | Plan selection — Hobby $9.99 / Pro $24.99 / free trial |
+| `/profile` | Consumer profile — name, DOB, hobby preferences |
+| `/waitlist` | Public beta signup |
+| `/auth/signup` | Invite-code signup — Google / Discord / email |
+
+### Admin (admin/contributor role required)
+
+| Route | Purpose |
+|---|---|
 | `/admin/products` | Product listing |
-| `/admin/products/[id]` | Product dashboard — readiness stats, odds upload, re-run matching, Breakerz Bets Debrief |
-| `/admin/import-checklist` | 3-step checklist import wizard |
-| `/admin/products/[id]/players` | Player management — roster, icon tier (★), high volatility (⚡), risk flags (⚑) |
-| `/admin/waitlist` | Waitlist management — approve users, send invites |
-| `/admin/card-lookup` | **Card Lookup** — screenshot an auction listing → AI extracts cert number → CardHedger grade prices + comps + max bid calculator |
-| `/api/waitlist` | POST: public waitlist signup |
-| `/api/admin/waitlist/[id]/approve` | POST: approve user, generate invite code, send Resend email |
-| `/api/analysis` | GET: active product list · POST: run BreakIQ Sayz analysis |
-| `/api/pricing` | Live pricing endpoint (Supabase + CardHedger, 24h cache) |
-| `/api/admin/parse-checklist` | PDF/CSV checklist parser |
-| `/api/admin/import-checklist` | Upsert players, products, variants |
-| `/api/admin/match-cardhedger` | Auto-link variants to CardHedger card IDs (chunked, Claude-powered) |
-| `/api/admin/parse-odds` | Topps odds PDF → pull rates (coordinate-aware) |
-| `/api/admin/apply-odds` | Write pull rates to variants by fuzzy name match |
+| `/admin/products/new` | Create product with CH set-name lookup |
+| `/admin/products/[id]` | Product dashboard — matching, odds, BreakIQ Bets, Pricing Audit |
+| `/admin/products/[id]/edit` | Edit product — display name, CH set name, pricing |
+| `/admin/products/[id]/players` | Player management — icon tier, HV flag, risk flags |
+| `/admin/import-checklist` | Checklist import wizard (PDF/XLSX/CSV) |
+| `/admin/breakiq-betz` | Global BreakIQ Bets editorial scores |
+| `/admin/waitlist` | Waitlist management — approve, send invites |
+
+---
+
+## Admin: adding a product
+
+1. Go to `/admin/products/new`
+2. Fill in Sport, Manufacturer, Year, Display Name
+3. **Find on CH** — search for the canonical CardHedger set name and lock it in (stored as `ch_set_name`)
+4. Set pricing (Hobby/Case, BD/Case), release date if pre-release
+5. Publish
+
+**Important:** The `ch_set_name` must exactly match CardHedger's canonical set name. Use the "Find on CH" button to search — wrong names silently return wrong results. See [docs/manufacturer-rules/bowman.md](./docs/manufacturer-rules/bowman.md) for naming conventions.
 
 ---
 
 ## Admin: importing a checklist
 
-1. Go to `/admin/import-checklist`
-2. Select a product and upload a checklist file (Topps PDF or Panini/Donruss CSV)
-3. Review parsed sections — set Hobby/BD sets per section, check for flagged lines
-4. Import → runs CardHedger auto-matching on the result
-5. Optionally upload a Topps odds PDF to attach pull rates to variants
+1. Go to `/admin/products/[id]` → Import Checklist
+2. Upload a checklist file (Topps PDF, Bowman XLSX, Panini CSV)
+3. Review parsed sections — set Hobby/BD sets per section
+4. Import → runs CardHedger auto-matching
 
-Supported formats: Topps numbered PDF, Topps code-based PDF, Panini/Donruss CSV, Bowman XLSX, Topps odds PDF.
+**Matching:** Uses set-catalog mode by default — pre-loads the full CH set (~94 API calls), matches locally by card number (confidence 0.95), falls back to individual Claude matching for unmatched variants.
+
+Current match rates: ~95% Bowman Draft · **96% Bowman's Best** · TBD Bowman Chrome
 
 ---
 
-## CardHedger card mapping
+## CardHedger matching
 
-Matching is Claude-powered and runs automatically during import and on-demand from the product dashboard (`/admin/products/[id]` → "Re-run Matching").
+Matching runs automatically during import and on-demand via "Re-run Matching" on the product dashboard. The `ch_set_name` on the product is used directly — no set-search needed at match time.
 
-For any remaining unmatched variants, the product dashboard shows a table of missing card IDs. A manual CLI fallback also exists:
+For autograph prefixes (BMA/CPA/BPA/FDA/CA/BSA), "Autograph" is appended to the query. Without it, base cards outrank autos in search results.
 
-```bash
-node scripts/map-cards.mjs
-```
+See [docs/manufacturer-rules/bowman.md](./docs/manufacturer-rules/bowman.md) for full prefix reference and CH naming conventions.
+
+---
+
+## Subscriptions
+
+- **Free trial:** 3 lifetime AI analyses (BreakIQ Sayz + Slab Analysis + My Breaks new)
+- **Hobby:** $9.99/mo — 10 analyses, 10 slab lookups, unlimited break logging
+- **Pro:** $24.99/mo — unlimited everything
+- Admin/contributor users bypass all limits
+
+Stripe webhooks at `/api/webhooks/stripe` handle checkout, invoice, and subscription lifecycle.
 
 ---
 
 ## Project docs
 
-- [CHANGELOG.md](./CHANGELOG.md) — feature history and release notes
-- [CLAUDE.md](./CLAUDE.md) — context for Claude Code sessions (deploy, gotchas, schema)
-- [docs/prd-social-currency.md](./docs/prd-social-currency.md) — Social Currency Signal PRD (buzz score pipeline)
-- [docs/card-lookup/prd-card-lookup.md](./docs/card-lookup/prd-card-lookup.md) — Card Lookup tool PRD
-- [docs/plans/](./docs/plans/) — implementation plans for major features
+- [CHANGELOG.md](./CHANGELOG.md) — feature history
+- [CLAUDE.md](./CLAUDE.md) — Claude Code context (deploy, gotchas, schema, env vars)
+- [docs/BACKLOG.md](./docs/BACKLOG.md) — prioritized work queue
+- [docs/cost-analysis.md](./docs/cost-analysis.md) — unit economics and breakeven analysis
+- [docs/manufacturer-rules/bowman.md](./docs/manufacturer-rules/bowman.md) — Bowman/Topps matching rules and CH conventions
+- [docs/cardhedger-matching.md](./docs/cardhedger-matching.md) — CH matching architecture
+- [docs/cardhedger-questions.md](./docs/cardhedger-questions.md) — open questions for CH team

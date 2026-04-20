@@ -5,6 +5,42 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-20 — CH matching improvements, ch_set_name, RLS, edit product UI
+
+### CardHedger matching improvements
+Per confirmed data from River @ CardHedger:
+- **Autograph query fix:** append "Autograph" to queries for auto-prefix card codes (BMA/CPA/BPA/FDA/CA/BSA/BRA etc). Without it, base BCP cards outrank autos. Implemented in `BowmanKnowledge.AUTO_CODE_RE`.
+- **Set-catalog mode:** new matching mode pre-loads full CH set via paginated `card-search?set=` (~94 calls instead of 1,000+), builds `card_number → card_id` map locally, matches at confidence 0.95. Falls back to individual Claude matching for unmatched variants. Now the default in RunMatchingButton.
+- **Correct prefix names confirmed:** BMA = Best Mix Auto, BPA = Best Performances Auto, FDA = Family Tree Dual Auto, CA = Chrome Auto.
+- **2025 Bowman's Best result: 88% → 96%** after River added BMA/BPA/FDA cards to catalog and set-catalog mode went live.
+
+### ch_set_name field + set-search widget
+New `ch_set_name TEXT` column on products stores the exact CardHedger canonical set name. Separates the display name (shown to consumers) from the matching key (must match CH exactly).
+
+Product creation/edit form has a new "CardHedger Matching" section: type a query, hit "Find on CH" to call `/v1/cards/set-search`, select the canonical name from a results dropdown. Matching route uses stored `ch_set_name` directly — skips set-search at match time.
+
+**Files:** `supabase/migrations/20260420120000_product_ch_set_name.sql`, `app/api/admin/set-search/route.ts`, `components/admin/ProductForm.tsx`, `app/api/admin/match-cardhedger/route.ts`
+
+### RLS enabled on all tables
+Closes the pre-beta security audit item. All 11 tables now have RLS enabled:
+- `sports`, `products`, `players`, `player_products`, `player_product_variants`, `pricing_cache`: SELECT for anon (consumer break pages read these)
+- `player_risk_flags`: SELECT for anon, active flags only (`cleared_at IS NULL`)
+- `waitlist`: INSERT for anon only (public signup form), no anon reads
+- `profiles`, `user_roles`, `user_breaks`: already had RLS from earlier migrations
+
+**File:** `supabase/migrations/20260420140000_enable_rls.sql`
+
+### Edit product page cleanup
+Replaced redundant hero banner + floating "Back to Dashboard" link with a compact inline header (back arrow + icon + title + product name).
+
+### Manufacturer rules doc updated
+`docs/manufacturer-rules/bowman.md` rewritten with correct prefix names, autograph query pattern, set-catalog mode docs, CH canonical naming conventions, 2026+ Bowman Chrome merge note, and updated match rate history.
+
+### README rewritten
+Full rewrite — correct URL (getbreakiq.com), updated stack (Stripe/PSA/PostHog), all current routes (consumer + admin), product setup workflow, subscription tiers, matching overview.
+
+---
+
 ## 2026-04-13 — Stripe subscriptions, cost analysis
 
 ### Stripe subscriptions — Hobby / Pro tiers

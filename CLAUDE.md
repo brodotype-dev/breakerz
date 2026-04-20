@@ -9,6 +9,7 @@ Sports card break slot pricing and analysis tool. Built with Kyle (Town & Line /
 - [docs/cardhedger-questions.md](./docs/cardhedger-questions.md) — running list of questions for the CH team
 - [docs/beta-launch-checklist.md](./docs/beta-launch-checklist.md) — pre-launch todo list
 - [docs/cost-analysis.md](./docs/cost-analysis.md) — unit economics, breakeven, service costs
+- [docs/manufacturer-rules/bowman.md](./docs/manufacturer-rules/bowman.md) — Bowman/Topps prefix names, CH naming conventions, match rate history
 
 Update CHANGELOG.md at the end of every session with what changed and why.
 
@@ -38,7 +39,11 @@ Live at [getbreakiq.com](https://getbreakiq.com). Private beta — consumer rout
 
 **Analytics** ✅ PostHog installed — server-side user identification + `user_signed_up` event in auth callback.
 
-**Next up:** Phase 5 C-score (blocked on Kyle), CH team conversation (see docs/cardhedger-questions.md), My Breaks Phase 2 (chase/hit card tracking), Sentry error tracking, PostHog MCP setup
+**CH Matching** ✅ 96% on Bowman's Best. Set-catalog mode (pre-load full CH set, match locally by card_number). Autograph query fix (append "Autograph" for BMA/CPA/BPA/FDA/CA prefixes). `ch_set_name` on products stores exact CH canonical name — use "Find on CH" widget in product form.
+
+**Security** ✅ RLS enabled on all 11 tables. Auth guards on all admin actions and API routes. Security headers. See security section in BACKLOG for remaining items (rate limiting, file validation).
+
+**Next up:** Phase 5 C-score (blocked on Kyle), My Breaks Phase 2 (chase/hit card tracking), Sentry error tracking, rate limiting, 2025-26 Bowman Basketball re-match (CPA cards being added by CH this week)
 
 ---
 
@@ -137,6 +142,7 @@ sports, products, players, player_products, player_product_variants
 pricing_cache         — 24h TTL, ev_low/mid/high per player_product
 player_risk_flags     — soft-delete (cleared_at); injury/suspension/legal/trade/retirement
 user_breaks           — consumer break log: analysis snapshot, platform, outcome, feedback, status lifecycle
+products              — ch_set_name TEXT: exact CardHedger canonical set name for set-catalog matching
 profiles              — mirrors auth.users + onboarding fields + subscription (stripe_customer_id, subscription_plan, analyses_used)
 user_roles            — (user_id, role): admin | contributor
 waitlist              — status: pending → approved → converted | rejected
