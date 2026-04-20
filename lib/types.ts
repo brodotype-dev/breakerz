@@ -20,6 +20,7 @@ export interface Product {
   is_active: boolean;
   has_odds: boolean;
   release_date: string | null; // ISO date string (YYYY-MM-DD)
+  ch_set_name: string | null; // Exact CardHedger canonical set name for matching
   sport?: Sport;
 }
 

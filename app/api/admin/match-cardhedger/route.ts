@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
 
   const { data: product } = await supabaseAdmin
     .from('products')
-    .select('name, sport:sports(name)')
+    .select('name, ch_set_name, sport:sports(name)')
     .eq('id', productId)
     .single();
 
@@ -98,10 +98,14 @@ export async function POST(req: NextRequest) {
 
   if (mode === 'set-catalog') {
     try {
-      // Step 1: find canonical CH set name
+      // Step 1: find canonical CH set name — use stored ch_set_name if available, else search
+      const storedSetName = (product as any)?.ch_set_name as string | null;
       const sportCategory = sportName ? sportName.charAt(0).toUpperCase() + sportName.slice(1) : undefined;
-      const setsResult = await searchSets(shortSetName, sportCategory);
-      const canonicalSet = setsResult.sets?.[0]?.set_name;
+      let canonicalSet: string | undefined = storedSetName ?? undefined;
+      if (!canonicalSet) {
+        const setsResult = await searchSets(shortSetName, sportCategory);
+        canonicalSet = setsResult.sets?.[0]?.set_name;
+      }
 
       if (canonicalSet) {
         console.log(`[match-cardhedger] set-catalog mode: canonical set="${canonicalSet}"`);

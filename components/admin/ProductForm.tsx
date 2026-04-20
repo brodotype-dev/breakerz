@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import { createProduct, updateProduct } from '@/app/admin/products/actions';
 import type { Sport, Product } from '@/lib/types';
 
+interface CHSetResult { set_name: string; year: string; category: string; card_count: number; }
+
 interface Props {
   sports: Sport[];
   product?: Product;
@@ -145,6 +147,11 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
   const [releaseDate, setReleaseDate] = useState(product?.release_date ?? '');
   const [isActive, setIsActive] = useState(product?.is_active ?? false);
 
+  const [chSetName, setChSetName] = useState(product?.ch_set_name ?? '');
+  const [setSearchQuery, setSetSearchQuery] = useState('');
+  const [setSearchResults, setSetSearchResults] = useState<CHSetResult[]>([]);
+  const [setSearching, setSetSearching] = useState(false);
+
   const [nameEdited, setNameEdited] = useState(!!product);
   const [slugEdited, setSlugEdited] = useState(!!product);
   const [status, setStatus] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
@@ -163,6 +170,21 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
 
   const effectiveManufacturer = manufacturer === 'Other' ? manufacturerCustom : manufacturer;
 
+  async function searchCHSets() {
+    if (!setSearchQuery.trim()) return;
+    setSetSearching(true);
+    setSetSearchResults([]);
+    const sport = sports.find(s => s.id === sportId);
+    const res = await fetch('/api/admin/set-search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: setSearchQuery, category: sport?.name }),
+    });
+    const data = await res.json();
+    setSetSearchResults(data.sets ?? []);
+    setSetSearching(false);
+  }
+
   async function handleSubmit(publish: boolean) {
     setSubmitting(true);
     setStatus(null);
@@ -178,6 +200,7 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
       hobby_autos_per_case: null,
       bd_autos_per_case: null,
       release_date: releaseDate || null,
+      ch_set_name: chSetName || null,
       is_active: publish ? true : isActive,
     };
 
@@ -238,7 +261,8 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
           />
 
           <FormInput
-            label="Name"
+            label="Display Name"
+            hint="(shown to consumers)"
             value={name}
             onChange={e => { setNameEdited(true); setName(e.target.value); }}
             placeholder="Auto-generated"
@@ -254,6 +278,83 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
             />
           </div>
         </div>
+      </div>
+
+      {sectionDivider}
+
+      {/* CardHedger Matching */}
+      <div>
+        <p style={{ fontSize: '0.625rem', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 700, color: 'var(--accent-blue)', marginBottom: '0.5rem' }}>
+          CardHedger Matching
+        </p>
+        <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginBottom: '1rem' }}>
+          Set name must match CardHedger exactly. Use the search below to find the canonical name.
+        </p>
+
+        {/* Locked-in set name */}
+        {chSetName && (
+          <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.3)' }}>
+            <span style={{ color: 'rgb(34,197,94)', fontSize: '0.75rem' }}>✓</span>
+            <span className="text-sm font-mono flex-1" style={{ color: 'var(--text-primary)' }}>{chSetName}</span>
+            <button
+              type="button"
+              onClick={() => { setChSetName(''); setSetSearchResults([]); }}
+              className="text-xs hover:underline"
+              style={{ color: 'var(--text-tertiary)' }}
+            >
+              Clear
+            </button>
+          </div>
+        )}
+
+        {/* Set search */}
+        <div className="flex gap-2">
+          <input
+            value={setSearchQuery}
+            onChange={e => setSetSearchQuery(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); searchCHSets(); }}}
+            placeholder={`e.g. "${name || '2025 Bowman Chrome'}"`}
+            style={{ ...inputStyle, flex: 1 }}
+          />
+          <button
+            type="button"
+            onClick={searchCHSets}
+            disabled={setSearching || !setSearchQuery.trim()}
+            className="px-4 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-40 whitespace-nowrap"
+            style={{ backgroundColor: 'var(--accent-blue)', color: 'white' }}
+          >
+            {setSearching ? 'Searching…' : 'Find on CH'}
+          </button>
+        </div>
+
+        {/* Results */}
+        {setSearchResults.length > 0 && (
+          <div className="mt-2 rounded-lg overflow-hidden" style={{ border: '1px solid var(--terminal-border)' }}>
+            {setSearchResults.map(s => (
+              <button
+                key={s.set_name}
+                type="button"
+                onClick={() => { setChSetName(s.set_name); setSetSearchResults([]); setSetSearchQuery(''); }}
+                className="w-full flex items-center justify-between px-3 py-2.5 text-left transition-colors hover:bg-[var(--terminal-surface-hover)] border-b last:border-0"
+                style={{ borderColor: 'var(--terminal-border)' }}
+              >
+                <div>
+                  <p className="text-sm font-mono" style={{ color: 'var(--text-primary)' }}>{s.set_name}</p>
+                  <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{s.year} · {s.category}</p>
+                </div>
+                <span className="text-xs font-mono ml-4" style={{ color: 'var(--text-tertiary)' }}>
+                  {s.card_count?.toLocaleString()} cards
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {setSearchResults.length === 0 && !setSearching && setSearchQuery && (
+          <p className="mt-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+            No results — try a shorter query or check the set name spelling.
+          </p>
+        )}
       </div>
 
       {sectionDivider}

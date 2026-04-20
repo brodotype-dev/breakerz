@@ -14,6 +14,7 @@ export async function createProduct(formData: {
   hobby_autos_per_case: number | null;
   bd_autos_per_case: number | null;
   release_date: string | null;
+  ch_set_name?: string | null;
   is_active?: boolean;
 }): Promise<{ id?: string; error?: string }> {
   await requireRole('admin', 'contributor');
@@ -50,6 +51,7 @@ export async function updateProduct(
     hobby_autos_per_case: number | null;
     bd_autos_per_case: number | null;
     release_date: string | null;
+    ch_set_name?: string | null;
     is_active: boolean;
   }
 ): Promise<{ error?: string }> {
