@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { cardMatch } from '@/lib/cardhedger';
+import { cardMatch, searchSets, getCardsBySet } from '@/lib/cardhedger';
 import { getManufacturerKnowledge } from '@/lib/card-knowledge';
 import { checkRole } from '@/lib/auth';
 
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
   const auth = await checkRole('admin', 'contributor');
   if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const { productId, offset = 0, limit = DEFAULT_CHUNK } = await req.json();
+  const { productId, offset = 0, limit = DEFAULT_CHUNK, mode } = await req.json();
   if (!productId) return NextResponse.json({ error: 'productId required' }, { status: 400 });
 
   // Verify product exists and has player_products.
@@ -88,7 +88,54 @@ export async function POST(req: NextRequest) {
   // Resolve the manufacturer knowledge module for this product.
   // Handles variant cleaning, query reformulation, and Claude context injection.
   const knowledge = getManufacturerKnowledge(productName);
-  console.log(`[match-cardhedger] product="${productName}" module="${knowledge.name}" variants=${variants.length} offset=${offset}`);
+  console.log(`[match-cardhedger] product="${productName}" module="${knowledge.name}" variants=${variants.length} offset=${offset} mode=${mode ?? 'individual'}`);
+
+  // ── Set-catalog pre-load (mode: 'set-catalog') ──────────────────────────────
+  // Fetches the full CH set catalog once, builds a card_number → card_id map,
+  // and matches variants locally. ~94 paginated API calls replaces 1000+ individual ones.
+  // Falls back to individual Claude matching for any variant not found in the catalog.
+  let setCatalogMap: Map<string, string> | null = null;
+
+  if (mode === 'set-catalog') {
+    try {
+      // Step 1: find canonical CH set name
+      const sportCategory = sportName ? sportName.charAt(0).toUpperCase() + sportName.slice(1) : undefined;
+      const setsResult = await searchSets(shortSetName, sportCategory);
+      const canonicalSet = setsResult.sets?.[0]?.set_name;
+
+      if (canonicalSet) {
+        console.log(`[match-cardhedger] set-catalog mode: canonical set="${canonicalSet}"`);
+        // Step 2: paginate through entire set
+        const firstPage = await getCardsBySet(canonicalSet, 1, 100);
+        const totalPages = firstPage.pages ?? 1;
+        const allCards = [...(firstPage.cards ?? [])];
+
+        // Fetch remaining pages concurrently (up to 10 at a time)
+        if (totalPages > 1) {
+          const pageNums = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
+          const pageResults = await runConcurrent(
+            pageNums.map(p => () => getCardsBySet(canonicalSet, p, 100)),
+            10
+          );
+          for (const r of pageResults) allCards.push(...(r.cards ?? []));
+        }
+
+        // Step 3: build number → card_id map (keep first match per number for base variant)
+        setCatalogMap = new Map<string, string>();
+        for (const card of allCards) {
+          if (card.number && !setCatalogMap.has(card.number)) {
+            setCatalogMap.set(card.number, card.card_id);
+          }
+        }
+        console.log(`[match-cardhedger] set-catalog loaded ${setCatalogMap.size} unique card numbers from ${allCards.length} cards`);
+      } else {
+        console.warn(`[match-cardhedger] set-catalog: no canonical set found for "${shortSetName}" — falling back to individual matching`);
+      }
+    } catch (err) {
+      console.error('[match-cardhedger] set-catalog pre-load failed:', err);
+      // Fall back to individual matching
+    }
+  }
 
   // Match all variants in this chunk concurrently.
   const results = await runConcurrent(
@@ -115,6 +162,16 @@ export async function POST(req: NextRequest) {
       const matchCardNumber = reformulation.effectiveCardNumber ?? variant.card_number;
 
       try {
+        // Set-catalog fast path: if we pre-loaded the set, try exact card_number lookup first
+        if (setCatalogMap && matchCardNumber && setCatalogMap.has(matchCardNumber)) {
+          const cardId = setCatalogMap.get(matchCardNumber)!;
+          await supabaseAdmin
+            .from('player_product_variants')
+            .update({ cardhedger_card_id: cardId, match_confidence: 0.95 })
+            .eq('id', variant.id);
+          return { variantId: variant.id, playerName, query, status: 'auto' as const, confidence: 0.95, topResult: null, source: 'set-catalog' };
+        }
+
         const match = await cardMatch(query, sportName, matchPlayerName, matchCardNumber, knowledge.claudeContext());
         const status: 'auto' | 'review' | 'no-match' =
           match.confidence >= 0.7 && match.card_id ? 'auto'

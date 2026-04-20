@@ -47,6 +47,27 @@ export async function searchCards(query: string, sport?: string) {
   return post<SearchResponse>('/v1/cards/card-search', { search: query, sport });
 }
 
+// ── Set-based catalog endpoints (per CardHedger, 2026-04-20) ──────────────────
+
+// Discover canonical CH set names for a product before importing.
+// Use this before getCardsBySet — set names must match exactly or the filter fails silently.
+export async function searchSets(query: string, category?: string) {
+  return post<{
+    sets: Array<{ set_name: string; year: string; category: string; card_count: number }>;
+  }>('/v1/cards/set-search', { search: query, category, page_size: 20 });
+}
+
+// Paginate through every card in a set — replaces 1000+ individual player queries.
+// Always call searchSets first to get the canonical set_name string.
+// set_name must match CH's canonical name exactly — mismatch silently returns full corpus.
+export async function getCardsBySet(setName: string, page = 1, pageSize = 100) {
+  return post<SearchResponse>('/v1/cards/card-search', {
+    set: setName,
+    page,
+    page_size: pageSize,
+  });
+}
+
 // Look up a graded card by cert number (PSA, BGS, SGC, etc.)
 // Returns full card identity + chronological price history for that specific cert
 export async function pricesByCert(cert: string) {

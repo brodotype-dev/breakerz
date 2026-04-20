@@ -19,6 +19,13 @@ export class BowmanKnowledge implements ManufacturerKnowledge {
   //   - Pure numeric codes: "22", "67" (Base Teams inserts in Bowman's Best)
   private static readonly CARD_CODE_RE = /^([A-Z][A-Z0-9]*-[A-Z0-9]+|\d+)$/;
 
+  // Autograph card code prefixes — per CardHedger: always append "Autograph" to the query.
+  // Dash format (CPA-JH) required; "CPA JH" degrades search accuracy significantly.
+  // BMA = Bowman Mega Box Auto, CPA = Chrome Prospect Auto, BPA = Bowman Prospect Auto,
+  // FDA = Father-Day Auto, BSA/BRA/CRA = various Chrome/rookie autos,
+  // QA/DA/TA = quad/dual/triple autos
+  private static readonly AUTO_CODE_RE = /^(BMA|CPA|BPA|FDA|BSA|BRA|CRA|QA|DA|TA)-/i;
+
   // Insert set names that Bowman/Topps XLSX stores in the variant_name field.
   // These are not parallel/variant descriptors — they're subsection labels.
   // Bowman Draft patterns:
@@ -89,9 +96,12 @@ export class BowmanKnowledge implements ManufacturerKnowledge {
     // Card-code player name: the XLSX parser stored the card number as the player name.
     // CH indexes these by card number with the player name attached — query by code only.
     // e.g. "2025 Bowman Draft BDC-170" → CH returns "James Tibbs III · 2025 Bowman Draft Chrome"
+    // For autograph prefixes (CPA/BMA/BPA/FDA etc.), append "Autograph" — confirmed by CH:
+    // without it, base BCP cards outrank the autograph in search results.
     if (BowmanKnowledge.CARD_CODE_RE.test(playerName)) {
+      const isAuto = BowmanKnowledge.AUTO_CODE_RE.test(playerName);
       return {
-        query: [year, shortSetName, playerName].filter(Boolean).join(' '),
+        query: [year, shortSetName, playerName, isAuto ? 'Autograph' : undefined].filter(Boolean).join(' '),
         effectivePlayerName: undefined,
         effectiveCardNumber: playerName,
       };
@@ -123,6 +133,8 @@ export class BowmanKnowledge implements ManufacturerKnowledge {
 - "Retrofractor" in the query = "Base" or "Lazer Refractor" in CardHedger. "Black" in the query = "Base" in CardHedger. Do not reject a match because the candidate says "Base" when the query says "Retrofractor" or "Black".
 - Print runs (/50, /99, /25) appear in source data but NOT in CardHedger variant names — ignore them when comparing.
 - Insert set names (Top Prospects, Stars of the Game, Best Of 2025, Bowman Spotlights, Draft Lottery Ping Pong Ball) and section labels ("Autographs", "Teams") may appear in the query but are not variant descriptors — focus on player, set, and card number.
-- Parallel names appear without "Variation" suffix in CardHedger.`;
+- Parallel names appear without "Variation" suffix in CardHedger.
+- CPA/BMA/BPA/FDA/BSA/BRA autograph cards live in the PARENT set in CH's catalog (e.g. "2024 Bowman Chrome Prospects Baseball"), NOT in a separate "Autographs" set. The card's autograph status is determined by its number prefix.
+- NOTE (2026+): Bowman Chrome Prospects will merge into the parent Bowman Chrome set. Match accordingly for 2026 products.`;
   }
 }
