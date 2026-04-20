@@ -28,44 +28,27 @@ export default async function EditProductPage({
   return (
     <div className="max-w-4xl mx-auto space-y-6">
 
-      {/* Back button */}
-      <Link
-        href={`/admin/products/${id}`}
-        className="inline-flex items-center gap-2 text-sm font-medium transition-colors group hover:text-[var(--accent-blue)]"
-        style={{ color: 'var(--text-secondary)' }}
-      >
-        <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
-        Back to Dashboard
-      </Link>
-
-      {/* Hero Header */}
-      <div
-        className="relative overflow-hidden rounded-2xl p-8"
-        style={{ background: 'var(--gradient-hero)', border: '1px solid var(--terminal-border)' }}
-      >
-        <div
-          className="absolute inset-0 opacity-5"
-          style={{
-            backgroundImage: 'radial-gradient(circle at 2px 2px, var(--accent-blue) 1px, transparent 0)',
-            backgroundSize: '40px 40px',
-          }}
-        />
-        <div
-          className="absolute top-0 right-0 w-96 h-96 blur-3xl opacity-20 pointer-events-none"
-          style={{ background: 'radial-gradient(circle, var(--accent-blue) 0%, transparent 70%)' }}
-        />
-        <div className="relative flex items-center gap-3">
+      {/* Header with back link */}
+      <div className="flex items-center gap-4">
+        <Link
+          href={`/admin/products/${id}`}
+          className="flex items-center justify-center w-9 h-9 rounded-lg transition-colors hover:bg-[var(--terminal-surface-hover)]"
+          style={{ border: '1px solid var(--terminal-border)', color: 'var(--text-secondary)' }}
+        >
+          <ArrowLeft className="w-4 h-4" />
+        </Link>
+        <div className="flex items-center gap-3">
           <div
-            className="w-12 h-12 rounded-xl flex items-center justify-center"
-            style={{ background: 'var(--gradient-blue)', boxShadow: 'var(--glow-blue)' }}
+            className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
+            style={{ background: 'var(--gradient-blue)' }}
           >
-            <Edit className="w-6 h-6 text-white" />
+            <Edit className="w-4 h-4 text-white" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>
+            <h1 className="text-xl font-bold leading-tight" style={{ color: 'var(--text-primary)' }}>
               Edit Product
             </h1>
-            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
               {product.name}
             </p>
           </div>
