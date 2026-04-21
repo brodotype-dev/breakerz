@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createProduct, updateProduct } from '@/app/admin/products/actions';
 import type { Sport, Product } from '@/lib/types';
 
@@ -156,6 +156,7 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
   const [slugEdited, setSlugEdited] = useState(!!product);
   const [status, setStatus] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const autoSearchedRef = useRef(false);
 
   useEffect(() => {
     if (nameEdited) return;
@@ -170,22 +171,53 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
 
   const effectiveManufacturer = manufacturer === 'Other' ? manufacturerCustom : manufacturer;
 
-  async function searchCHSets() {
-    if (!setSearchQuery.trim()) return;
+  // CH's canonical set names rarely include the trailing sport word
+  // ("2025 Bowman Chrome" not "2025 Bowman Chrome Baseball"), so strip it
+  // when seeding the search from the product's display name.
+  function defaultQueryFrom(displayName: string) {
+    return displayName
+      .replace(/\s+(baseball|basketball|football|soccer|hockey)\s*$/i, '')
+      .trim();
+  }
+
+  async function searchCHSets(overrideQuery?: string) {
+    const q = (overrideQuery ?? setSearchQuery).trim();
+    if (!q) return;
     setSetSearching(true);
     setSetSearchResults([]);
     const sport = sports.find(s => s.id === sportId);
     const res = await fetch('/api/admin/set-search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: setSearchQuery, category: sport?.name }),
+      body: JSON.stringify({ query: q, category: sport?.name }),
     });
     const data = await res.json();
     setSetSearchResults(data.sets ?? []);
     setSetSearching(false);
   }
 
+  // Auto-search on mount (and when the derived name first becomes meaningful)
+  // if no ch_set_name is locked in yet. Fires at most once per session.
+  useEffect(() => {
+    if (autoSearchedRef.current) return;
+    if (chSetName) return;
+    if (!name.trim() || !sportId) return;
+    autoSearchedRef.current = true;
+    const seed = defaultQueryFrom(name);
+    setSetSearchQuery(seed);
+    void searchCHSets(seed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [name, sportId, chSetName]);
+
   async function handleSubmit(publish: boolean) {
+    if (publish && !chSetName) {
+      setStatus({
+        type: 'error',
+        message: 'Lock in a CardHedger set name before publishing — matching and pricing rely on it.',
+      });
+      return;
+    }
+
     setSubmitting(true);
     setStatus(null);
 
@@ -318,7 +350,7 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
           />
           <button
             type="button"
-            onClick={searchCHSets}
+            onClick={() => searchCHSets()}
             disabled={setSearching || !setSearchQuery.trim()}
             className="px-4 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-40 whitespace-nowrap"
             style={{ backgroundColor: 'var(--accent-blue)', color: 'white' }}
@@ -329,28 +361,51 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
 
         {/* Results */}
         {setSearchResults.length > 0 && (
-          <div className="mt-2 rounded-lg overflow-hidden" style={{ border: '1px solid var(--terminal-border)' }}>
-            {setSearchResults.map(s => (
-              <button
-                key={s.set_name}
-                type="button"
-                onClick={() => { setChSetName(s.set_name); setSetSearchResults([]); setSetSearchQuery(''); }}
-                className="w-full flex items-center justify-between px-3 py-2.5 text-left transition-colors hover:bg-[var(--terminal-surface-hover)] border-b last:border-0"
-                style={{ borderColor: 'var(--terminal-border)' }}
-              >
-                <div>
-                  <p className="text-sm font-mono" style={{ color: 'var(--text-primary)' }}>{s.set_name}</p>
-                  <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{s.year} · {s.category}</p>
-                </div>
-                <span className="text-xs font-mono ml-4" style={{ color: 'var(--text-tertiary)' }}>
-                  {s.card_count?.toLocaleString()} cards
-                </span>
-              </button>
-            ))}
-          </div>
+          <>
+            <p className="mt-2 mb-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+              {setSearchResults.length === 1
+                ? '1 match found — click to lock it in.'
+                : `${setSearchResults.length} matches found — top result highlighted. Click any row to lock in a different one.`}
+            </p>
+            <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--terminal-border)' }}>
+              {setSearchResults.map((s, idx) => {
+                const isTop = idx === 0;
+                return (
+                  <button
+                    key={s.set_name}
+                    type="button"
+                    onClick={() => { setChSetName(s.set_name); setSetSearchResults([]); setSetSearchQuery(''); }}
+                    className="w-full flex items-center justify-between px-3 py-2.5 text-left transition-colors hover:bg-[var(--terminal-surface-hover)] border-b last:border-0"
+                    style={{
+                      borderColor: 'var(--terminal-border)',
+                      backgroundColor: isTop ? 'rgba(59,130,246,0.08)' : undefined,
+                    }}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      {isTop && (
+                        <span
+                          className="text-[0.625rem] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded flex-shrink-0"
+                          style={{ backgroundColor: 'var(--accent-blue)', color: 'white' }}
+                        >
+                          Top match
+                        </span>
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm font-mono truncate" style={{ color: 'var(--text-primary)' }}>{s.set_name}</p>
+                        <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{s.year} · {s.category}</p>
+                      </div>
+                    </div>
+                    <span className="text-xs font-mono ml-4 flex-shrink-0" style={{ color: 'var(--text-tertiary)' }}>
+                      {s.card_count?.toLocaleString()} cards
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
         )}
 
-        {setSearchResults.length === 0 && !setSearching && setSearchQuery && (
+        {setSearchResults.length === 0 && !setSearching && setSearchQuery && autoSearchedRef.current && (
           <p className="mt-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>
             No results — try a shorter query or check the set name spelling.
           </p>
