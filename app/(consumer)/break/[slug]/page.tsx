@@ -7,6 +7,7 @@ import { createClient } from '@supabase/supabase-js';
 import DashboardConfig from '@/components/breakiq/DashboardConfig';
 import PlayerTable from '@/components/breakiq/PlayerTable';
 import TeamSlotsTable from '@/components/breakiq/TeamSlotsTable';
+import TopMoversWidget from '@/components/breakiq/TopMoversWidget';
 import { SegmentedControl } from '@/components/breakiq/ds';
 import { computeSlotPricing, computeTeamSlotPricing } from '@/lib/engine';
 import type { BreakConfig, PlayerWithPricing, Product, Sport } from '@/lib/types';
@@ -295,6 +296,7 @@ export default function BreakPage() {
 
       <main className="px-4 md:px-6 py-6 space-y-5 max-w-[1400px] mx-auto">
         <DashboardConfig config={config} onChange={setConfig} breakType={breakType} />
+        <TopMoversWidget players={rawPlayers} />
 
         {!hasPricing && !fetching && (
           <div

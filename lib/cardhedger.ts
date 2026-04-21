@@ -3,6 +3,52 @@
 const BASE_URL = 'https://api.cardhedger.com';
 const API_KEY = process.env.CARDHEDGER_API_KEY!;
 
+export interface TopMover {
+  card_id: string;
+  description: string;
+  player: string;
+  set: string;
+  number: string;
+  variant: string;
+  category: string;
+  category_group: string;
+  set_type: string;
+  rookie: boolean;
+  gain: number;                  // multiplier — e.g. 1.99 = +99%
+  '7 Day Sales': number;
+  '30 Day Sales': number;
+  prices: Array<{ grade: string; price: string }>;
+}
+
+export interface TopMoversResponse {
+  cards: TopMover[];
+  total_count: number;
+  filtered_count: number;
+  gain_threshold: number;
+}
+
+// Get cards with the highest positive price movement over the last week.
+// Anomaly-filtered by CH (>= 500% gains are excluded).
+// category: e.g. 'Baseball', 'Basketball', 'Football', 'Pokemon'
+export async function getTopMovers(count = 100, category?: string): Promise<TopMoversResponse> {
+  const url = new URL(`${BASE_URL}/v1/cards/top-movers`);
+  url.searchParams.set('count', String(count));
+  if (category) url.searchParams.set('category', category);
+
+  const res = await fetch(url.toString(), {
+    headers: { 'X-API-Key': API_KEY },
+    next: { revalidate: 0 },
+    signal: AbortSignal.timeout(15_000),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`CardHedger top-movers failed: ${res.status} — ${text}`);
+  }
+
+  return res.json();
+}
+
 async function post<T>(path: string, body: Record<string, unknown>): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     method: 'POST',

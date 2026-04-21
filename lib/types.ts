@@ -46,6 +46,7 @@ export interface PlayerProduct {
   breakerz_score: number | null;
   breakerz_note: string | null;
   is_high_volatility: boolean;
+  c_score: number | null;
   player?: Player;
 }
 
