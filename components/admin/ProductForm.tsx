@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { createProduct, updateProduct } from '@/app/admin/products/actions';
+import { createProduct, updateProduct, setProductChSetName } from '@/app/admin/products/actions';
 import type { Sport, Product } from '@/lib/types';
 
 interface CHSetResult { set_name: string; year: string; category: string; card_count: number; }
@@ -151,6 +151,7 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
   const [setSearchQuery, setSetSearchQuery] = useState('');
   const [setSearchResults, setSetSearchResults] = useState<CHSetResult[]>([]);
   const [setSearching, setSetSearching] = useState(false);
+  const [chSetStatus, setChSetStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const [nameEdited, setNameEdited] = useState(!!product);
   const [slugEdited, setSlugEdited] = useState(!!product);
@@ -194,6 +195,21 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
     const data = await res.json();
     setSetSearchResults(data.sets ?? []);
     setSetSearching(false);
+  }
+
+  // For edit forms, selecting a CH set feels like a commit — persist it
+  // immediately instead of waiting for full-form Save/Update. For new
+  // products (no id yet), we just update local state; createProduct will
+  // pick it up on submit.
+  async function commitChSetName(nextName: string | null) {
+    setChSetName(nextName ?? '');
+    if (!product?.id) return;
+    setChSetStatus('saving');
+    const res = await setProductChSetName(product.id, nextName);
+    setChSetStatus(res.error ? 'error' : 'saved');
+    if (!res.error) {
+      setTimeout(() => setChSetStatus('idle'), 2500);
+    }
   }
 
   // Auto-search on mount (and when the derived name first becomes meaningful)
@@ -328,9 +344,21 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
           <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.3)' }}>
             <span style={{ color: 'rgb(34,197,94)', fontSize: '0.75rem' }}>✓</span>
             <span className="text-sm font-mono flex-1" style={{ color: 'var(--text-primary)' }}>{chSetName}</span>
+            {chSetStatus === 'saving' && (
+              <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Saving…</span>
+            )}
+            {chSetStatus === 'saved' && (
+              <span className="text-xs" style={{ color: 'rgb(34,197,94)' }}>Saved ✓</span>
+            )}
+            {chSetStatus === 'error' && (
+              <span className="text-xs" style={{ color: 'rgb(239,68,68)' }}>Save failed</span>
+            )}
+            {chSetStatus === 'idle' && !product?.id && (
+              <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Saves when product is created</span>
+            )}
             <button
               type="button"
-              onClick={() => { setChSetName(''); setSetSearchResults([]); }}
+              onClick={() => { void commitChSetName(null); setSetSearchResults([]); }}
               className="text-xs hover:underline"
               style={{ color: 'var(--text-tertiary)' }}
             >
@@ -374,7 +402,7 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
                   <button
                     key={s.set_name}
                     type="button"
-                    onClick={() => { setChSetName(s.set_name); setSetSearchResults([]); setSetSearchQuery(''); }}
+                    onClick={() => { void commitChSetName(s.set_name); setSetSearchResults([]); setSetSearchQuery(''); }}
                     className="w-full flex items-center justify-between px-3 py-2.5 text-left transition-colors hover:bg-[var(--terminal-surface-hover)] border-b last:border-0"
                     style={{
                       borderColor: 'var(--terminal-border)',
