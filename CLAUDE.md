@@ -5,7 +5,8 @@ Sports card break slot pricing and analysis tool. Built with Kyle (Town & Line /
 **Docs (read on demand, not automatically):**
 - [CHANGELOG.md](./CHANGELOG.md) — full feature history
 - [docs/BACKLOG.md](./docs/BACKLOG.md) — prioritized work queue
-- [docs/cardhedger-matching.md](./docs/cardhedger-matching.md) — CH matching architecture
+- [docs/cardhedger-matching.md](./docs/cardhedger-matching.md) — CH matching architecture (v1 legacy notes)
+- [docs/catalog-preload-architecture.md](./docs/catalog-preload-architecture.md) — CH matching v2 (catalog pre-load + tiered local matcher)
 - [docs/cardhedger-questions.md](./docs/cardhedger-questions.md) — running list of questions for the CH team
 - [docs/beta-launch-checklist.md](./docs/beta-launch-checklist.md) — pre-launch todo list
 - [docs/cost-analysis.md](./docs/cost-analysis.md) — unit economics, breakeven, service costs
@@ -39,7 +40,7 @@ Live at [getbreakiq.com](https://getbreakiq.com). Private beta — consumer rout
 
 **Analytics** ✅ PostHog installed — server-side user identification + `user_signed_up` event in auth callback.
 
-**CH Matching** ✅ 96% on Bowman's Best. Set-catalog mode (pre-load full CH set, match locally by card_number). Autograph query fix (append "Autograph" for BMA/CPA/BPA/FDA/CA prefixes). `ch_set_name` on products stores exact CH canonical name — use "Find on CH" widget in product form.
+**CH Matching v2** ✅ (2026-04-21) Catalog pre-load into `ch_set_cache` + tiered local matcher. Descriptor-based knowledge (`lib/card-knowledge/` — data, not classes). Tier ladder: exact-variant → synonym → number-only → card-code → claude(in-set candidates) → no-match. Daily cron refreshes catalogs for active products at 3 AM UTC. On-demand "Refresh CH Catalog" button on product page. `match_tier` persisted on variants for debugging. `ch_set_name` on products stores exact CH canonical name — use "Find on CH" widget in product form. See `docs/catalog-preload-architecture.md`.
 
 **Security** ✅ RLS enabled on all 11 tables. Auth guards on all admin actions and API routes. Security headers. See security section in BACKLOG for remaining items (rate limiting, file validation).
 
@@ -101,9 +102,11 @@ lib/supabase-server.ts           — cookie-aware server client (@supabase/ssr)
 lib/auth.ts                      — getCurrentUser(), requireRole()
 lib/email.ts                     — sendInviteEmail() via Resend
 lib/engine.ts                    — pricing engine: computeSlotPricing, computeEffectiveScore
-lib/cardhedger.ts                — CardHedger API + Claude matching
+lib/cardhedger.ts                — CardHedger API + Claude matching (claudeCardMatchFromCandidates for v2)
+lib/cardhedger-catalog.ts        — catalog lifecycle: findCanonicalSet, refreshSetCatalog, loadCatalogIndex
 lib/psa.ts                       — PSA public API: getCertByNumber() (bearer token auth)
-lib/card-knowledge/              — manufacturer matching modules (bowman, panini, default)
+lib/card-knowledge/              — descriptor-based manufacturer knowledge (bowman, panini, default, match, types)
+lib/card-knowledge/match.ts      — generic tier-ladder matcher (exact-variant → synonym → number-only → card-code)
 lib/checklist-parser.ts          — PDF/CSV/XLSX checklist parsers
 app/waitlist/                    — public signup
 app/auth/signup/                 — consumer OAuth entry (invite code validation)
@@ -118,6 +121,9 @@ app/break/[slug]/                — consumer break analysis (auth required)
 app/analysis/                    — BreakIQ Sayz deal checker (auth required)
 app/api/admin/pricing-breakdown/ — per-player pricing inputs for Pricing Audit Panel
 app/api/cron/refresh-pricing/    — nightly cron (4 AM UTC) to refresh pricing cache for active products
+app/api/cron/refresh-ch-catalogs/— daily cron (3 AM UTC) to refresh ch_set_cache for active products
+app/api/admin/refresh-ch-catalog/— admin on-demand catalog refresh for a single product
+app/admin/products/[id]/RefreshCatalogButton.tsx — UI button for on-demand catalog refresh
 app/api/my-breaks/               — GET (list), POST (create with analysis snapshot)
 app/api/my-breaks/[id]/          — PUT (complete or abandon a pending break)
 app/(consumer)/my-breaks/        — consumer break tracking page (list, new break, log previous)
@@ -143,6 +149,9 @@ pricing_cache         — 24h TTL, ev_low/mid/high per player_product
 player_risk_flags     — soft-delete (cleared_at); injury/suspension/legal/trade/retirement
 user_breaks           — consumer break log: analysis snapshot, platform, outcome, feedback, status lifecycle
 products              — ch_set_name TEXT: exact CardHedger canonical set name for set-catalog matching
+ch_set_cache          — pre-loaded CH set catalogs, keyed by (ch_set_name, card_id); drives v2 local matching
+ch_set_refresh_log    — per-refresh telemetry (pages, cards, duration, errors)
+player_product_variants.match_tier — which tier matched (exact-variant | synonym | number-only | card-code | claude | no-match)
 profiles              — mirrors auth.users + onboarding fields + subscription (stripe_customer_id, subscription_plan, analyses_used)
 user_roles            — (user_id, role): admin | contributor
 waitlist              — status: pending → approved → converted | rejected

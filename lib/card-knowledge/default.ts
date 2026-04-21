@@ -1,36 +1,18 @@
-import type { ManufacturerKnowledge, CleanVariantResult, QueryReformulation } from './types';
+import type { ManufacturerDescriptor } from './types';
 
 /**
- * Default (no-op) manufacturer knowledge — used when no module matches the product.
- *
- * All methods are identity transforms or empty returns. The pipeline calls these
- * safely without null checks — the Null Object pattern.
- *
- * Also serves as a reference implementation: to build a new manufacturer module,
- * copy this file and override only the methods that need manufacturer-specific logic.
+ * Default descriptor — used when no manufacturer-specific descriptor matches.
+ * Identity-transform on variant cleaning; no synonyms; no card-code handling.
+ * The matcher still runs the full tier ladder against this descriptor.
  */
-export class DefaultKnowledge implements ManufacturerKnowledge {
-  readonly name = 'Default';
-
-  matches(_productNameLower: string): boolean {
-    // The default never self-selects — the registry falls back to it explicitly.
-    return false;
-  }
-
-  cleanVariant(variantName: string): CleanVariantResult {
-    return {
-      cleanedVariant: variantName.trim(),
-      isInsertSetName: false,
-    };
-  }
-
-  reformulateQuery(_params: Parameters<ManufacturerKnowledge['reformulateQuery']>[0]): QueryReformulation {
-    // No reformulation — use the default query construction in the route.
-    return { query: null };
-  }
-
-  claudeContext(): string {
-    // No manufacturer-specific context to inject.
-    return '';
-  }
-}
+export const defaultDescriptor: ManufacturerDescriptor = {
+  id: 'default',
+  name: 'Default',
+  matches: /.*/, // never self-selects via the registry — explicit fallback only
+  stripPatterns: [
+    // Print runs are universal — strip them regardless of manufacturer.
+    /\s*\/\d+\s*/g,
+  ],
+  insertSetNames: [],
+  variantSynonyms: {},
+};

@@ -321,6 +321,32 @@ function tokenCardMatch(
   return { card_id: card.card_id, confidence };
 }
 
+/**
+ * Claude semantic matcher against arbitrary candidate cards.
+ *
+ * Used by the v2 catalog-preload pipeline: caller provides in-set candidates from
+ * the pre-loaded CatalogIndex, so Claude never sees fuzzy-fallback noise. Candidate
+ * shape matches the REST search response, so we pass through the same Haiku prompt.
+ */
+export async function claudeCardMatchFromCandidates(
+  query: string,
+  candidates: Array<{
+    card_id: string;
+    player_name: string;
+    set_name: string;
+    year: string;
+    variant: string;
+    number: string;
+    rookie: boolean;
+  }>,
+  context?: string,
+): Promise<{ card_id: string; confidence: number } | null> {
+  if (candidates.length === 0) return null;
+  // Normalize shape — Haiku prompt expects CardHedgerSearchCard; pass-through works because
+  // the only field the prompt uses beyond these is `prices`, which isn't referenced.
+  return claudeCardMatch(query, candidates as unknown as CardHedgerSearchCard[], context);
+}
+
 /** Claude semantic matcher — reasons about which result best matches the query. */
 async function claudeCardMatch(
   query: string,
