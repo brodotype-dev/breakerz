@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { createProduct, updateProduct, setProductChSetName } from '@/app/admin/products/actions';
 import type { Sport, Product } from '@/lib/types';
 
-interface CHSetResult { set_name: string; year: string; category: string; card_count: number; }
+interface CHSetResult { set_name: string; year: string; category: string; thirty_day_sales?: number; }
 
 interface Props {
   sports: Sport[];
@@ -423,9 +423,11 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
                         <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{s.year} · {s.category}</p>
                       </div>
                     </div>
-                    <span className="text-xs font-mono ml-4 flex-shrink-0" style={{ color: 'var(--text-tertiary)' }}>
-                      {s.card_count?.toLocaleString()} cards
-                    </span>
+                    {s.thirty_day_sales ? (
+                      <span className="text-xs font-mono ml-4 flex-shrink-0" style={{ color: 'var(--text-tertiary)' }}>
+                        {s.thirty_day_sales.toLocaleString()} sales / 30d
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}

@@ -15,7 +15,8 @@ export interface CanonicalSetCandidate {
   set_name: string;
   year: string;
   category: string;
-  card_count: number;
+  thirty_day_sales?: number;
+  image?: string;
 }
 
 export interface CatalogCard {

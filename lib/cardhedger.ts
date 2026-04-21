@@ -88,30 +88,97 @@ interface SearchResponse {
   cards: CardHedgerSearchCard[];
 }
 
+// Raw CH card shape from /card-search — field names differ from our normalized form.
+interface RawCardHedgerCard {
+  card_id: string;
+  player?: string;
+  set?: string;
+  number?: string;
+  variant?: string;
+  category?: string;
+  rookie?: boolean;
+  prices?: Array<{ grade: string; price: string }>;
+  description?: string;
+}
+
+// CH omits `year` on card rows; derive it from the set name ("2025 Topps Finest…").
+function yearFromSet(setName: string | undefined): string {
+  const m = setName?.match(/\b(\d{4}(?:-\d{2})?)\b/);
+  return m?.[1] ?? '';
+}
+
+// Normalize CH's `player` / `set` / missing-year payload into the shape the rest
+// of the app consumes. Do this once, here — every caller reads `player_name` /
+// `set_name` / `year` without caring about CH's quirks.
+function normalizeCard(raw: RawCardHedgerCard): CardHedgerSearchCard {
+  return {
+    card_id: raw.card_id,
+    player_name: raw.player ?? '',
+    set_name: raw.set ?? '',
+    number: raw.number ?? '',
+    variant: raw.variant ?? '',
+    category: raw.category ?? '',
+    rookie: raw.rookie ?? false,
+    year: yearFromSet(raw.set),
+    prices: raw.prices ?? [],
+  };
+}
+
+async function cardSearch(body: Record<string, unknown>): Promise<SearchResponse> {
+  const raw = await post<{ count: number; pages: number; cards: RawCardHedgerCard[] }>(
+    '/v1/cards/card-search',
+    body,
+  );
+  return {
+    count: raw.count,
+    pages: raw.pages,
+    cards: (raw.cards ?? []).map(normalizeCard),
+  };
+}
+
 // Search for cards — returns card IDs + top grade prices in one call
 export async function searchCards(query: string, sport?: string) {
-  return post<SearchResponse>('/v1/cards/card-search', { search: query, sport });
+  return cardSearch({ search: query, sport });
 }
 
 // ── Set-based catalog endpoints (per CardHedger, 2026-04-20) ──────────────────
 
 // Discover canonical CH set names for a product before importing.
 // Use this before getCardsBySet — set names must match exactly or the filter fails silently.
+//
+// CH's raw /set-search payload uses `name` (not `set_name`) and exposes a
+// "30 Day Sales" signal instead of a card count. We normalize the shape here
+// so every caller can use `set_name` / `thirty_day_sales` without caring
+// about CH's field quirks.
 export async function searchSets(query: string, category?: string) {
-  return post<{
-    sets: Array<{ set_name: string; year: string; category: string; card_count: number }>;
+  const raw = await post<{
+    sets: Array<{
+      id: string;
+      name: string;
+      year: string;
+      category: string;
+      set_type?: string;
+      image?: string;
+      ['30 Day Sales']?: number;
+    }>;
   }>('/v1/cards/set-search', { search: query, category, page_size: 20 });
+
+  const sets = (raw.sets ?? []).map(s => ({
+    set_name: s.name,
+    year: s.year,
+    category: s.category,
+    thirty_day_sales: s['30 Day Sales'] ?? 0,
+    image: s.image,
+  }));
+
+  return { sets };
 }
 
 // Paginate through every card in a set — replaces 1000+ individual player queries.
 // Always call searchSets first to get the canonical set_name string.
 // set_name must match CH's canonical name exactly — mismatch silently returns full corpus.
 export async function getCardsBySet(setName: string, page = 1, pageSize = 100) {
-  return post<SearchResponse>('/v1/cards/card-search', {
-    set: setName,
-    page,
-    page_size: pageSize,
-  });
+  return cardSearch({ set: setName, page, page_size: pageSize });
 }
 
 // Look up a graded card by cert number (PSA, BGS, SGC, etc.)
