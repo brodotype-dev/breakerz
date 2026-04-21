@@ -5,6 +5,45 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-21 — CH matching v2: catalog pre-load + descriptor-based knowledge
+
+### New architecture — catalog pre-load + tiered local matcher
+Fundamental refactor of the CardHedger matching pipeline. Instead of fuzzy-searching CH per variant, we pre-load the full canonical set once into a persistent Postgres cache, then match every variant locally against that index. Claude is now only invoked for the small tail of variants that miss every local tier, and it scores against in-set candidates rather than a free-form search.
+
+**Why:** The prior 76–88% match ceiling on Bowman products wasn't structural — it was fuzzy-fallback contamination. River @ CardHedger confirmed that `/v1/cards/card-search?set=<canonical>` with pagination returns the complete set (autos included, correct `number` fields). Once the set catalog is in hand, matching by `card_number` is a local Map lookup.
+
+**Pipeline** (see `docs/catalog-preload-architecture.md`):
+1. Resolve `ch_set_name` via `/v1/cards/set-search` (one-time per product, stored on `products`)
+2. Refresh catalog → paginate `card-search?set=` into `ch_set_cache` (daily cron + admin button)
+3. Load `CatalogIndex` with `byNumber` and `byNumberVariant` maps
+4. Per variant, walk the tier ladder: exact-variant → synonym → number-only → card-code → claude(candidates) → no-match
+5. Persist `cardhedger_card_id`, `match_confidence`, `match_tier`
+
+### Descriptor-based manufacturer knowledge (data, not classes)
+`lib/card-knowledge/` refactored from imperative `BowmanKnowledge`/`PaniniKnowledge` classes to plain `ManufacturerDescriptor` objects. Each descriptor is a single `const` with `stripPatterns`, `insertSetNames`, `variantSynonyms`, `cardCodePattern`, `autoPrefixes`, and optional `claudeRules`. Adding a manufacturer = one object literal; no class/registry edits. Trivially diffable and admin-editable later.
+
+**Registry:** `bowmanDescriptor`, `paniniDescriptor` (starter), fallback `defaultDescriptor`.
+
+**Generic matcher** `lib/card-knowledge/match.ts` consumes descriptors against `CatalogIndex` — the same tier ladder applies to every manufacturer.
+
+### New tables, cron, admin UI
+- `ch_set_cache` — keyed by `(ch_set_name, card_id)`, indexed on `(ch_set_name, number)` and `(ch_set_name, number, lower(variant))`
+- `ch_set_refresh_log` — telemetry per refresh run (pages, cards, duration, errors)
+- `player_product_variants.match_tier` — tier name persisted alongside `match_confidence` for debugging
+- `/api/cron/refresh-ch-catalogs` — daily at 3 AM UTC, deduplicates by `ch_set_name`, serial per-set
+- `/api/admin/refresh-ch-catalog` + `RefreshCatalogButton` — on-demand refresh from product page (auto-resolves canonical name if `ch_set_name` is missing)
+- Silent-failure protection: refuses to cache results exceeding `maxPages=200` (guards against set-name mismatch returning CH's full 2.9M corpus)
+
+### Telemetry improvements
+`RunMatchingButton` now shows the match tier per variant (exact-variant / synonym / number-only / card-code / claude) and catalog card count in the last-run summary. Tier column exported in debug CSV.
+
+### MCP persisted
+Added `card-hedge` MCP server to `.mcp.json` (HTTP streamable, `https://api.cardhedger.com/mcp`, `X-API-Key`) so future sessions auto-load CH tools.
+
+**Files:** `lib/cardhedger-catalog.ts`, `lib/card-knowledge/{types,bowman,panini,default,match,index}.ts`, `lib/cardhedger.ts` (claudeCardMatchFromCandidates), `app/api/admin/match-cardhedger/route.ts` (full rewrite), `app/api/admin/refresh-ch-catalog/route.ts`, `app/api/cron/refresh-ch-catalogs/route.ts`, `app/admin/products/[id]/RefreshCatalogButton.tsx`, `supabase/migrations/20260421120000_ch_set_cache.sql`, `vercel.json`, `docs/catalog-preload-architecture.md`
+
+---
+
 ## 2026-04-20 — CH matching improvements, ch_set_name, RLS, edit product UI
 
 ### CardHedger matching improvements

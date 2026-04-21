@@ -1,41 +1,35 @@
-import type { ManufacturerKnowledge } from './types';
-import { BowmanKnowledge } from './bowman';
-import { DefaultKnowledge } from './default';
+import type { ManufacturerDescriptor } from './types';
+import { bowmanDescriptor } from './bowman';
+import { paniniDescriptor } from './panini';
+import { defaultDescriptor } from './default';
 
 /**
- * Registry of all manufacturer knowledge modules.
- *
- * Order matters — first match wins. Put more specific modules before broader ones.
- * (e.g. if a "Bowman Chrome" module ever splits from "Bowman", it goes before BowmanKnowledge.)
+ * Registry of manufacturer descriptors, checked in order.
  *
  * To add a new manufacturer:
- *   1. Create lib/card-knowledge/panini.ts (copy default.ts as a starting point)
- *   2. Import it here and add an instance to the array
- *   3. Document its rules in docs/manufacturer-rules/
+ *   1. Create lib/card-knowledge/<vendor>.ts with an exported descriptor const
+ *   2. Import and add to the `registry` array below (order = priority)
+ *   3. Document the rules in docs/manufacturer-rules/<vendor>.md
+ *
+ * See docs/catalog-preload-architecture.md for the matching pipeline these feed.
  */
-const registry: ManufacturerKnowledge[] = [
-  new BowmanKnowledge(),
-  // new PaniniKnowledge(),   ← add here when Panini products are imported
-  // new UpperDeckKnowledge(), ← etc.
+const registry: ManufacturerDescriptor[] = [
+  bowmanDescriptor,
+  paniniDescriptor,
+  // upperDeckDescriptor, // add here as products come online
 ];
 
-const defaultKnowledge = new DefaultKnowledge();
-
 /**
- * Returns the manufacturer knowledge module for a given product name.
- * Falls back to DefaultKnowledge (no-op) if no module matches.
- *
- * @example
- * const knowledge = getManufacturerKnowledge('2025 Bowman Draft Baseball');
- * // → BowmanKnowledge instance
- *
- * const knowledge = getManufacturerKnowledge('2025 Panini Prizm Basketball');
- * // → DefaultKnowledge instance (until PaniniKnowledge is added)
+ * Returns the descriptor for the given product name. Falls back to a no-op
+ * default descriptor if no specific match is found.
  */
-export function getManufacturerKnowledge(productName: string): ManufacturerKnowledge {
-  const lower = productName.toLowerCase();
-  return registry.find(m => m.matches(lower)) ?? defaultKnowledge;
+export function getManufacturerDescriptor(productName: string): ManufacturerDescriptor {
+  for (const d of registry) {
+    if (d.matches.test(productName)) return d;
+  }
+  return defaultDescriptor;
 }
 
-// Re-export the type so callers only need one import path
-export type { ManufacturerKnowledge } from './types';
+export { bowmanDescriptor, paniniDescriptor, defaultDescriptor };
+export type { ManufacturerDescriptor } from './types';
+export * from './match';

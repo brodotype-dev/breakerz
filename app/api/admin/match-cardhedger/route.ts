@@ -1,14 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { cardMatch, searchSets, getCardsBySet } from '@/lib/cardhedger';
-import { getManufacturerKnowledge } from '@/lib/card-knowledge';
+import { claudeCardMatchFromCandidates } from '@/lib/cardhedger';
+import {
+  loadCatalogIndex,
+  refreshSetCatalog,
+  findCanonicalSet,
+  type CatalogIndex,
+} from '@/lib/cardhedger-catalog';
+import {
+  getManufacturerDescriptor,
+  tryLocalMatch,
+  candidatesForClaude,
+  type MatchTier,
+} from '@/lib/card-knowledge';
 import { checkRole } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 const CONCURRENCY = 8;
-const DEFAULT_CHUNK = 40; // variants per request — keeps each call under ~15s
+const DEFAULT_CHUNK = 40;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 async function runConcurrent<T>(tasks: (() => Promise<T>)[], limit: number): Promise<T[]> {
   const results: T[] = [];
@@ -23,168 +36,211 @@ async function runConcurrent<T>(tasks: (() => Promise<T>)[], limit: number): Pro
   return results;
 }
 
+/**
+ * Catalog-preload matching pipeline (v2).
+ * See docs/catalog-preload-architecture.md for the full architecture.
+ *
+ * Flow per request:
+ *   1. Resolve the product's canonical CH set name (cached on products.ch_set_name, or /set-search)
+ *   2. Load the ch_set_cache into an in-memory CatalogIndex (refresh it if empty)
+ *   3. For each variant in the chunk:
+ *      - Run the local tier ladder (exact-variant → synonym → number-only → card-code)
+ *      - On miss, invoke Claude Haiku with IN-SET candidates (no fuzzy fallback contamination)
+ *      - Write cardhedger_card_id + match_confidence + match_tier to the variant row
+ */
 export async function POST(req: NextRequest) {
   const auth = await checkRole('admin', 'contributor');
   if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-  const { productId, offset = 0, limit = DEFAULT_CHUNK, mode } = await req.json();
+  const { productId, offset = 0, limit = DEFAULT_CHUNK } = await req.json();
   if (!productId) return NextResponse.json({ error: 'productId required' }, { status: 400 });
 
-  // Verify product exists and has player_products.
-  const { count: ppCount } = await supabaseAdmin
-    .from('player_products')
-    .select('id', { count: 'exact', head: true })
-    .eq('product_id', productId);
-
-  if (!ppCount) return NextResponse.json({ results: [], total: 0, hasMore: false });
-
-  // Count total unmatched variants via join (avoids large .in() URL limit).
-  const { count: total } = await supabaseAdmin
-    .from('player_product_variants')
-    .select('id, player_products!inner(product_id)', { count: 'exact', head: true })
-    .eq('player_products.product_id', productId)
-    .is('cardhedger_card_id', null);
-
-  // Fetch this chunk of unmatched variants with player name joined.
-  const { data: variants } = await supabaseAdmin
-    .from('player_product_variants')
-    .select('id, variant_name, card_number, player_product_id, player_products!inner(product_id, player:players(name))')
-    .eq('player_products.product_id', productId)
-    .is('cardhedger_card_id', null)
-    .range(offset, offset + limit - 1);
-
-  // Build player name map from joined data (no separate query needed).
-  const ppPlayerMap = new Map(
-    (variants ?? []).map((v: any) => [ // eslint-disable-line @typescript-eslint/no-explicit-any
-      v.player_product_id,
-      (v.player_products as any)?.player?.name ?? '', // eslint-disable-line @typescript-eslint/no-explicit-any
-    ])
-  );
-
-  if (!variants?.length) {
-    return NextResponse.json({ results: [], total: total ?? 0, hasMore: false });
-  }
-
+  // Fetch product early — we need ch_set_name and sport to bootstrap the catalog.
   const { data: product } = await supabaseAdmin
     .from('products')
     .select('name, ch_set_name, sport:sports(name)')
     .eq('id', productId)
     .single();
 
-  // Extract year and build short set name from product name.
-  // "2025 Bowman Chrome Baseball"    → year="2025", shortSetName="Bowman Chrome"
-  // "2025-26 Topps Chrome Basketball" → year="2025", shortSetName="Topps Chrome"
-  const productName = product?.name ?? '';
-  const yearMatch = productName.match(/^(\d{4})(?:-\d{2})?\s+/);
-  const productYear = yearMatch?.[1] ?? '';
-  const shortSetName = productName
-    .replace(/^\d{4}(?:-\d{2})?\s+/, '')
-    .replace(/\s+(baseball|basketball|football|soccer)\s*$/i, '')
-    .trim();
+  if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
 
-  // Sport filter for CardHedger search — narrows results and reduces cross-sport false matches
-  const sportName = ((product as any)?.sport as { name?: string } | null)?.name?.toLowerCase();
+  const productName = product.name ?? '';
+  const sportName = ((product as unknown as { sport: { name?: string } | null }).sport)?.name;
+  const descriptor = getManufacturerDescriptor(productName);
+  console.log(
+    `[match-cardhedger] product="${productName}" descriptor="${descriptor.id}" offset=${offset}`,
+  );
 
-  // Resolve the manufacturer knowledge module for this product.
-  // Handles variant cleaning, query reformulation, and Claude context injection.
-  const knowledge = getManufacturerKnowledge(productName);
-  console.log(`[match-cardhedger] product="${productName}" module="${knowledge.name}" variants=${variants.length} offset=${offset} mode=${mode ?? 'individual'}`);
+  // Count total unmatched variants (join-based to avoid URL limits).
+  const { count: total } = await supabaseAdmin
+    .from('player_product_variants')
+    .select('id, player_products!inner(product_id)', { count: 'exact', head: true })
+    .eq('player_products.product_id', productId)
+    .is('cardhedger_card_id', null);
 
-  // ── Set-catalog pre-load (mode: 'set-catalog') ──────────────────────────────
-  // Fetches the full CH set catalog once, builds a card_number → card_id map,
-  // and matches variants locally. ~94 paginated API calls replaces 1000+ individual ones.
-  // Falls back to individual Claude matching for any variant not found in the catalog.
-  let setCatalogMap: Map<string, string> | null = null;
+  // Fetch this chunk.
+  const { data: variants } = await supabaseAdmin
+    .from('player_product_variants')
+    .select(
+      'id, variant_name, card_number, player_product_id, player_products!inner(product_id, player:players(name))',
+    )
+    .eq('player_products.product_id', productId)
+    .is('cardhedger_card_id', null)
+    .range(offset, offset + limit - 1);
 
-  if (mode === 'set-catalog') {
+  if (!variants?.length) {
+    return NextResponse.json({ results: [], total: total ?? 0, hasMore: false });
+  }
+
+  const ppPlayerMap = new Map(
+    (variants as unknown as Array<{
+      player_product_id: string;
+      player_products: { player: { name: string } | null } | null;
+    }>).map(v => [v.player_product_id, v.player_products?.player?.name ?? '']),
+  );
+
+  // ── Bootstrap the catalog index ──────────────────────────────────────────────
+  // Resolve ch_set_name (search if not set), then load cache (refresh if empty).
+  let chSetName = product.ch_set_name as string | null;
+  if (!chSetName) {
+    const yearMatch = productName.match(/^(\d{4})/);
+    const year = yearMatch?.[1] ?? '';
+    const shortSetName = productName
+      .replace(/^\d{4}(?:-\d{2})?\s+/, '')
+      .replace(/\s+(baseball|basketball|football|soccer)\s*$/i, '')
+      .trim();
+    const category = sportName
+      ? sportName.charAt(0).toUpperCase() + sportName.slice(1).toLowerCase()
+      : undefined;
     try {
-      // Step 1: find canonical CH set name — use stored ch_set_name if available, else search
-      const storedSetName = (product as any)?.ch_set_name as string | null;
-      const sportCategory = sportName ? sportName.charAt(0).toUpperCase() + sportName.slice(1) : undefined;
-      let canonicalSet: string | undefined = storedSetName ?? undefined;
-      if (!canonicalSet) {
-        const setsResult = await searchSets(shortSetName, sportCategory);
-        canonicalSet = setsResult.sets?.[0]?.set_name;
-      }
-
-      if (canonicalSet) {
-        console.log(`[match-cardhedger] set-catalog mode: canonical set="${canonicalSet}"`);
-        // Step 2: paginate through entire set
-        const firstPage = await getCardsBySet(canonicalSet, 1, 100);
-        const totalPages = firstPage.pages ?? 1;
-        const allCards = [...(firstPage.cards ?? [])];
-
-        // Fetch remaining pages concurrently (up to 10 at a time)
-        if (totalPages > 1) {
-          const pageNums = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
-          const pageResults = await runConcurrent(
-            pageNums.map(p => () => getCardsBySet(canonicalSet, p, 100)),
-            10
-          );
-          for (const r of pageResults) allCards.push(...(r.cards ?? []));
-        }
-
-        // Step 3: build number → card_id map (keep first match per number for base variant)
-        setCatalogMap = new Map<string, string>();
-        for (const card of allCards) {
-          if (card.number && !setCatalogMap.has(card.number)) {
-            setCatalogMap.set(card.number, card.card_id);
-          }
-        }
-        console.log(`[match-cardhedger] set-catalog loaded ${setCatalogMap.size} unique card numbers from ${allCards.length} cards`);
-      } else {
-        console.warn(`[match-cardhedger] set-catalog: no canonical set found for "${shortSetName}" — falling back to individual matching`);
+      const candidates = await findCanonicalSet(`${year} ${shortSetName}`.trim(), category);
+      chSetName = candidates[0]?.set_name ?? null;
+      if (chSetName) {
+        await supabaseAdmin
+          .from('products')
+          .update({ ch_set_name: chSetName })
+          .eq('id', productId);
+        console.log(`[match-cardhedger] auto-resolved ch_set_name="${chSetName}"`);
       }
     } catch (err) {
-      console.error('[match-cardhedger] set-catalog pre-load failed:', err);
-      // Fall back to individual matching
+      console.warn(
+        `[match-cardhedger] set-search failed for "${productName}": ${err instanceof Error ? err.message : err}`,
+      );
     }
   }
 
-  // Match all variants in this chunk concurrently.
+  let catalog: CatalogIndex | null = null;
+  if (chSetName) {
+    catalog = await loadCatalogIndex(chSetName);
+    if (catalog.cards.length === 0) {
+      console.log(`[match-cardhedger] catalog empty for "${chSetName}" — refreshing`);
+      try {
+        await refreshSetCatalog(chSetName, { productId });
+        catalog = await loadCatalogIndex(chSetName);
+      } catch (err) {
+        console.error(
+          `[match-cardhedger] catalog refresh failed for "${chSetName}": ${err instanceof Error ? err.message : err}`,
+        );
+        catalog = null;
+      }
+    }
+    if (catalog) {
+      console.log(
+        `[match-cardhedger] loaded catalog "${chSetName}" — ${catalog.cards.length} cards, ${catalog.byNumber.size} unique numbers`,
+      );
+    }
+  } else {
+    console.warn(
+      `[match-cardhedger] no ch_set_name for product "${productName}" — all matching will use Claude-only fallback (slow)`,
+    );
+  }
+
+  // ── Per-variant matching (parallel within chunk) ─────────────────────────────
   const results = await runConcurrent(
     variants.map(variant => async () => {
       const playerName = ppPlayerMap.get(variant.player_product_id) ?? '';
-
-      // Clean the variant name and optionally reformulate the full query.
-      const { cleanedVariant, isInsertSetName } = knowledge.cleanVariant(variant.variant_name ?? '');
-      const reformulation = knowledge.reformulateQuery({
+      const input = {
         playerName,
-        year: productYear,
-        shortSetName,
+        variantName: variant.variant_name ?? '',
         cardNumber: variant.card_number,
-        cleanedVariant,
-        isInsertSetName,
-      });
+      };
 
-      const query = reformulation.query ??
-        [playerName, productYear, shortSetName, variant.card_number, cleanedVariant || undefined]
-          .filter(Boolean)
-          .join(' ');
-
-      const matchPlayerName = reformulation.effectivePlayerName ?? playerName;
-      const matchCardNumber = reformulation.effectiveCardNumber ?? variant.card_number;
+      let tier: MatchTier = 'no-match';
+      let cardId: string | null = null;
+      let confidence = 0;
+      let topResult: Record<string, string> | null = null;
+      let query = '';
 
       try {
-        // Set-catalog fast path: if we pre-loaded the set, try exact card_number lookup first
-        if (setCatalogMap && matchCardNumber && setCatalogMap.has(matchCardNumber)) {
-          const cardId = setCatalogMap.get(matchCardNumber)!;
-          await supabaseAdmin
-            .from('player_product_variants')
-            .update({ cardhedger_card_id: cardId, match_confidence: 0.95 })
-            .eq('id', variant.id);
-          return { variantId: variant.id, playerName, query, status: 'auto' as const, confidence: 0.95, topResult: null, source: 'set-catalog' };
+        // Tier 1–4: local catalog lookup.
+        if (catalog) {
+          const local = tryLocalMatch(descriptor, catalog, input);
+          query = `[local] ${playerName} ${input.cardNumber ?? ''} ${local.cleaned}`.trim();
+
+          if (local.isInsertSetName) {
+            // Section-label rows never have a meaningful CH card — skip Claude.
+            tier = 'no-match';
+          } else if (local.match) {
+            tier = local.match.tier;
+            cardId = local.match.cardId;
+            confidence = local.match.confidence;
+            topResult = local.match.topResult;
+          } else {
+            // Tier 5: Claude fallback with IN-SET candidates — no fuzzy noise.
+            const candidates = candidatesForClaude(catalog, input, 10);
+            if (candidates.length > 0) {
+              const claudeQuery = [
+                playerName,
+                input.cardNumber ?? '',
+                local.cleaned,
+              ]
+                .filter(Boolean)
+                .join(' ');
+              query = `[claude] ${claudeQuery}`;
+              const match = await claudeCardMatchFromCandidates(
+                claudeQuery,
+                candidates.map(c => ({
+                  card_id: c.card_id,
+                  player_name: c.player_name,
+                  set_name: catalog!.setName,
+                  year: c.year,
+                  variant: c.variant,
+                  number: c.number,
+                  rookie: c.rookie,
+                })),
+                descriptor.claudeRules,
+              );
+              if (match && match.card_id) {
+                const chosen = candidates.find(c => c.card_id === match.card_id);
+                if (chosen) {
+                  tier = 'claude';
+                  cardId = match.card_id;
+                  confidence = match.confidence;
+                  topResult = {
+                    player_name: chosen.player_name,
+                    set_name: catalog!.setName,
+                    variant: chosen.variant,
+                    year: chosen.year,
+                    number: chosen.number,
+                  };
+                }
+              }
+            }
+          }
+        } else {
+          // No catalog — no matching possible. Flag and continue.
+          tier = 'no-match';
+          query = `[no-catalog] ${playerName} ${input.cardNumber ?? ''}`.trim();
         }
 
-        const match = await cardMatch(query, sportName, matchPlayerName, matchCardNumber, knowledge.claudeContext());
+        // Persist — write the tier regardless so telemetry captures misses too.
         const status: 'auto' | 'review' | 'no-match' =
-          match.confidence >= 0.7 && match.card_id ? 'auto'
-          : match.confidence >= 0.5 ? 'review'
-          : 'no-match';
+          confidence >= 0.7 && cardId ? 'auto' : confidence >= 0.5 ? 'review' : 'no-match';
 
-        const update = status === 'auto'
-          ? { cardhedger_card_id: match.card_id, match_confidence: match.confidence }
-          : { match_confidence: match.confidence };
+        const update =
+          status === 'auto'
+            ? { cardhedger_card_id: cardId, match_confidence: confidence, match_tier: tier }
+            : { match_confidence: confidence, match_tier: tier };
 
         const { error: updateError } = await supabaseAdmin
           .from('player_product_variants')
@@ -192,18 +248,39 @@ export async function POST(req: NextRequest) {
           .eq('id', variant.id);
 
         if (updateError) {
-          console.error('[match-cardhedger] DB update failed for variant', variant.id, updateError.message);
-          return { variantId: variant.id, playerName, query, status: 'no-match' as const, confidence: 0, topResult: match.topResult, error: updateError.message };
+          console.error(
+            `[match-cardhedger] DB update failed for variant ${variant.id}: ${updateError.message}`,
+          );
         }
 
-        return { variantId: variant.id, playerName, query, status, confidence: match.confidence, topResult: match.topResult };
+        return {
+          variantId: variant.id,
+          playerName,
+          query,
+          status,
+          confidence,
+          tier,
+          topResult,
+        };
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        console.error('[match-cardhedger] match failed for variant', variant.id, 'query:', query, '—', msg);
-        return { variantId: variant.id, playerName, query, status: 'no-match' as const, confidence: 0, topResult: null, error: msg };
+        console.error(
+          `[match-cardhedger] match failed for variant ${variant.id} query="${query}":`,
+          msg,
+        );
+        return {
+          variantId: variant.id,
+          playerName,
+          query,
+          status: 'no-match' as const,
+          confidence: 0,
+          tier: 'no-match' as MatchTier,
+          topResult: null,
+          error: msg,
+        };
       }
     }),
-    CONCURRENCY
+    CONCURRENCY,
   );
 
   const processed = variants.length;
@@ -216,5 +293,8 @@ export async function POST(req: NextRequest) {
     processed,
     hasMore,
     nextOffset: hasMore ? offset + processed : null,
+    catalog: catalog
+      ? { setName: catalog.setName, cardCount: catalog.cards.length }
+      : null,
   });
 }

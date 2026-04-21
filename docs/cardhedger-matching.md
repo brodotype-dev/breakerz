@@ -1,8 +1,10 @@
 # CardHedger Matching — Architecture, Decisions & Manufacturer Knowledge
 
+> **Current architecture (v2, 2026-04-21):** catalog pre-load. See [catalog-preload-architecture.md](./catalog-preload-architecture.md) for the canonical design doc. This file retains the v1 history for context and the evolving manufacturer rule catalogue.
+
 ## What This Is
 
-This doc captures everything learned building the CardHedger auto-matching system — the architecture, failure modes, query construction rules, and the path toward a scalable agent-based approach for handling manufacturer-specific card catalog knowledge.
+This doc captures everything learned building the CardHedger auto-matching system — the architecture, failure modes, query construction rules, and the path toward a scalable descriptor-based approach for handling manufacturer-specific card catalog knowledge.
 
 The core problem: we import product checklists from manufacturer XLSXs (Topps, Panini, Bowman) and need to link each variant row to a CardHedger `card_id` so we can pull live pricing. The XLSX data and CH's catalog use different terminology, abbreviations, and naming conventions. Bridging that gap is the matching problem.
 
@@ -245,6 +247,8 @@ Option A is built and live as `lib/card-knowledge/`. `BowmanKnowledge` handles a
 
 | Date | Change | Impact |
 |---|---|---|
+| 2026-04-21 | **v2 — catalog pre-load architecture.** Persistent `ch_set_cache` + tiered local matcher (exact-variant → synonym → number-only → card-code → Claude with in-set candidates). Descriptor-based `lib/card-knowledge/`. Daily cron refresh. [Full design](./catalog-preload-architecture.md) | Expected lift over 96% Bowman's Best ceiling — and Claude now gets in-set candidates instead of fuzzy-fallback noise. Scales cleanly to Panini / Upper Deck / Topps Finest. |
+| 2026-04-21 | River @ CardHedger confirmed: autograph `number` fields ARE populated, CPA-* Prospect Autos ARE in catalog, `/v1/cards/set-search` + `card-search?set=` exist. Earlier 76% ceiling diagnosis was wrong. | Re-architected around catalog pre-load (v2 above). |
 | 2026-03-30 | Initial matching implementation | ~15–29% auto-match (Bowman Draft) |
 | 2026-03-30 | Shorter set name, sport param, 10 candidates, variant_name in query | ~62–69% |
 | 2026-03-30 | Card-code detection (skip), Retrofractor strip, "Base - " strip | ~72% |

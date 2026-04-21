@@ -4,6 +4,7 @@ import Link from 'next/link';
 import type { Product, Sport } from '@/lib/types';
 import OddsUpload from './OddsUpload';
 import RunMatchingButton from './RunMatchingButton';
+import RefreshCatalogButton from './RefreshCatalogButton';
 import BreakIQBetsDebrief from './BreakIQBetsDebrief';
 import BreakerComparisonPanel from './BreakerComparisonPanel';
 import PricingBreakdownPanel from './PricingBreakdownPanel';
@@ -237,6 +238,7 @@ export default async function ProductDashboardPage({ params }: PageProps) {
               <ActionLink href={`/admin/import-checklist?productId=${id}`} label="Import Checklist →" />
               <ActionLink href={`/break/${product.slug}`} label="View Break Page →" />
             </div>
+            <RefreshCatalogButton productId={id} />
             <RunMatchingButton productId={id} />
           </div>
         </Section>

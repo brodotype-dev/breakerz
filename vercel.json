@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/cron/refresh-ch-catalogs",
+      "schedule": "0 3 * * *"
+    },
+    {
       "path": "/api/cron/refresh-pricing",
       "schedule": "0 4 * * *"
     },

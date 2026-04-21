@@ -3,6 +3,13 @@
     "supabase": {
       "type": "http",
       "url": "https://mcp.supabase.com/mcp?project_ref=zucuzhtiitibsvryenpi"
+    },
+    "card-hedge": {
+      "type": "http",
+      "url": "https://api.cardhedger.com/mcp",
+      "headers": {
+        "X-API-Key": "${CARDHEDGER_API_KEY}"
+      }
     }
   }
 }

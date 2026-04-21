@@ -4,8 +4,8 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 type Progress = { completed: number; total: number; auto: number; review: number };
-type DebugRow = { playerName: string; query: string; status: string; confidence: number; topResult: Record<string, string> | null };
-type LastRun = { at: Date; progress: Progress; debugRows: DebugRow[] };
+type DebugRow = { playerName: string; query: string; status: string; confidence: number; tier?: string; topResult: Record<string, string> | null };
+type LastRun = { at: Date; progress: Progress; debugRows: DebugRow[]; catalog?: { setName: string; cardCount: number } | null };
 
 export default function RunMatchingButton({ productId }: { productId: string }) {
   const [running, setRunning] = useState(false);
@@ -25,6 +25,7 @@ export default function RunMatchingButton({ productId }: { productId: string }) 
     let totalAuto = 0;
     let totalReview = 0;
     let grandTotal = 0;
+    let lastCatalog: { setName: string; cardCount: number } | null = null;
     const accumulated: DebugRow[] = [];
 
     try {
@@ -32,7 +33,7 @@ export default function RunMatchingButton({ productId }: { productId: string }) 
         const res = await fetch('/api/admin/match-cardhedger', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ productId, offset, mode: 'set-catalog' }),
+          body: JSON.stringify({ productId, offset }),
         });
 
         if (!res.ok) throw new Error(`Request failed: ${res.status}`);
@@ -43,6 +44,7 @@ export default function RunMatchingButton({ productId }: { productId: string }) 
         totalAuto += json.results.filter((r: DebugRow) => r.status === 'auto').length;
         totalReview += json.results.filter((r: DebugRow) => r.status === 'review').length;
         offset += json.processed;
+        if (json.catalog) lastCatalog = json.catalog;
 
         json.results.filter((r: DebugRow) => r.status !== 'auto').forEach((r: DebugRow) => accumulated.push(r));
 
@@ -53,7 +55,7 @@ export default function RunMatchingButton({ productId }: { productId: string }) 
       }
 
       const finalProgress = { completed: offset, total: grandTotal, auto: totalAuto, review: totalReview };
-      setLastRun({ at: new Date(), progress: finalProgress, debugRows: accumulated });
+      setLastRun({ at: new Date(), progress: finalProgress, debugRows: accumulated, catalog: lastCatalog });
       setRunning(false);
       router.refresh();
     } catch (err) {
@@ -63,11 +65,12 @@ export default function RunMatchingButton({ productId }: { productId: string }) 
   }
 
   function downloadCsv(rows: DebugRow[]) {
-    const header = 'Player,Query,Status,Confidence,CH Player,CH Set,CH Variant';
+    const header = 'Player,Query,Status,Tier,Confidence,CH Player,CH Set,CH Variant';
     const csvRows = rows.map(r => [
       `"${r.playerName}"`,
       `"${r.query}"`,
       r.status,
+      r.tier ?? '',
       r.confidence > 0 ? r.confidence.toFixed(2) : '',
       `"${r.topResult?.player_name ?? ''}"`,
       `"${r.topResult?.set_name ?? ''}"`,
@@ -109,6 +112,14 @@ export default function RunMatchingButton({ productId }: { productId: string }) 
             <span style={{ color: 'var(--text-tertiary)' }}>
               Last run {lastRun.at.toLocaleDateString()} {lastRun.at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </span>
+            {lastRun.catalog && (
+              <>
+                <span>·</span>
+                <span style={{ color: 'var(--text-tertiary)' }}>
+                  catalog {lastRun.catalog.cardCount.toLocaleString()} cards
+                </span>
+              </>
+            )}
             <span>·</span>
             <span>✓ {lastRun.progress.auto} matched</span>
             <span>·</span>
@@ -135,7 +146,7 @@ export default function RunMatchingButton({ productId }: { productId: string }) 
               <table className="w-full text-xs">
                 <thead style={{ backgroundColor: 'var(--terminal-surface-hover)' }}>
                   <tr>
-                    {['Player', 'Query sent', 'Status', 'Conf.', 'CH returned'].map(h => (
+                    {['Player', 'Query sent', 'Status', 'Tier', 'Conf.', 'CH returned'].map(h => (
                       <th key={h} className="text-left px-3 py-2 font-medium whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>{h}</th>
                     ))}
                   </tr>
@@ -149,6 +160,9 @@ export default function RunMatchingButton({ productId }: { productId: string }) 
                         <span style={{ color: r.status === 'review' ? 'var(--signal-watch)' : 'var(--text-disabled)' }}>
                           {r.status}
                         </span>
+                      </td>
+                      <td className="px-3 py-1.5 whitespace-nowrap font-mono" style={{ color: 'var(--text-tertiary)' }}>
+                        {r.tier ?? '—'}
                       </td>
                       <td className="px-3 py-1.5 font-mono" style={{ color: 'var(--text-tertiary)' }}>
                         {r.confidence > 0 ? r.confidence.toFixed(2) : '—'}
