@@ -85,17 +85,18 @@ Remaining known limitation: multi-player autos (DA-/TA-/QA-) and code-only dupli
 
 ---
 
-### Phase 5 — C-score: CardHedger Top-Movers
+### Phase 5 — C-score: CardHedger Top-Movers + Product Page Widget
 **Effort:** 2–3 days
-**Blocker:** Kyle needs to confirm `top-movers` endpoint response structure — specifically whether it includes volume data for normalization, or just relative rank. Normalization strategy changes depending on the answer.
+**Blocker:** Kyle needs to confirm `top-movers` endpoint response structure — specifically whether it includes volume data for normalization, or just relative rank. Normalization strategy changes depending on the answer. If rank-only, we show directional arrows; if price delta is included, we can show % movement.
 
 - Add `top-movers` and `price-updates` to `lib/cardhedger.ts`
 - **Decision needed first:** store C-score in separate `c_score` column or write composite directly to `buzz_score`? Separate columns are better for auditability and debugging; decide before building.
 - Vercel Cron (daily): fetch top-movers → cross-reference `player_product_variants.cardhedger_card_id` → compute C-score → write to DB
 - `price-updates` delta poll (every 6h): price swing > threshold → create pending High Volatility review record
 - Admin: pending High Volatility review queue
+- **Product page Top Movers widget:** on the break page, show a ranked list of players in this product whose cards are trending on the secondary market (e.g. "Trending up: Wemby +18%, Cade +11% · Trending down: KD -8%"). Cross-references `player_product_variants.cardhedger_card_id` against top-movers response — same data pipeline as C-score, surfaced directly to the buyer. This is the consumer-facing output of the C-score computation.
 
-**Files:** `lib/cardhedger.ts`, `app/api/cron/update-scores/route.ts`, `vercel.json`
+**Files:** `lib/cardhedger.ts`, `app/api/cron/update-scores/route.ts`, `vercel.json`, `app/break/[slug]/` (Top Movers widget)
 
 ---
 
@@ -111,15 +112,17 @@ Remaining known limitation: multi-player autos (DA-/TA-/QA-) and code-only dupli
 ## Priority 3 — Future pipeline, external dependencies required
 
 ### Phase 6 — P-score: Reddit Sentiment
-**Effort:** 2–3 days
-**Blocker:** Reddit API key
-**Notes:** r/sportscards + sport-specific subs; mention volume vs 30-day baseline → normalized P-score. Rate limit evaluation needed — may need to scope to active-product players only. Combines with C-score into `buzz_score` composite.
+**Status: ⏸ Deferred — approval barrier + cost**
+**Effort:** 2–3 days (when unblocked)
+**Blocker:** Reddit eliminated self-service API access in late 2025. Now requires manual approval (3–7 days for personal, slow/denied for commercial). Commercial tier is $12K/year — not viable at current stage. Revisit if Reddit opens a lower-cost commercial tier or if an alternative hobby sentiment source (e.g. Whatnot, Fanatics Collect) becomes available.
+**Notes:** r/sportscards + sport-specific subs; mention volume vs 30-day baseline → normalized P-score. Rate limit evaluation needed — may need to scope to active-product players only. Combines with C-score into `buzz_score` composite. While deferred, the composite rebalances: run Phase 5 C-score only (C × 0.60) until P-score is available.
 
 ---
 
 ### Phase 7 — S-score: Player Stats API
 **Effort:** 3–5 days (per sport, NBA first)
-**Blocker:** balldontlie.io API key (free for NBA)
+**Blocker:** No external blocker — balldontlie.io is free and requires no approval. Just needs an API key from balldontlie.io.
+**API decision:** balldontlie.io (NBA, free). Upgrade path: MySportsFeeds (~$15–25/mo) if injury report reliability or MLB/NFL coverage becomes a priority.
 **Notes:**
 - Recent performance trend (last 7 days vs season avg) → S-score
 - Injury status → auto-drafts Risk Flag pending record → admin review queue (never auto-publishes)

@@ -49,8 +49,9 @@ Secondary user: the **breaker** setting slot prices. Social signal helps price f
 | High Volatility display in BreakIQ Sayz | ✅ Built | Amber ⚡ advisory block in result card |
 | Buzz indicators on Team Slots / Player table | ❌ Not built | Phase 4 |
 | C-score (CardHedger top-movers) | ❌ Not built | Phase 5 — needs Kyle to confirm top-movers response structure |
-| P-score (Reddit sentiment) | ❌ Not built | Phase 6 — needs Reddit API key |
-| S-score (sports stats API) | ❌ Not built | Phase 7 — NBA first via balldontlie.io |
+| Product page Top Movers widget | ❌ Not built | Phase 5 — consumer-facing output of C-score; same data pipeline |
+| P-score (Reddit sentiment) | ⏸ Deferred | Reddit eliminated self-service access; commercial tier $12K/yr. Revisit when viable. |
+| S-score (sports stats API) | ❌ Not built | Phase 7 — NBA via balldontlie.io (free, no approval required) |
 | Composite score formula in engine | ❌ Not built | Phase 5 — engine will read composite from buzz_score once pipeline runs |
 | Score decay mechanism | ❌ Not designed | Open question |
 
@@ -92,6 +93,13 @@ B-score is always separate — it does not fold into `buzz_score`.
 
 Rate of change and demand velocity, not a point-in-time price.
 
+**Signal design:** Volume × Price Direction. Price delta alone is misleading — a 1/1 that sold once at a large number looks like a top mover but is illiquid and gone. The real signal is cards with enough sales activity to establish a trend, trending in a direction.
+
+- **Minimum sales threshold:** 3+ sales within the rolling window. Cards below this are excluded regardless of price movement.
+- **Price delta:** average sale price this period vs. prior period of equal length (% change)
+- **Rolling window:** 7–14 days. Tight enough to catch signals before they hit sold comps; 7 days is more responsive to events (breakout game, big pull video), 14 days smooths single-game spikes.
+- **Rank by price delta %**, filtered by volume floor. A base refractor +12% on 40 sales ranks higher than a gold 1/1 +200% on 1 sale.
+
 **CardHedger endpoints:**
 
 | Endpoint | Purpose | How we use it |
@@ -100,7 +108,7 @@ Rate of change and demand velocity, not a point-in-time price.
 | `POST /v1/cards/price-updates` | Delta polling since a timestamp | High Volatility auto-detection — only fetches what changed |
 | `GET /v1/download/daily-price-export/{file_date}` | Full daily CSV | Nightly batch once catalog grows beyond ~200 tracked players |
 
-`top-movers` means no custom velocity pipeline is needed. CardHedger already computes the signal with outlier filtering. Cross-referencing against our players IS the C-score.
+**Open question for Kyle:** Does `top-movers` include sale count and price delta within a configurable window, or just a relative rank? If it includes the raw data, we use it directly. If rank-only, we fall back to `price-updates` + daily export to compute volume-weighted delta ourselves.
 
 ---
 
@@ -129,15 +137,17 @@ Injury status → auto-drafts a pending Risk Flag for admin review (never auto-p
 
 *Are people talking about this player, and is it positive?*
 
-**Sources:**
+**Status: Deferred.** Reddit eliminated self-service API access in late 2025. Commercial tier is $12K/year — not viable at current scale. While deferred, the composite rebalances to C × 0.60 + S × 0.25 (P excluded).
 
-| Source | Cost | Signal |
-|---|---|---|
-| Reddit API | Free | r/sportscards + sport subs — hobby-specific sentiment |
-| X / Twitter API | ~$100/mo | Mention volume + engagement |
-| NewsAPI | $0–$449/mo | Media mention volume |
+**Sources evaluated:**
 
-**MVP recommendation:** Reddit only. Free, hobby-specific, good signal-to-noise for card demand specifically. Google Trends was previously considered but is too broad and noisy for player-level card signal.
+| Source | Cost | Status | Signal |
+|---|---|---|---|
+| Reddit API | $12K/yr (commercial) | ❌ Deferred — cost barrier | r/sportscards + sport subs — best hobby signal |
+| X / Twitter API | ~$100/mo | Not evaluated | Mention volume + engagement |
+| NewsAPI | $0–$449/mo | Not evaluated | Media mention volume |
+
+**Revisit when:** Reddit introduces a lower-cost commercial tier, or a viable hobby-specific alternative emerges (Whatnot, Fanatics Collect community data, etc.). Google Trends remains rejected — too broad for player-level card signal.
 
 ---
 
@@ -321,7 +331,7 @@ The `breakerz_score` data is collected but inert. This phase makes it real.
 
 ---
 
-### Phase 5 — C-score: CardHedger Top-Movers
+### Phase 5 — C-score: CardHedger Top-Movers + Product Page Widget
 **Effort:** 2–3 days | **Value:** First automated market signal — no external API key needed
 
 **5a.** Add `top-movers` and `price-updates` endpoints to `lib/cardhedger.ts`
@@ -329,10 +339,11 @@ The `breakerz_score` data is collected but inert. This phase makes it real.
 **5c.** Vercel Cron job (daily): fetch `top-movers`, cross-reference against `player_product_variants.cardhedger_card_id`, compute normalized C-score per player, write to DB
 **5d.** `price-updates` delta poll (every 6h): detect cards with price swing > threshold → create pending High Volatility review record
 **5e.** Admin: pending High Volatility review queue
+**5f.** Product page Top Movers widget: on the break page, surface which players in this product have cards trending on the secondary market. Same cross-reference as C-score computation — consumer-facing output of the same pipeline. Display as ranked list (e.g. "Trending up: Wemby +18%, Cade +11% · Trending down: KD -8%"). If `top-movers` is rank-only (no price delta), show directional arrows instead.
 
-**Gap:** Need to confirm with Kyle whether `top-movers` includes enough volume data to normalize against a player's own baseline, or just gives a relative rank. If it's rank-only, normalization strategy changes.
+**Gap:** Need to confirm with Kyle whether `top-movers` includes sale count + price delta within a configurable window, or just relative rank. If rank-only, we compute volume-weighted delta ourselves using `price-updates` + daily export. Answer determines implementation path but not the signal design — that's locked: 3+ sales minimum, 7–14 day rolling window, ranked by price delta %.
 
-**Files:** `lib/cardhedger.ts`, new cron route (`app/api/cron/update-scores/route.ts`), Vercel cron config
+**Files:** `lib/cardhedger.ts`, new cron route (`app/api/cron/update-scores/route.ts`), Vercel cron config, `app/break/[slug]/` (Top Movers widget)
 
 ---
 
