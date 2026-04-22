@@ -196,12 +196,35 @@ export async function refreshSetCatalog(
  * Returns an empty index (with setName) if the set has never been refreshed.
  */
 export async function loadCatalogIndex(setName: string): Promise<CatalogIndex> {
-  const { data, error } = await supabaseAdmin
-    .from('ch_set_cache')
-    .select('card_id, number, player_name, variant, year, category, rookie')
-    .eq('ch_set_name', setName);
+  // Supabase/PostgREST caps any single response at 1000 rows by default. Large
+  // sets (e.g. 2025 Topps Finest Basketball = 12,097 cards) silently truncate
+  // at 1000, which cripples the in-memory index and causes ~92% of variants to
+  // miss byNumber lookups. Paginate via .range() until a short page comes back.
+  const PAGE_SIZE = 1000;
+  const allRows: Array<{
+    card_id: string;
+    number: string | null;
+    player_name: string | null;
+    variant: string | null;
+    year: string | null;
+    category: string | null;
+    rookie: boolean | null;
+  }> = [];
 
-  if (error) throw new Error(`ch_set_cache load failed for "${setName}": ${error.message}`);
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const { data, error } = await supabaseAdmin
+      .from('ch_set_cache')
+      .select('card_id, number, player_name, variant, year, category, rookie')
+      .eq('ch_set_name', setName)
+      .range(offset, offset + PAGE_SIZE - 1);
+
+    if (error) throw new Error(`ch_set_cache load failed for "${setName}": ${error.message}`);
+    const page = data ?? [];
+    allRows.push(...page);
+    if (page.length < PAGE_SIZE) break;
+  }
+
+  const data = allRows;
 
   const cards: CatalogCard[] = (data ?? []).map(r => ({
     card_id: r.card_id,
