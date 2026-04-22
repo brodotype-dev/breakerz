@@ -5,6 +5,7 @@ Sports card break slot pricing and analysis tool. Built with Kyle (Town & Line /
 **Docs (read on demand, not automatically):**
 - [CHANGELOG.md](./CHANGELOG.md) — full feature history
 - [docs/BACKLOG.md](./docs/BACKLOG.md) — prioritized work queue
+- [docs/pricing-architecture.md](./docs/pricing-architecture.md) — pricing pipeline (cache-read consumer + cron fan-out writer)
 - [docs/cardhedger-matching.md](./docs/cardhedger-matching.md) — CH matching architecture (v1 legacy notes)
 - [docs/catalog-preload-architecture.md](./docs/catalog-preload-architecture.md) — CH matching v2 (catalog pre-load + tiered local matcher)
 - [docs/cardhedger-questions.md](./docs/cardhedger-questions.md) — running list of questions for the CH team
@@ -30,7 +31,7 @@ Live at [getbreakiq.com](https://getbreakiq.com). Private beta — consumer rout
 
 **My Breaks** ✅ Consumer break tracking: log pre-break (with live analysis snapshot) or post-break. Rate outcome (Win/Mediocre/Bust), select platform, analysis feedback (helpful/not helpful). Stats row + time/platform/outcome filters. CSV export + import. Chase/hit card tracking designed, deferred to Phase 2.
 
-**Pricing Cache Cron** ✅ Nightly at 4 AM UTC via `vercel.json`. Refreshes active products with matched card IDs.
+**Pricing Pipeline** ✅ Consumer `/api/pricing` is a pure cache read — no external calls, no 504s. Writes happen in two places, both hitting `/api/admin/refresh-product-pricing` (300s budget per invocation): (1) admin on-demand via "Refresh Pricing" button on product page; (2) nightly cron at 4 AM UTC that fans out one HTTP call per active product in parallel — each fan-out is its own Vercel invocation, so one slow product can't starve the others. Scales unbounded until CH rate limits bite (~50 products). If cache is empty, consumer page shows a passive "pricing not yet available" banner. See `docs/pricing-architecture.md`. Requires Vercel Pro.
 
 **Onboarding** ✅ 3-step wizard at `/onboarding`: age gate (hard block under 18), about you (experience level, collecting interests including TCGs, eras, platform, monthly spend), quick hits (attribution, best pull). OAuth callback redirects new users to onboarding; returning users skip it.
 
@@ -120,7 +121,11 @@ app/(consumer)/card-lookup/      — Slab Analysis tool (auth-gated)
 app/break/[slug]/                — consumer break analysis (auth required)
 app/analysis/                    — BreakIQ Sayz deal checker (auth required)
 app/api/admin/pricing-breakdown/ — per-player pricing inputs for Pricing Audit Panel
-app/api/cron/refresh-pricing/    — nightly cron (4 AM UTC) to refresh pricing cache for active products
+app/api/pricing/                 — consumer pricing read (GET/POST, pure cache read, no CH calls)
+lib/pricing-refresh.ts           — shared refresh pipeline: CH batch-fetch, aggregate EV, upsert pricing_cache (throws on error)
+app/api/admin/refresh-product-pricing/ — per-product worker (maxDuration=300); called by admin button AND cron fan-out
+app/admin/products/[id]/RefreshPricingButton.tsx — admin on-demand "Refresh Pricing" button (Quick Actions)
+app/api/cron/refresh-pricing/    — nightly cron (4 AM UTC); fans out one HTTP call per active product in parallel, each on its own Vercel invocation
 app/api/cron/refresh-ch-catalogs/— daily cron (3 AM UTC) to refresh ch_set_cache for active products
 app/api/admin/refresh-ch-catalog/— admin on-demand catalog refresh for a single product
 app/admin/products/[id]/RefreshCatalogButton.tsx — UI button for on-demand catalog refresh
