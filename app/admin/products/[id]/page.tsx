@@ -84,6 +84,91 @@ function ActionLink({ href, label }: { href: string; label: string }) {
   );
 }
 
+function WorkflowStep({
+  num,
+  title,
+  status,
+  done,
+  action,
+}: {
+  num: number;
+  title: string;
+  status?: string;
+  done: boolean;
+  action: React.ReactNode;
+}) {
+  return (
+    <div
+      className="flex items-start gap-3 py-2 px-3 rounded-lg"
+      style={{ backgroundColor: done ? 'transparent' : 'var(--terminal-surface-hover)' }}
+    >
+      <div
+        className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 mt-0.5"
+        style={
+          done
+            ? {
+                backgroundColor: 'var(--signal-buy-bg)',
+                color: 'var(--signal-buy)',
+                border: '1px solid var(--signal-buy)',
+              }
+            : {
+                border: '1px solid var(--terminal-border)',
+                color: 'var(--text-tertiary)',
+              }
+        }
+      >
+        {done ? '✓' : num}
+      </div>
+      <div className="flex-1 min-w-0 flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div
+            className="text-sm font-medium"
+            style={{ color: done ? 'var(--text-secondary)' : 'var(--text-primary)' }}
+          >
+            {title}
+          </div>
+          {status && (
+            <div className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+              {status}
+            </div>
+          )}
+        </div>
+        <div className="flex-shrink-0">{action}</div>
+      </div>
+    </div>
+  );
+}
+
+function WorkflowCard({
+  label,
+  tone,
+  children,
+}: {
+  label: string;
+  tone: 'recommended' | 'fallback';
+  children: React.ReactNode;
+}) {
+  const borderColor = tone === 'recommended' ? 'var(--accent-blue)' : 'var(--terminal-border)';
+  const labelBg = tone === 'recommended' ? 'rgba(59,130,246,0.15)' : 'var(--terminal-surface-hover)';
+  const labelColor = tone === 'recommended' ? 'var(--accent-blue)' : 'var(--text-tertiary)';
+  return (
+    <div
+      className="rounded-lg p-3"
+      style={{ border: `1px solid ${borderColor}`, backgroundColor: 'var(--terminal-surface)' }}
+    >
+      <div className="mb-2">
+        <span
+          className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded"
+          style={{ backgroundColor: labelBg, color: labelColor }}
+        >
+          {label}
+        </span>
+      </div>
+      <div className="space-y-1">{children}</div>
+    </div>
+  );
+}
+
 function StatusPill({ value }: { value: 'ok' | 'warn' | 'empty' }) {
   if (value === 'ok') return <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: 'var(--signal-buy)', boxShadow: 'var(--glow-green)' }} />;
   if (value === 'warn') return <span className="inline-block h-2 w-2 rounded-full" style={{ backgroundColor: 'var(--signal-watch)' }} />;
@@ -126,17 +211,33 @@ export default async function ProductDashboardPage({ params }: PageProps) {
       .select('id, player_products!inner(product_id)', { count: 'exact', head: true })
       .eq('player_products.product_id', id);
 
-  const [{ count: variantTotalRaw }, { count: variantMatchedRaw }, { count: variantWithOddsRaw }] =
-    await Promise.all([
-      variantBase(),
-      variantBase().not('cardhedger_card_id', 'is', null),
-      variantBase().or('hobby_odds.not.is.null,breaker_odds.not.is.null'),
-    ]);
+  const [
+    { count: variantTotalRaw },
+    { count: variantMatchedRaw },
+    { count: variantWithOddsRaw },
+    { count: variantChNativeRaw },
+  ] = await Promise.all([
+    variantBase(),
+    variantBase().not('cardhedger_card_id', 'is', null),
+    variantBase().or('hobby_odds.not.is.null,breaker_odds.not.is.null'),
+    variantBase().eq('match_tier', 'ch-native'),
+  ]);
 
   const variantTotal = variantTotalRaw ?? 0;
   const variantMatched = variantMatchedRaw ?? 0;
   const variantWithOdds = variantWithOddsRaw ?? 0;
+  const variantChNative = variantChNativeRaw ?? 0;
   const unmatchedCount = variantTotal - variantMatched;
+
+  // Catalog rows for this product's CH set — drives "Refresh CH Catalog" done state
+  const catalogCount = product.ch_set_name
+    ? ((
+        await supabaseAdmin
+          .from('ch_set_cache')
+          .select('card_id', { count: 'exact', head: true })
+          .eq('ch_set_name', product.ch_set_name)
+      ).count ?? 0)
+    : 0;
 
   // Unmatched preview — push filter + limit to the server; 50 rows for display.
   // Join player name via player_products → players in one query.
@@ -259,31 +360,117 @@ export default async function ProductDashboardPage({ params }: PageProps) {
           </div>
         </Section>
 
-        {/* Quick actions */}
+        {/* Quick actions — two workflows side-by-side */}
         <Section title="Quick Actions" accent="var(--gradient-green)">
-          <div className="space-y-3">
-            <div className="flex flex-wrap gap-3">
-              <ActionLink href={`/admin/products/${id}/players`} label="Manage Players →" />
-              <ActionLink href={`/admin/import-checklist?productId=${id}`} label="Import Checklist →" />
-              <ActionLink href={`/break/${product.slug}`} label="View Break Page →" />
-            </div>
-            <RefreshCatalogButton productId={id} />
-            <HydrateVariantsButton productId={id} />
-            <RunMatchingButton productId={id} />
+          <div className="grid gap-3 lg:grid-cols-2">
+            <WorkflowCard label="CH-Hydrate Workflow · Recommended" tone="recommended">
+              <WorkflowStep
+                num={1}
+                title="Set CH set name"
+                status={product.ch_set_name ? product.ch_set_name : 'Not set — open product edit → Find on CH'}
+                done={!!product.ch_set_name}
+                action={
+                  <ActionLink href={`/admin/products/${id}/edit`} label="Edit →" />
+                }
+              />
+              <WorkflowStep
+                num={2}
+                title="Add players"
+                status={autoEligible > 0 ? `${autoEligible} auto-eligible` : 'No players yet'}
+                done={autoEligible > 0}
+                action={<ActionLink href={`/admin/products/${id}/players`} label="Manage →" />}
+              />
+              <WorkflowStep
+                num={3}
+                title="Refresh CH catalog"
+                status={catalogCount > 0 ? `${catalogCount.toLocaleString()} cards cached` : 'Catalog empty'}
+                done={catalogCount > 0}
+                action={<RefreshCatalogButton productId={id} />}
+              />
+              <WorkflowStep
+                num={4}
+                title="Hydrate variants from CH"
+                status={
+                  variantChNative > 0
+                    ? `${variantChNative.toLocaleString()} CH-native variants`
+                    : 'No hydrated variants yet'
+                }
+                done={variantChNative > 0}
+                action={<HydrateVariantsButton productId={id} />}
+              />
+              <WorkflowStep
+                num={5}
+                title="Upload odds PDF"
+                status={product.has_odds ? `${variantWithOdds.toLocaleString()} variants with odds` : 'No odds imported'}
+                done={!!product.has_odds}
+                action={<ActionLink href="#import-odds" label="Scroll ↓" />}
+              />
+              <WorkflowStep
+                num={6}
+                title="View break page"
+                status="Consumer view — verify pricing renders"
+                done={false}
+                action={<ActionLink href={`/break/${product.slug}`} label="Open →" />}
+              />
+            </WorkflowCard>
+
+            <WorkflowCard label="Parser Workflow · Fallback" tone="fallback">
+              <WorkflowStep
+                num={1}
+                title="Add players"
+                status={autoEligible > 0 ? `${autoEligible} auto-eligible` : 'No players yet'}
+                done={autoEligible > 0}
+                action={<ActionLink href={`/admin/products/${id}/players`} label="Manage →" />}
+              />
+              <WorkflowStep
+                num={2}
+                title="Import checklist (PDF/XLSX/CSV)"
+                status={variantTotal > 0 ? `${variantTotal.toLocaleString()} variants` : 'No variants yet'}
+                done={variantTotal > 0}
+                action={<ActionLink href={`/admin/import-checklist?productId=${id}`} label="Import →" />}
+              />
+              <WorkflowStep
+                num={3}
+                title="Re-run matching against CH"
+                status={
+                  variantTotal > 0
+                    ? `${Math.round(variantMatchPct * 100)}% matched · ${unmatchedCount.toLocaleString()} unmatched`
+                    : 'No variants to match'
+                }
+                done={variantTotal > 0 && variantMatchPct >= 0.8}
+                action={<RunMatchingButton productId={id} />}
+              />
+              <WorkflowStep
+                num={4}
+                title="Upload odds PDF"
+                status={product.has_odds ? `${variantWithOdds.toLocaleString()} variants with odds` : 'No odds imported'}
+                done={!!product.has_odds}
+                action={<ActionLink href="#import-odds" label="Scroll ↓" />}
+              />
+              <WorkflowStep
+                num={5}
+                title="View break page"
+                status="Consumer view — verify pricing renders"
+                done={false}
+                action={<ActionLink href={`/break/${product.slug}`} label="Open →" />}
+              />
+            </WorkflowCard>
           </div>
         </Section>
 
         {/* Odds upload */}
-        <Section
-          title="Import Odds"
-          accent="var(--gradient-orange)"
-          badge={product.has_odds ? { label: 'Odds imported', color: 'var(--signal-buy)' } : undefined}
-        >
-          <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
-            Upload the manufacturer odds PDF to apply pull rates to variants.
-          </p>
-          <OddsUpload productId={id} />
-        </Section>
+        <div id="import-odds">
+          <Section
+            title="Import Odds"
+            accent="var(--gradient-orange)"
+            badge={product.has_odds ? { label: 'Odds imported', color: 'var(--signal-buy)' } : undefined}
+          >
+            <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
+              Upload the manufacturer odds PDF to apply pull rates to variants.
+            </p>
+            <OddsUpload productId={id} />
+          </Section>
+        </div>
 
         {/* Breakerz Bets debrief */}
         <Section title="BreakIQ Bets" accent="var(--gradient-purple)">
