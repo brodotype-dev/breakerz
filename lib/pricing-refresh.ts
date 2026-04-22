@@ -228,9 +228,17 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
             .neq('product_id', productId)
             .gt('pricing_cache.ev_mid', 0)
             .limit(1000);
-          type Joined = { id: string; player_id: string; pricing_cache: Array<{ ev_low: number; ev_mid: number; ev_high: number; fetched_at: string }> };
+          // Supabase returns pricing_cache as an object on 1:1 FK shapes and
+          // an array on 1:N — we've hit both shapes in practice. Normalize.
+          type PC = { ev_low: number; ev_mid: number; ev_high: number; fetched_at: string };
+          type Joined = { id: string; player_id: string; pricing_cache: PC | PC[] | null };
           for (const row of (data as Joined[] | null) ?? []) {
-            for (const pc of row.pricing_cache) siblingRows.push({ player_id: row.player_id, ...pc });
+            const pcList = Array.isArray(row.pricing_cache)
+              ? row.pricing_cache
+              : row.pricing_cache
+                ? [row.pricing_cache]
+                : [];
+            for (const pc of pcList) siblingRows.push({ player_id: row.player_id, ...pc });
           }
         }
         const byPlayer = new Map<string, { ev_low: number; ev_mid: number; ev_high: number; fetched_at: string }>();
