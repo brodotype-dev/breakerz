@@ -5,6 +5,18 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-22 — Hot-fix: zero-priced variants drag weighted EV to $0
+
+After PR #13 shipped, the break page showed `278/278 priced` but every row still wore an "est" badge (Judge at $400, most others at the $8/$15 Level-4 defaults). The refresh was running successfully, but **every** player_product was landing in the fallback chain because `ev.evMid === 0 → throw`.
+
+**Root cause.** Hydrated products create a row per CH card, including /5, /10, /25 parallels that have never traded individually. `computeLiveEV` returns `{evMid: 0}` for those. Every variant has `sets: 1` (hydrator default), so the weighted average `Σ(evMid × sets) / Σ(sets)` includes all the zeros — even when a player has real prices on the base card, the zero-priced parallels drag the average under the `evMid === 0` threshold and trip the throw.
+
+**Fix (`app/api/pricing/route.ts`).** Filter out zero-priced variants before computing the weighted average. If at least one variant returned a real price, use it; only fall through to the search/default fallback chain if the *entire* variant set returned zero.
+
+Known follow-up: parallel inner fan-out (`Promise.all(variants.map(computeLiveEV))`) can still hit CH rate limits on players with many variants. `batchPriceEstimate` in `lib/cardhedger.ts` could reduce that to one HTTP call per player_product — deferred to a separate PR since it changes the EV shape (single price vs raw/PSA 9/PSA 10 breakdown).
+
+---
+
 ## 2026-04-22 — Hot-fix: pricing route couldn't price CH-hydrated products at scale
 
 Consumer break page on a freshly-hydrated Topps Finest (278 player_products, 6,481 variants) was showing "269 of 278 players using estimated pricing" — `pricing_cache` was empty and the `POST /api/pricing` refresh path had three blocking issues that sent almost every player down the "estimated" fallback chain.
