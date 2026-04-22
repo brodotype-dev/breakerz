@@ -5,6 +5,24 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-22 — Hot-fix: pricing route couldn't price CH-hydrated products at scale
+
+Consumer break page on a freshly-hydrated Topps Finest (278 player_products, 6,481 variants) was showing "269 of 278 players using estimated pricing" — `pricing_cache` was empty and the `POST /api/pricing` refresh path had three blocking issues that sent almost every player down the "estimated" fallback chain.
+
+**Root causes** (5th instance of the PostgREST limits bug family — see PRs #4, #6, #8, #10):
+1. **Variant load capped at 1000 rows + URL too long.** `.in('player_product_id', [278 UUIDs])` produced a ~9.7KB URL (Kong limit ~8KB); the response was also capped at 1000 rows, so ~85% of variants were invisible to the refresher.
+2. **Hydrated `player_products.cardhedger_card_id` is null** (the CH ID lives on each variant now). When a pp's variants fell past the 1000-row cap, the code dropped into the `variants.length === 0` branch → threw → fell into the estimated fallback.
+3. **Unthrottled parallel fan-out.** `Promise.all(playerProducts.map(...))` fired 278 outer workers, each firing `Promise.all(variants.map(computeLiveEV))` inside. Even if pagination had worked, the CH API would have rate-limited most of the thousands of parallel calls.
+
+**Fix (`app/api/pricing/route.ts`):**
+- `POST` and `GET` now chunk every `.in('player_product_id', ids)` lookup at 200 UUIDs.
+- `POST` paginates the variant load in 1000-row pages within each chunk.
+- `POST` replaces `Promise.all(...)` with a local `mapLimit` helper capped at 8 concurrent outer workers; inner per-variant `computeLiveEV` calls stay as-is, but peak CH concurrency is now bounded.
+
+**Expected effect:** "Refresh" on the break page (or the 4 AM UTC cron) now actually populates `pricing_cache` for hydrated products. `pricingSource` should flip from `none`/`default` to `live` for the vast majority of players.
+
+---
+
 ## 2026-04-22 — Product dashboard: hide parser workflow from UI (beta)
 
 Post-Phase 3, the CH-Hydrate workflow reliably produces 100% variant coverage with auto-created players — so the parser workflow is no longer part of the happy path for new products. For beta we hide the parser card to eliminate decision paralysis, while keeping all parser code paths (`/admin/import-checklist`, `match-cardhedger`, `lib/checklist-parser.ts`) intact.

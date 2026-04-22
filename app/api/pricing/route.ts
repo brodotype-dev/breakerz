@@ -29,13 +29,23 @@ export async function GET(req: NextRequest) {
     if (!playerProducts?.length) return NextResponse.json({ players: [] });
 
     const ids = playerProducts.map(pp => pp.id);
-    const { data: cachedPricing } = await supabaseAdmin
-      .from('pricing_cache')
-      .select('*')
-      .in('player_product_id', ids)
-      .gt('expires_at', new Date().toISOString());
 
-    const cacheMap = new Map(cachedPricing?.map(c => [c.player_product_id, c]) ?? []);
+    // Chunk the .in() list — 278+ UUIDs exceeds PostgREST's ~8KB URL limit.
+    // Same bug family as PRs #4, #6, #8, #10.
+    const IN_CHUNK = 200;
+    const cachedPricing: { player_product_id: string; ev_low: number; ev_mid: number; ev_high: number }[] = [];
+    for (let i = 0; i < ids.length; i += IN_CHUNK) {
+      const slice = ids.slice(i, i + IN_CHUNK);
+      const { data, error: cErr } = await supabaseAdmin
+        .from('pricing_cache')
+        .select('player_product_id, ev_low, ev_mid, ev_high')
+        .in('player_product_id', slice)
+        .gt('expires_at', new Date().toISOString());
+      if (cErr) throw cErr;
+      if (data) cachedPricing.push(...data);
+    }
+
+    const cacheMap = new Map(cachedPricing.map(c => [c.player_product_id, c]));
 
     const players: PlayerWithPricing[] = playerProducts.map(pp => {
       const cached = cacheMap.get(pp.id);
@@ -96,34 +106,92 @@ export async function POST(req: NextRequest) {
 
     const ids = playerProducts.map(pp => pp.id);
 
-    // Load variants for all player_products (used for weighted EV)
-    const { data: allVariants } = await supabaseAdmin
-      .from('player_product_variants')
-      .select('id, player_product_id, cardhedger_card_id, hobby_sets, bd_only_sets, hobby_odds')
-      .in('player_product_id', ids)
-      .not('cardhedger_card_id', 'is', null);
+    // Load variants for all player_products (used for weighted EV).
+    // Chunk the .in() list — 278+ UUIDs blows past PostgREST's ~8KB URL limit;
+    // paginate within each chunk too since a single chunk can easily exceed
+    // the default 1000-row response cap on hydrated products (6k+ variants).
+    // Same bug family as PRs #4, #6, #8, #10.
+    const IN_CHUNK = 200;
+    const PAGE = 1000;
+    type VariantRow = {
+      id: string;
+      player_product_id: string;
+      cardhedger_card_id: string | null;
+      hobby_sets: number | null;
+      bd_only_sets: number | null;
+      hobby_odds: number | null;
+    };
+    const allVariants: VariantRow[] = [];
+    for (let i = 0; i < ids.length; i += IN_CHUNK) {
+      const slice = ids.slice(i, i + IN_CHUNK);
+      for (let offset = 0; ; offset += PAGE) {
+        const { data, error: vErr } = await supabaseAdmin
+          .from('player_product_variants')
+          .select('id, player_product_id, cardhedger_card_id, hobby_sets, bd_only_sets, hobby_odds')
+          .in('player_product_id', slice)
+          .not('cardhedger_card_id', 'is', null)
+          .range(offset, offset + PAGE - 1);
+        if (vErr) throw vErr;
+        if (!data || data.length === 0) break;
+        allVariants.push(...(data as VariantRow[]));
+        if (data.length < PAGE) break;
+      }
+    }
 
     // Group variants by player_product_id
-    const variantMap = new Map<string, typeof allVariants>();
-    for (const v of allVariants ?? []) {
+    const variantMap = new Map<string, VariantRow[]>();
+    for (const v of allVariants) {
       const list = variantMap.get(v.player_product_id) ?? [];
       list.push(v);
       variantMap.set(v.player_product_id, list);
     }
 
-    const { data: existingCache } = await supabaseAdmin
-      .from('pricing_cache')
-      .select('*')
-      .in('player_product_id', ids)
-      .gt('expires_at', new Date().toISOString());
+    // Same chunking applies to the pricing_cache load.
+    const existingCache: { player_product_id: string; ev_low: number; ev_mid: number; ev_high: number }[] = [];
+    for (let i = 0; i < ids.length; i += IN_CHUNK) {
+      const slice = ids.slice(i, i + IN_CHUNK);
+      const { data, error: cErr } = await supabaseAdmin
+        .from('pricing_cache')
+        .select('player_product_id, ev_low, ev_mid, ev_high')
+        .in('player_product_id', slice)
+        .gt('expires_at', new Date().toISOString());
+      if (cErr) throw cErr;
+      if (data) existingCache.push(...data);
+    }
 
-    const cacheMap = new Map(existingCache?.map(c => [c.player_product_id, c]) ?? []);
+    const cacheMap = new Map(existingCache.map(c => [c.player_product_id, c]));
 
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + CACHE_TTL_HOURS);
 
-    const players: PlayerWithPricing[] = await Promise.all(
-      playerProducts.map(async pp => {
+    // Throttle outer fan-out. CH-hydrated products can have 278+ player_products
+    // and hundreds of variants each — an unbounded Promise.all fires thousands of
+    // parallel CH API calls, and rate limits trash most of them (every failure
+    // falls into the "estimated" fallback). 8 concurrent outer workers keeps CH
+    // happy and still finishes a full refresh in a reasonable window.
+    const OUTER_CONCURRENCY = 8;
+    async function mapLimit<T, R>(
+      items: T[],
+      limit: number,
+      worker: (item: T, index: number) => Promise<R>,
+    ): Promise<R[]> {
+      const results: R[] = new Array(items.length);
+      let cursor = 0;
+      const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+        while (true) {
+          const i = cursor++;
+          if (i >= items.length) return;
+          results[i] = await worker(items[i], i);
+        }
+      });
+      await Promise.all(runners);
+      return results;
+    }
+
+    const players: PlayerWithPricing[] = await mapLimit(
+      playerProducts,
+      OUTER_CONCURRENCY,
+      async pp => {
         // Already cached — return immediately
         const cached = cacheMap.get(pp.id);
         if (cached) {
@@ -281,7 +349,7 @@ export async function POST(req: NextRequest) {
             pricingSource: 'default' as const,
           };
         }
-      })
+      },
     );
 
     return NextResponse.json({ players });
