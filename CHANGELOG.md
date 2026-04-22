@@ -5,6 +5,21 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-21 — Product dashboard: workflow-aware Quick Actions + skipped-players detail
+
+Two small UX passes on top of the hydrator feature.
+
+**Quick Actions → two numbered workflow cards.** Previously buttons were jumbled in one list; unclear which belonged to the new CH-hydrate flow vs. the legacy parser flow. Now side-by-side cards:
+
+- **CH-Hydrate Workflow (recommended)** — 6 steps: set CH set name → add players → refresh CH catalog → hydrate variants → upload odds → view break page.
+- **Parser Workflow (fallback)** — 5 steps: add players → import checklist → re-run matching → upload odds → view break page.
+
+Each step renders with a numbered circle and a green ✓ when its state condition is met. Driven by existing + two new cheap count queries: `ch_set_cache` rows for the product's CH set name (drives step 3 done), and `player_product_variants` with `match_tier='ch-native'` (drives step 4 done). No mutation or refactor of the underlying button components — just repositioned into labeled steps.
+
+**Skipped-players detail under Hydrate button.** Previously the "1 player skipped" line was a dead number. Now when skipped > 0, an expandable `<details>` block shows the player names + CH row counts, with a Download CSV button. Makes it trivial to paste into Manage Players. PR #9.
+
+---
+
 ## 2026-04-21 — Hot-fix: hydrator 400 Bad Request on >1000-player products
 
 First real click on **Hydrate Variants from CH** against Topps Finest (1011 player_products) returned `Variant delete failed: Bad Request`. Two sibling bugs of the same PostgREST 1000-row family we've been squashing:
