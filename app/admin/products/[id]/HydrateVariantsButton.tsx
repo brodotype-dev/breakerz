@@ -14,6 +14,8 @@ type Status =
       insertedCount: number;
       deletedCount: number;
       skippedPlayers: SkippedPlayer[];
+      autoCreatedPlayers: number;
+      autoCreatedPlayerProducts: number;
       catalogCards: number;
       durationMs: number;
     }
@@ -60,6 +62,8 @@ export default function HydrateVariantsButton({ productId }: { productId: string
         insertedCount: json.insertedCount,
         deletedCount: json.deletedCount,
         skippedPlayers: json.skippedPlayers ?? [],
+        autoCreatedPlayers: json.autoCreatedPlayers ?? 0,
+        autoCreatedPlayerProducts: json.autoCreatedPlayerProducts ?? 0,
         catalogCards: json.catalogCards,
         durationMs: json.durationMs,
       });
@@ -97,8 +101,16 @@ export default function HydrateVariantsButton({ productId }: { productId: string
         </button>
         {status.kind === 'ok' && (
           <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-            {status.insertedCount.toLocaleString()} inserted · {status.deletedCount.toLocaleString()} replaced ·{' '}
-            {skipped.length} player{skipped.length === 1 ? '' : 's'} skipped · {(status.durationMs / 1000).toFixed(1)}s
+            {status.insertedCount.toLocaleString()} inserted ·{' '}
+            {status.deletedCount.toLocaleString()} replaced
+            {status.autoCreatedPlayers > 0 && (
+              <>
+                {' '}
+                · +{status.autoCreatedPlayers} new player
+                {status.autoCreatedPlayers === 1 ? '' : 's'}
+              </>
+            )}
+            {' '}· {skipped.length} skipped · {(status.durationMs / 1000).toFixed(1)}s
           </span>
         )}
         {status.kind === 'error' && <span className="text-xs text-red-500">{status.msg}</span>}
@@ -113,7 +125,7 @@ export default function HydrateVariantsButton({ productId }: { productId: string
             className="cursor-pointer px-3 py-2 font-medium"
             style={{ color: 'var(--text-secondary)' }}
           >
-            {skipped.length} skipped player{skipped.length === 1 ? '' : 's'} — CH has cards but this product doesn&apos;t
+            {skipped.length} skipped player{skipped.length === 1 ? '' : 's'} — auto-create failed to resolve these
           </summary>
           <div className="px-3 pb-3 pt-1 space-y-2">
             <button

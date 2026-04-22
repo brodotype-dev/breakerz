@@ -15,7 +15,13 @@ import { loadCatalogIndex } from './cardhedger-catalog';
 export interface HydrateResult {
   insertedCount: number;
   deletedCount: number;
+  /** CH players that still didn't resolve to a player_product after auto-create
+   *  (should be empty in the normal case; non-zero means an auto-create failed). */
   skippedPlayers: { playerName: string; catalogRows: number }[];
+  /** Phase 3: players auto-created in `players` because CH had them and we didn't. */
+  autoCreatedPlayers: number;
+  /** Phase 3: player_products auto-linked to this product for CH players. */
+  autoCreatedPlayerProducts: number;
   catalogCards: number;
   durationMs: number;
   setName: string;
@@ -73,10 +79,10 @@ function isShortPrint(variant: string, printRun: number | null): boolean {
 export async function hydrateVariantsFromCatalog(productId: string): Promise<HydrateResult> {
   const started = Date.now();
 
-  // 1. Load product + ch_set_name
+  // 1. Load product + ch_set_name + sport_id (needed for Phase 3 player auto-create)
   const { data: product, error: productErr } = await supabaseAdmin
     .from('products')
-    .select('id, ch_set_name')
+    .select('id, ch_set_name, sport_id')
     .eq('id', productId)
     .single();
 
@@ -88,6 +94,13 @@ export async function hydrateVariantsFromCatalog(productId: string): Promise<Hyd
     throw new Error(
       "Product has no ch_set_name. Set it via the 'Find on CH' widget on the product form, " +
         "then click 'Refresh CH Catalog' before hydrating.",
+    );
+  }
+
+  const sportId = product.sport_id as string | null;
+  if (!sportId) {
+    throw new Error(
+      'Product has no sport_id — cannot auto-create players. Fix the product row first.',
     );
   }
 
@@ -124,6 +137,62 @@ export async function hydrateVariantsFromCatalog(productId: string): Promise<Hyd
     const playerName = (pp as any).player?.name as string | undefined;
     if (!playerName) continue;
     nameToPpId.set(normalizeName(playerName), pp.id);
+  }
+
+  // 3.5. Phase 3: auto-create missing players + player_products from CH catalog.
+  //      For every CH row whose normalized player_name isn't in nameToPpId, add
+  //      a `players` row (upserted on (name, sport_id) so it's safe against
+  //      existing players from other products) and a `player_products` row
+  //      linking to this product. After this block, every CH-listed player
+  //      should have a ppId — skippedPlayers should stay empty in practice.
+  //
+  //      Dedupe missing names by normalized form so "Luka Dončić" and
+  //      "Luka Doncic" in the same catalog don't create two player rows.
+  const missingPlayerNames = new Map<string, string>(); // normalized → first-seen CH name
+  for (const c of index.cards) {
+    const chName = c.player_name?.trim();
+    if (!chName) continue;
+    const norm = normalizeName(chName);
+    if (!nameToPpId.has(norm) && !missingPlayerNames.has(norm)) {
+      missingPlayerNames.set(norm, chName);
+    }
+  }
+
+  let autoCreatedPlayers = 0;
+  let autoCreatedPlayerProducts = 0;
+
+  if (missingPlayerNames.size > 0) {
+    const playerRows = Array.from(missingPlayerNames.values()).map(name => ({
+      name,
+      sport_id: sportId,
+    }));
+
+    const { data: upsertedPlayers, error: pErr } = await supabaseAdmin
+      .from('players')
+      .upsert(playerRows, { onConflict: 'name,sport_id' })
+      .select('id, name');
+    if (pErr) throw new Error(`Player auto-create failed: ${pErr.message}`);
+    autoCreatedPlayers = upsertedPlayers?.length ?? 0;
+
+    const ppRows = (upsertedPlayers ?? []).map(p => ({
+      player_id: p.id,
+      product_id: productId,
+      insert_only: false,
+    }));
+
+    const { data: upsertedPPs, error: ppErr } = await supabaseAdmin
+      .from('player_products')
+      .upsert(ppRows, { onConflict: 'player_id,product_id' })
+      .select('id, player:players(name)');
+    if (ppErr) throw new Error(`player_product auto-create failed: ${ppErr.message}`);
+    autoCreatedPlayerProducts = upsertedPPs?.length ?? 0;
+
+    for (const pp of upsertedPPs ?? []) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pName = (pp as any).player?.name as string | undefined;
+      if (!pName) continue;
+      nameToPpId.set(normalizeName(pName), pp.id);
+    }
   }
 
   // 4. Walk catalog rows → build variant inserts + skip list
@@ -200,6 +269,8 @@ export async function hydrateVariantsFromCatalog(productId: string): Promise<Hyd
     insertedCount,
     deletedCount,
     skippedPlayers,
+    autoCreatedPlayers,
+    autoCreatedPlayerProducts,
     catalogCards: index.cards.length,
     durationMs: Date.now() - started,
     setName,
