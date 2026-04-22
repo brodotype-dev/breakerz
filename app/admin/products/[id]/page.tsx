@@ -5,6 +5,7 @@ import type { Product, Sport } from '@/lib/types';
 import OddsUpload from './OddsUpload';
 import RunMatchingButton from './RunMatchingButton';
 import RefreshCatalogButton from './RefreshCatalogButton';
+import HydrateVariantsButton from './HydrateVariantsButton';
 import BreakIQBetsDebrief from './BreakIQBetsDebrief';
 import BreakerComparisonPanel from './BreakerComparisonPanel';
 import PricingBreakdownPanel from './PricingBreakdownPanel';
@@ -239,6 +240,7 @@ export default async function ProductDashboardPage({ params }: PageProps) {
               <ActionLink href={`/break/${product.slug}`} label="View Break Page →" />
             </div>
             <RefreshCatalogButton productId={id} />
+            <HydrateVariantsButton productId={id} />
             <RunMatchingButton productId={id} />
           </div>
         </Section>
