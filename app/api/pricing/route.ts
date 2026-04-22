@@ -221,15 +221,25 @@ export async function POST(req: NextRequest) {
                 return { ...variantEV, sets: Math.max(sets, 1), hobby_odds: v.hobby_odds };
               })
             );
-            const totalSets = variantEVs.reduce((sum, v) => sum + v.sets, 0);
+
+            // Filter out variants CH has no price data for. Hydrated products
+            // create a row per CH card — including /5, /10, /25 parallels that
+            // have never traded individually. Including their evMid=0 in the
+            // weighted average drags it to zero and trips the "no data" throw,
+            // even when base/refractor variants have real prices.
+            const pricedVariants = variantEVs.filter(v => v.evMid > 0);
+            if (pricedVariants.length === 0) {
+              throw new Error('No pricing data returned');
+            }
+            const totalSets = pricedVariants.reduce((sum, v) => sum + v.sets, 0);
             ev = {
-              evLow: variantEVs.reduce((sum, v) => sum + v.evLow * v.sets, 0) / totalSets,
-              evMid: variantEVs.reduce((sum, v) => sum + v.evMid * v.sets, 0) / totalSets,
-              evHigh: variantEVs.reduce((sum, v) => sum + v.evHigh * v.sets, 0) / totalSets,
+              evLow: pricedVariants.reduce((sum, v) => sum + v.evLow * v.sets, 0) / totalSets,
+              evMid: pricedVariants.reduce((sum, v) => sum + v.evMid * v.sets, 0) / totalSets,
+              evHigh: pricedVariants.reduce((sum, v) => sum + v.evHigh * v.sets, 0) / totalSets,
             };
             // Odds-weighted EV: Σ(variantEV × 1/hobby_odds) — expected dollars per box
             // Falls back to evMid if no variant has odds data
-            const oddsVariants = variantEVs.filter(v => v.hobby_odds != null && v.hobby_odds > 0);
+            const oddsVariants = pricedVariants.filter(v => v.hobby_odds != null && v.hobby_odds > 0);
             hobbyEVPerBox = oddsVariants.length > 0
               ? oddsVariants.reduce((sum, v) => sum + v.evMid * (1 / v.hobby_odds!), 0)
               : ev.evMid;
