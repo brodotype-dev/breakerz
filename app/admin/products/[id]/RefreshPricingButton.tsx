@@ -17,6 +17,7 @@ type Status =
       variantsTotal: number;
       batchDurationMs: number;
       totalDurationMs: number;
+      cacheRowsWritten?: number;
       partial?: boolean;
     }
   | { kind: 'error'; msg: string };
@@ -89,6 +90,7 @@ export default function RefreshPricingButton({ productId }: { productId: string 
           {status.totalPlayers} players · live={status.livePriced} cross={status.crossPriced}{' '}
           search={status.searchPriced} default={status.defaultPriced} ·{' '}
           {status.variantsFetched}/{status.variantsTotal} variants ·{' '}
+          {typeof status.cacheRowsWritten === 'number' ? `${status.cacheRowsWritten} cached · ` : ''}
           {(status.totalDurationMs / 1000).toFixed(1)}s
         </span>
       )}

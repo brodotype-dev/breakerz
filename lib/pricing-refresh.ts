@@ -40,6 +40,7 @@ export interface RefreshSummary {
   batchChunksCompleted: number;
   batchDurationMs: number;
   totalDurationMs: number;
+  cacheRowsWritten: number;
   partial: boolean;
 }
 
@@ -69,6 +70,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
       variantsFetched: 0, variantsTotal: 0,
       batchChunkCount: 0, batchChunksCompleted: 0, batchDurationMs: 0,
       totalDurationMs: Date.now() - started,
+      cacheRowsWritten: 0,
       partial: false,
     };
   }
@@ -399,7 +401,11 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     defaultPriced++;
   });
 
-  // Bulk upsert pricing_cache
+  // Bulk upsert pricing_cache. Throw on failure — silently swallowing upsert
+  // errors once hid a NOT NULL violation on cardhedger_card_id for 48 hours
+  // (admin summary reported "278 priced" while 0 rows were written). If this
+  // fails again, we want to see it immediately in the UI.
+  let cacheRowsWritten = 0;
   if (cacheRows.length > 0) {
     const UPSERT_CHUNK = 500;
     for (let i = 0; i < cacheRows.length; i += UPSERT_CHUNK) {
@@ -407,7 +413,13 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
       const { error: upErr } = await supabaseAdmin
         .from('pricing_cache')
         .upsert(slice, { onConflict: 'player_product_id' });
-      if (upErr) console.error(`[pricing-refresh] bulk upsert failed at offset ${i}: ${upErr.message}`);
+      if (upErr) {
+        throw new Error(
+          `[pricing-refresh] pricing_cache upsert failed at offset ${i}/${cacheRows.length}: ` +
+          `${upErr.message} (code=${upErr.code ?? 'unknown'})`,
+        );
+      }
+      cacheRowsWritten += slice.length;
     }
   }
 
@@ -416,6 +428,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
   console.log(
     `[pricing-refresh] product=${product?.name ?? productId} players=${playerProducts.length} ` +
     `live=${livePriced} cross=${crossPriced} search=${searchPriced} default=${defaultPriced} ` +
+    `cache_written=${cacheRowsWritten} ` +
     `variants=${pricesOnly.size}/${allVariantCardIds.length} ` +
     `chunks=${chunksCompleted}/${priceChunks.length} batch=${batchDurationMs}ms ` +
     `total=${totalDurationMs}ms${partial ? ' PARTIAL' : ''}`,
@@ -432,6 +445,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     batchChunksCompleted: chunksCompleted,
     batchDurationMs,
     totalDurationMs,
+    cacheRowsWritten,
     partial,
   };
 }
