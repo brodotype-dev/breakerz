@@ -248,103 +248,192 @@ export async function POST(req: NextRequest) {
       return results;
     }
 
+    // Collect pricing_cache rows from the workers and bulk-upsert at the end.
+    // Previously each worker did its own upsert inline → 278 sequential round
+    // trips through 8 concurrent workers ≈ 5-10s of pure Supabase latency
+    // piled on top of CH pricing work. Bulk upsert is one round trip per 500.
+    type CacheRow = {
+      player_product_id: string;
+      cardhedger_card_id: string | null;
+      ev_low: number;
+      ev_mid: number;
+      ev_high: number;
+      raw_comps: Record<string, unknown>;
+      fetched_at: string;
+      expires_at: string;
+    };
+    const cacheRows: CacheRow[] = [];
+
+    // Lazy-loaded once per refresh. Only needed if any player hits Level 3
+    // (cross-product) fallback, so we avoid paying for it in the common case.
+    const pps = playerProducts; // narrow for closure
+    let siblingPricingPromise: Promise<Map<string, { ev_low: number; ev_mid: number; ev_high: number }>> | null = null;
+    async function loadSiblingPricing(): Promise<Map<string, { ev_low: number; ev_mid: number; ev_high: number }>> {
+      if (!siblingPricingPromise) {
+        siblingPricingPromise = (async () => {
+          // Pull latest cache row per player across OTHER products this set's
+          // players appear in. Keyed by player_id → pricing.
+          const playerIds = Array.from(new Set(pps.map(p => p.player_id)));
+          const PID_CHUNK = 200;
+          const siblingRows: { player_id: string; ev_low: number; ev_mid: number; ev_high: number; fetched_at: string }[] = [];
+          for (let i = 0; i < playerIds.length; i += PID_CHUNK) {
+            const slice = playerIds.slice(i, i + PID_CHUNK);
+            const { data } = await supabaseAdmin
+              .from('player_products')
+              .select('id, player_id, pricing_cache!inner(ev_low, ev_mid, ev_high, fetched_at)')
+              .in('player_id', slice)
+              .neq('product_id', productId)
+              .gt('pricing_cache.ev_mid', 0)
+              .limit(1000);
+            type Joined = { id: string; player_id: string; pricing_cache: Array<{ ev_low: number; ev_mid: number; ev_high: number; fetched_at: string }> };
+            for (const row of (data as Joined[] | null) ?? []) {
+              for (const pc of row.pricing_cache) {
+                siblingRows.push({ player_id: row.player_id, ...pc });
+              }
+            }
+          }
+          const byPlayer = new Map<string, { ev_low: number; ev_mid: number; ev_high: number; fetched_at: string }>();
+          for (const r of siblingRows) {
+            const existing = byPlayer.get(r.player_id);
+            if (!existing || r.fetched_at > existing.fetched_at) byPlayer.set(r.player_id, r);
+          }
+          const result = new Map<string, { ev_low: number; ev_mid: number; ev_high: number }>();
+          for (const [k, v] of byPlayer) result.set(k, { ev_low: v.ev_low, ev_mid: v.ev_mid, ev_high: v.ev_high });
+          return result;
+        })();
+      }
+      return siblingPricingPromise;
+    }
+
+    let livePriced = 0;
+    let crossPriced = 0;
+    let searchPriced = 0;
+    let defaultPriced = 0;
+
     const players: PlayerWithPricing[] = await mapLimit(
       playerProducts,
       OUTER_CONCURRENCY,
       async pp => {
-        try {
-          let ev: { evLow: number; evMid: number; evHigh: number };
-          const variants = variantMap.get(pp.id) ?? [];
+        const variants = variantMap.get(pp.id) ?? [];
 
-          let hobbyEVPerBox: number;
-          if (variants.length > 0) {
-            // Weighted EV across variants: Σ(variantEV × sets) / Σ(sets).
-            // Prices come from the pre-fetched `pricesOnly` map (batch call
-            // above). Variants the batch had no price for get evMid=0 and are
-            // filtered out below — same zero-filter behavior as before.
-            const variantEVs = variants.map(v => {
-              const price = pricesOnly.get(v.cardhedger_card_id!);
-              const sets = (v.hobby_sets ?? 0) + (v.bd_only_sets ?? 0);
-              return {
-                evLow: price?.evLow ?? 0,
-                evMid: price?.evMid ?? 0,
-                evHigh: price?.evHigh ?? 0,
-                sets: Math.max(sets, 1),
-                hobby_odds: v.hobby_odds,
-              };
-            });
+        // --- Path A: variants exist (hydrated product) ---
+        // Use the pre-fetched batch prices. If batch returned 0 for every
+        // variant, this player has no Raw sales at CH — do NOT fall back to
+        // Level 2 search. That would be 278 wasted `get90DayPrices(name)`
+        // calls per refresh. Go straight to Level 3 (cross-product) → Level 4.
+        if (variants.length > 0) {
+          const variantEVs = variants.map(v => {
+            const price = pricesOnly.get(v.cardhedger_card_id!);
+            const sets = (v.hobby_sets ?? 0) + (v.bd_only_sets ?? 0);
+            return {
+              evLow: price?.evLow ?? 0,
+              evMid: price?.evMid ?? 0,
+              evHigh: price?.evHigh ?? 0,
+              sets: Math.max(sets, 1),
+              hobby_odds: v.hobby_odds,
+            };
+          });
+          const pricedVariants = variantEVs.filter(v => v.evMid > 0);
 
-            // Filter out variants CH has no price data for. Hydrated products
-            // create a row per CH card — including /5, /10, /25 parallels that
-            // have never traded individually. Including their evMid=0 in the
-            // weighted average drags it to zero and trips the "no data" throw,
-            // even when base/refractor variants have real prices.
-            const pricedVariants = variantEVs.filter(v => v.evMid > 0);
-            if (pricedVariants.length === 0) {
-              throw new Error('No pricing data returned');
-            }
+          if (pricedVariants.length > 0) {
             const totalSets = pricedVariants.reduce((sum, v) => sum + v.sets, 0);
-            ev = {
+            const ev = {
               evLow: pricedVariants.reduce((sum, v) => sum + v.evLow * v.sets, 0) / totalSets,
               evMid: pricedVariants.reduce((sum, v) => sum + v.evMid * v.sets, 0) / totalSets,
               evHigh: pricedVariants.reduce((sum, v) => sum + v.evHigh * v.sets, 0) / totalSets,
             };
-            // Odds-weighted EV: Σ(variantEV × 1/hobby_odds) — expected dollars per box
-            // Falls back to evMid if no variant has odds data
             const oddsVariants = pricedVariants.filter(v => v.hobby_odds != null && v.hobby_odds > 0);
-            hobbyEVPerBox = oddsVariants.length > 0
+            const hobbyEVPerBox = oddsVariants.length > 0
               ? oddsVariants.reduce((sum, v) => sum + v.evMid * (1 / v.hobby_odds!), 0)
               : ev.evMid;
-          } else {
-            const cardId = pp.cardhedger_card_id;
-            if (!cardId) {
-              // Search + compute EV in one call
-              const query = `${pp.player.name} ${product?.year ?? ''} ${product?.name ?? ''}`.trim();
-              const result = await searchAndComputeEV(query);
-              if (!result) throw new Error('No card found');
-              ev = { evLow: result.evLow, evMid: result.evMid, evHigh: result.evHigh };
-              // Persist card ID so future refreshes skip the search step
-              await supabaseAdmin
-                .from('player_products')
-                .update({ cardhedger_card_id: result.cardId })
-                .eq('id', pp.id);
-            } else {
-              ev = await computeLiveEV(cardId);
-            }
-            // No variant data — no odds available, fall back to evMid
-            hobbyEVPerBox = ev.evMid;
+
+            cacheRows.push({
+              player_product_id: pp.id,
+              cardhedger_card_id: pp.cardhedger_card_id ?? null,
+              ev_low: ev.evLow, ev_mid: ev.evMid, ev_high: ev.evHigh,
+              raw_comps: {},
+              fetched_at: new Date().toISOString(),
+              expires_at: expiresAt.toISOString(),
+            });
+            livePriced++;
+            return {
+              ...pp,
+              evLow: ev.evLow, evMid: ev.evMid, evHigh: ev.evHigh,
+              hobbyEVPerBox,
+              hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
+              totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
+              pricingSource: 'live' as const,
+            };
           }
 
-          // If live pricing returned no data, fall through to fallback chain
-          if (ev.evMid === 0) throw new Error('No pricing data returned');
+          // All variants priced at 0 → skip Level 2, go to Level 3.
+          const siblingMap = await loadSiblingPricing();
+          const sibling = siblingMap.get(pp.player_id);
+          if (sibling && sibling.ev_mid > 0) {
+            crossPriced++;
+            return {
+              ...pp,
+              evLow: sibling.ev_low, evMid: sibling.ev_mid, evHigh: sibling.ev_high,
+              hobbyEVPerBox: sibling.ev_mid,
+              hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
+              totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
+              pricingSource: 'cross-product' as const,
+            };
+          }
 
-          await supabaseAdmin.from('pricing_cache').upsert({
+          // Level 4: position-based default
+          const evMid = pp.player.is_rookie ? 15 : 8;
+          defaultPriced++;
+          return {
+            ...pp,
+            evLow: Math.round(evMid * 0.35), evMid, evHigh: Math.round(evMid * 2.5),
+            hobbyEVPerBox: evMid,
+            hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
+            totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
+            pricingSource: 'default' as const,
+          };
+        }
+
+        // --- Path B: no variants (non-hydrated product, parser-driven or empty) ---
+        // This is the legacy single-card-per-player path. Keep the old per-player
+        // CH calls + Level 2 fallback here — we don't have a batch to lean on.
+        try {
+          let ev: { evLow: number; evMid: number; evHigh: number };
+          const cardId = pp.cardhedger_card_id;
+          if (!cardId) {
+            const query = `${pp.player.name} ${product?.year ?? ''} ${product?.name ?? ''}`.trim();
+            const result = await searchAndComputeEV(query);
+            if (!result) throw new Error('No card found');
+            ev = { evLow: result.evLow, evMid: result.evMid, evHigh: result.evHigh };
+            await supabaseAdmin
+              .from('player_products')
+              .update({ cardhedger_card_id: result.cardId })
+              .eq('id', pp.id);
+          } else {
+            ev = await computeLiveEV(cardId);
+          }
+          if (ev.evMid === 0) throw new Error('No pricing data returned');
+          cacheRows.push({
             player_product_id: pp.id,
             cardhedger_card_id: pp.cardhedger_card_id ?? null,
-            ev_low: ev.evLow,
-            ev_mid: ev.evMid,
-            ev_high: ev.evHigh,
+            ev_low: ev.evLow, ev_mid: ev.evMid, ev_high: ev.evHigh,
             raw_comps: {},
             fetched_at: new Date().toISOString(),
             expires_at: expiresAt.toISOString(),
-          }, { onConflict: 'player_product_id' });
-
+          });
+          livePriced++;
           return {
             ...pp,
-            evLow: ev.evLow,
-            evMid: ev.evMid,
-            evHigh: ev.evHigh,
-            hobbyEVPerBox,
+            evLow: ev.evLow, evMid: ev.evMid, evHigh: ev.evHigh,
+            hobbyEVPerBox: ev.evMid,
             hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
             totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
             pricingSource: 'live' as const,
           };
         } catch {
-          // --- Fallback chain for no/zero pricing ---
-          const player = pp.player;
-
-          // Level 2: 90-day search pricing via CardHedger generic search
+          // Level 2: 90-day search (only for non-hydrated products — per above)
           try {
+            const player = pp.player;
             const cardType = player.is_rookie ? 'Auto RC' : 'Base';
             const result = await get90DayPrices(`${player.name} ${cardType}`, 'Raw');
             const raw = result.prices.find(p => p.grade.toLowerCase().includes('raw'));
@@ -355,12 +444,13 @@ export async function POST(req: NextRequest) {
                 evMid,
                 evHigh: raw.max_price > evMid ? Math.round(raw.max_price) : Math.round(evMid * 2.5),
               };
-              await supabaseAdmin.from('pricing_cache').upsert({
+              cacheRows.push({
                 player_product_id: pp.id,
                 cardhedger_card_id: pp.cardhedger_card_id ?? null,
                 ev_low: ev.evLow, ev_mid: ev.evMid, ev_high: ev.evHigh,
                 raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
-              }, { onConflict: 'player_product_id' });
+              });
+              searchPriced++;
               return {
                 ...pp, ...ev, hobbyEVPerBox: evMid,
                 hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
@@ -370,38 +460,23 @@ export async function POST(req: NextRequest) {
             }
           } catch { /* continue */ }
 
-          // Level 3: cross-product pricing cache for the same player
-          try {
-            const { data: siblings } = await supabaseAdmin
-              .from('player_products')
-              .select('id')
-              .eq('player_id', pp.player_id)
-              .neq('id', pp.id);
-            if (siblings?.length) {
-              const { data: crossCache } = await supabaseAdmin
-                .from('pricing_cache')
-                .select('ev_mid, ev_low, ev_high')
-                .in('player_product_id', siblings.map(s => s.id))
-                .gt('ev_mid', 0)
-                .order('fetched_at', { ascending: false })
-                .limit(1)
-                .single();
-              if (crossCache && crossCache.ev_mid > 0) {
-                return {
-                  ...pp,
-                  evLow: crossCache.ev_low, evMid: crossCache.ev_mid, evHigh: crossCache.ev_high,
-                  hobbyEVPerBox: crossCache.ev_mid,
-                  hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
-                  totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
-                  pricingSource: 'cross-product' as const,
-                };
-              }
-            }
-          } catch { /* continue */ }
+          // Level 3 for non-hydrated too
+          const siblingMap = await loadSiblingPricing();
+          const sibling = siblingMap.get(pp.player_id);
+          if (sibling && sibling.ev_mid > 0) {
+            crossPriced++;
+            return {
+              ...pp,
+              evLow: sibling.ev_low, evMid: sibling.ev_mid, evHigh: sibling.ev_high,
+              hobbyEVPerBox: sibling.ev_mid,
+              hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
+              totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
+              pricingSource: 'cross-product' as const,
+            };
+          }
 
-          // Level 4: position-based defaults
-          // Rookies skew toward base auto value; veterans toward base card value
-          const evMid = player.is_rookie ? 15 : 8;
+          const evMid = pp.player.is_rookie ? 15 : 8;
+          defaultPriced++;
           return {
             ...pp,
             evLow: Math.round(evMid * 0.35), evMid, evHigh: Math.round(evMid * 2.5),
@@ -412,6 +487,23 @@ export async function POST(req: NextRequest) {
           };
         }
       },
+    );
+
+    // Bulk upsert pricing_cache in one go (chunked). Previously 278 inline
+    // round-trips scattered across workers; now one pass at the end.
+    if (cacheRows.length > 0) {
+      const UPSERT_CHUNK = 500;
+      for (let i = 0; i < cacheRows.length; i += UPSERT_CHUNK) {
+        const slice = cacheRows.slice(i, i + UPSERT_CHUNK);
+        const { error: upErr } = await supabaseAdmin
+          .from('pricing_cache')
+          .upsert(slice, { onConflict: 'player_product_id' });
+        if (upErr) console.error(`pricing_cache bulk upsert failed at offset ${i}:`, upErr.message);
+      }
+    }
+
+    console.log(
+      `[pricing] done · ${players.length} players · live=${livePriced} cross=${crossPriced} search=${searchPriced} default=${defaultPriced} · cache=${cacheRows.length}`,
     );
 
     return NextResponse.json({ players });

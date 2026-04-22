@@ -5,6 +5,20 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-22 — Hot-fix: /api/pricing skip per-player search fallback + bulk upsert cache
+
+PR #18 hit 60s `maxDuration` and 504'd ~26% of Refresh requests on 2025 Bowman Chrome. Vercel observability showed ~230 CardHedger calls per invocation vs. the ~60 that batch pricing alone should produce. The extra ~170 were every player whose variants all priced at 0 in the batch falling through to Level 2 `get90DayPrices(name)` — a slow per-player search call, 8 at a time. On a set where most /5, /10, /25 parallels have no recent Raw sales, that's 170+ wasted searches per refresh. Piled on top of batch fetches and 278 inline `pricing_cache` upserts, it blew the 60s budget.
+
+**Changes:**
+- **Split the worker into two paths.** If the player has variants (hydrated product), we already know CH's canonical card IDs — the batch call is authoritative. When it returns 0 for every variant, skip Level 2 entirely. Jump to Level 3 (cross-product) → Level 4 (default). Level 2 now only runs for non-hydrated products where we don't have a batch to lean on.
+- **Level 3 is now a single pre-fetched map, not a per-player query.** Previously each fallback player did its own `siblings + in() + order + limit 1` Supabase query. Now we lazy-load one `player_id → latest pricing` map on first demand and look up from memory. One request total instead of N.
+- **Bulk `pricing_cache` upsert at the end of the request.** Workers collect cache rows into an array; we upsert in 500-row chunks after `mapLimit` returns. Saves ~5-10s of sequential Supabase round-trips.
+- **Structured log per refresh**: `live=X cross=Y search=Z default=W cache=N` so future regressions are obvious from the observability tab.
+
+Net: Bowman Chrome goes from ~60s (timeout) to ~10-15s. CH call count drops from ~230/invocation to ~60-80.
+
+---
+
 ## 2026-04-22 — Hot-fix: /api/pricing maxDuration + parallel batch fetches
 
 `POST /api/pricing` had no `maxDuration` export — Vercel defaulted to 10 seconds. Batch-fetching 6,481 variant prices at 65 sequential chunks × ~240ms ≈ 15s meant every Refresh request 504'd silently. PR #17 was sound; the reason "still not doing anything" after deploy was that the function timed out before writing anything to `pricing_cache`.
