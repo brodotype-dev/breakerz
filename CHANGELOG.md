@@ -5,6 +5,16 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-22 — Hot-fix: `e.pricing_cache is not iterable` in cross-product fallback
+
+With Vercel Pro's 300s budget, the per-player fallback phase in `lib/pricing-refresh.ts` finally ran to completion on Bowman Chrome — and exposed a latent bug we'd never reached before: when a player's variants all priced at 0, we fall back to `loadSiblingPricing()`, which joins `player_products` → `pricing_cache` and iterates each row's `pricing_cache` as an array. Supabase-js returns that join as a *single object* (not a one-element array) when the FK resolves to one row, so `for (const pc of row.pricing_cache)` threw `pricing_cache is not iterable`.
+
+**Fix:** normalize the join to an array (`Array.isArray(pc) ? pc : pc ? [pc] : []`) before iterating. Added a comment calling out that Supabase's FK join shape varies by cardinality.
+
+This bug has almost certainly been in the codebase since the original cross-product fallback was introduced — it just never fired in production because we always timed out before reaching it. Classic "the feature was broken all along, the timeout was hiding it."
+
+---
+
 ## 2026-04-22 — Vercel Pro upgrade: `maxDuration = 300` on pricing routes
 
 Upgraded to Vercel Pro ($20/mo) and bumped `maxDuration` from 60 → 300s on:
