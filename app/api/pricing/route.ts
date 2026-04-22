@@ -146,20 +146,11 @@ export async function POST(req: NextRequest) {
       variantMap.set(v.player_product_id, list);
     }
 
-    // Same chunking applies to the pricing_cache load.
-    const existingCache: { player_product_id: string; ev_low: number; ev_mid: number; ev_high: number }[] = [];
-    for (let i = 0; i < ids.length; i += IN_CHUNK) {
-      const slice = ids.slice(i, i + IN_CHUNK);
-      const { data, error: cErr } = await supabaseAdmin
-        .from('pricing_cache')
-        .select('player_product_id, ev_low, ev_mid, ev_high')
-        .in('player_product_id', slice)
-        .gt('expires_at', new Date().toISOString());
-      if (cErr) throw cErr;
-      if (data) existingCache.push(...data);
-    }
-
-    const cacheMap = new Map(existingCache.map(c => [c.player_product_id, c]));
+    // POST is the explicit "Refresh" path — always refetch live, never return
+    // stale cache rows. (GET still reads from pricing_cache for fast consumer
+    // page loads.) Previously we early-returned on any valid cache row, which
+    // meant clicking Refresh after a broken run returned the broken values
+    // forever, dressed up as `pricingSource: 'cached'`.
 
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + CACHE_TTL_HOURS);
@@ -237,21 +228,6 @@ export async function POST(req: NextRequest) {
       playerProducts,
       OUTER_CONCURRENCY,
       async pp => {
-        // Already cached — return immediately
-        const cached = cacheMap.get(pp.id);
-        if (cached) {
-          return {
-            ...pp,
-            evLow: cached.ev_low,
-            evMid: cached.ev_mid,
-            evHigh: cached.ev_high,
-            hobbyEVPerBox: cached.ev_mid, // no per-variant EV available; falls back to evMid
-            hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
-            totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
-            pricingSource: 'cached' as const,
-          };
-        }
-
         try {
           let ev: { evLow: number; evMid: number; evHigh: number };
           const variants = variantMap.get(pp.id) ?? [];
