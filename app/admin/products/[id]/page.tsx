@@ -4,6 +4,7 @@ import Link from 'next/link';
 import type { Product, Sport } from '@/lib/types';
 import OddsUpload from './OddsUpload';
 import RefreshCatalogButton from './RefreshCatalogButton';
+import RefreshPricingButton from './RefreshPricingButton';
 import HydrateVariantsButton from './HydrateVariantsButton';
 import BreakIQBetsDebrief from './BreakIQBetsDebrief';
 import BreakerComparisonPanel from './BreakerComparisonPanel';
@@ -410,6 +411,13 @@ export default async function ProductDashboardPage({ params }: PageProps) {
             />
             <WorkflowStep
               num={6}
+              title="Refresh pricing (on-demand)"
+              status="Runs nightly at 4 AM UTC. Click to refresh now after hydration or odds upload."
+              done={false}
+              action={<RefreshPricingButton productId={id} />}
+            />
+            <WorkflowStep
+              num={7}
               title="View break page"
               status="Consumer view — verify pricing renders"
               done={false}
