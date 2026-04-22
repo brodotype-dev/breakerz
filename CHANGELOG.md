@@ -5,6 +5,35 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-21 — Hydrate variants from CH catalog (invert the matching pipeline)
+
+New **Hydrate Variants from CH Catalog** button on the product dashboard. Replaces `player_product_variants` with rows sourced directly from `ch_set_cache` — every row pre-linked via `cardhedger_card_id` (match_tier = `ch-native`, match_confidence = 1.0). Matching pipeline becomes a no-op for CH-known variants; only the tail of CH-missing cards needs rescue.
+
+Inverts the legacy flow where the XLSX/PDF parser was the source of truth for "what variants exist." On Topps Finest this meant 225 of 19,399 variants sat unmatched because the parser missed their parallel blocks. After hydrate, variants come from CH's canonical 12,097-row catalog — zero parser intermediation for that dimension.
+
+**Opt-in per product.** Non-destructive across the codebase:
+- Checklist parser + `import-checklist` route untouched — re-running "Import Checklist" restores parser-driven rows if we ever pivot off CH
+- Only the hydrated product's variants are replaced; other products unaffected
+- Confirmation modal on the button to prevent accidental clicks
+
+**Field mapping:** `ch_set_cache.card_id` → `cardhedger_card_id`, `number` → `card_number`, `variant` (minus trailing `/N`) → `variant_name`, trailing `/N` → `print_run`. `is_sp` derived from SP token / SuperFractor / print_run ≤ 99. Defaults `hobby_sets=1, bd_only_sets=0` (odds PDF binds the real weighting via `hobby_odds`).
+
+**Player match:** diacritic-stripped normalized names (Dončić ↔ Doncic). CH rows whose player isn't on the product are surfaced in `skippedPlayers` without crashing.
+
+**Blast radius verified:** pricing (`lib/analysis.ts`, `/api/pricing`, `/api/admin/pricing-breakdown`) reads only `id, player_product_id, cardhedger_card_id, hobby_sets, bd_only_sets, hobby_odds` — no `variant_name` dependency. Odds import's token-fuzzy matcher works fine against CH's canonical names.
+
+Deferred (future PRs): auto-create players from CH rows, strip variant creation from `import-checklist`, delete XLSX `parallels` detection. PR #7. Plan: `/Users/brody/.claude/plans/polymorphic-gathering-valley.md`.
+
+---
+
+## 2026-04-21 — Hot-fix: product dashboard counts truncated at 1000
+
+Same Supabase 1000-row cap as PR #4 but on the UI side. Product dashboard was loading full rowsets from `player_products`, `player_product_variants`, and `pricing_cache` just to `.filter().length` them in memory. On Topps Finest every count silently pinned at 1000.
+
+Fix: switch to `count: 'exact', head: true` for stat counts (no row cap, much less data over the wire) and push the unmatched-variants preview filter to the server with `.is('cardhedger_card_id', null).limit(50)`. PR #6.
+
+---
+
 ## 2026-04-21 — Hot-fix: paginate `ch_set_cache` load (Supabase 1000-row cap)
 
 `loadCatalogIndex` was only reading the first 1000 rows of `ch_set_cache` because Supabase/PostgREST caps any single response at 1000 rows by default. For small sets this was invisible — for 2025 Topps Finest Basketball (12,097 cards), ~92% of the catalog never made it into the in-memory index, so every variant missed `byNumber` and fell through to no-match.
