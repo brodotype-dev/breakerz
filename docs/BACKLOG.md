@@ -2,11 +2,44 @@
 
 Consolidated list of known work, organized by priority. Items pulled from the Social Currency PRD, CLAUDE.md known gaps, and open questions surfaced during development.
 
-**Last updated:** 2026-04-04
+**Last updated:** 2026-04-22
 
 ---
 
 ## Priority 1 — High value, no external blockers
+
+### C. Upgrade Vercel Hobby → Pro for jumbo product pricing
+**Effort:** 5 minutes + $20/mo
+**Why:** Hobby caps serverless `maxDuration` at 60s. Jumbo products (6,000+ variants, e.g. 2025 Bowman Chrome) can't fit a full pricing refresh in that budget — CH's `batch-price-estimate` endpoint averages 5–30s per 100-item chunk under concurrent load, and 65 chunks × 30s >> 60s. As of 2026-04-22 we worked around this by (1) demoting `POST /api/pricing` to a cache-read and (2) running the heavy fetch nightly via a per-product cron fan-out, so each product gets its own 60s budget. That works, but the on-demand "Refresh Pricing" admin button still caps at 60s and can partial-fail on the largest products.
+
+Pro gives us 300s, which covers everything we've seen.
+
+**Action:** Vercel Dashboard → upgrade plan → bump `maxDuration = 300` on `app/api/admin/refresh-product-pricing/route.ts` and `app/api/cron/refresh-pricing/route.ts`. Remove the "partial cache rows" caveat from the admin endpoint comment.
+
+---
+
+### D. Per-variant price cache for incremental refresh
+**Effort:** ~1 day
+**Why:** Today, refreshing pricing for a product means re-fetching *every* variant from CH in one shot. With 6,000+ variants that pushes the batch endpoint hard and forces us into all-or-nothing invocations. If we stored `raw_price` + `last_priced_at` on `player_product_variants`, we could:
+1. Skip variants priced in the last 24h (incremental refresh)
+2. Resume mid-product after a timeout instead of restarting
+3. Price on a schedule staggered across variants (e.g., price 500 most-volatile variants/hour) instead of one big nightly blast
+
+**Schema:**
+```sql
+ALTER TABLE player_product_variants
+  ADD COLUMN raw_price numeric(10, 2),
+  ADD COLUMN last_priced_at timestamptz;
+```
+
+**Files to touch:**
+- `lib/pricing-refresh.ts` — skip fetch if `last_priced_at > now() - 24h` unless `force: true` passed
+- Migration in `supabase/migrations/`
+- Backfill script (optional — next nightly cron will populate)
+
+Combine with **C** and the pricing pipeline becomes boring.
+
+---
 
 ### Phase 3 — Consumer Auth (Google + Apple OAuth)
 **Status: ✅ Google OAuth complete (2026-04-03) — Apple deferred**

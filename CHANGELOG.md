@@ -5,6 +5,23 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-22 — Architectural pivot: `/api/pricing` is now cache-read only; heavy fetch moved off the consumer path
+
+After eight rounds of firefighting (PRs #13–#20), we confirmed the problem was not solvable by tuning concurrency, timeouts, or retries. CH's `batch-price-estimate` legitimately takes 5–30s per 100-item chunk under our load. At 6,481 variants on 2025 Bowman Chrome, that's 65 chunks. With Vercel Hobby's 60s `maxDuration`, completing a full live refresh inside a single consumer request is mathematically impossible. So we stopped trying.
+
+**New architecture:**
+- **`POST /api/pricing` is now a cache-read.** Both GET and POST return whatever's in `pricing_cache`. The "Refresh" button on the break page no longer triggers a live CH fetch. If the cache is empty, the response is empty — users see an explicit "no prices loaded" state instead of a 504.
+- **New admin endpoint: `POST /api/admin/refresh-product-pricing`.** This is where the heavy batch fetch now lives. `maxDuration = 60`. Admin cookie auth *or* `Authorization: Bearer ${CRON_SECRET}` (used by the cron).
+- **`/api/cron/refresh-pricing` now fans out.** Nightly at 4 AM UTC, it queries active products with matched card IDs and HTTP-calls `/api/admin/refresh-product-pricing` once per product at concurrency 3. Each product gets its own 60s Vercel invocation instead of all of them sharing one. One slow product can't starve the others.
+- **New admin button: "Refresh Pricing ↻"** on the product dashboard (`app/admin/products/[id]/page.tsx`, new WorkflowStep 6). Click to refresh a single product on demand without waiting for 4 AM. Shows a structured summary when it completes: `N players · live=X cross=Y search=Z default=W · A/B variants · Ns`.
+- **Extracted logic: `lib/pricing-refresh.ts`.** Single source of truth for the refresh pipeline (batch fetch → variant-aware fallback ladder → bulk upsert). Called from both the admin endpoint and — in the future — anywhere else we need to trigger a refresh.
+
+**What consumers see:** The break page loads instantly from cache. No more 504s, no more "no prices at all." The Refresh button still works — it just reads cache now (kept for frontend compatibility; will be renamed/removed in a follow-up).
+
+**Known limit:** On jumbo products (6,000+ variants), the on-demand admin button can still hit 60s. Partial cache rows that were written before the cutoff survive, and the next run picks up where it left off when combined with backlog item D. See `docs/BACKLOG.md` items **C** (Vercel Pro upgrade → 300s) and **D** (per-variant price cache with `last_priced_at`) for the permanent fix.
+
+---
+
 ## 2026-04-22 — Hot-fix: CH batch-price-estimate — 30s timeout + one retry
 
 PR #19 moved the bottleneck. New failure mode observed in Vercel logs on 2025 Bowman Chrome: the batch phase itself was failing with `The operation was aborted due to timeout` across 5+ chunks, leaving `pricesOnly` partially empty and the function running past 60s → `FUNCTION_INVOCATION_TIMEOUT`. Root cause: `lib/cardhedger.ts`'s `post()` helper hardcodes `AbortSignal.timeout(10_000)`, and CH's `batch-price-estimate` endpoint legitimately takes 5-20s per 100-item request under our 6-way concurrent load. A 10s cap aborts valid slow requests and zeroes out 100 variant prices per abort.

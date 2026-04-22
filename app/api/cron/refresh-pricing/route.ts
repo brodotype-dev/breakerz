@@ -1,16 +1,28 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 
-// Vercel Cron — runs nightly to refresh pricing cache for active products.
-// Vercel automatically sends the CRON_SECRET as a bearer token.
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60; // Orchestrator only — per-product work runs elsewhere.
+
+/**
+ * Nightly at 4 AM UTC (see vercel.json).
+ *
+ * Fans out to `/api/admin/refresh-product-pricing` once per active product.
+ * Each product gets its own Vercel invocation (its own 60s budget), so one
+ * slow product doesn't starve the others.
+ *
+ * We await all fan-outs here so the cron reports a useful summary in logs.
+ * If a single product errors/times out, the rest still complete.
+ */
 export async function GET(req: Request) {
   const authHeader = req.headers.get('authorization');
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const started = Date.now();
+
   try {
-    // Find all active products that have at least one player_product with a card ID
     const { data: products, error } = await supabaseAdmin
       .from('products')
       .select('id, name')
@@ -19,48 +31,100 @@ export async function GET(req: Request) {
     if (error) throw error;
     if (!products?.length) return NextResponse.json({ refreshed: 0 });
 
-    let refreshed = 0;
-    const errors: string[] = [];
-
-    for (const product of products) {
-      try {
-        // Check if this product has any player_products with cardhedger_card_ids
-        const { count } = await supabaseAdmin
-          .from('player_products')
-          .select('id', { count: 'exact', head: true })
-          .eq('product_id', product.id)
-          .not('cardhedger_card_id', 'is', null);
-
-        if (!count || count === 0) continue;
-
-        // Trigger the pricing POST to refresh (reuses the same logic as the break page)
-        const url = new URL('/api/pricing', process.env.NEXT_PUBLIC_APP_URL ?? 'https://getbreakiq.com');
-        const res = await fetch(url.toString(), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ productId: product.id }),
-        });
-
-        if (!res.ok) {
-          errors.push(`${product.name}: HTTP ${res.status}`);
-        } else {
-          refreshed++;
-        }
-      } catch (err) {
-        errors.push(`${product.name}: ${err instanceof Error ? err.message : String(err)}`);
-      }
+    // Find products that actually have something priceable. Skip the rest.
+    const priceable: { id: string; name: string }[] = [];
+    for (const p of products) {
+      const { count } = await supabaseAdmin
+        .from('player_products')
+        .select('id', { count: 'exact', head: true })
+        .eq('product_id', p.id)
+        .not('cardhedger_card_id', 'is', null);
+      if ((count ?? 0) > 0) priceable.push(p);
     }
 
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://getbreakiq.com';
+    const endpoint = `${baseUrl}/api/admin/refresh-product-pricing`;
+
+    // Run fan-out concurrency-limited so we don't spawn 50 parallel invocations
+    // on a Pro plan upgrade. Each invocation is already doing heavy CH work;
+    // 3 at a time balances throughput against CH rate limits.
+    const FAN_OUT_CONCURRENCY = 3;
+    const results: Array<{
+      productId: string;
+      productName: string;
+      ok: boolean;
+      status?: number;
+      error?: string;
+      summary?: unknown;
+    }> = [];
+    let cursor = 0;
+    const runners = Array.from(
+      { length: Math.min(FAN_OUT_CONCURRENCY, priceable.length) },
+      async () => {
+        while (true) {
+          const i = cursor++;
+          if (i >= priceable.length) return;
+          const product = priceable[i];
+          try {
+            const res = await fetch(endpoint, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${process.env.CRON_SECRET}`,
+              },
+              body: JSON.stringify({ productId: product.id }),
+            });
+            if (!res.ok) {
+              const text = await res.text().catch(() => res.statusText);
+              results.push({
+                productId: product.id,
+                productName: product.name,
+                ok: false,
+                status: res.status,
+                error: text.slice(0, 200),
+              });
+            } else {
+              const summary = await res.json().catch(() => null);
+              results.push({
+                productId: product.id,
+                productName: product.name,
+                ok: true,
+                summary,
+              });
+            }
+          } catch (err) {
+            results.push({
+              productId: product.id,
+              productName: product.name,
+              ok: false,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+      },
+    );
+    await Promise.all(runners);
+
+    const okCount = results.filter(r => r.ok).length;
+    const errCount = results.length - okCount;
+    const durationMs = Date.now() - started;
+
+    console.log(
+      `[cron/refresh-pricing] ${okCount}/${results.length} ok (${errCount} errors) in ${durationMs}ms`,
+    );
+
     return NextResponse.json({
-      refreshed,
-      total: products.length,
-      errors: errors.length > 0 ? errors : undefined,
+      total: priceable.length,
+      ok: okCount,
+      errors: errCount,
+      durationMs,
+      results: results.filter(r => !r.ok), // Only return the failures in the payload
     });
   } catch (err) {
     console.error('[cron/refresh-pricing]', err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Unknown error' },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
