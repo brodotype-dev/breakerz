@@ -5,6 +5,21 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-22 — Pricing refresh: switch to CH `batchPriceEstimate` (Raw grade)
+
+Per-variant `computeLiveEV` was still rate-limit-bound even after PRs #13 and #14: 8 outer workers × ~25 inner `Promise.all` calls = ~200 concurrent CH requests. Most variants came back zero → filtered out → weighted avg computed on a tiny sample → unreliable prices.
+
+**Change:** single pre-fetch via `batchPriceEstimate({ card_id, grade: 'Raw' }, ...)` chunked at 500 items. On a hydrated product with 6,481 variants, that's ~13 HTTP calls total, done before any per-player_product work begins. The per-pp loop now just looks prices up from the pre-built `pricesOnly` map — no CH calls in the hot path for hydrated products.
+
+**Tradeoffs:**
+- EV Mid is now based on CH's "Raw" grade estimate, not the PSA 9 ladder that `computeLiveEV` preferred. Numbers will be visibly lower on cards that were previously priced off graded comps (e.g. Judge autos showing raw price instead of PSA 9). More honest — raw is what comes out of the box.
+- PSA 9 / PSA 10 breakdown is no longer computed in the aggregate refresh. Deferred to a future per-player graded-comp drilldown (click row → side panel calls `getAllPrices` on demand). Added to `docs/BACKLOG.md` as "Per-player graded comp drilldown".
+- Non-hydrated products (where `pp.cardhedger_card_id` is set and there are no variant rows) still use `computeLiveEV` on the `else` branch. That path is one call per pp and works fine as-is.
+
+**UX:** added a subtle info banner on `/break/<slug>` when pricing loaded: *"EV values reflect raw card sale prices. Graded (PSA 9 / PSA 10) comps are not included — per-player graded drilldown coming soon."*
+
+---
+
 ## 2026-04-22 — Hot-fix: zero-priced variants drag weighted EV to $0
 
 After PR #13 shipped, the break page showed `278/278 priced` but every row still wore an "est" badge (Judge at $400, most others at the $8/$15 Level-4 defaults). The refresh was running successfully, but **every** player_product was landing in the fallback chain because `ev.evMid === 0 → throw`.

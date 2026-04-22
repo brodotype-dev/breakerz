@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createClient } from '@/lib/supabase-server';
-import { computeLiveEV, searchAndComputeEV, get90DayPrices } from '@/lib/cardhedger';
+import { computeLiveEV, searchAndComputeEV, get90DayPrices, batchPriceEstimate } from '@/lib/cardhedger';
 import type { PlayerWithPricing } from '@/lib/types';
 
 const CACHE_TTL_HOURS = 24;
@@ -164,11 +164,51 @@ export async function POST(req: NextRequest) {
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + CACHE_TTL_HOURS);
 
-    // Throttle outer fan-out. CH-hydrated products can have 278+ player_products
-    // and hundreds of variants each — an unbounded Promise.all fires thousands of
-    // parallel CH API calls, and rate limits trash most of them (every failure
-    // falls into the "estimated" fallback). 8 concurrent outer workers keeps CH
-    // happy and still finishes a full refresh in a reasonable window.
+    // Batch-price every variant card up front.
+    //
+    // Previously: per-variant computeLiveEV fired 25+ parallel CH calls per
+    // player_product × 8 outer workers = ~200 concurrent requests → rate limits
+    // zeroed out most variants → fallback chain. Refresh was "working" (278/278
+    // cache rows) but every price was a Level-2/4 estimate.
+    //
+    // Now: one batchPriceEstimate call per 500 variants. On a hydrated product
+    // with 6,481 variants that's ~13 HTTP calls total, done before any per-pp
+    // work starts. EV is driven by CH's "Raw" grade estimate. PSA 9/10
+    // breakdown is no longer produced here — deferred to a per-player graded
+    // comp drilldown (see backlog).
+    const pricesOnly: Map<string, { evLow: number; evMid: number; evHigh: number }> = new Map();
+    const allVariantCardIds = Array.from(
+      new Set(allVariants.map(v => v.cardhedger_card_id).filter((x): x is string => !!x)),
+    );
+    const PRICE_CHUNK = 500;
+    for (let i = 0; i < allVariantCardIds.length; i += PRICE_CHUNK) {
+      const chunk = allVariantCardIds.slice(i, i + PRICE_CHUNK);
+      const items = chunk.map(card_id => ({ card_id, grade: 'Raw' }));
+      try {
+        const results = await batchPriceEstimate(items);
+        for (const r of results) {
+          if (r.success && r.price > 0) {
+            pricesOnly.set(r.card_id, {
+              evLow: Math.round(r.price_low > 0 ? r.price_low : r.price * 0.35),
+              evMid: Math.round(r.price),
+              evHigh: Math.round(r.price_high > r.price ? r.price_high : r.price * 2.5),
+            });
+          }
+        }
+      } catch (e) {
+        // Don't let a single batch failure nuke the whole refresh — subsequent
+        // chunks still get a shot, and missing cards fall into the per-pp
+        // fallback chain.
+        console.error(
+          `batchPriceEstimate failed at offset ${i} (chunk size ${chunk.length}):`,
+          e instanceof Error ? e.message : e,
+        );
+      }
+    }
+
+    // Throttle outer fan-out. Even with batch pricing done, the fallback
+    // branches below still call CH (searchAndComputeEV, get90DayPrices) for
+    // variants the batch had no data on. 8 concurrent workers keeps CH happy.
     const OUTER_CONCURRENCY = 8;
     async function mapLimit<T, R>(
       items: T[],
@@ -213,14 +253,21 @@ export async function POST(req: NextRequest) {
 
           let hobbyEVPerBox: number;
           if (variants.length > 0) {
-            // Weighted EV across variants: Σ(variantEV × sets) / Σ(sets)
-            const variantEVs = await Promise.all(
-              variants.map(async v => {
-                const variantEV = await computeLiveEV(v.cardhedger_card_id!);
-                const sets = (v.hobby_sets ?? 0) + (v.bd_only_sets ?? 0);
-                return { ...variantEV, sets: Math.max(sets, 1), hobby_odds: v.hobby_odds };
-              })
-            );
+            // Weighted EV across variants: Σ(variantEV × sets) / Σ(sets).
+            // Prices come from the pre-fetched `pricesOnly` map (batch call
+            // above). Variants the batch had no price for get evMid=0 and are
+            // filtered out below — same zero-filter behavior as before.
+            const variantEVs = variants.map(v => {
+              const price = pricesOnly.get(v.cardhedger_card_id!);
+              const sets = (v.hobby_sets ?? 0) + (v.bd_only_sets ?? 0);
+              return {
+                evLow: price?.evLow ?? 0,
+                evMid: price?.evMid ?? 0,
+                evHigh: price?.evHigh ?? 0,
+                sets: Math.max(sets, 1),
+                hobby_odds: v.hobby_odds,
+              };
+            });
 
             // Filter out variants CH has no price data for. Hydrated products
             // create a row per CH card — including /5, /10, /25 parallels that
