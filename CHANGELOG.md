@@ -5,6 +5,21 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-22 — Hot-fix: pricing_cache upsert silently wrote 0 rows (NOT NULL on cardhedger_card_id)
+
+After clearing the timeout + iterable bugs, the Bowman Chrome refresh ran to completion (218.5s, 278 players priced in the summary) — but the consumer break page still showed "Live pricing not loaded" with every EV column dashed. The cache was empty.
+
+**Root cause:** `pricing_cache.cardhedger_card_id` was `text NOT NULL` from the initial schema. For CH-hydrated products, the card_id lives on variants, not on the player_product row — `pp.cardhedger_card_id` is `null`. Every row in our bulk upsert violated the constraint. The upsert error was caught and logged to `console.error` but didn't throw, so the function returned a success-looking summary based on in-memory counts of rows *we intended to write*.
+
+**Fixes:**
+- Migration `20260422170000_pricing_cache_nullable_card_id.sql`: drops NOT NULL on the column. The field is never read meaningfully anywhere in the codebase — aggregate pricing across variants has no single card_id to attribute to. Safe to nullify.
+- `lib/pricing-refresh.ts`: upsert now throws on error instead of logging. If the DB ever rejects again we'll see it immediately in the UI.
+- Added `cacheRowsWritten` to `RefreshSummary` + displayed it in the admin button status pill (`… · 278 cached · 218.5s`). Future schema drift can't silently zero out the write count anymore.
+
+Deploy requires both the migration (`supabase db push` from main repo) *and* the code change. Run the migration first; the code without the migration would error loudly but not progress.
+
+---
+
 ## 2026-04-22 — Hot-fix: `e.pricing_cache is not iterable` in cross-product fallback
 
 With Vercel Pro's 300s budget, the per-player fallback phase in `lib/pricing-refresh.ts` finally ran to completion on Bowman Chrome — and exposed a latent bug we'd never reached before: when a player's variants all priced at 0, we fall back to `loadSiblingPricing()`, which joins `player_products` → `pricing_cache` and iterates each row's `pricing_cache` as an array. Supabase-js returns that join as a *single object* (not a one-element array) when the FK resolves to one row, so `for (const pc of row.pricing_cache)` threw `pricing_cache is not iterable`.
