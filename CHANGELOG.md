@@ -5,6 +5,20 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-22 — Product dashboard: hide parser workflow from UI (beta)
+
+Post-Phase 3, the CH-Hydrate workflow reliably produces 100% variant coverage with auto-created players — so the parser workflow is no longer part of the happy path for new products. For beta we hide the parser card to eliminate decision paralysis, while keeping all parser code paths (`/admin/import-checklist`, `match-cardhedger`, `lib/checklist-parser.ts`) intact.
+
+**Changes:**
+- Removed the "Parser Workflow · Fallback" `WorkflowCard` from `app/admin/products/[id]/page.tsx`.
+- CH-Hydrate card spans full width; step 2 copy updated to note that players auto-create during hydrate.
+- Small footer link below the card points to `/admin/import-checklist` + the new `docs/parser-workflow-legacy.md` for admins who need the fallback.
+- New `docs/parser-workflow-legacy.md` documents the 5-step parser flow, when to use it, and how to re-enable the UI card.
+
+**Not removed:** the `WorkflowCard` component, `RunMatchingButton`, `/admin/import-checklist`, `/api/admin/match-cardhedger`, `lib/checklist-parser.ts`. Re-enabling the card is a diff against PR #9 for anyone who needs it. PR #12.
+
+---
+
 ## 2026-04-21 — Phase 3: auto-create players + player_products from CH during hydrate
 
 Collapses the CH-hydrate workflow from 6 steps to 4 for new products. Previously admins had to manually add every player via Manage Players before hydrating — if CH had a player that our `players` table didn't, the hydrator would skip that player's variants and surface them in the skipped-players panel. Admin then had to add them manually and re-hydrate.
