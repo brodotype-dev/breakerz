@@ -9,12 +9,7 @@ Consolidated list of known work, organized by priority. Items pulled from the So
 ## Priority 1 — High value, no external blockers
 
 ### C. Upgrade Vercel Hobby → Pro for jumbo product pricing
-**Effort:** 5 minutes + $20/mo
-**Why:** Hobby caps serverless `maxDuration` at 60s. Jumbo products (6,000+ variants, e.g. 2025 Bowman Chrome) can't fit a full pricing refresh in that budget — CH's `batch-price-estimate` endpoint averages 5–30s per 100-item chunk under concurrent load, and 65 chunks × 30s >> 60s. As of 2026-04-22 we worked around this by (1) demoting `POST /api/pricing` to a cache-read and (2) running the heavy fetch nightly via a per-product cron fan-out, so each product gets its own 60s budget. That works, but the on-demand "Refresh Pricing" admin button still caps at 60s and can partial-fail on the largest products.
-
-Pro gives us 300s, which covers everything we've seen.
-
-**Action:** Vercel Dashboard → upgrade plan → bump `maxDuration = 300` on `app/api/admin/refresh-product-pricing/route.ts` and `app/api/cron/refresh-pricing/route.ts`. Remove the "partial cache rows" caveat from the admin endpoint comment.
+**Status: ✅ Complete (2026-04-22)** — upgraded to Pro, `maxDuration = 300` on both `app/api/admin/refresh-product-pricing/route.ts` and `app/api/cron/refresh-pricing/route.ts`. Graceful-deadline constants in `lib/pricing-refresh.ts` bumped to 270/290s. Bowman Chrome (6,481 variants) now completes a full refresh in a single invocation.
 
 ---
 

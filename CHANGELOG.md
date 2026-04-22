@@ -5,6 +5,18 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-22 — Vercel Pro upgrade: `maxDuration = 300` on pricing routes
+
+Upgraded to Vercel Pro ($20/mo) and bumped `maxDuration` from 60 → 300s on:
+- `app/api/admin/refresh-product-pricing/route.ts` (admin "Refresh Pricing ↻" button)
+- `app/api/cron/refresh-pricing/route.ts` (nightly orchestrator)
+
+Graceful-deadline constants in `lib/pricing-refresh.ts` also scaled up (`BATCH_DEADLINE_MS = 270_000`, `HARD_DEADLINE_MS = 290_000`). They remain as a safety net for unusually slow CH responses — under typical latency, jumbo products (Bowman Chrome, Topps Finest) now finish in one invocation (~160s observed) without ever tripping them.
+
+Net: the 9-PR firefight ends. No more `FUNCTION_INVOCATION_TIMEOUT` on any product we've tested. Backlog D (per-variant price cache) stays on the list — it's a "nice to have" for staggered refreshes, not a firefight response anymore.
+
+---
+
 ## 2026-04-22 — Hot-fix: refresh-product-pricing — graceful partial completion + useful client errors
 
 First production run of the new "Refresh Pricing ↻" admin button on 2025 Bowman Chrome (278 players, 6,481 variants) hit Vercel Hobby's 60s cap. The button surfaced the failure as `Unexpected token 'A', "An error o"... is not valid JSON` — meaningless to the user. Underlying: Vercel returns a plain-text `An error occurred...` page on function timeouts, and the client was `res.json()`-ing it. Exactly the jumbo-product case we'd called out as a known limit, but the UX was worse than "partial data" — it was "cryptic crash."

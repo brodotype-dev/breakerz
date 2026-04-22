@@ -3,11 +3,10 @@ import { checkRole } from '@/lib/auth';
 import { refreshProductPricing } from '@/lib/pricing-refresh';
 
 export const dynamic = 'force-dynamic';
-// Vercel Hobby caps at 60s. For products with 6,000+ variants this may still
-// time out — partial cache rows that were written before the cutoff survive.
-// See BACKLOG items C (Pro upgrade) and D (per-variant price cache) for the
-// proper fix.
-export const maxDuration = 60;
+// Vercel Pro: 300s cap. Covers jumbo products (6,000+ variants) which run
+// ~160s under typical CH latency. The graceful-deadline logic in
+// lib/pricing-refresh.ts still reserves budget for upsert regardless.
+export const maxDuration = 300;
 
 /**
  * Admin on-demand pricing refresh for a single product. Runs the full batch
@@ -15,7 +14,7 @@ export const maxDuration = 60;
  * `POST /api/pricing` live path, which has been demoted to cache-read.
  *
  * Also called by `/api/cron/refresh-pricing` once per active product, so each
- * product gets its own 60s budget instead of all of them sharing one.
+ * product gets its own 300s budget instead of all of them sharing one.
  *
  * Auth: admin/contributor role via cookie OR `Authorization: Bearer <CRON_SECRET>`
  *       header (used by the cron).
