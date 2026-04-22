@@ -323,7 +323,7 @@ export default function BreakPage() {
         {/* Tab content */}
         <div className="mt-4">
           {activeTab === 'teams' && <TeamSlotsTable teams={teamSlots} breakType={breakType} riskFlagMap={riskFlagMap} />}
-          {activeTab === 'players' && <PlayerTable players={players} fetching={fetching} breakType={breakType} riskFlagMap={riskFlagMap} />}
+          {activeTab === 'players' && <PlayerTable players={players} breakType={breakType} riskFlagMap={riskFlagMap} />}
         </div>
       </main>
     </div>
