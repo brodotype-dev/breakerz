@@ -100,64 +100,92 @@ export default async function ProductDashboardPage({ params }: PageProps) {
 
   if (!product) notFound();
 
-  // Player/variant counts — use joins to avoid .in() URL limit with large products
-  const { data: playerProducts } = await supabaseAdmin
-    .from('player_products')
-    .select('id, insert_only')
-    .eq('product_id', id);
+  // Counts only — do NOT fetch rows. Supabase/PostgREST caps any single
+  // response at 1000 rows by default, which silently underreports for large
+  // products (e.g. Topps Finest has ~19k variants). `head: true` returns just
+  // the Content-Range count header with no body, no cap.
 
-  const autoEligibleCount = (playerProducts ?? []).filter(pp => !pp.insert_only).length;
+  // Players
+  const [{ count: ppTotal }, { count: autoEligibleCount }] = await Promise.all([
+    supabaseAdmin
+      .from('player_products')
+      .select('id', { count: 'exact', head: true })
+      .eq('product_id', id),
+    supabaseAdmin
+      .from('player_products')
+      .select('id', { count: 'exact', head: true })
+      .eq('product_id', id)
+      .eq('insert_only', false),
+  ]);
 
-  // Join via player_products to avoid passing hundreds of UUIDs in .in()
-  const { data: variants } = await supabaseAdmin
+  // Variants — total, matched, with-odds
+  const variantBase = () =>
+    supabaseAdmin
+      .from('player_product_variants')
+      .select('id, player_products!inner(product_id)', { count: 'exact', head: true })
+      .eq('player_products.product_id', id);
+
+  const [{ count: variantTotalRaw }, { count: variantMatchedRaw }, { count: variantWithOddsRaw }] =
+    await Promise.all([
+      variantBase(),
+      variantBase().not('cardhedger_card_id', 'is', null),
+      variantBase().or('hobby_odds.not.is.null,breaker_odds.not.is.null'),
+    ]);
+
+  const variantTotal = variantTotalRaw ?? 0;
+  const variantMatched = variantMatchedRaw ?? 0;
+  const variantWithOdds = variantWithOddsRaw ?? 0;
+  const unmatchedCount = variantTotal - variantMatched;
+
+  // Unmatched preview — push filter + limit to the server; 50 rows for display.
+  // Join player name via player_products → players in one query.
+  const { data: unmatchedSample } = await supabaseAdmin
     .from('player_product_variants')
-    .select('id, cardhedger_card_id, hobby_odds, breaker_odds, variant_name, card_number, player_product_id, player_products!inner(product_id)')
-    .eq('player_products.product_id', id);
-
-  // For the unmatched list, join player names
-  const ppIds = (playerProducts ?? []).map(pp => pp.id);
-  const { data: playerProductsWithPlayers } = ppIds.length
-    ? await supabaseAdmin
-        .from('player_products')
-        .select('id, player:players(name)')
-        .eq('product_id', id)
-    : { data: [] };
-
-  const ppPlayerMap = new Map(
-    (playerProductsWithPlayers ?? []).map((pp: any) => [pp.id, pp.player?.name ?? ''])  // eslint-disable-line @typescript-eslint/no-explicit-any
-  );
-
-  const unmatchedVariants = (variants ?? [])
-    .filter(v => !v.cardhedger_card_id)
-    .slice(0, 50) // cap at 50 rows for display
-    .map(v => ({
-      id: v.id,
-      playerName: ppPlayerMap.get(v.player_product_id) ?? '',
-      variantName: v.variant_name,
-      cardNumber: v.card_number,
-    }));
-
-  const variantTotal = variants?.length ?? 0;
-  const variantMatched = variants?.filter(v => v.cardhedger_card_id).length ?? 0;
-  const variantWithOdds = variants?.filter(v => v.hobby_odds != null || v.breaker_odds != null).length ?? 0;
-
-  // Pricing cache — join to avoid .in() URL limit
-  const { data: pricingCache } = await supabaseAdmin
-    .from('pricing_cache')
-    .select('player_product_id, fetched_at, player_products!inner(product_id)')
+    .select(
+      'id, variant_name, card_number, player_products!inner(product_id, player:players(name))',
+    )
     .eq('player_products.product_id', id)
-    .gt('expires_at', new Date().toISOString());
+    .is('cardhedger_card_id', null)
+    .limit(50);
 
-  const cachedCount = pricingCache?.length ?? 0;
-  const lastFetched = pricingCache?.sort((a, b) =>
-    new Date(b.fetched_at).getTime() - new Date(a.fetched_at).getTime()
-  )[0]?.fetched_at;
+  const unmatchedVariants = (unmatchedSample ?? []).map(v => ({
+    id: v.id,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    playerName: (v as any).player_products?.player?.name ?? '',
+    variantName: v.variant_name,
+    cardNumber: v.card_number,
+  }));
 
-  const playerStatus = autoEligibleCount > 0 ? 'ok' : 'empty';
+  // Pricing cache — count + newest fetched_at, no row fetch
+  const [{ count: cachedCountRaw }, { data: lastFetchedRow }] = await Promise.all([
+    supabaseAdmin
+      .from('pricing_cache')
+      .select('player_product_id, player_products!inner(product_id)', {
+        count: 'exact',
+        head: true,
+      })
+      .eq('player_products.product_id', id)
+      .gt('expires_at', new Date().toISOString()),
+    supabaseAdmin
+      .from('pricing_cache')
+      .select('fetched_at, player_products!inner(product_id)')
+      .eq('player_products.product_id', id)
+      .gt('expires_at', new Date().toISOString())
+      .order('fetched_at', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+  ]);
+
+  const cachedCount = cachedCountRaw ?? 0;
+  const lastFetched = lastFetchedRow?.fetched_at;
+
+  const autoEligible = autoEligibleCount ?? 0;
+  const ppTotalSafe = ppTotal ?? 0;
+  const playerStatus = autoEligible > 0 ? 'ok' : 'empty';
   const variantMatchPct = variantTotal > 0 ? variantMatched / variantTotal : 0;
   const variantStatus = variantTotal === 0 ? 'empty' : variantMatchPct >= 0.8 ? 'ok' : 'warn';
   const oddsStatus = product.has_odds ? 'ok' : variantWithOdds > 0 ? 'warn' : 'empty';
-  const pricingStatus = cachedCount === 0 ? 'empty' : cachedCount >= autoEligibleCount ? 'ok' : 'warn';
+  const pricingStatus = cachedCount === 0 ? 'empty' : cachedCount >= autoEligible ? 'ok' : 'warn';
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -223,7 +251,7 @@ export default async function ProductDashboardPage({ params }: PageProps) {
         {/* Readiness summary */}
         <Section title="Product Readiness" accent="var(--gradient-blue)">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <ReadinessStat label="Players" pill={playerStatus} value={String(autoEligibleCount)} sub={`${(playerProducts ?? []).length} total incl. inserts`} />
+            <ReadinessStat label="Players" pill={playerStatus} value={String(autoEligible)} sub={`${ppTotalSafe} total incl. inserts`} />
             <ReadinessStat label="CH Matched" pill={variantStatus} value={variantTotal > 0 ? `${Math.round(variantMatchPct * 100)}%` : '—'} sub={`${variantMatched}/${variantTotal} variants`} />
             <ReadinessStat label="Odds" pill={oddsStatus} value={product.has_odds ? 'Imported' : variantWithOdds > 0 ? 'Partial' : 'Pending'} sub={`${variantWithOdds} variants`} />
             <ReadinessStat label="Pricing" pill={pricingStatus} value={String(cachedCount)} sub={lastFetched ? `Last: ${new Date(lastFetched).toLocaleDateString()}` : 'Not yet fetched'} />
@@ -268,7 +296,7 @@ export default async function ProductDashboardPage({ params }: PageProps) {
           <Section
             title="Unmatched Variants"
             accent="linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)"
-            badge={{ label: `${(variants ?? []).filter(v => !v.cardhedger_card_id).length} unmatched`, color: 'var(--signal-watch)' }}
+            badge={{ label: `${unmatchedCount} unmatched`, color: 'var(--signal-watch)' }}
           >
             <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
               These variants have no CardHedger card ID. Re-run matching from the import wizard, or import the checklist again if players are missing.
