@@ -55,6 +55,20 @@ Apple OAuth deferred — requires Apple Developer account ($99/yr).
 
 ---
 
+### Per-player graded comp drilldown
+**Effort:** ~1 day
+
+**Why:** Pricing refresh now uses `batchPriceEstimate` with `grade: 'Raw'` — one HTTP call per 500 variants, no rate limits, fast. Cost of the switch: EV Mid is now based on raw sale prices only. PSA 9 / PSA 10 comps are no longer included in the aggregate. Disclosed to the user via a banner on the break page.
+
+Graded pricing still matters for specific decisions (is this slot worth it if I grade the hit?). Don't bring it back to the aggregate refresh — that would reintroduce the per-variant fan-out. Instead: click a player row → side panel fetches graded comps on demand via `getAllPrices` for that player's top variants (base + autos + key parallels).
+
+**Files:**
+- `components/breakiq/PlayerTable.tsx` — row click handler + side panel
+- `app/api/pricing/graded-comps/route.ts` (new) — takes `{ playerProductId }`, fetches graded prices for the player's top N variants
+- Copy change on the break page banner once drilldown ships
+
+---
+
 ## Priority 2 — High value, external dependency or more effort
 
 ### CardHedger Matching — Semi-Automated Knowledge Updates

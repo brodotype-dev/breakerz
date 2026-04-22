@@ -293,6 +293,14 @@ export default function BreakPage() {
           </p>
         </div>
       )}
+      {!isPreRelease && hasPricing && (
+        <div className="border-b px-6 py-2 flex items-center gap-2" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'rgba(148,163,184,0.05)' }}>
+          <span className="text-[10px]" style={{ color: 'var(--text-t-tertiary)' }}>◎</span>
+          <p className="text-[11px]" style={{ color: 'var(--text-t-tertiary)' }}>
+            EV values reflect <strong>raw</strong> card sale prices. Graded (PSA 9 / PSA 10) comps are not included — per-player graded drilldown coming soon.
+          </p>
+        </div>
+      )}
 
       <main className="px-4 md:px-6 py-6 space-y-5 max-w-[1400px] mx-auto">
         <DashboardConfig config={config} onChange={setConfig} breakType={breakType} />
