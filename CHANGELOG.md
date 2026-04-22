@@ -5,6 +5,16 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-21 — Hot-fix: paginate `ch_set_cache` load (Supabase 1000-row cap)
+
+`loadCatalogIndex` was only reading the first 1000 rows of `ch_set_cache` because Supabase/PostgREST caps any single response at 1000 rows by default. For small sets this was invisible — for 2025 Topps Finest Basketball (12,097 cards), ~92% of the catalog never made it into the in-memory index, so every variant missed `byNumber` and fell through to no-match.
+
+Symptom: matching against Topps Finest immediately after the v2 descriptor deploy showed 0/40 matches. Vercel logs: `loaded catalog "2025 Topps Finest Basketball" — 1000 cards, 449 unique numbers` (actual: 12,097 cards, ~10k unique numbers).
+
+Fix: paginate `.range(offset, offset+999)` in 1000-row chunks until a short page comes back. Applies to every catalog load — Topps Finest just made it visible. PR #4.
+
+---
+
 ## 2026-04-21 — Topps Finest descriptor + XLSX parallel expansion
 
 Two fixes on top of v2 matching to address the 2025-26 Topps Finest Basketball 50% match rate.
