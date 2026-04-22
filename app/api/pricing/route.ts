@@ -6,6 +6,11 @@ import type { PlayerWithPricing } from '@/lib/types';
 
 const CACHE_TTL_HOURS = 24;
 
+// Hydrated products have 6,000+ variants. Batch pricing = ~65 sequential
+// CH calls @ ~240ms each ≈ 15s just for the pre-fetch. Default Vercel
+// function timeout is 10s — the route was silently 504'ing. 60s is plenty.
+export const maxDuration = 60;
+
 // GET — load roster with cached pricing only (fast, no CardHedger calls)
 export async function GET(req: NextRequest) {
   const supabase = await createClient();
@@ -177,30 +182,49 @@ export async function POST(req: NextRequest) {
     // empty, every variant gets evMid=0, every player lands in the fallback
     // chain. Verified with direct curl against the endpoint.
     const PRICE_CHUNK = 100;
+    const PRICE_FETCH_CONCURRENCY = 6;
+
+    // Build the list of chunks first, then run them with bounded concurrency.
+    // 65 sequential × 240ms = 15s; at 6 parallel, ~2.7s. Keeps us well inside
+    // the 60s maxDuration even on the biggest products.
+    const priceChunks: string[][] = [];
     for (let i = 0; i < allVariantCardIds.length; i += PRICE_CHUNK) {
-      const chunk = allVariantCardIds.slice(i, i + PRICE_CHUNK);
-      const items = chunk.map(card_id => ({ card_id, grade: 'Raw' }));
-      try {
-        const results = await batchPriceEstimate(items);
-        for (const r of results) {
-          if (r.success && r.price > 0) {
-            pricesOnly.set(r.card_id, {
-              evLow: Math.round(r.price_low > 0 ? r.price_low : r.price * 0.35),
-              evMid: Math.round(r.price),
-              evHigh: Math.round(r.price_high > r.price ? r.price_high : r.price * 2.5),
-            });
+      priceChunks.push(allVariantCardIds.slice(i, i + PRICE_CHUNK));
+    }
+
+    let chunkCursor = 0;
+    const chunkWorkers = Array.from(
+      { length: Math.min(PRICE_FETCH_CONCURRENCY, priceChunks.length) },
+      async () => {
+        while (true) {
+          const idx = chunkCursor++;
+          if (idx >= priceChunks.length) return;
+          const chunk = priceChunks[idx];
+          const items = chunk.map(card_id => ({ card_id, grade: 'Raw' }));
+          try {
+            const results = await batchPriceEstimate(items);
+            for (const r of results) {
+              if (r.success && r.price > 0) {
+                pricesOnly.set(r.card_id, {
+                  evLow: Math.round(r.price_low > 0 ? r.price_low : r.price * 0.35),
+                  evMid: Math.round(r.price),
+                  evHigh: Math.round(r.price_high > r.price ? r.price_high : r.price * 2.5),
+                });
+              }
+            }
+          } catch (e) {
+            // Don't let a single batch failure nuke the whole refresh — other
+            // chunks still run, and missing cards fall to the per-pp fallback.
+            console.error(
+              `batchPriceEstimate failed at chunk ${idx} (size ${chunk.length}):`,
+              e instanceof Error ? e.message : e,
+            );
           }
         }
-      } catch (e) {
-        // Don't let a single batch failure nuke the whole refresh — subsequent
-        // chunks still get a shot, and missing cards fall into the per-pp
-        // fallback chain.
-        console.error(
-          `batchPriceEstimate failed at offset ${i} (chunk size ${chunk.length}):`,
-          e instanceof Error ? e.message : e,
-        );
-      }
-    }
+      },
+    );
+    await Promise.all(chunkWorkers);
+    console.log(`[pricing] batch-fetched ${pricesOnly.size}/${allVariantCardIds.length} variant prices`);
 
     // Throttle outer fan-out. Even with batch pricing done, the fallback
     // branches below still call CH (searchAndComputeEV, get90DayPrices) for

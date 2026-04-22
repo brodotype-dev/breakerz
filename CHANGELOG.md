@@ -5,6 +5,17 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-22 — Hot-fix: /api/pricing maxDuration + parallel batch fetches
+
+`POST /api/pricing` had no `maxDuration` export — Vercel defaulted to 10 seconds. Batch-fetching 6,481 variant prices at 65 sequential chunks × ~240ms ≈ 15s meant every Refresh request 504'd silently. PR #17 was sound; the reason "still not doing anything" after deploy was that the function timed out before writing anything to `pricing_cache`.
+
+**Changes:**
+- `export const maxDuration = 60` at the top of `app/api/pricing/route.ts`.
+- Parallelize the 100-item batch chunks with a 6-worker semaphore (same `mapLimit` shape used elsewhere). 65 chunks at concurrency 6 ≈ 2.7s wall clock instead of 15s.
+- Added a single `console.log` reporting `pricesOnly.size / allVariantCardIds.length` after the batch phase so the next debug pass has an observable signal.
+
+---
+
 ## 2026-04-22 — Hot-fix: POST /api/pricing now always refreshes live (no cache early-return)
 
 After PR #16 shipped, clicking **Refresh** on the break page silently returned the same wrong prices the broken runs had written to `pricing_cache` — because `POST` had an early-return that replied `pricingSource: 'cached'` whenever a valid cache row existed. Worse: `'cached'` isn't counted as estimated in the UI, so the "N players using estimated pricing" banner disappeared along with the `est` badges. Users saw $8 everywhere with no indication anything was wrong.
