@@ -17,6 +17,7 @@ type Status =
       variantsTotal: number;
       batchDurationMs: number;
       totalDurationMs: number;
+      partial?: boolean;
     }
   | { kind: 'error'; msg: string };
 
@@ -42,12 +43,31 @@ export default function RefreshPricingButton({ productId }: { productId: string 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ productId }),
       });
-      const json = await res.json();
-      if (!res.ok || json.error) {
-        setStatus({ kind: 'error', msg: json.error ?? `HTTP ${res.status}` });
+      // Vercel returns plaintext on 504/hard-crash. Read text first, then try JSON.
+      const text = await res.text();
+      let json: Record<string, unknown> | null = null;
+      try {
+        json = text ? JSON.parse(text) : null;
+      } catch {
+        /* non-JSON body, likely a Vercel runtime error page */
+      }
+      if (!res.ok || (json && typeof json.error === 'string')) {
+        const msg =
+          (json && typeof json.error === 'string' ? json.error : null) ??
+          (text ? text.slice(0, 140).trim() : null) ??
+          `HTTP ${res.status}`;
+        const hint =
+          res.status === 504 || /timed? out|FUNCTION_INVOCATION_TIMEOUT|An error occurred/i.test(text)
+            ? ' — likely 60s cap on this jumbo product; nightly cron will complete it, or upgrade to Vercel Pro (backlog C)'
+            : '';
+        setStatus({ kind: 'error', msg: `${msg}${hint}` });
         return;
       }
-      setStatus({ kind: 'ok', ...json });
+      if (!json) {
+        setStatus({ kind: 'error', msg: 'Empty response from server' });
+        return;
+      }
+      setStatus({ ...(json as unknown as Omit<Extract<Status, { kind: 'ok' }>, 'kind'>), kind: 'ok' });
       router.refresh();
     } catch (err) {
       setStatus({ kind: 'error', msg: err instanceof Error ? err.message : String(err) });
@@ -64,7 +84,8 @@ export default function RefreshPricingButton({ productId }: { productId: string 
         {status.kind === 'running' ? 'Refreshing pricing…' : 'Refresh Pricing ↻'}
       </button>
       {status.kind === 'ok' && (
-        <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+        <span className="text-xs" style={{ color: status.partial ? 'var(--warning, #f59e0b)' : 'var(--text-secondary)' }}>
+          {status.partial ? '⚠ partial · ' : ''}
           {status.totalPlayers} players · live={status.livePriced} cross={status.crossPriced}{' '}
           search={status.searchPriced} default={status.defaultPriced} ·{' '}
           {status.variantsFetched}/{status.variantsTotal} variants ·{' '}

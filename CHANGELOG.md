@@ -5,6 +5,22 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-22 — Hot-fix: refresh-product-pricing — graceful partial completion + useful client errors
+
+First production run of the new "Refresh Pricing ↻" admin button on 2025 Bowman Chrome (278 players, 6,481 variants) hit Vercel Hobby's 60s cap. The button surfaced the failure as `Unexpected token 'A', "An error o"... is not valid JSON` — meaningless to the user. Underlying: Vercel returns a plain-text `An error occurred...` page on function timeouts, and the client was `res.json()`-ing it. Exactly the jumbo-product case we'd called out as a known limit, but the UX was worse than "partial data" — it was "cryptic crash."
+
+**Fixes:**
+- **Server: soft + hard deadlines in `lib/pricing-refresh.ts`.** New `BATCH_DEADLINE_MS = 45s` stops enqueueing new CH chunks before we run out of runway. `HARD_DEADLINE_MS = 55s` bails out of the per-player fallback phase. Cache rows accumulated up to that point still get upserted — partial progress survives.
+- **Server: `partial: true` + `batchChunksCompleted` in the summary.** Lets callers see how far we got (`45/65 chunks`, `N partial variants priced`) without inspecting logs.
+- **Client: read text before JSON.** The refresh button now parses `res.text()` first, then attempts `JSON.parse()`. On 504/non-JSON, it shows the first ~140 chars of the body + a hint: *"— likely 60s cap on this jumbo product; nightly cron will complete it, or upgrade to Vercel Pro (backlog C)"*.
+- **Client: partial banner.** Successful-but-partial runs render an orange `⚠ partial` prefix in the status line so admins know the data is still incomplete even though the call returned 200.
+
+Net: on Bowman Chrome, expect ~45s of batch fetch → ~20 chunks complete → ~2,000 variants priced → ~85 players get live pricing → rest fall to cross-product / default. Re-clicking the button picks up remaining work next time (cache rows already written persist). The nightly cron still has the full 60s budget per-product and will close the gap at 4 AM UTC.
+
+Permanent fix remains backlog items **C** (Vercel Pro → 300s, covers everything) and **D** (per-variant price cache → skip already-priced variants for incremental refresh).
+
+---
+
 ## 2026-04-22 — Architectural pivot: `/api/pricing` is now cache-read only; heavy fetch moved off the consumer path
 
 After eight rounds of firefighting (PRs #13–#20), we confirmed the problem was not solvable by tuning concurrency, timeouts, or retries. CH's `batch-price-estimate` legitimately takes 5–30s per 100-item chunk under our load. At 6,481 variants on 2025 Bowman Chrome, that's 65 chunks. With Vercel Hobby's 60s `maxDuration`, completing a full live refresh inside a single consumer request is mathematically impossible. So we stopped trying.
