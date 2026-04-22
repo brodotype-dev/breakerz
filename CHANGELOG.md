@@ -5,6 +5,19 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-21 — Hot-fix: hydrator 400 Bad Request on >1000-player products
+
+First real click on **Hydrate Variants from CH** against Topps Finest (1011 player_products) returned `Variant delete failed: Bad Request`. Two sibling bugs of the same PostgREST 1000-row family we've been squashing:
+
+1. `player_products` load wasn't paginated — capped at 1000, losing 11 players from the name→id map.
+2. `.in('player_product_id', [1000 UUIDs])` blew past PostgREST's URL length limit (~8KB) → 400.
+
+**The DB was not touched** — the failure happened before any delete or insert ran.
+
+Fix: paginate the `player_products` load in 1000-row chunks; chunk the DELETE `.in()` into batches of 200 UUIDs so the URL stays under the Kong/PostgREST limit. Same pattern as PR #4 catalog pagination + PR #6 count-query fix. PR #8.
+
+---
+
 ## 2026-04-21 — Hydrate variants from CH catalog (invert the matching pipeline)
 
 New **Hydrate Variants from CH Catalog** button on the product dashboard. Replaces `player_product_variants` with rows sourced directly from `ch_set_cache` — every row pre-linked via `cardhedger_card_id` (match_tier = `ch-native`, match_confidence = 1.0). Matching pipeline becomes a no-op for CH-known variants; only the tail of CH-missing cards needs rescue.
