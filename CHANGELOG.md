@@ -5,6 +5,24 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-21 — Hot-fix: odds import silently dropped 94% of variants
+
+On Topps Finest (12,075 variants) only 732 got odds applied — a 6% bind rate. The "Unmatched odds rows" panel listed virtually every insert (Arrivals, Muse, Finishers, etc.) as not found.
+
+**Two bugs stacked — same 1000-row cap family:**
+
+1. `apply-odds/route.ts` loaded all variants for the product via `.eq(product_id)` — capped at 1000 rows by PostgREST. With 12,075 variants, only the first ~1000 reached the matcher. Insert variants past that window appeared "missing" from the match pool, so their odds rows landed in `unmatched`.
+2. Even when a match hit, the update used `.in('id', variantIds)` where `variantIds` came from the same 1000-row sample. So `Red Refractor /5` variants past the cap never had odds applied.
+
+**Fix:**
+- Paginate the initial variant load in 1000-row chunks (same pattern as `loadCatalogIndex` and the hydrator).
+- Build an `idsByName` map across the full result, then update by chunked `.in('id', slice)` of 200 UUIDs per request to stay under Kong/PostgREST's ~8KB URL limit.
+- Response shape now includes `rowsUpdated` per matched subset for easier debugging.
+
+Expected result on Topps Finest: jumps from 732 → thousands of odds-bound variants. PR #10.
+
+---
+
 ## 2026-04-21 — Product dashboard: workflow-aware Quick Actions + skipped-players detail
 
 Two small UX passes on top of the hydrator feature.
