@@ -5,6 +5,25 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-21 — Phase 3: auto-create players + player_products from CH during hydrate
+
+Collapses the CH-hydrate workflow from 6 steps to 4 for new products. Previously admins had to manually add every player via Manage Players before hydrating — if CH had a player that our `players` table didn't, the hydrator would skip that player's variants and surface them in the skipped-players panel. Admin then had to add them manually and re-hydrate.
+
+Now `hydrateVariantsFromCatalog` walks the CH catalog for every player_name not already in the product's `player_products`, then:
+1. Upserts into `players` with `onConflict: (name, sport_id)` — safe against players that exist globally but weren't on this product.
+2. Upserts into `player_products` with `onConflict: (player_id, product_id)`.
+3. Adds the new ppId to the normalized-name map, so subsequent variant inserts bind correctly.
+
+Dedupe by normalized name so `"Luka Dončić"` and `"Luka Doncic"` in the same catalog don't create two player rows.
+
+**Result:** `skippedPlayers` should be empty for healthy products post-hydrate. Non-zero now means an auto-create failed (concurrent write, constraint violation) rather than "admin forgot to add this player."
+
+**New response fields:** `autoCreatedPlayers`, `autoCreatedPlayerProducts`. UI surfaces `+N new players` in the success line when > 0.
+
+**Workflow impact:** The "Add players" step in the CH-Hydrate workflow card is now optional for new products — the hydrator handles it. Keeps the UI step for clarity but the ✓ will populate automatically once you hydrate. PR #11.
+
+---
+
 ## 2026-04-21 — Hot-fix: odds import silently dropped 94% of variants
 
 On Topps Finest (12,075 variants) only 732 got odds applied — a 6% bind rate. The "Unmatched odds rows" panel listed virtually every insert (Arrivals, Muse, Finishers, etc.) as not found.
