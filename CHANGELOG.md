@@ -5,6 +5,16 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-22 — Hot-fix: CH batch-price-estimate caps at 100 items
+
+PR #15 sent 500-item chunks to `batch-price-estimate`. CH's endpoint rejects anything over 100 items with HTTP 400 (`"List should have at most 100 items after validation"`). The try/catch around the batch call swallowed the error, logged to console, and moved on — so `pricesOnly` stayed empty, every variant hit `evMid=0`, and every player landed in the fallback chain. Net effect: the batch migration silently produced the exact same "all estimated" result that PR #15 was supposed to fix.
+
+**Fix:** `PRICE_CHUNK = 100`. Verified directly by curling the endpoint — 500 returns 400, 100 works. For Topps Finest (6,481 variants) that's 65 sequential batch calls at ~240ms each = ~15s of batch-fetch time before the per-pp loop, well within Vercel's 60s function budget.
+
+Lesson learned: next time, probe the endpoint's actual limits before picking a chunk size.
+
+---
+
 ## 2026-04-22 — Pricing refresh: switch to CH `batchPriceEstimate` (Raw grade)
 
 Per-variant `computeLiveEV` was still rate-limit-bound even after PRs #13 and #14: 8 outer workers × ~25 inner `Promise.all` calls = ~200 concurrent CH requests. Most variants came back zero → filtered out → weighted avg computed on a tiny sample → unreliable prices.

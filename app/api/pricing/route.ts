@@ -180,7 +180,12 @@ export async function POST(req: NextRequest) {
     const allVariantCardIds = Array.from(
       new Set(allVariants.map(v => v.cardhedger_card_id).filter((x): x is string => !!x)),
     );
-    const PRICE_CHUNK = 500;
+    // CH's batch-price-estimate endpoint caps at 100 items per request.
+    // Any higher and it returns HTTP 400 with "List should have at most 100
+    // items after validation" — the whole batch is rejected, pricesOnly stays
+    // empty, every variant gets evMid=0, every player lands in the fallback
+    // chain. Verified with direct curl against the endpoint.
+    const PRICE_CHUNK = 100;
     for (let i = 0; i < allVariantCardIds.length; i += PRICE_CHUNK) {
       const chunk = allVariantCardIds.slice(i, i + PRICE_CHUNK);
       const items = chunk.map(card_id => ({ card_id, grade: 'Raw' }));
