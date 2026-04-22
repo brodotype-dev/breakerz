@@ -99,17 +99,27 @@ export async function hydrateVariantsFromCatalog(productId: string): Promise<Hyd
     );
   }
 
-  // 3. Load this product's player_products with joined player names
-  const { data: playerProducts, error: ppErr } = await supabaseAdmin
-    .from('player_products')
-    .select('id, player:players(name)')
-    .eq('product_id', productId);
-
-  if (ppErr) throw new Error(`player_products load failed: ${ppErr.message}`);
+  // 3. Load this product's player_products with joined player names.
+  //    Paginate — PostgREST caps responses at 1000 rows by default, and several
+  //    products have >1000 player_products. Same-family bug as PR #4/#6.
+  const PP_PAGE = 1000;
+  const playerProducts: { id: string; player: { name: string } | null }[] = [];
+  for (let offset = 0; ; offset += PP_PAGE) {
+    const { data, error: ppErr } = await supabaseAdmin
+      .from('player_products')
+      .select('id, player:players(name)')
+      .eq('product_id', productId)
+      .range(offset, offset + PP_PAGE - 1);
+    if (ppErr) throw new Error(`player_products load failed: ${ppErr.message}`);
+    if (!data || data.length === 0) break;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    playerProducts.push(...(data as any));
+    if (data.length < PP_PAGE) break;
+  }
 
   // Build normalizedName → player_product_id map
   const nameToPpId = new Map<string, string>();
-  for (const pp of playerProducts ?? []) {
+  for (const pp of playerProducts) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const playerName = (pp as any).player?.name as string | undefined;
     if (!playerName) continue;
@@ -146,16 +156,25 @@ export async function hydrateVariantsFromCatalog(productId: string): Promise<Hyd
     });
   }
 
-  // 5. Delete existing variants for this product's player_products
-  const ppIds = (playerProducts ?? []).map(pp => pp.id);
+  // 5. Delete existing variants for this product's player_products.
+  //    Chunk the .in() list — a 1000-UUID IN clause blows past PostgREST's URL
+  //    length limit (~8KB) and returns 400 Bad Request. 200 UUIDs per chunk
+  //    keeps us safely under that ceiling.
+  const ppIds = playerProducts.map(pp => pp.id);
+  const DELETE_CHUNK = 200;
   let deletedCount = 0;
-  if (ppIds.length > 0) {
+  for (let i = 0; i < ppIds.length; i += DELETE_CHUNK) {
+    const slice = ppIds.slice(i, i + DELETE_CHUNK);
     const { count, error: delErr } = await supabaseAdmin
       .from('player_product_variants')
       .delete({ count: 'exact' })
-      .in('player_product_id', ppIds);
-    if (delErr) throw new Error(`Variant delete failed: ${delErr.message}`);
-    deletedCount = count ?? 0;
+      .in('player_product_id', slice);
+    if (delErr) {
+      throw new Error(
+        `Variant delete failed at ppId offset ${i} (chunk size ${slice.length}): ${delErr.message}`,
+      );
+    }
+    deletedCount += count ?? 0;
   }
 
   // 6. Batch insert (500 at a time to stay inside Supabase limits)
