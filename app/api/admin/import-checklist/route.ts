@@ -117,6 +117,13 @@ export async function POST(req: NextRequest) {
   const playerProductsCreated = upsertedPPs?.length ?? 0;
 
   // --- Step 4: Bulk insert variants in chunks ---
+  // If the parser attached a `parallels` list to a card, expand it: one variant
+  // row per parallel label (e.g. "Refractor", "Gold /50", "SuperFractor /1"),
+  // plus a synthetic "Base" row — Topps checklists don't list Base explicitly
+  // but every numbered card has one.
+  //
+  // If no parallels are attached (older parsers / non-XLSX formats), fall back
+  // to the legacy behavior of one variant named after the section.
   const variantRows: object[] = [];
   for (const section of sections) {
     for (const card of section.cards) {
@@ -125,16 +132,24 @@ export async function POST(req: NextRequest) {
       const ppId = playerIdToPPId.get(playerId);
       if (!ppId) continue;
 
-      variantRows.push({
-        player_product_id: ppId,
-        variant_name: section.sectionName,
-        cardhedger_card_id: null,
-        hobby_sets: section.hobbySets,
-        bd_only_sets: section.bdSets,
-        card_number: card.cardNumber ?? null,
-        is_sp: card.isSP,
-        print_run: card.printRun ?? null,
-      });
+      const parallels = card.parallels ?? [];
+      const variantNames =
+        parallels.length > 0
+          ? Array.from(new Set(['Base', ...parallels]))
+          : [section.sectionName];
+
+      for (const variantName of variantNames) {
+        variantRows.push({
+          player_product_id: ppId,
+          variant_name: variantName,
+          cardhedger_card_id: null,
+          hobby_sets: section.hobbySets,
+          bd_only_sets: section.bdSets,
+          card_number: card.cardNumber ?? null,
+          is_sp: card.isSP,
+          print_run: card.printRun ?? null,
+        });
+      }
     }
   }
 

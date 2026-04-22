@@ -1,6 +1,7 @@
 import type { ManufacturerDescriptor } from './types';
 import { bowmanDescriptor } from './bowman';
 import { paniniDescriptor } from './panini';
+import { toppsFinestDescriptor } from './topps-finest';
 import { defaultDescriptor } from './default';
 
 /**
@@ -11,9 +12,13 @@ import { defaultDescriptor } from './default';
  *   2. Import and add to the `registry` array below (order = priority)
  *   3. Document the rules in docs/manufacturer-rules/<vendor>.md
  *
+ * Order matters: more specific patterns (e.g. "topps finest") must come before
+ * broader ones ("topps|bowman"). First match wins.
+ *
  * See docs/catalog-preload-architecture.md for the matching pipeline these feed.
  */
 const registry: ManufacturerDescriptor[] = [
+  toppsFinestDescriptor, // must win over bowmanDescriptor for Topps Finest products
   bowmanDescriptor,
   paniniDescriptor,
   // upperDeckDescriptor, // add here as products come online
@@ -30,6 +35,6 @@ export function getManufacturerDescriptor(productName: string): ManufacturerDesc
   return defaultDescriptor;
 }
 
-export { bowmanDescriptor, paniniDescriptor, defaultDescriptor };
+export { bowmanDescriptor, paniniDescriptor, toppsFinestDescriptor, defaultDescriptor };
 export type { ManufacturerDescriptor } from './types';
 export * from './match';

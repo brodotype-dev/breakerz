@@ -11,6 +11,11 @@ export type ParsedCard = {
   hasBackVariation: boolean;
   printRun?: number;      // from CSV SEQUENCE
   rawLine: string;
+  // XLSX/Bowman parsers set this when a data block listed parallel labels
+  // ("Refractor", "Gold /50", "SuperFractor /1"). The importer expands each
+  // card into one variant row per parallel (plus "Base"). Absent/empty = single
+  // variant named after the containing section.
+  parallels?: string[];
 };
 
 export type ParsedSection = {
@@ -452,12 +457,67 @@ export function parseOddsPdf(text: string): ParsedOdds {
 
 const XLSX_SKIP_SHEETS = new Set(['Full Checklist', 'NBA Teams', 'College Teams', 'Teams', 'MLB Teams', 'Topps Master Checklist']);
 
+// Labels that are structural, not parallel names — ignore as section/parallel names
+// but still use as a signal that we're in the parallels block.
+const STRUCTURAL_LABEL_RE = /^(Parallels?|Base\s*(Set|Cards?)?|Paralles|Breaker'?s\s+Delight.*|\d+\s+per\s+(hobby|breaker'?s?\s+delight)\s+box|Common:\s+#.*|Uncommon:\s+#.*|Rare:\s+#.*|Short\s+Print:\s+#.*)$/i;
+
+// Detects "<label> /<number>" (a parallel with print run) or bare parallel labels
+// like "Refractor", "Superfractor", "Gold", "Gold Geometric", "Red/Black Geometric".
+// Also matches labels without print runs ("Refractor", "Geometric", "Oil Spill").
+const PARALLEL_LABEL_RE = /\/\d+\s*$/;
+
+// ---------------------------------------------------------------------------
+// parseChecklistXlsx  (Bowman/Topps XLSX format with parallel expansion)
+//
+// Sheet layout is a repeating block:
+//   <Section Name>             ← e.g. "Finest Autographs", "Base - Common"
+//   (blank)
+//   "<N> cards"                ← metadata row, ignored
+//   "Parallels"                ← structural label
+//   (blank)
+//   <parallel1>                ← e.g. "Refractor", "Gold /50", "SuperFractor /1"
+//   <parallel2>
+//   ...
+//   (blank)
+//   <card_num>, <player>, <team>, [flag]   ← data rows
+//   ...
+//
+// The old parser collapsed every label-only row into `currentSectionName`, so each
+// card only got ONE variant row — the label of the LAST label-only row before it.
+// That meant every Topps Finest card came out as variant="SuperFractor /1" (or
+// "Red Geometric /5" when a subset had no SuperFractor).
+//
+// The fix: track base section name and collected parallels separately. When a data
+// block starts, emit one card per parallel in the block (plus one "Base" row if the
+// block had no Refractor/Base listing — Topps always has an implicit Base).
+// ---------------------------------------------------------------------------
+
+function isParallelLabel(label: string): boolean {
+  // Print-run form: "Gold /50", "SuperFractor /1"
+  if (PARALLEL_LABEL_RE.test(label)) return true;
+  // Plain parallels commonly seen in Topps Finest checklists.
+  return /^(Refractor|X-Fractor|Superfractor|Geometric|Oil\s*Spill|Die[-\s]?Cut|Black|Red|Blue|Green|Gold|Orange|Purple|Yellow|Sky\s*Blue)(\s+.+)?$/i.test(label);
+}
+
 export function parseChecklistXlsx(buffer: Buffer): ParsedChecklist {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const XLSX = require('xlsx');
   const wb = XLSX.read(buffer, { type: 'buffer' });
 
-  const sections: ParsedSection[] = [];
+  // Each base-section header starts its own ParsedSection. Cards inside carry
+  // their own `parallels` list; the importer turns those into variant rows.
+  const sectionMap = new Map<string, ParsedSection>();
+  const sectionOrder: string[] = [];
+
+  const getSection = (name: string): ParsedSection => {
+    let s = sectionMap.get(name);
+    if (!s) {
+      s = { sectionName: name, cards: [], flagged: [] };
+      sectionMap.set(name, s);
+      sectionOrder.push(name);
+    }
+    return s;
+  };
 
   for (const sheetName of wb.SheetNames) {
     if (XLSX_SKIP_SHEETS.has(sheetName)) continue;
@@ -465,35 +525,58 @@ export function parseChecklistXlsx(buffer: Buffer): ParsedChecklist {
     const ws = wb.Sheets[sheetName];
     const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
 
-    const cards: ParsedCard[] = [];
-    const flagged: string[] = [];
-    let currentSectionName = sheetName;
+    // Per-sheet block state.
+    let baseSection = sheetName;
+    let parallels: string[] = [];
+    let sawDataInBlock = false;
 
     for (const row of rows) {
       if (!Array.isArray(row) || row.length === 0) continue;
 
-      // Row 0 is often the section label (string, no card number)
-      if (typeof row[0] === 'string' && typeof row[1] === 'undefined') {
-        const label = row[0].trim();
-        if (label && !/^\d+ cards?$/i.test(label)) {
-          currentSectionName = label;
+      const c0 = row[0];
+      const c1 = row[1];
+
+      const isLabelOnly =
+        typeof c0 === 'string' &&
+        c0.trim().length > 0 &&
+        (c1 === undefined || c1 === null || (typeof c1 === 'string' && c1.trim() === ''));
+
+      if (isLabelOnly) {
+        const label = (c0 as string).trim();
+
+        if (/^\d+ cards?$/i.test(label)) continue;
+        if (STRUCTURAL_LABEL_RE.test(label)) continue;
+
+        if (isParallelLabel(label)) {
+          // A parallel label after a block's data rows signals a new sub-block
+          // of the same base section (shouldn't normally happen, but be safe).
+          if (sawDataInBlock) {
+            parallels = [];
+            sawDataInBlock = false;
+          }
+          parallels.push(label);
+          continue;
         }
+
+        // Non-parallel label → new base section header. Reset parallels.
+        baseSection = label;
+        parallels = [];
+        sawDataInBlock = false;
         continue;
       }
 
-      // Data row: [card_number_or_code, player_name, team, flag?]
-      const cardNumber = row[0] != null ? String(row[0]).trim() : '';
-      const rawName = row[1] != null ? String(row[1]).trim() : '';
+      // Data row
+      const cardNumber = c0 != null ? String(c0).trim() : '';
+      const rawName = c1 != null ? String(c1).trim() : '';
       const team = row[2] != null ? String(row[2]).trim().replace(/,\s*$/, '') || undefined : undefined;
       const flag = row[3] != null ? String(row[3]).trim() : '';
 
       if (!rawName) continue;
 
-      // Clean trailing comma from player names (Bowman exports include it)
       const playerName = stripTrademarkSymbols(rawName.replace(/,\s*$/, ''));
       const isRookie = flag === 'RC';
 
-      cards.push({
+      getSection(baseSection).cards.push({
         playerName,
         team,
         cardNumber: cardNumber || undefined,
@@ -501,13 +584,12 @@ export function parseChecklistXlsx(buffer: Buffer): ParsedChecklist {
         isSP: false,
         hasBackVariation: false,
         rawLine: row.join('\t'),
+        parallels: parallels.slice(),
       });
-    }
-
-    if (cards.length > 0 || flagged.length > 0) {
-      sections.push({ sectionName: currentSectionName, cards, flagged });
+      sawDataInBlock = true;
     }
   }
 
+  const sections = sectionOrder.map(n => sectionMap.get(n)!);
   return { productName: '', detectedFormat: 'generic', sections };
 }
