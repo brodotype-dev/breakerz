@@ -5,6 +5,18 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-22 — Hot-fix: CH batch-price-estimate — 30s timeout + one retry
+
+PR #19 moved the bottleneck. New failure mode observed in Vercel logs on 2025 Bowman Chrome: the batch phase itself was failing with `The operation was aborted due to timeout` across 5+ chunks, leaving `pricesOnly` partially empty and the function running past 60s → `FUNCTION_INVOCATION_TIMEOUT`. Root cause: `lib/cardhedger.ts`'s `post()` helper hardcodes `AbortSignal.timeout(10_000)`, and CH's `batch-price-estimate` endpoint legitimately takes 5-20s per 100-item request under our 6-way concurrent load. A 10s cap aborts valid slow requests and zeroes out 100 variant prices per abort.
+
+**Changes:**
+- `post()` now accepts an optional `{ timeoutMs }`; other callers keep 10s.
+- `batchPriceEstimate` defaults its own timeout to 30s.
+- `route.ts` wraps each batch chunk in a `runChunk(idx, chunk, attempt=0)` helper that retries once on any failure before giving up. One hiccup shouldn't cost us 100 variants.
+- Enhanced batch-phase log now reports wall-clock time + chunk count + concurrency so latency regressions show up in Vercel observability without guessing.
+
+---
+
 ## 2026-04-22 — Hot-fix: /api/pricing skip per-player search fallback + bulk upsert cache
 
 PR #18 hit 60s `maxDuration` and 504'd ~26% of Refresh requests on 2025 Bowman Chrome. Vercel observability showed ~230 CardHedger calls per invocation vs. the ~60 that batch pricing alone should produce. The extra ~170 were every player whose variants all priced at 0 in the batch falling through to Level 2 `get90DayPrices(name)` — a slow per-player search call, 8 at a time. On a set where most /5, /10, /25 parallels have no recent Raw sales, that's 170+ wasted searches per refresh. Piled on top of batch fetches and 278 inline `pricing_cache` upserts, it blew the 60s budget.

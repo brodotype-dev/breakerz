@@ -49,7 +49,11 @@ export async function getTopMovers(count = 100, category?: string): Promise<TopM
   return res.json();
 }
 
-async function post<T>(path: string, body: Record<string, unknown>): Promise<T> {
+async function post<T>(
+  path: string,
+  body: Record<string, unknown>,
+  options?: { timeoutMs?: number },
+): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     method: 'POST',
     headers: {
@@ -58,7 +62,7 @@ async function post<T>(path: string, body: Record<string, unknown>): Promise<T> 
     },
     body: JSON.stringify(body),
     next: { revalidate: 0 },
-    signal: AbortSignal.timeout(10_000),
+    signal: AbortSignal.timeout(options?.timeoutMs ?? 10_000),
   });
 
   if (!res.ok) {
@@ -239,9 +243,14 @@ export async function getPricesByDay(cardId: string, days = 90) {
   );
 }
 
-// Batch price estimates — up to 100 card/grade combos per call
+// Batch price estimates — up to 100 card/grade combos per call.
+//
+// CH's batch endpoint can take 5-20s per 100-item request under concurrent
+// load. Default `post` timeout (10s) was aborting legit-but-slow chunks and
+// zeroing out 100 variants at a time. Bumped to 30s per chunk here.
 export async function batchPriceEstimate(
-  items: Array<{ card_id: string; grade: string }>
+  items: Array<{ card_id: string; grade: string }>,
+  options?: { timeoutMs?: number },
 ): Promise<Array<{ card_id: string; price: number; price_low: number; price_high: number; confidence: number; success: boolean }>> {
   const result = await post<{
     results: Array<{
@@ -252,7 +261,7 @@ export async function batchPriceEstimate(
       confidence?: number;
       error?: string;
     }>;
-  }>('/v1/cards/batch-price-estimate', { items });
+  }>('/v1/cards/batch-price-estimate', { items }, { timeoutMs: options?.timeoutMs ?? 30_000 });
 
   return result.results.map(r => ({
     card_id: r.card_id,

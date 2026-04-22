@@ -192,6 +192,36 @@ export async function POST(req: NextRequest) {
       priceChunks.push(allVariantCardIds.slice(i, i + PRICE_CHUNK));
     }
 
+    // Run one chunk with a single retry on abort/timeout. CH's batch endpoint
+    // occasionally hiccups under concurrent load — a second try at the end
+    // usually succeeds. Losing 100 variant prices to a single aborted request
+    // is worse than spending ~2s retrying it.
+    async function runChunk(idx: number, chunk: string[], attempt = 0): Promise<void> {
+      const items = chunk.map(card_id => ({ card_id, grade: 'Raw' }));
+      const start = Date.now();
+      try {
+        const results = await batchPriceEstimate(items);
+        for (const r of results) {
+          if (r.success && r.price > 0) {
+            pricesOnly.set(r.card_id, {
+              evLow: Math.round(r.price_low > 0 ? r.price_low : r.price * 0.35),
+              evMid: Math.round(r.price),
+              evHigh: Math.round(r.price_high > r.price ? r.price_high : r.price * 2.5),
+            });
+          }
+        }
+      } catch (e) {
+        const ms = Date.now() - start;
+        const msg = e instanceof Error ? e.message : String(e);
+        if (attempt === 0) {
+          console.warn(`[pricing] chunk ${idx} failed after ${ms}ms (retrying): ${msg}`);
+          await runChunk(idx, chunk, 1);
+          return;
+        }
+        console.error(`[pricing] chunk ${idx} failed after retry (${ms}ms): ${msg}`);
+      }
+    }
+
     let chunkCursor = 0;
     const chunkWorkers = Array.from(
       { length: Math.min(PRICE_FETCH_CONCURRENCY, priceChunks.length) },
@@ -199,32 +229,15 @@ export async function POST(req: NextRequest) {
         while (true) {
           const idx = chunkCursor++;
           if (idx >= priceChunks.length) return;
-          const chunk = priceChunks[idx];
-          const items = chunk.map(card_id => ({ card_id, grade: 'Raw' }));
-          try {
-            const results = await batchPriceEstimate(items);
-            for (const r of results) {
-              if (r.success && r.price > 0) {
-                pricesOnly.set(r.card_id, {
-                  evLow: Math.round(r.price_low > 0 ? r.price_low : r.price * 0.35),
-                  evMid: Math.round(r.price),
-                  evHigh: Math.round(r.price_high > r.price ? r.price_high : r.price * 2.5),
-                });
-              }
-            }
-          } catch (e) {
-            // Don't let a single batch failure nuke the whole refresh — other
-            // chunks still run, and missing cards fall to the per-pp fallback.
-            console.error(
-              `batchPriceEstimate failed at chunk ${idx} (size ${chunk.length}):`,
-              e instanceof Error ? e.message : e,
-            );
-          }
+          await runChunk(idx, priceChunks[idx]);
         }
       },
     );
+    const batchStart = Date.now();
     await Promise.all(chunkWorkers);
-    console.log(`[pricing] batch-fetched ${pricesOnly.size}/${allVariantCardIds.length} variant prices`);
+    console.log(
+      `[pricing] batch-fetched ${pricesOnly.size}/${allVariantCardIds.length} variant prices in ${Date.now() - batchStart}ms (${priceChunks.length} chunks, concurrency ${PRICE_FETCH_CONCURRENCY})`,
+    );
 
     // Throttle outer fan-out. Even with batch pricing done, the fallback
     // branches below still call CH (searchAndComputeEV, get90DayPrices) for
