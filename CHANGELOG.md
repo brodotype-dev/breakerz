@@ -5,6 +5,29 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-21 — Topps Finest descriptor + XLSX parallel expansion
+
+Two fixes on top of v2 matching to address the 2025-26 Topps Finest Basketball 50% match rate.
+
+### `toppsFinestDescriptor` — new, registered before `bowmanDescriptor`
+- Registry order matters: `topps finest` pattern must win over the broader `topps|bowman` match.
+- Unlike Bowman, Topps Finest uses colored parallels that CH appends " Refractor" to — `"Red Geometric /5"` in the checklist is `"Red Geometric Refractor"` in CH. Added explicit `variantSynonyms` for every color + every `<color> Geometric` combo seen in the catalog.
+- Removed the `/\bSuperfractor\b/gi` strip that Bowman used — Topps Finest's catalog actually uses `"SuperFractor"` (capital F) as a variant name, so stripping it killed exact-variant matches. `byNumberVariant` compares case-insensitively, so keeping the string lets it hit.
+- `insertSetNames` covers section-header leakage: `"Finest Autographs"`, `"Colossal Shots Autographs"`, `"Headliners"`, `"The Man"`, `"Muse"`, `"Aura"`, `"Arrivals"`, `"First"`, `"Parallels"`, `"Teams"` (the last one is an XLSX column-header artifact).
+- `cardCodePattern` + `autoPrefixes` cover Topps Finest's insert codes: `FAU-`, `RFA-`, `CS-`, `MA-`, `ESG-`, `BA-`, `AU-`, `H-`, `TM-`, `F-`, `A-`, `M-`, `P-`.
+
+### XLSX parser — parallel expansion
+The old XLSX parser collapsed every label-only row into `currentSectionName`, so each card only got one variant row equal to the LAST label before it — e.g., every Finest Autograph came out as `"SuperFractor /1"` or `"Red Geometric /5"` depending on which was last. Real checklists list 13–20+ parallels per card.
+
+**Fix:** `ParsedCard` now has a `parallels: string[]` field. The XLSX parser tracks a per-block list of parallel labels (`"Refractor"`, `"Gold /50"`, `"SuperFractor /1"`, etc.) and attaches the full list to each data row. The base section header (`"Base - Common"`, `"Finest Autographs"`) becomes the `sectionName`. The import route expands each card into one variant row per parallel, plus a synthetic `"Base"` row (Topps checklists don't list Base explicitly but every numbered card has one).
+
+Result on 2025-26 Topps Finest Basketball: 300 base cards × ~22 parallels + 289 autos × ~14 parallels + ~150 insert cards × various = ~12,000 variant rows, matching the CH catalog's 12,097.
+
+### Existing imports
+The DB still has skewed variants from the old parser (every card stuck on its section's last parallel label). Re-importing the checklist is the clean fix. The new `toppsFinestDescriptor` also rescues a lot of existing rows on re-match — `"Superfractor /1"` → `"SuperFractor"` via case-insensitive byNumberVariant lookup, `"Red Geometric /5"` → `"Red Geometric Refractor"` via synonym.
+
+---
+
 ## 2026-04-21 — CH matching v2: catalog pre-load + descriptor-based knowledge
 
 ### New architecture — catalog pre-load + tiered local matcher
