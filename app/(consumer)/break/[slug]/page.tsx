@@ -286,21 +286,6 @@ export default function BreakPage() {
           </div>
         )}
 
-        {fetching && (
-          <div
-            className="rounded-lg border p-5 text-center"
-            style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
-          >
-            <p className="text-sm font-semibold mb-1" style={{ color: 'var(--text-t-primary)' }}>Fetching live prices…</p>
-            <p className="text-xs mb-3" style={{ color: 'var(--text-t-secondary)' }}>
-              Searching CardHedger for {players.length} players. First run ~15–20s, then caches for 24 hrs.
-            </p>
-            <div className="h-1 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--terminal-border)' }}>
-              <div className="h-full animate-pulse w-full" style={{ backgroundColor: 'var(--accent-blue)' }} />
-            </div>
-          </div>
-        )}
-
         {/* Tab bar */}
         <div className="flex gap-1 p-1 rounded-lg" style={{ backgroundColor: 'var(--terminal-surface)', border: '1px solid var(--terminal-border)' }}>
           {(['teams', 'players'] as const).map(tab => {
