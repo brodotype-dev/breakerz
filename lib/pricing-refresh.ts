@@ -19,6 +19,13 @@ import { computeLiveEV, searchAndComputeEV, get90DayPrices, batchPriceEstimate }
 
 const CACHE_TTL_HOURS = 24;
 
+// Vercel Hobby kills the function at 60s. Stop the batch phase early so we
+// have time to run per-pp fallbacks + upsert cache rows. Jumbo products
+// (Bowman Chrome 6,481 variants) legitimately can't finish live in one
+// invocation — partial progress is by design. See BACKLOG C/D.
+const BATCH_DEADLINE_MS = 45_000; // stop enqueueing new chunks after 45s
+const HARD_DEADLINE_MS = 55_000;  // last moment to bail from per-pp phase
+
 export interface RefreshSummary {
   productId: string;
   productName: string | null;
@@ -30,8 +37,10 @@ export interface RefreshSummary {
   variantsFetched: number;
   variantsTotal: number;
   batchChunkCount: number;
+  batchChunksCompleted: number;
   batchDurationMs: number;
   totalDurationMs: number;
+  partial: boolean;
 }
 
 export async function refreshProductPricing(productId: string): Promise<RefreshSummary> {
@@ -58,8 +67,9 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
       totalPlayers: 0,
       livePriced: 0, crossPriced: 0, searchPriced: 0, defaultPriced: 0,
       variantsFetched: 0, variantsTotal: 0,
-      batchChunkCount: 0, batchDurationMs: 0,
+      batchChunkCount: 0, batchChunksCompleted: 0, batchDurationMs: 0,
       totalDurationMs: Date.now() - started,
+      partial: false,
     };
   }
 
@@ -142,19 +152,31 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
   }
 
   let chunkCursor = 0;
+  let chunksCompleted = 0;
+  const batchStart = Date.now();
   const chunkWorkers = Array.from(
     { length: Math.min(PRICE_FETCH_CONCURRENCY, priceChunks.length) },
     async () => {
       while (true) {
+        // Stop enqueueing new chunks past the deadline — leaves runway for
+        // the per-pp phase + cache upsert before Vercel kills us at 60s.
+        if (Date.now() - started > BATCH_DEADLINE_MS) return;
         const idx = chunkCursor++;
         if (idx >= priceChunks.length) return;
         await runChunk(idx, priceChunks[idx]);
+        chunksCompleted++;
       }
     },
   );
-  const batchStart = Date.now();
   await Promise.all(chunkWorkers);
   const batchDurationMs = Date.now() - batchStart;
+  const batchTimedOut = chunksCompleted < priceChunks.length;
+  if (batchTimedOut) {
+    console.warn(
+      `[pricing-refresh] batch phase hit deadline: ${chunksCompleted}/${priceChunks.length} chunks ` +
+      `in ${batchDurationMs}ms (${pricesOnly.size} variants priced) — proceeding with partial data`,
+    );
+  }
 
   // --- Build cache rows via per-player workers (same fallback ladder as before) ---
   const OUTER_CONCURRENCY = 8;
@@ -225,6 +247,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
   }
 
   let livePriced = 0, crossPriced = 0, searchPriced = 0, defaultPriced = 0;
+  let hardDeadlineHit = false;
 
   // Narrowed shape of the Supabase join — `player` comes back as an object,
   // not an array, when the FK is unique.
@@ -236,6 +259,11 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
   };
 
   await mapLimit(playerProducts as unknown as PP[], OUTER_CONCURRENCY, async pp => {
+    // Hard deadline: bail out and at least preserve what we've collected.
+    if (Date.now() - started > HARD_DEADLINE_MS) {
+      hardDeadlineHit = true;
+      return;
+    }
     const variants = variantMap.get(pp.id) ?? [];
     const playerIsRookie = pp.player?.is_rookie ?? false;
     const playerName = pp.player?.name ?? '';
@@ -376,10 +404,13 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
   }
 
   const totalDurationMs = Date.now() - started;
+  const partial = batchTimedOut || hardDeadlineHit;
   console.log(
     `[pricing-refresh] product=${product?.name ?? productId} players=${playerProducts.length} ` +
     `live=${livePriced} cross=${crossPriced} search=${searchPriced} default=${defaultPriced} ` +
-    `variants=${pricesOnly.size}/${allVariantCardIds.length} batch=${batchDurationMs}ms total=${totalDurationMs}ms`,
+    `variants=${pricesOnly.size}/${allVariantCardIds.length} ` +
+    `chunks=${chunksCompleted}/${priceChunks.length} batch=${batchDurationMs}ms ` +
+    `total=${totalDurationMs}ms${partial ? ' PARTIAL' : ''}`,
   );
 
   return {
@@ -390,7 +421,9 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     variantsFetched: pricesOnly.size,
     variantsTotal: allVariantCardIds.length,
     batchChunkCount: priceChunks.length,
+    batchChunksCompleted: chunksCompleted,
     batchDurationMs,
     totalDurationMs,
+    partial,
   };
 }
