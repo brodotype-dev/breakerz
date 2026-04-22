@@ -67,6 +67,22 @@ export async function updateProduct(
   return {};
 }
 
+export async function setProductChSetName(
+  productId: string,
+  chSetName: string | null,
+): Promise<{ error?: string }> {
+  await requireRole('admin', 'contributor');
+  const { error } = await supabaseAdmin
+    .from('products')
+    .update({ ch_set_name: chSetName })
+    .eq('id', productId);
+
+  if (error) return { error: error.message };
+  revalidatePath('/admin/products');
+  revalidatePath(`/admin/products/${productId}`);
+  return {};
+}
+
 export async function saveBreakerzBets(
   productId: string,
   updates: Array<{ playerProductId: string; score: number; note: string }>

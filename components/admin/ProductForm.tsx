@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { createProduct, updateProduct } from '@/app/admin/products/actions';
+import { useState, useEffect, useRef } from 'react';
+import { createProduct, updateProduct, setProductChSetName } from '@/app/admin/products/actions';
 import type { Sport, Product } from '@/lib/types';
 
-interface CHSetResult { set_name: string; year: string; category: string; card_count: number; }
+interface CHSetResult { set_name: string; year: string; category: string; thirty_day_sales?: number; }
 
 interface Props {
   sports: Sport[];
@@ -151,11 +151,13 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
   const [setSearchQuery, setSetSearchQuery] = useState('');
   const [setSearchResults, setSetSearchResults] = useState<CHSetResult[]>([]);
   const [setSearching, setSetSearching] = useState(false);
+  const [chSetStatus, setChSetStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
 
   const [nameEdited, setNameEdited] = useState(!!product);
   const [slugEdited, setSlugEdited] = useState(!!product);
   const [status, setStatus] = useState<{ type: 'error' | 'success'; message: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const autoSearchedRef = useRef(false);
 
   useEffect(() => {
     if (nameEdited) return;
@@ -170,22 +172,68 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
 
   const effectiveManufacturer = manufacturer === 'Other' ? manufacturerCustom : manufacturer;
 
-  async function searchCHSets() {
-    if (!setSearchQuery.trim()) return;
+  // CH's canonical set names rarely include the trailing sport word
+  // ("2025 Bowman Chrome" not "2025 Bowman Chrome Baseball"), so strip it
+  // when seeding the search from the product's display name.
+  function defaultQueryFrom(displayName: string) {
+    return displayName
+      .replace(/\s+(baseball|basketball|football|soccer|hockey)\s*$/i, '')
+      .trim();
+  }
+
+  async function searchCHSets(overrideQuery?: string) {
+    const q = (overrideQuery ?? setSearchQuery).trim();
+    if (!q) return;
     setSetSearching(true);
     setSetSearchResults([]);
     const sport = sports.find(s => s.id === sportId);
     const res = await fetch('/api/admin/set-search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: setSearchQuery, category: sport?.name }),
+      body: JSON.stringify({ query: q, category: sport?.name }),
     });
     const data = await res.json();
     setSetSearchResults(data.sets ?? []);
     setSetSearching(false);
   }
 
+  // For edit forms, selecting a CH set feels like a commit — persist it
+  // immediately instead of waiting for full-form Save/Update. For new
+  // products (no id yet), we just update local state; createProduct will
+  // pick it up on submit.
+  async function commitChSetName(nextName: string | null) {
+    setChSetName(nextName ?? '');
+    if (!product?.id) return;
+    setChSetStatus('saving');
+    const res = await setProductChSetName(product.id, nextName);
+    setChSetStatus(res.error ? 'error' : 'saved');
+    if (!res.error) {
+      setTimeout(() => setChSetStatus('idle'), 2500);
+    }
+  }
+
+  // Auto-search on mount (and when the derived name first becomes meaningful)
+  // if no ch_set_name is locked in yet. Fires at most once per session.
+  useEffect(() => {
+    if (autoSearchedRef.current) return;
+    if (chSetName) return;
+    if (!name.trim() || !sportId) return;
+    autoSearchedRef.current = true;
+    const seed = defaultQueryFrom(name);
+    setSetSearchQuery(seed);
+    void searchCHSets(seed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [name, sportId, chSetName]);
+
   async function handleSubmit(publish: boolean) {
+    if (publish && !chSetName) {
+      setStatus({
+        type: 'error',
+        message: 'Lock in a CardHedger set name before publishing — matching and pricing rely on it.',
+      });
+      return;
+    }
+
     setSubmitting(true);
     setStatus(null);
 
@@ -296,9 +344,21 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
           <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.3)' }}>
             <span style={{ color: 'rgb(34,197,94)', fontSize: '0.75rem' }}>✓</span>
             <span className="text-sm font-mono flex-1" style={{ color: 'var(--text-primary)' }}>{chSetName}</span>
+            {chSetStatus === 'saving' && (
+              <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Saving…</span>
+            )}
+            {chSetStatus === 'saved' && (
+              <span className="text-xs" style={{ color: 'rgb(34,197,94)' }}>Saved ✓</span>
+            )}
+            {chSetStatus === 'error' && (
+              <span className="text-xs" style={{ color: 'rgb(239,68,68)' }}>Save failed</span>
+            )}
+            {chSetStatus === 'idle' && !product?.id && (
+              <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Saves when product is created</span>
+            )}
             <button
               type="button"
-              onClick={() => { setChSetName(''); setSetSearchResults([]); }}
+              onClick={() => { void commitChSetName(null); setSetSearchResults([]); }}
               className="text-xs hover:underline"
               style={{ color: 'var(--text-tertiary)' }}
             >
@@ -318,7 +378,7 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
           />
           <button
             type="button"
-            onClick={searchCHSets}
+            onClick={() => searchCHSets()}
             disabled={setSearching || !setSearchQuery.trim()}
             className="px-4 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-40 whitespace-nowrap"
             style={{ backgroundColor: 'var(--accent-blue)', color: 'white' }}
@@ -329,28 +389,53 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
 
         {/* Results */}
         {setSearchResults.length > 0 && (
-          <div className="mt-2 rounded-lg overflow-hidden" style={{ border: '1px solid var(--terminal-border)' }}>
-            {setSearchResults.map(s => (
-              <button
-                key={s.set_name}
-                type="button"
-                onClick={() => { setChSetName(s.set_name); setSetSearchResults([]); setSetSearchQuery(''); }}
-                className="w-full flex items-center justify-between px-3 py-2.5 text-left transition-colors hover:bg-[var(--terminal-surface-hover)] border-b last:border-0"
-                style={{ borderColor: 'var(--terminal-border)' }}
-              >
-                <div>
-                  <p className="text-sm font-mono" style={{ color: 'var(--text-primary)' }}>{s.set_name}</p>
-                  <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{s.year} · {s.category}</p>
-                </div>
-                <span className="text-xs font-mono ml-4" style={{ color: 'var(--text-tertiary)' }}>
-                  {s.card_count?.toLocaleString()} cards
-                </span>
-              </button>
-            ))}
-          </div>
+          <>
+            <p className="mt-2 mb-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+              {setSearchResults.length === 1
+                ? '1 match found — click to lock it in.'
+                : `${setSearchResults.length} matches found — top result highlighted. Click any row to lock in a different one.`}
+            </p>
+            <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--terminal-border)' }}>
+              {setSearchResults.map((s, idx) => {
+                const isTop = idx === 0;
+                return (
+                  <button
+                    key={s.set_name}
+                    type="button"
+                    onClick={() => { void commitChSetName(s.set_name); setSetSearchResults([]); setSetSearchQuery(''); }}
+                    className="w-full flex items-center justify-between px-3 py-2.5 text-left transition-colors hover:bg-[var(--terminal-surface-hover)] border-b last:border-0"
+                    style={{
+                      borderColor: 'var(--terminal-border)',
+                      backgroundColor: isTop ? 'rgba(59,130,246,0.08)' : undefined,
+                    }}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      {isTop && (
+                        <span
+                          className="text-[0.625rem] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded flex-shrink-0"
+                          style={{ backgroundColor: 'var(--accent-blue)', color: 'white' }}
+                        >
+                          Top match
+                        </span>
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm font-mono truncate" style={{ color: 'var(--text-primary)' }}>{s.set_name}</p>
+                        <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{s.year} · {s.category}</p>
+                      </div>
+                    </div>
+                    {s.thirty_day_sales ? (
+                      <span className="text-xs font-mono ml-4 flex-shrink-0" style={{ color: 'var(--text-tertiary)' }}>
+                        {s.thirty_day_sales.toLocaleString()} sales / 30d
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          </>
         )}
 
-        {setSearchResults.length === 0 && !setSearching && setSearchQuery && (
+        {setSearchResults.length === 0 && !setSearching && setSearchQuery && autoSearchedRef.current && (
           <p className="mt-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>
             No results — try a shorter query or check the set name spelling.
           </p>
