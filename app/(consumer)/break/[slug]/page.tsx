@@ -41,7 +41,6 @@ export default function BreakPage() {
   const [product, setProduct] = useState<(Product & { sport: Sport }) | null>(null);
   const [rawPlayers, setRawPlayers] = useState<PlayerWithPricing[]>([]);
   const [loading, setLoading] = useState(true);
-  const [fetching, setFetching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // player_product_id → active risk flags
@@ -106,22 +105,6 @@ export default function BreakPage() {
     }
     if (slug) load();
   }, [slug]);
-
-  async function fetchLivePricing() {
-    if (!product) return;
-    setFetching(true);
-    try {
-      const res = await fetch('/api/pricing', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId: product.id }),
-      });
-      const { players } = await res.json();
-      if (players) setRawPlayers(players);
-    } finally {
-      setFetching(false);
-    }
-  }
 
   const players = useMemo(() => computeSlotPricing(rawPlayers, config), [rawPlayers, config]);
 
@@ -222,7 +205,7 @@ export default function BreakPage() {
               </div>
               <h1 className="text-2xl md:text-3xl font-black text-white mb-3">{product.name}</h1>
               <div className="flex items-center gap-3 flex-wrap">
-                {hasPricing && !fetching && (
+                {hasPricing && (
                   <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg backdrop-blur-sm" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
                     <span className="h-1.5 w-1.5 rounded-full bg-white inline-block" />
                     <span className="text-xs font-semibold text-white">{pricedCount}/{players.length} priced</span>
@@ -251,23 +234,6 @@ export default function BreakPage() {
                     { value: 'bd',    label: "Breaker's Delight" },
                   ]}
                 />
-              </div>
-              <div>
-                <div className="text-[10px] font-semibold uppercase mb-2" style={{ color: 'rgba(255,255,255,0.7)', letterSpacing: '0.06em' }}>
-                  Pricing
-                </div>
-                <button
-                  onClick={fetchLivePricing}
-                  disabled={fetching}
-                  className="px-4 py-2.5 text-sm font-bold rounded-lg transition-all disabled:opacity-40"
-                  style={{
-                    backgroundColor: 'rgba(255,255,255,0.15)',
-                    color: 'white',
-                    border: '1px solid rgba(255,255,255,0.3)',
-                  }}
-                >
-                  {fetching ? 'Fetching…' : hasPricing ? 'Refresh' : 'Fetch Pricing'}
-                </button>
               </div>
             </div>
           </div>
@@ -306,24 +272,17 @@ export default function BreakPage() {
         <DashboardConfig config={config} onChange={setConfig} breakType={breakType} />
         <TopMoversWidget players={rawPlayers} />
 
-        {!hasPricing && !fetching && (
+        {!hasPricing && (
           <div
-            className="rounded-lg border border-dashed p-6 flex items-center justify-between gap-4"
+            className="rounded-lg border border-dashed p-6"
             style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
           >
-            <div>
-              <p className="font-semibold text-sm mb-0.5" style={{ color: 'var(--text-t-primary)' }}>Live pricing not loaded</p>
-              <p className="text-xs" style={{ color: 'var(--text-t-secondary)' }}>
-                Players are loaded — hit Fetch to pull EV data from CardHedger. Caches for 24 hrs.
-              </p>
-            </div>
-            <button
-              onClick={fetchLivePricing}
-              className="shrink-0 text-xs px-4 py-2 rounded-lg font-bold transition-colors"
-              style={{ backgroundColor: 'var(--accent-blue)', color: 'white' }}
-            >
-              Fetch Pricing
-            </button>
+            <p className="font-semibold text-sm mb-0.5" style={{ color: 'var(--text-t-primary)' }}>
+              Pricing not yet available
+            </p>
+            <p className="text-xs" style={{ color: 'var(--text-t-secondary)' }}>
+              This product was hydrated recently. Pricing refreshes nightly at 4&nbsp;AM UTC — check back shortly.
+            </p>
           </div>
         )}
 

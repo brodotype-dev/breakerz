@@ -5,6 +5,27 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-22 — Pricing pipeline: rip out consumer refresh UI, unbounded cron fan-out, docs
+
+With the pricing-refresh fire out and Bowman Chrome priced end-to-end, cleanup + documentation pass to lock in the architecture and make sure it scales beyond today's ~10 active products.
+
+**Consumer break page:**
+- Removed the "Refresh" / "Fetch Pricing" button at the top of `/break/[slug]`. With `/api/pricing` now a pure cache read, the button's only effect was a confusing no-op re-fetch of data the server already had. No more user-facing lever on pricing.
+- Replaced the action-banner ("Live pricing not loaded — hit Fetch") with a passive informational banner ("Pricing not yet available — refreshes nightly at 4 AM UTC"). If the cache is empty, the user can't do anything about it anyway; don't pretend otherwise.
+- Removed `fetching` state and `fetchLivePricing()` from `app/(consumer)/break/[slug]/page.tsx`.
+
+**Cron fan-out:**
+- Removed `FAN_OUT_CONCURRENCY = 3` throttle in `app/api/cron/refresh-pricing/route.ts`. Made sense when the orchestrator did heavy work on Hobby's 60s cap; on Pro with per-product invocations each spawning their own 300s budget, the throttle only serialized dispatch artificially. Now: `Promise.all(priceable.map(...))` — one HTTP call per product, all in flight simultaneously.
+- Scales comfortably to ~50 active products. Past that, CH per-IP rate limits become the bottleneck — reintroduce a small cap at that point. Noted inline.
+
+**Docs:**
+- New `docs/pricing-architecture.md` — full pipeline diagram, design principles, scaling notes, what-we-tried-and-threw-away. Written as the canonical reference for any future "why does pricing work this way" question.
+- `CLAUDE.md` Current State: "Pricing Cache Cron" entry rewritten as "Pricing Pipeline" covering the full consumer-cache-read + admin/cron writer split. Key Files section updated with `/api/pricing`, `lib/pricing-refresh.ts`, the admin worker route, and the admin button.
+
+No schema changes. No behavior change for the cron on small products; the change only matters once there are more products than the old throttle allowed in parallel.
+
+---
+
 ## 2026-04-22 — Hot-fix: pricing_cache upsert silently wrote 0 rows (NOT NULL on cardhedger_card_id)
 
 After clearing the timeout + iterable bugs, the Bowman Chrome refresh ran to completion (218.5s, 278 players priced in the summary) — but the consumer break page still showed "Live pricing not loaded" with every EV column dashed. The cache was empty.
