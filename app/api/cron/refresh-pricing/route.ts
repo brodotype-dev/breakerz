@@ -2,7 +2,12 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60; // Orchestrator only — per-product work runs elsewhere.
+// Vercel Pro: 300s. The orchestrator awaits per-product HTTP fan-out responses.
+// With concurrency=3 and per-product budget of 300s each, a batch of up to ~9
+// products fits here cleanly; past that, some runners won't finish before we
+// return, but the per-product invocations still complete on their own budget
+// (they're separate Vercel invocations).
+export const maxDuration = 300;
 
 /**
  * Nightly at 4 AM UTC (see vercel.json).

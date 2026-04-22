@@ -19,12 +19,12 @@ import { computeLiveEV, searchAndComputeEV, get90DayPrices, batchPriceEstimate }
 
 const CACHE_TTL_HOURS = 24;
 
-// Vercel Hobby kills the function at 60s. Stop the batch phase early so we
+// Vercel Pro kills the function at 300s. Stop the batch phase early so we
 // have time to run per-pp fallbacks + upsert cache rows. Jumbo products
-// (Bowman Chrome 6,481 variants) legitimately can't finish live in one
-// invocation — partial progress is by design. See BACKLOG C/D.
-const BATCH_DEADLINE_MS = 45_000; // stop enqueueing new chunks after 45s
-const HARD_DEADLINE_MS = 55_000;  // last moment to bail from per-pp phase
+// (Bowman Chrome 6,481 variants) typically finish batch in ~160s. These
+// deadlines are the safety net for unusually slow CH responses.
+const BATCH_DEADLINE_MS = 270_000; // stop enqueueing new chunks after 4:30
+const HARD_DEADLINE_MS = 290_000;  // last moment to bail from per-pp phase
 
 export interface RefreshSummary {
   productId: string;
