@@ -5,6 +5,16 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-22 — Hot-fix: POST /api/pricing now always refreshes live (no cache early-return)
+
+After PR #16 shipped, clicking **Refresh** on the break page silently returned the same wrong prices the broken runs had written to `pricing_cache` — because `POST` had an early-return that replied `pricingSource: 'cached'` whenever a valid cache row existed. Worse: `'cached'` isn't counted as estimated in the UI, so the "N players using estimated pricing" banner disappeared along with the `est` badges. Users saw $8 everywhere with no indication anything was wrong.
+
+**Fix:** `POST` no longer reads `pricing_cache`. It always runs the batch-price path and writes fresh rows. `GET` still reads cache (the fast consumer path is unchanged). The Refresh button now does what its name says.
+
+Side effect: the nightly cron at 4 AM UTC also always does full refreshes now — previously it was a partial refresh (only unpriced pps). Cost is small — ~65 batch calls per hydrated product.
+
+---
+
 ## 2026-04-22 — Hot-fix: CH batch-price-estimate caps at 100 items
 
 PR #15 sent 500-item chunks to `batch-price-estimate`. CH's endpoint rejects anything over 100 items with HTTP 400 (`"List should have at most 100 items after validation"`). The try/catch around the batch call swallowed the error, logged to console, and moved on — so `pricesOnly` stayed empty, every variant hit `evMid=0`, and every player landed in the fallback chain. Net effect: the batch migration silently produced the exact same "all estimated" result that PR #15 was supposed to fix.
