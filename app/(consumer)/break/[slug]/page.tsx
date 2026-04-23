@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
@@ -49,6 +49,8 @@ export default function BreakPage() {
 
   const [chaseCards, setChaseCards] = useState<ChaseCard[]>([]);
   const [activePlayerProductId, setActivePlayerProductId] = useState<string | null>(null);
+  const [drawerTop, setDrawerTop] = useState(48);
+  const mainRef = useRef<HTMLElement>(null);
   const [breakType, setBreakType] = useState<'hobby' | 'bd'>('hobby');
   const [activeTab, setActiveTab] = useState<'teams' | 'players'>('teams');
 
@@ -124,6 +126,23 @@ export default function BreakPage() {
     }
     if (slug) load();
   }, [slug]);
+
+  useLayoutEffect(() => {
+    const NAV_H = 48;
+    function update() {
+      if (mainRef.current) {
+        const top = mainRef.current.getBoundingClientRect().top;
+        setDrawerTop(Math.max(NAV_H, top));
+      }
+    }
+    update();
+    window.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, []);
 
   const players = useMemo(() => computeSlotPricing(rawPlayers, config), [rawPlayers, config]);
 
@@ -287,7 +306,7 @@ export default function BreakPage() {
         </div>
       )}
 
-      <main className="px-4 md:px-6 py-6 space-y-5 max-w-[1400px] mx-auto">
+      <main ref={mainRef} className="px-4 md:px-6 py-6 space-y-5 max-w-[1400px] mx-auto">
         <ChaseCardsPanel chaseCards={chaseCards} />
         <TopMoversWidget players={rawPlayers} />
 
@@ -393,6 +412,7 @@ export default function BreakPage() {
       <PlayerDetailDrawer
         playerProductId={activePlayerProductId}
         onClose={() => setActivePlayerProductId(null)}
+        topOffset={drawerTop}
       />
     </div>
   );

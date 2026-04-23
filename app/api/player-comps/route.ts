@@ -45,10 +45,14 @@ export async function GET(req: NextRequest) {
     uniqueCardIds.map(async cardId => {
       try {
         const result = await getAllPrices(cardId);
-        // Filter to grades 8, 9, 10 (PSA/BGS) and Raw
+        // Filter to Raw, PSA 8/9/10 grades
+        const gradeWhitelist = new Set(['8', '9', '10', 'PSA 8', 'PSA 9', 'PSA 10', 'Raw', 'Ungraded']);
         const filtered = (result.prices ?? [])
-          .filter(p => ['8', '9', '10', 'PSA 8', 'PSA 9', 'PSA 10', 'Raw'].includes(p.grade))
-          .map(p => ({ grade: p.grade, price: parseFloat(p.price) || 0 }));
+          .filter(p => gradeWhitelist.has(p.grade))
+          .map(p => ({
+            grade: p.grade === '8' ? 'PSA 8' : p.grade === '9' ? 'PSA 9' : p.grade === '10' ? 'PSA 10' : p.grade,
+            price: parseFloat(p.price) || 0,
+          }));
         priceMap.set(cardId, filtered);
       } catch {
         priceMap.set(cardId, []);

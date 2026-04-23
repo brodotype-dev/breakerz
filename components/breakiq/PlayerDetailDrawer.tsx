@@ -15,6 +15,7 @@ interface PlayerCompsData {
 interface Props {
   playerProductId: string | null;
   onClose: () => void;
+  topOffset?: number;
 }
 
 function GradeBadge({ grade }: { grade: string }) {
@@ -37,7 +38,7 @@ function PlatformLabel({ platform }: { platform: string }) {
   return <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{label}</span>;
 }
 
-export default function PlayerDetailDrawer({ playerProductId, onClose }: Props) {
+export default function PlayerDetailDrawer({ playerProductId, onClose, topOffset = 0 }: Props) {
   const [data, setData] = useState<PlayerCompsData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,8 +93,10 @@ export default function PlayerDetailDrawer({ playerProductId, onClose }: Props) 
 
       {/* Drawer panel */}
       <div
-        className="fixed top-0 right-0 h-full z-50 flex flex-col transition-transform duration-300 ease-in-out"
+        className="fixed right-0 z-50 flex flex-col transition-transform duration-300 ease-in-out"
         style={{
+          top: topOffset,
+          height: `calc(100vh - ${topOffset}px)`,
           width: 'min(480px, 100vw)',
           transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
           backgroundColor: 'var(--terminal-bg)',
@@ -185,6 +188,9 @@ export default function PlayerDetailDrawer({ playerProductId, onClose }: Props) 
                         <th className="text-right px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
                           Odds
                         </th>
+                        <th className="text-right px-3 py-2 font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                          Raw
+                        </th>
                         <th className="text-right px-3 py-2 font-bold uppercase tracking-wider" style={{ color: '#ef4444' }}>
                           PSA 8
                         </th>
@@ -199,10 +205,8 @@ export default function PlayerDetailDrawer({ playerProductId, onClose }: Props) 
                     <tbody>
                       {data.variants.map((v, i) => {
                         const getPrice = (grade: string) => {
-                          const p = v.prices.find(p =>
-                            p.grade === grade || p.grade === grade.replace('PSA ', '')
-                          );
-                          return p ? `$${p.price.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '—';
+                          const p = v.prices.find(p => p.grade === grade || (grade === 'Raw' && p.grade === 'Ungraded'));
+                          return p && p.price > 0 ? `$${p.price.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '—';
                         };
                         return (
                           <tr
@@ -223,6 +227,9 @@ export default function PlayerDetailDrawer({ playerProductId, onClose }: Props) 
                             </td>
                             <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--text-tertiary)' }}>
                               {v.hobby_odds ? `1:${v.hobby_odds}` : '—'}
+                            </td>
+                            <td className="px-3 py-2 text-right font-mono text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                              {getPrice('Raw')}
                             </td>
                             <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--text-secondary)' }}>
                               {getPrice('PSA 8')}
