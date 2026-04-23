@@ -100,7 +100,25 @@ function ChaseCardTile({ card }: { card: ChaseCard }) {
 }
 
 export default function ChaseCardsPanel({ chaseCards }: Props) {
-  if (chaseCards.length === 0) return null;
+  if (chaseCards.length === 0) {
+    return (
+      <div
+        className="rounded-xl px-4 py-3 flex items-center gap-3"
+        style={{
+          border: '1px solid var(--terminal-border)',
+          backgroundColor: 'var(--terminal-surface)',
+          borderLeft: '3px solid rgba(168,85,247,0.5)',
+        }}
+      >
+        <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#a855f7' }}>
+          Chase Board
+        </span>
+        <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+          No chase cards set for this product yet. Admins can add them from the product dashboard.
+        </span>
+      </div>
+    );
+  }
 
   const hitCount = chaseCards.filter(c => c.is_hit).length;
 
