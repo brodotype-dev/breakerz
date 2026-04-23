@@ -11,9 +11,10 @@ interface Props {
   fetching?: boolean;
   breakType: 'hobby' | 'bd';
   riskFlagMap?: Map<string, RiskFlagEntry[]>;
+  onPlayerClick?: (playerProductId: string) => void;
 }
 
-export default function PlayerTable({ players, fetching = false, breakType, riskFlagMap = new Map() }: Props) {
+export default function PlayerTable({ players, fetching = false, breakType, riskFlagMap = new Map(), onPlayerClick }: Props) {
   if (players.length === 0) {
     return (
       <div
@@ -66,7 +67,17 @@ export default function PlayerTable({ players, fetching = false, breakType, risk
                   {/* Player */}
                   <td className="px-4 py-2.5">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="font-semibold whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>{row.player.name}</span>
+                      {onPlayerClick ? (
+                        <button
+                          onClick={() => onPlayerClick(row.id)}
+                          className="font-semibold whitespace-nowrap text-left transition-colors hover:underline"
+                          style={{ color: 'var(--accent-blue)' }}
+                        >
+                          {row.player.name}
+                        </button>
+                      ) : (
+                        <span className="font-semibold whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>{row.player.name}</span>
+                      )}
                       {row.player.is_rookie && (
                         <span
                           className="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0"

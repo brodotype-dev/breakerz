@@ -4,13 +4,14 @@ import { useEffect, useState, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
-import DashboardConfig from '@/components/breakiq/DashboardConfig';
 import PlayerTable from '@/components/breakiq/PlayerTable';
 import TeamSlotsTable from '@/components/breakiq/TeamSlotsTable';
 import TopMoversWidget from '@/components/breakiq/TopMoversWidget';
-import { SegmentedControl } from '@/components/breakiq/ds';
-import { computeSlotPricing, computeTeamSlotPricing } from '@/lib/engine';
-import type { BreakConfig, PlayerWithPricing, Product, Sport } from '@/lib/types';
+import ChaseCardsPanel from '@/components/breakiq/ChaseCardsPanel';
+import PlayerDetailDrawer from '@/components/breakiq/PlayerDetailDrawer';
+import { SegmentedControl, CounterInput } from '@/components/breakiq/ds';
+import { computeSlotPricing, computeTeamSlotPricing, formatCurrency } from '@/lib/engine';
+import type { BreakConfig, ChaseCard, PlayerWithPricing, Product, Sport } from '@/lib/types';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -46,6 +47,8 @@ export default function BreakPage() {
   // player_product_id → active risk flags
   const [riskFlagMap, setRiskFlagMap] = useState<Map<string, Array<{ flagType: string; note: string }>>>(new Map());
 
+  const [chaseCards, setChaseCards] = useState<ChaseCard[]>([]);
+  const [activePlayerProductId, setActivePlayerProductId] = useState<string | null>(null);
   const [breakType, setBreakType] = useState<'hobby' | 'bd'>('hobby');
   const [activeTab, setActiveTab] = useState<'teams' | 'players'>('teams');
 
@@ -84,10 +87,18 @@ export default function BreakPage() {
           bdCaseCost: prod.bd_am_case_cost ?? prod.bd_case_cost ?? prev.bdCaseCost,
         }));
 
-        const res = await fetch(`/api/pricing?productId=${prod.id}`);
-        const { players: fetchedPlayers } = await res.json();
+        const [pricingRes, chaseRes] = await Promise.all([
+          fetch(`/api/pricing?productId=${prod.id}`),
+          supabase
+            .from('product_chase_cards')
+            .select('*, player_product:player_products(*, player:players(*))')
+            .eq('product_id', prod.id)
+            .order('display_order', { ascending: true }),
+        ]);
+        const { players: fetchedPlayers } = await pricingRes.json();
         const playerList: PlayerWithPricing[] = fetchedPlayers ?? [];
         setRawPlayers(playerList);
+        setChaseCards((chaseRes.data ?? []) as ChaseCard[]);
 
         // Fetch active risk flags for all players in this product
         if (playerList.length > 0) {
@@ -277,15 +288,7 @@ export default function BreakPage() {
       )}
 
       <main className="px-4 md:px-6 py-6 space-y-5 max-w-[1400px] mx-auto">
-        <DashboardConfig
-          config={config}
-          onChange={setConfig}
-          breakType={breakType}
-          hobbyMsrp={hobbyMsrp}
-          hobbyAmPrice={hobbyAmPrice}
-          bdMsrp={bdMsrp}
-          bdAmPrice={bdAmPrice}
-        />
+        <ChaseCardsPanel chaseCards={chaseCards} />
         <TopMoversWidget players={rawPlayers} />
 
         {!hasPricing && (
@@ -301,6 +304,43 @@ export default function BreakPage() {
             </p>
           </div>
         )}
+
+        {/* Cases counter + cost summary */}
+        <div
+          className="flex items-center gap-4 flex-wrap px-4 py-2.5 rounded-lg"
+          style={{ backgroundColor: 'var(--terminal-surface)', border: '1px solid var(--terminal-border)' }}
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+              {breakType === 'hobby' ? 'Hobby Cases' : 'BD Cases'}
+            </span>
+            <CounterInput
+              value={breakType === 'hobby' ? config.hobbyCases : config.bdCases}
+              onChange={v => setConfig(prev => breakType === 'hobby' ? { ...prev, hobbyCases: v } : { ...prev, bdCases: v })}
+              min={1}
+            />
+          </div>
+          {(() => {
+            const cases = breakType === 'hobby' ? config.hobbyCases : config.bdCases;
+            const cost = breakType === 'hobby' ? config.hobbyCaseCost : config.bdCaseCost;
+            const amPrice = breakType === 'hobby' ? hobbyAmPrice : bdAmPrice;
+            const msrp = breakType === 'hobby' ? hobbyMsrp : bdMsrp;
+            const priceLabel = amPrice != null ? 'market' : msrp != null ? 'MSRP' : null;
+            if (cost <= 0) return null;
+            return (
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-mono font-bold" style={{ color: 'var(--text-primary)' }}>
+                  {formatCurrency(cases * cost)}
+                </span>
+                {priceLabel && (
+                  <span className="text-[10px]" style={{ color: amPrice != null ? 'var(--accent-orange)' : 'var(--text-disabled)' }}>
+                    ({priceLabel})
+                  </span>
+                )}
+              </div>
+            );
+          })()}
+        </div>
 
         {/* Tab bar */}
         <div className="flex gap-1 p-1 rounded-lg" style={{ backgroundColor: 'var(--terminal-surface)', border: '1px solid var(--terminal-border)' }}>
@@ -339,9 +379,21 @@ export default function BreakPage() {
         {/* Tab content */}
         <div className="mt-4">
           {activeTab === 'teams' && <TeamSlotsTable teams={teamSlots} breakType={breakType} riskFlagMap={riskFlagMap} />}
-          {activeTab === 'players' && <PlayerTable players={players} breakType={breakType} riskFlagMap={riskFlagMap} />}
+          {activeTab === 'players' && (
+            <PlayerTable
+              players={players}
+              breakType={breakType}
+              riskFlagMap={riskFlagMap}
+              onPlayerClick={id => setActivePlayerProductId(id)}
+            />
+          )}
         </div>
       </main>
+
+      <PlayerDetailDrawer
+        playerProductId={activePlayerProductId}
+        onClose={() => setActivePlayerProductId(null)}
+      />
     </div>
   );
 }

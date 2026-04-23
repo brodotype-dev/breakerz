@@ -9,6 +9,7 @@ import HydrateVariantsButton from './HydrateVariantsButton';
 import BreakIQBetsDebrief from './BreakIQBetsDebrief';
 import BreakerComparisonPanel from './BreakerComparisonPanel';
 import PricingBreakdownPanel from './PricingBreakdownPanel';
+import ChaseCardsManager from './ChaseCardsManager';
 
 type PageProps = { params: Promise<{ id: string }> };
 
@@ -450,6 +451,14 @@ export default async function ProductDashboardPage({ params }: PageProps) {
             <OddsUpload productId={id} />
           </Section>
         </div>
+
+        {/* Chase Cards */}
+        <Section title="Chase Cards" accent="linear-gradient(135deg, #a855f7 0%, #3b82f6 100%)">
+          <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
+            Set the chase cards and players for this product. Recommendations are auto-generated from the checklist odds and buzz scores. Hits are self-reported — pricing is not automatically updated.
+          </p>
+          <ChaseCardsManager productId={id} />
+        </Section>
 
         {/* Breakerz Bets debrief */}
         <Section title="BreakIQ Bets" accent="var(--gradient-purple)">

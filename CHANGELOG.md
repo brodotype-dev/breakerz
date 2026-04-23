@@ -5,6 +5,32 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-23 — Chase Board + Player Detail Drawer
+
+Two new consumer-facing features: a chase card board on the break page and a per-player detail drawer with CardHedger comps.
+
+**Chase Board:**
+- New `product_chase_cards` table (migration `20260423120000`). Stores chase cards and chase players per product — type, display name, odds text, hit state, self-reported hit timestamp.
+- Admin product page: new "Chase Cards" section with `ChaseCardsManager` component. Auto-recommends candidates from checklist data (lowest-odds variants → Chase Cards, highest buzz_score players → Chase Players). Admin can add from recommendations, manually add by player_product_id, and mark cards as hit.
+- Hits are explicitly self-reported — no automatic pricing update. Hit cards show a "Self-Reported Hit" banner and a disclaimer note.
+- Consumer break page: `DashboardConfig` replaced by `ChaseCardsPanel` — a responsive tile grid (2–5 cols) showing up to 10 chase cards and players per product. Hit cards show a prominent red "HIT — Self-Reported" banner.
+- Cases count / total cost moved to a compact inline row above the tab bar (replaces the full DashboardConfig card).
+
+**Player Detail Drawer:**
+- Clicking a player name in the Player Slots table opens a `PlayerDetailDrawer` slide-over panel.
+- Fires live CardHedger API call on open (not pre-cached) — shows a loader while fetching.
+- Shows: all variants for that player in this product with PSA 8/9/10 prices from CH `all-prices-by-card`; recent comps (PSA 8/9/10, last 180 days) from CH `comps` endpoint.
+- New API route `/api/player-comps` (GET `?playerProductId=`): fetches variants from DB, deduplicates CH card IDs, calls `getAllPrices` in parallel (capped at 15 cards), fetches comps for the base card across grades 8–10.
+- Drawer is mobile-aware (full-width on small screens), closes on backdrop click or Escape key.
+- `PlayerTable` gains an optional `onPlayerClick` prop — names render as blue clickable links when provided.
+
+**Backlogged (noted in session):**
+- Community "Report a Hit" form → feedback feed
+- Automatic pricing recalculation when a chase card is hit (needs real-time data feed)
+- PWA/mobile drawer pattern (post-beta)
+
+---
+
 ## 2026-04-23 — After-market case pricing
 
 Products have two distinct case prices now: MSRP (what the manufacturer sells at) and an after-market price (what cases trade for on the secondary market after launch). The two can diverge sharply — some products move 5-10x above MSRP within days of release.

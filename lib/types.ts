@@ -194,3 +194,42 @@ export interface CardHedgerCard {
   sport: string;
   card_number?: string;
 }
+
+// --- Chase Cards ---
+
+export type ChaseCardType = 'chase_card' | 'chase_player';
+
+export interface ChaseCard {
+  id: string;
+  product_id: string;
+  player_product_id: string;
+  type: ChaseCardType;
+  display_name: string | null;
+  odds_display: string | null;
+  is_hit: boolean;
+  hit_at: string | null;
+  hit_reported_by: string | null;
+  display_order: number;
+  created_at: string;
+  // joined
+  player_product?: PlayerProduct & { player: Player };
+}
+
+// --- Player Comps (drawer) ---
+
+export interface VariantWithPrices {
+  id: string;
+  variant_name: string;
+  cardhedger_card_id: string | null;
+  hobby_odds: number | null;
+  breaker_odds: number | null;
+  match_tier: string | null;
+  prices: Array<{ grade: string; price: number }>;
+}
+
+export interface PlayerCompsResponse {
+  player_name: string;
+  team: string;
+  variants: VariantWithPrices[];
+  recentComps: Array<{ sale_price: number; sale_date: string; grade: string; platform: string }>;
+}
