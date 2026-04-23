@@ -8,9 +8,13 @@ interface Props {
   config: BreakConfig;
   onChange: (config: BreakConfig) => void;
   breakType: 'hobby' | 'bd';
+  hobbyMsrp?: number | null;
+  hobbyAmPrice?: number | null;
+  bdMsrp?: number | null;
+  bdAmPrice?: number | null;
 }
 
-export default function DashboardConfig({ config, onChange, breakType }: Props) {
+export default function DashboardConfig({ config, onChange, breakType, hobbyMsrp, hobbyAmPrice, bdMsrp, bdAmPrice }: Props) {
   const update = (key: keyof BreakConfig, value: number) =>
     onChange({ ...config, [key]: value });
 
@@ -19,6 +23,10 @@ export default function DashboardConfig({ config, onChange, breakType }: Props) 
     : config.bdCases * config.bdCaseCost;
 
   const totalLabel = breakType === 'hobby' ? 'Total Hobby Break' : 'Total BD Break';
+
+  const msrp = breakType === 'hobby' ? hobbyMsrp : bdMsrp;
+  const amPrice = breakType === 'hobby' ? hobbyAmPrice : bdAmPrice;
+  const showRef = msrp != null || amPrice != null;
 
   return (
     <ElevatedCard>
@@ -32,8 +40,9 @@ export default function DashboardConfig({ config, onChange, breakType }: Props) 
               <CounterInput value={config.hobbyCases} onChange={v => update('hobbyCases', v)} min={1} />
             </div>
             <div>
-              <FormLabel>Hobby / Case</FormLabel>
+              <FormLabel>Your Cost / Case</FormLabel>
               <CostInput value={config.hobbyCaseCost} onChange={v => update('hobbyCaseCost', v)} />
+              {showRef && <PriceRef msrp={msrp} amPrice={amPrice} />}
             </div>
           </>
         ) : (
@@ -43,8 +52,9 @@ export default function DashboardConfig({ config, onChange, breakType }: Props) 
               <CounterInput value={config.bdCases} onChange={v => update('bdCases', v)} min={1} />
             </div>
             <div>
-              <FormLabel>BD / Case</FormLabel>
+              <FormLabel>Your Cost / Case</FormLabel>
               <CostInput value={config.bdCaseCost} onChange={v => update('bdCaseCost', v)} />
+              {showRef && <PriceRef msrp={msrp} amPrice={amPrice} />}
             </div>
           </>
         )}
@@ -59,6 +69,16 @@ export default function DashboardConfig({ config, onChange, breakType }: Props) 
         </div>
       </div>
     </ElevatedCard>
+  );
+}
+
+function PriceRef({ msrp, amPrice }: { msrp: number | null | undefined; amPrice: number | null | undefined }) {
+  return (
+    <p className="mt-1.5 text-[10px] font-mono" style={{ color: 'var(--text-tertiary)' }}>
+      {msrp != null && <span>MSRP ${msrp.toLocaleString()}</span>}
+      {msrp != null && amPrice != null && <span className="mx-1">·</span>}
+      {amPrice != null && <span style={{ color: 'var(--accent-orange)' }}>Market ${amPrice.toLocaleString()}</span>}
+    </p>
   );
 }
 

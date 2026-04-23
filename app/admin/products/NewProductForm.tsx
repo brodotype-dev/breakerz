@@ -98,6 +98,8 @@ export default function NewProductForm({ sports }: Props) {
     year: new Date().getFullYear().toString(),
     hobby_case_cost: '',
     bd_case_cost: '',
+    hobby_am_case_cost: '',
+    bd_am_case_cost: '',
   });
 
   function set(field: string, value: string) {
@@ -123,6 +125,8 @@ export default function NewProductForm({ sports }: Props) {
       year: form.year.trim(),
       hobby_case_cost: parseFloat(form.hobby_case_cost) || 0,
       bd_case_cost: form.bd_case_cost ? parseFloat(form.bd_case_cost) : null,
+      hobby_am_case_cost: form.hobby_am_case_cost ? parseFloat(form.hobby_am_case_cost) : null,
+      bd_am_case_cost: form.bd_am_case_cost ? parseFloat(form.bd_am_case_cost) : null,
       hobby_autos_per_case: null,
       bd_autos_per_case: null,
       release_date: null,
@@ -291,6 +295,36 @@ export default function NewProductForm({ sports }: Props) {
               placeholder="0.00"
               value={form.bd_case_cost}
               onChange={e => set('bd_case_cost', e.target.value)}
+              style={{ fontFamily: 'var(--font-mono)' }}
+            />
+          </div>
+          <div>
+            <label style={labelStyle}>
+              Hobby AM / Case ($){' '}
+              <span style={{ color: 'var(--text-tertiary)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(after-market, optional)</span>
+            </label>
+            <FocusInput
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="0.00"
+              value={form.hobby_am_case_cost}
+              onChange={e => set('hobby_am_case_cost', e.target.value)}
+              style={{ fontFamily: 'var(--font-mono)' }}
+            />
+          </div>
+          <div>
+            <label style={labelStyle}>
+              BD AM / Case ($){' '}
+              <span style={{ color: 'var(--text-tertiary)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(after-market, optional)</span>
+            </label>
+            <FocusInput
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="0.00"
+              value={form.bd_am_case_cost}
+              onChange={e => set('bd_am_case_cost', e.target.value)}
               style={{ fontFamily: 'var(--font-mono)' }}
             />
           </div>

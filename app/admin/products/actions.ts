@@ -11,6 +11,8 @@ export async function createProduct(formData: {
   year: string;
   hobby_case_cost: number | null;
   bd_case_cost: number | null;
+  hobby_am_case_cost?: number | null;
+  bd_am_case_cost?: number | null;
   hobby_autos_per_case: number | null;
   bd_autos_per_case: number | null;
   release_date: string | null;
@@ -48,6 +50,8 @@ export async function updateProduct(
     slug: string;
     hobby_case_cost: number | null;
     bd_case_cost: number | null;
+    hobby_am_case_cost?: number | null;
+    bd_am_case_cost?: number | null;
     hobby_autos_per_case: number | null;
     bd_autos_per_case: number | null;
     release_date: string | null;
