@@ -97,6 +97,16 @@ Graded pricing still matters for specific decisions (is this slot worth it if I 
 
 ---
 
+### PWA / Mobile Drawer — PlayerDetailDrawer
+**Effort:** ~0.5–1 day
+**Why:** `PlayerDetailDrawer` is a full-height slide-over designed for desktop web. On mobile browsers the sheet doesn't feel native — tap targets are cramped, dismiss area is small, and there's no swipe-to-close gesture. A bottom-drawer variant gives mobile users a proper sheet pattern without changing the desktop experience.
+
+**Approach:** Use [Vaul](https://vaul.emilkowal.ski/) (shadcn-compatible drawer primitive) to replace the current `Sheet` on small viewports. Detect breakpoint with `useMediaQuery('(max-width: 768px)')` — desktop keeps the slide-over, mobile gets the bottom drawer.
+
+**Files:** `components/breakiq/PlayerDetailDrawer.tsx`
+
+---
+
 ## Priority 2 — High value, external dependency or more effort
 
 ### Breaker Identity + Crowdsourced Case Pricing
@@ -163,6 +173,25 @@ Remaining known limitation: multi-player autos (DA-/TA-/QA-) and code-only dupli
 
 - Add a manual match override UI to the product dashboard or unmatched variants section
 - Low priority given high auto-match rate, but worthwhile before onboarding more products
+
+---
+
+### My Breaks Phase 2 — Chase / Hit Card Tracking
+**Effort:** ~2–3 days (phased)
+**Why:** Chase and hit card tracking was deferred from My Breaks Phase 1. Two follow-on features surfaced from the Chase Cards session:
+
+**1. Community "Report a Hit" form**
+Let consumers self-report a chase card hit after a break. Submissions feed a community hit log visible on the break page — raw signal (what pulled in what product, when) that doesn't exist anywhere else in the hobby.
+- New `hit_reports` table: `user_id`, `product_id`, `player_id`, `card_description` (free text), `break_platform`, `reported_at`
+- Lightweight submit form on the break page ("Got this card? Report it")
+- Public feed on the break page: recent hits for this product (latest 10, paginated)
+- Admin moderation flag on submissions — not surfaced publicly until reviewed
+
+**2. Automatic pricing recalculation when a chase card is marked hit**
+When a hit is reported, the relevant player's slot price should reflect the updated supply signal — high-end pulls reduce scarcity and should drop EV for remaining inventory.
+**Blocker:** True real-time recalculation conflicts with the "No real-time data" constraint. Pragmatic path: treat hit reports as an input to the next scheduled pricing refresh (nightly cron picks them up) rather than an immediate trigger. Revisit if buyer demand for same-session repricing is validated.
+
+**Files:** `hit_reports` table + migration, `app/api/hit-reports/route.ts`, `app/break/[slug]/` (submit form + feed component), optional cron integration in `lib/pricing-refresh.ts`
 
 ---
 
