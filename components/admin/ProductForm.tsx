@@ -144,6 +144,8 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
   const [slug, setSlug] = useState(product?.slug ?? '');
   const [hobbyCaseCost, setHobbyCaseCost] = useState(product?.hobby_case_cost?.toString() ?? '');
   const [bdCaseCost, setBdCaseCost] = useState(product?.bd_case_cost?.toString() ?? '');
+  const [hobbyAmCaseCost, setHobbyAmCaseCost] = useState(product?.hobby_am_case_cost?.toString() ?? '');
+  const [bdAmCaseCost, setBdAmCaseCost] = useState(product?.bd_am_case_cost?.toString() ?? '');
   const [releaseDate, setReleaseDate] = useState(product?.release_date ?? '');
   const [isActive, setIsActive] = useState(product?.is_active ?? false);
 
@@ -245,6 +247,8 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
       slug,
       hobby_case_cost: hobbyCaseCost ? parseFloat(hobbyCaseCost) : null,
       bd_case_cost: bdCaseCost ? parseFloat(bdCaseCost) : null,
+      hobby_am_case_cost: hobbyAmCaseCost ? parseFloat(hobbyAmCaseCost) : null,
+      bd_am_case_cost: bdAmCaseCost ? parseFloat(bdAmCaseCost) : null,
       hobby_autos_per_case: null,
       bd_autos_per_case: null,
       release_date: releaseDate || null,
@@ -450,8 +454,10 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
           Pricing
         </p>
         <div className="grid grid-cols-2 gap-4">
-          <FormInput label="Hobby / Case" value={hobbyCaseCost} onChange={e => setHobbyCaseCost(e.target.value)} prefix="$" placeholder="1200" type="number" mono />
-          <FormInput label="BD / Case" value={bdCaseCost} onChange={e => setBdCaseCost(e.target.value)} prefix="$" placeholder="Optional" type="number" mono />
+          <FormInput label="Hobby / Case" hint="(MSRP)" value={hobbyCaseCost} onChange={e => setHobbyCaseCost(e.target.value)} prefix="$" placeholder="1200" type="number" mono />
+          <FormInput label="BD / Case" hint="(MSRP)" value={bdCaseCost} onChange={e => setBdCaseCost(e.target.value)} prefix="$" placeholder="Optional" type="number" mono />
+          <FormInput label="Hobby AM / Case" hint="(after-market)" value={hobbyAmCaseCost} onChange={e => setHobbyAmCaseCost(e.target.value)} prefix="$" placeholder="Optional" type="number" mono />
+          <FormInput label="BD AM / Case" hint="(after-market)" value={bdAmCaseCost} onChange={e => setBdAmCaseCost(e.target.value)} prefix="$" placeholder="Optional" type="number" mono />
           <FormInput
             label="Release Date"
             hint="(used for pre-release banner)"

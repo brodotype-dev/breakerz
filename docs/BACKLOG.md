@@ -2,7 +2,7 @@
 
 Consolidated list of known work, organized by priority. Items pulled from the Social Currency PRD, CLAUDE.md known gaps, and open questions surfaced during development.
 
-**Last updated:** 2026-04-22
+**Last updated:** 2026-04-23
 
 ---
 
@@ -98,6 +98,21 @@ Graded pricing still matters for specific decisions (is this slot worth it if I 
 ---
 
 ## Priority 2 — High value, external dependency or more effort
+
+### Breaker Identity + Crowdsourced Case Pricing
+**Effort:** ~3–4 days (phased — see PRD)
+**PRD:** [`docs/breaker-identity-prd.md`](./breaker-identity-prd.md)
+
+**Why:** The admin AM case pricing field (shipped 2026-04-23) is a static fix — someone has to maintain it. The real opportunity is letting breakers enter what they actually paid per case, then aggregating those inputs into a live market rate that auto-updates the break page defaults for everyone. This doubles BreakIQ's use case (both buyers and breakers), makes the pricing data self-maintaining, and gives breakers a pre-break profitability tool.
+
+**Phases:**
+1. Breaker opt-in identity (profile toggle) + persist entered case costs to `breaker_case_costs` table (~1 day)
+2. Crowdsourced market rate — median of last 30 days, surface on break page + admin product page, replace AM price as default where ≥ 3 data points (~1 day)
+3. Breaker profitability view — slot cost → target price calculator, revenue projection at capacity (~1–1.5 days)
+
+**Blocker:** Low value in private beta with limited breakers. Ship after public launch when there's enough volume for crowdsourcing to be meaningful.
+
+---
 
 ### CardHedger Matching — Semi-Automated Knowledge Updates
 **Effort:** ~1–2 days

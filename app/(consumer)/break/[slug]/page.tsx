@@ -55,6 +55,10 @@ export default function BreakPage() {
     hobbyCaseCost: 0,
     bdCaseCost: 0,
   });
+  const [hobbyMsrp, setHobbyMsrp] = useState<number | null>(null);
+  const [hobbyAmPrice, setHobbyAmPrice] = useState<number | null>(null);
+  const [bdMsrp, setBdMsrp] = useState<number | null>(null);
+  const [bdAmPrice, setBdAmPrice] = useState<number | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -70,10 +74,14 @@ export default function BreakPage() {
         if (!prod) { setError('Product not found.'); return; }
 
         setProduct(prod);
+        setHobbyMsrp(prod.hobby_case_cost ?? null);
+        setHobbyAmPrice(prod.hobby_am_case_cost ?? null);
+        setBdMsrp(prod.bd_case_cost ?? null);
+        setBdAmPrice(prod.bd_am_case_cost ?? null);
         setConfig(prev => ({
           ...prev,
-          hobbyCaseCost: prod.hobby_case_cost ?? prev.hobbyCaseCost,
-          bdCaseCost: prod.bd_case_cost ?? prev.bdCaseCost,
+          hobbyCaseCost: prod.hobby_am_case_cost ?? prod.hobby_case_cost ?? prev.hobbyCaseCost,
+          bdCaseCost: prod.bd_am_case_cost ?? prod.bd_case_cost ?? prev.bdCaseCost,
         }));
 
         const res = await fetch(`/api/pricing?productId=${prod.id}`);
@@ -269,7 +277,15 @@ export default function BreakPage() {
       )}
 
       <main className="px-4 md:px-6 py-6 space-y-5 max-w-[1400px] mx-auto">
-        <DashboardConfig config={config} onChange={setConfig} breakType={breakType} />
+        <DashboardConfig
+          config={config}
+          onChange={setConfig}
+          breakType={breakType}
+          hobbyMsrp={hobbyMsrp}
+          hobbyAmPrice={hobbyAmPrice}
+          bdMsrp={bdMsrp}
+          bdAmPrice={bdAmPrice}
+        />
         <TopMoversWidget players={rawPlayers} />
 
         {!hasPricing && (

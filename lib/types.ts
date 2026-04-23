@@ -15,6 +15,8 @@ export interface Product {
   year: string;
   hobby_case_cost: number;
   bd_case_cost: number | null;
+  hobby_am_case_cost: number | null;
+  bd_am_case_cost: number | null;
   hobby_autos_per_case: number;
   bd_autos_per_case: number | null;
   is_active: boolean;

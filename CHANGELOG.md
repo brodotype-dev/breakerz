@@ -5,6 +5,24 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-23 — After-market case pricing
+
+Products have two distinct case prices now: MSRP (what the manufacturer sells at) and an after-market price (what cases trade for on the secondary market after launch). The two can diverge sharply — some products move 5-10x above MSRP within days of release.
+
+**What changed:**
+
+- New columns on `products`: `hobby_am_case_cost` and `bd_am_case_cost` (nullable NUMERIC). Admin sets these manually when the market has moved. Migration: `20260422190000_add_am_case_cost.sql`.
+- Admin product form (create + edit): new "Hobby AM / Case" and "BD AM / Case" inputs in the Pricing section, labeled "(after-market)". Existing MSRP fields now labeled "(MSRP)".
+- Admin product details page: AM prices appear in the Product Details grid alongside MSRP when set.
+- Consumer break page: `hobbyCaseCost` / `bdCaseCost` now default to the AM price when available, falling back to MSRP. Fallback chain: `hobby_am_case_cost → hobby_case_cost → 0`.
+- `DashboardConfig`: "Hobby / Case" label renamed to "Your Cost / Case". A reference row appears below the cost input showing `MSRP $X · Market $Y` (market in orange when set) — gives the user context while adjusting to their actual paid price.
+
+No changes to `lib/engine.ts`. The slot cost equation already handles variable case costs correctly — the AM price just gives the consumer a more accurate default to start from.
+
+**Also added:** `docs/breaker-identity-prd.md` — PRD for Phase 2, a full Breaker role with crowdsourced case pricing. Breakers enter what they actually paid per case; we aggregate across breakers (30-day median) to compute a live market rate that replaces the admin AM field automatically. Backlogged until public beta when there's enough volume to make aggregation meaningful. See backlog for phasing.
+
+---
+
 ## 2026-04-22 — Pricing pipeline: rip out consumer refresh UI, unbounded cron fan-out, docs
 
 With the pricing-refresh fire out and Bowman Chrome priced end-to-end, cleanup + documentation pass to lock in the architecture and make sure it scales beyond today's ~10 active products.

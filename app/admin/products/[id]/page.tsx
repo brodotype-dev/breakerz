@@ -511,8 +511,10 @@ export default async function ProductDashboardPage({ params }: PageProps) {
               { label: 'Manufacturer', value: product.manufacturer },
               { label: 'Year', value: String(product.year) },
               { label: 'Sport', value: product.sport?.name ?? '—' },
-              { label: 'Hobby / Case', value: product.hobby_case_cost != null ? `$${product.hobby_case_cost.toLocaleString()}` : '—' },
-              ...(product.bd_case_cost ? [{ label: 'BD / Case', value: `$${product.bd_case_cost.toLocaleString()}` }] : []),
+              { label: 'Hobby / Case (MSRP)', value: product.hobby_case_cost != null ? `$${product.hobby_case_cost.toLocaleString()}` : '—' },
+              ...(product.hobby_am_case_cost ? [{ label: 'Hobby AM / Case', value: `$${product.hobby_am_case_cost.toLocaleString()}` }] : []),
+              ...(product.bd_case_cost ? [{ label: 'BD / Case (MSRP)', value: `$${product.bd_case_cost.toLocaleString()}` }] : []),
+              ...(product.bd_am_case_cost ? [{ label: 'BD AM / Case', value: `$${product.bd_am_case_cost.toLocaleString()}` }] : []),
               { label: 'Status', value: product.is_active ? 'Active' : 'Inactive', highlight: product.is_active ? 'var(--signal-buy)' : undefined },
             ].map(field => (
               <div key={field.label}>
