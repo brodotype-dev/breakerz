@@ -12,6 +12,7 @@ Sports card break slot pricing and analysis tool. Built with Kyle (Town & Line /
 - [docs/beta-launch-checklist.md](./docs/beta-launch-checklist.md) — pre-launch todo list
 - [docs/cost-analysis.md](./docs/cost-analysis.md) — unit economics, breakeven, service costs
 - [docs/manufacturer-rules/bowman.md](./docs/manufacturer-rules/bowman.md) — Bowman/Topps prefix names, CH naming conventions, match rate history
+- [docs/breaker-identity-prd.md](./docs/breaker-identity-prd.md) — Breaker role + crowdsourced case pricing PRD (backlogged, post-public-beta)
 
 Update CHANGELOG.md at the end of every session with what changed and why.
 
@@ -44,6 +45,8 @@ Live at [getbreakiq.com](https://getbreakiq.com). Private beta — consumer rout
 **CH Matching v2** ✅ (2026-04-21) Catalog pre-load into `ch_set_cache` + tiered local matcher. Descriptor-based knowledge (`lib/card-knowledge/` — data, not classes). Tier ladder: exact-variant → synonym → number-only → card-code → claude(in-set candidates) → no-match. Daily cron refreshes catalogs for active products at 3 AM UTC. On-demand "Refresh CH Catalog" button on product page. `match_tier` persisted on variants for debugging. `ch_set_name` on products stores exact CH canonical name — use "Find on CH" widget in product form. See `docs/catalog-preload-architecture.md`.
 
 **Security** ✅ RLS enabled on all 11 tables. Auth guards on all admin actions and API routes. Security headers. See security section in BACKLOG for remaining items (rate limiting, file validation).
+
+**After-Market Case Pricing** ✅ (2026-04-23) Admin can set `hobby_am_case_cost` / `bd_am_case_cost` separate from MSRP. Consumer break page defaults to AM price when available. `DashboardConfig` shows MSRP · Market reference row. Phase 2 (Breaker identity + crowdsourced pricing) backlogged — see `docs/breaker-identity-prd.md`.
 
 **Next up:** Phase 5 C-score (blocked on Kyle), My Breaks Phase 2 (chase/hit card tracking), Sentry error tracking, rate limiting, 2025-26 Bowman Basketball re-match (CPA cards being added by CH this week)
 
@@ -154,6 +157,7 @@ pricing_cache         — 24h TTL, ev_low/mid/high per player_product
 player_risk_flags     — soft-delete (cleared_at); injury/suspension/legal/trade/retirement
 user_breaks           — consumer break log: analysis snapshot, platform, outcome, feedback, status lifecycle
 products              — ch_set_name TEXT: exact CardHedger canonical set name for set-catalog matching
+products              — hobby_am_case_cost / bd_am_case_cost NUMERIC: admin-set after-market case price (nullable; break page prefers over MSRP when set)
 ch_set_cache          — pre-loaded CH set catalogs, keyed by (ch_set_name, card_id); drives v2 local matching
 ch_set_refresh_log    — per-refresh telemetry (pages, cards, duration, errors)
 player_product_variants.match_tier — which tier matched (exact-variant | synonym | number-only | card-code | claude | no-match)
