@@ -130,11 +130,9 @@ export default async function AdminPage() {
                       <div className="flex items-center gap-2">
                         {product.name}
                         {needsRefresh && (
-                          <AlertTriangle
-                            className="size-3.5 shrink-0"
-                            style={{ color: '#f59e0b' }}
-                            title="CH catalog refreshed after last pricing run — re-hydrate and refresh pricing"
-                          />
+                          <span title="CH catalog refreshed after last pricing run — re-hydrate and refresh pricing">
+                            <AlertTriangle className="size-3.5 shrink-0" style={{ color: '#f59e0b' }} />
+                          </span>
                         )}
                       </div>
                     </TableCell>
