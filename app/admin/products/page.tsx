@@ -1,6 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import Link from 'next/link';
-import { Package, Plus, ChevronRight, Edit, DollarSign } from 'lucide-react';
+import { Package, Plus, ChevronRight, Edit, DollarSign, CheckCircle2, Minus, AlertTriangle } from 'lucide-react';
 import DeleteProductButton from './DeleteProductButton';
 
 function getSportKey(sportName: string): 'baseball' | 'basketball' | 'football' {
@@ -22,23 +22,69 @@ const sportColors = {
   football: 'var(--sport-football-primary)',
 };
 
+/** Relative label for a UTC timestamp. Server-safe (no browser Date quirks). */
+function formatFetchedAt(ts: string | null | undefined): string {
+  if (!ts) return 'Never';
+  const diffH = (Date.now() - new Date(ts).getTime()) / (1000 * 60 * 60);
+  if (diffH < 1) return 'Just now';
+  if (diffH < 24) return 'Today';
+  if (diffH < 48) return 'Yesterday';
+  return `${Math.floor(diffH / 24)}d ago`;
+}
+
 export default async function AdminProductsPage({ searchParams }: { searchParams: Promise<{ filter?: string }> }) {
   const { filter } = await searchParams;
-  const [{ data: allProducts }, { data: playerCountRows }] = await Promise.all([
+
+  const [{ data: allProducts }, { data: playerCountRows }, { data: cacheRows }, { data: catalogLogRows }] = await Promise.all([
     supabaseAdmin
       .from('products')
-      .select('id, name, slug, year, manufacturer, is_active, hobby_case_cost, sport:sports(name)')
+      .select('id, name, slug, year, manufacturer, is_active, has_odds, sport:sports(name)')
       .order('name'),
     supabaseAdmin
       .from('player_products')
       .select('product_id')
       .eq('insert_only', false),
+    // One row per player_product in the cache; join gives us the parent product_id.
+    // ~750–3k rows max across all products — acceptable as a full scan.
+    supabaseAdmin
+      .from('pricing_cache')
+      .select('fetched_at, player_products!inner(product_id)'),
+    // ch_set_refresh_log is tiny (one row per cron/admin run per product).
+    // Max completed_at per product = when the CH catalog was last pulled.
+    supabaseAdmin
+      .from('ch_set_refresh_log')
+      .select('product_id, completed_at')
+      .eq('success', true)
+      .not('product_id', 'is', null)
+      .order('completed_at', { ascending: false }),
   ]);
 
   // Build player count map
   const playerCountMap = new Map<string, number>();
   for (const row of playerCountRows ?? []) {
     playerCountMap.set(row.product_id, (playerCountMap.get(row.product_id) ?? 0) + 1);
+  }
+
+  // Build last-priced map (max fetched_at per product)
+  const lastPricedMap = new Map<string, string>();
+  for (const row of cacheRows ?? []) {
+    const productId = (row.player_products as any)?.product_id as string | undefined;
+    if (!productId) continue;
+    const existing = lastPricedMap.get(productId);
+    if (!existing || row.fetched_at > existing) {
+      lastPricedMap.set(productId, row.fetched_at);
+    }
+  }
+
+  // Build last-catalog-refresh map (max completed_at per product from ch_set_refresh_log).
+  // needsRefresh = catalog was pulled more recently than pricing last ran, meaning
+  // new CH cards may exist that haven't been hydrated + priced yet.
+  const lastCatalogMap = new Map<string, string>();
+  for (const row of catalogLogRows ?? []) {
+    if (!row.product_id || !row.completed_at) continue;
+    if (!lastCatalogMap.has(row.product_id)) {
+      lastCatalogMap.set(row.product_id, row.completed_at); // already ordered desc
+    }
   }
 
   const totalPlayers = playerCountRows?.length ?? 0;
@@ -165,6 +211,10 @@ export default async function AdminProductsPage({ searchParams }: { searchParams
               const gradient = sportGradients[sportKey];
               const primary = sportColors[sportKey];
               const playerCount = playerCountMap.get(product.id) ?? 0;
+              const lastPriced = lastPricedMap.get(product.id) ?? null;
+              const lastCatalog = lastCatalogMap.get(product.id) ?? null;
+              // Catalog refreshed more recently than pricing ran → variants likely stale
+              const needsRefresh = lastCatalog != null && (lastPriced == null || lastCatalog > lastPriced);
 
               return (
                 <div
@@ -208,42 +258,84 @@ export default async function AdminProductsPage({ searchParams }: { searchParams
                         </div>
                       </div>
 
-                      {/* Status Badge */}
-                      {product.is_active ? (
-                        <div
-                          className="flex items-center gap-1.5 px-2 py-1 rounded-full shrink-0 ml-2"
-                          style={{ backgroundColor: 'var(--signal-buy-bg)' }}
-                        >
+                      {/* Status + Odds badges (stacked) */}
+                      <div className="flex flex-col items-end gap-1.5 shrink-0 ml-2">
+                        {product.is_active ? (
                           <div
-                            className="w-2 h-2 rounded-full animate-pulse"
-                            style={{ backgroundColor: 'var(--signal-buy)', boxShadow: 'var(--glow-green)' }}
-                          />
-                          <span className="text-[9px] font-bold uppercase" style={{ color: 'var(--signal-buy)', letterSpacing: '0.06em' }}>
-                            LIVE
-                          </span>
-                        </div>
-                      ) : (
-                        <div
-                          className="px-2 py-1 rounded-full text-[9px] font-bold uppercase shrink-0 ml-2"
-                          style={{ backgroundColor: 'var(--terminal-surface-hover)', color: 'var(--text-disabled)', letterSpacing: '0.06em' }}
-                        >
-                          DRAFT
-                        </div>
-                      )}
+                            className="flex items-center gap-1.5 px-2 py-1 rounded-full"
+                            style={{ backgroundColor: 'var(--signal-buy-bg)' }}
+                          >
+                            <div
+                              className="w-2 h-2 rounded-full animate-pulse"
+                              style={{ backgroundColor: 'var(--signal-buy)', boxShadow: 'var(--glow-green)' }}
+                            />
+                            <span className="text-[9px] font-bold uppercase" style={{ color: 'var(--signal-buy)', letterSpacing: '0.06em' }}>
+                              LIVE
+                            </span>
+                          </div>
+                        ) : (
+                          <div
+                            className="px-2 py-1 rounded-full text-[9px] font-bold uppercase"
+                            style={{ backgroundColor: 'var(--terminal-surface-hover)', color: 'var(--text-disabled)', letterSpacing: '0.06em' }}
+                          >
+                            DRAFT
+                          </div>
+                        )}
+
+                        {/* Needs-refresh badge */}
+                        {needsRefresh && (
+                          <div
+                            className="flex items-center gap-1 px-2 py-1 rounded-full"
+                            style={{ backgroundColor: 'rgba(245, 158, 11, 0.1)' }}
+                            title="CH catalog refreshed after last pricing run — re-hydrate and refresh pricing"
+                          >
+                            <AlertTriangle className="w-3 h-3" style={{ color: '#f59e0b' }} />
+                            <span className="text-[9px] font-bold uppercase" style={{ color: '#f59e0b', letterSpacing: '0.06em' }}>
+                              STALE
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Odds badge */}
+                        {product.has_odds ? (
+                          <div
+                            className="flex items-center gap-1 px-2 py-1 rounded-full"
+                            style={{ backgroundColor: 'rgba(16, 185, 129, 0.08)' }}
+                          >
+                            <CheckCircle2 className="w-3 h-3" style={{ color: 'var(--signal-buy)' }} />
+                            <span className="text-[9px] font-bold uppercase" style={{ color: 'var(--signal-buy)', letterSpacing: '0.06em' }}>
+                              ODDS
+                            </span>
+                          </div>
+                        ) : (
+                          <div
+                            className="flex items-center gap-1 px-2 py-1 rounded-full"
+                            style={{ backgroundColor: 'var(--terminal-surface-hover)' }}
+                          >
+                            <Minus className="w-3 h-3" style={{ color: 'var(--text-disabled)' }} />
+                            <span className="text-[9px] font-bold uppercase" style={{ color: 'var(--text-disabled)', letterSpacing: '0.06em' }}>
+                              ODDS
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* Stats */}
                     <div className="grid grid-cols-2 gap-3 mb-4">
                       <div className="p-3 rounded-lg" style={{ backgroundColor: 'rgba(59, 130, 246, 0.05)' }}>
-                        <div className="terminal-label-muted mb-1">HOBBY CASE</div>
-                        <div className="font-mono text-lg font-bold" style={{ color: primary }}>
-                          {product.hobby_case_cost != null ? `$${Number(product.hobby_case_cost).toLocaleString()}` : '—'}
-                        </div>
-                      </div>
-                      <div className="p-3 rounded-lg" style={{ backgroundColor: 'rgba(59, 130, 246, 0.05)' }}>
                         <div className="terminal-label-muted mb-1">PLAYERS</div>
                         <div className="font-mono text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
                           {playerCount}
+                        </div>
+                      </div>
+                      <div className="p-3 rounded-lg" style={{ backgroundColor: 'rgba(59, 130, 246, 0.05)' }}>
+                        <div className="terminal-label-muted mb-1">LAST PRICED</div>
+                        <div
+                          className="font-mono text-lg font-bold"
+                          style={{ color: lastPriced ? 'var(--text-primary)' : 'var(--text-disabled)' }}
+                        >
+                          {formatFetchedAt(lastPriced)}
                         </div>
                       </div>
                     </div>
