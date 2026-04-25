@@ -61,21 +61,45 @@ export default function PlayersManager({ productId, players }: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [newFlagType, setNewFlagType] = useState<FlagType>('injury');
   const [newFlagNote, setNewFlagNote] = useState('');
+  // Optimistic overrides — flip the UI instantly and let the server catch up.
+  const [iconOverrides, setIconOverrides] = useState<Map<string, boolean>>(new Map());
+  const [hvOverrides, setHvOverrides] = useState<Map<string, boolean>>(new Map());
 
   const refresh = () => startTransition(() => router.refresh());
 
   async function toggleIcon(playerId: string, current: boolean) {
-    setBusyId(playerId + ':icon');
-    await setPlayerIcon(productId, playerId, !current);
-    setBusyId(null);
-    refresh();
+    const next = !current;
+    setIconOverrides(prev => {
+      const m = new Map(prev);
+      m.set(playerId, next);
+      return m;
+    });
+    const result = await setPlayerIcon(productId, playerId, next);
+    if (result?.error) {
+      // Roll back on failure
+      setIconOverrides(prev => {
+        const m = new Map(prev);
+        m.set(playerId, current);
+        return m;
+      });
+    }
   }
 
   async function toggleHV(playerProductId: string, current: boolean) {
-    setBusyId(playerProductId + ':hv');
-    await setPlayerHighVolatility(productId, playerProductId, !current);
-    setBusyId(null);
-    refresh();
+    const next = !current;
+    setHvOverrides(prev => {
+      const m = new Map(prev);
+      m.set(playerProductId, next);
+      return m;
+    });
+    const result = await setPlayerHighVolatility(productId, playerProductId, next);
+    if (result?.error) {
+      setHvOverrides(prev => {
+        const m = new Map(prev);
+        m.set(playerProductId, current);
+        return m;
+      });
+    }
   }
 
   async function handleAddFlag(playerProductId: string) {
@@ -180,7 +204,6 @@ export default function PlayersManager({ productId, players }: Props) {
               <TableRow>
                 <TableHead>Name</TableHead>
                 <TableHead className="w-[100px]">Team</TableHead>
-                <TableHead className="w-[50px] text-center">RC</TableHead>
                 <TableHead className="w-[60px] text-center">Hobby</TableHead>
                 <TableHead className="w-[50px] text-center">BD</TableHead>
                 <TableHead className="w-[60px] text-center">Insert</TableHead>
@@ -192,12 +215,26 @@ export default function PlayersManager({ productId, players }: Props) {
             <TableBody>
               {filtered.map(p => {
                 const isExpanded = expandedId === p.playerProductId;
+                const isIcon = iconOverrides.has(p.playerId) ? !!iconOverrides.get(p.playerId) : p.isIcon;
+                const isHV = hvOverrides.has(p.playerProductId) ? !!hvOverrides.get(p.playerProductId) : p.isHighVolatility;
                 return (
                   <Fragment key={p.playerProductId}>
                     <TableRow>
-                      <TableCell className="font-medium">{p.name}</TableCell>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          <span>{p.name}</span>
+                          {p.isRookie && (
+                            <span
+                              className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide"
+                              style={{ backgroundColor: 'rgba(16, 185, 129, 0.12)', color: '#10b981' }}
+                              title="Rookie card"
+                            >
+                              RC
+                            </span>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{p.team || '—'}</TableCell>
-                      <TableCell className="text-center text-sm">{p.isRookie ? '✓' : ''}</TableCell>
                       <TableCell className="text-center font-mono text-sm">{p.hobbySets}</TableCell>
                       <TableCell className="text-center font-mono text-sm">{p.bdOnlySets}</TableCell>
                       <TableCell className="text-center text-sm text-muted-foreground">
@@ -241,36 +278,34 @@ export default function PlayersManager({ productId, players }: Props) {
                       </TableCell>
                       <TableCell className="text-center">
                         <button
-                          onClick={() => toggleHV(p.playerProductId, p.isHighVolatility)}
-                          disabled={busyId === p.playerProductId + ':hv'}
-                          title={p.isHighVolatility ? 'High Volatility on — click to remove' : 'Mark as High Volatility'}
+                          onClick={() => toggleHV(p.playerProductId, isHV)}
+                          title={isHV ? 'High Volatility on — click to remove' : 'Mark as High Volatility'}
                           className="inline-flex items-center justify-center w-7 h-7 rounded transition-colors"
                           style={{
-                            backgroundColor: p.isHighVolatility ? 'rgba(245, 158, 11, 0.15)' : 'transparent',
-                            color: p.isHighVolatility ? '#f59e0b' : 'var(--text-disabled)',
+                            backgroundColor: isHV ? 'rgba(245, 158, 11, 0.15)' : 'transparent',
+                            color: isHV ? '#f59e0b' : 'var(--text-disabled)',
                           }}
                         >
-                          <Zap className="w-4 h-4" fill={p.isHighVolatility ? 'currentColor' : 'none'} />
+                          <Zap className="w-4 h-4" fill={isHV ? 'currentColor' : 'none'} />
                         </button>
                       </TableCell>
                       <TableCell className="text-center">
                         <button
-                          onClick={() => toggleIcon(p.playerId, p.isIcon)}
-                          disabled={busyId === p.playerId + ':icon'}
-                          title={p.isIcon ? 'Icon-tier — click to remove' : 'Mark as icon-tier (skips buzz multiplier)'}
+                          onClick={() => toggleIcon(p.playerId, isIcon)}
+                          title={isIcon ? 'Icon-tier — click to remove' : 'Mark as icon-tier (skips buzz multiplier)'}
                           className="inline-flex items-center justify-center w-7 h-7 rounded transition-colors"
                           style={{
-                            backgroundColor: p.isIcon ? 'rgba(168, 85, 247, 0.15)' : 'transparent',
-                            color: p.isIcon ? '#a855f7' : 'var(--text-disabled)',
+                            backgroundColor: isIcon ? 'rgba(168, 85, 247, 0.15)' : 'transparent',
+                            color: isIcon ? '#a855f7' : 'var(--text-disabled)',
                           }}
                         >
-                          <Star className="w-4 h-4" fill={p.isIcon ? 'currentColor' : 'none'} />
+                          <Star className="w-4 h-4" fill={isIcon ? 'currentColor' : 'none'} />
                         </button>
                       </TableCell>
                     </TableRow>
                     {isExpanded && (
                       <TableRow>
-                        <TableCell colSpan={9} className="bg-muted/20">
+                        <TableCell colSpan={8} className="bg-muted/20">
                           <div className="flex flex-col gap-2 py-1">
                             <div className="flex gap-2">
                               <select
