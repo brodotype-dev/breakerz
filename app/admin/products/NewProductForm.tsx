@@ -1,10 +1,26 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { FileText, BarChart2, LayoutDashboard, CheckCircle } from 'lucide-react';
+import { FileText, BarChart2, LayoutDashboard, CheckCircle, Search } from 'lucide-react';
 import type { Sport } from '@/lib/types';
 import { createProduct } from './actions';
+
+interface ChSetSearchResult {
+  set_name: string;
+  year?: string | number;
+  category?: string;
+  thirty_day_sales?: number;
+}
+
+/** CH's canonical set names rarely include the trailing sport word
+ *  ("2025 Bowman Chrome" not "2025 Bowman Chrome Baseball"), so strip it
+ *  when seeding the search from the product's display name. */
+function defaultQueryFrom(displayName: string) {
+  return displayName
+    .replace(/\s+(baseball|basketball|football|soccer|hockey)\s*$/i, '')
+    .trim();
+}
 
 const MANUFACTURERS = [
   'Topps',
@@ -102,12 +118,55 @@ export default function NewProductForm({ sports }: Props) {
     bd_am_case_cost: '',
   });
 
+  // CardHedger set picker state
+  const [chSetName, setChSetName] = useState('');
+  const [setSearchQuery, setSetSearchQuery] = useState('');
+  const [setSearchResults, setSetSearchResults] = useState<ChSetSearchResult[]>([]);
+  const [setSearching, setSetSearching] = useState(false);
+  const autoSearchedRef = useRef(false);
+
   function set(field: string, value: string) {
     setForm(f => ({ ...f, [field]: value }));
   }
 
   const effectiveManufacturer =
     form.manufacturer === 'Other' ? form.manufacturerCustom : form.manufacturer;
+
+  async function searchCHSets(overrideQuery?: string) {
+    const q = (overrideQuery ?? setSearchQuery).trim();
+    if (!q) return;
+    setSetSearching(true);
+    setSetSearchResults([]);
+    const sport = sports.find(s => s.id === form.sport_id);
+    try {
+      const res = await fetch('/api/admin/set-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: q, category: sport?.name }),
+      });
+      const data = await res.json();
+      setSetSearchResults(data.sets ?? []);
+    } catch (err) {
+      console.error('CH set search failed:', err);
+      setSetSearchResults([]);
+    } finally {
+      setSetSearching(false);
+    }
+  }
+
+  // Auto-search once the product name + sport are filled in. Mirrors the
+  // edit form behavior so the admin sees CH matches the moment they have
+  // enough info to search.
+  useEffect(() => {
+    if (autoSearchedRef.current) return;
+    if (chSetName) return;
+    if (!form.name.trim() || !form.sport_id) return;
+    autoSearchedRef.current = true;
+    const seed = defaultQueryFrom(form.name);
+    setSetSearchQuery(seed);
+    void searchCHSets(seed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.name, form.sport_id, chSetName]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -130,6 +189,7 @@ export default function NewProductForm({ sports }: Props) {
       hobby_autos_per_case: null,
       bd_autos_per_case: null,
       release_date: null,
+      ch_set_name: chSetName || null,
     });
 
     if (result.error) {
@@ -264,6 +324,119 @@ export default function NewProductForm({ sports }: Props) {
             />
           </div>
         </div>
+      </div>
+
+      {/* CardHedger Matching */}
+      <div>
+        <div className="flex items-baseline justify-between mb-1">
+          <p style={sectionLabelStyle}>CardHedger Matching</p>
+          <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>Optional — required to publish</span>
+        </div>
+        <p className="text-xs mb-3" style={{ color: 'var(--text-tertiary)' }}>
+          Set name must match CardHedger exactly. Search auto-runs from the product name.
+        </p>
+
+        {/* Locked-in set */}
+        {chSetName && (
+          <div
+            className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg"
+            style={{ backgroundColor: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.3)' }}
+          >
+            <CheckCircle className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--signal-buy)' }} />
+            <span className="text-sm font-mono flex-1" style={{ color: 'var(--text-primary)' }}>{chSetName}</span>
+            <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Saves on create</span>
+            <button
+              type="button"
+              onClick={() => { setChSetName(''); setSetSearchResults([]); }}
+              className="text-xs hover:underline"
+              style={{ color: 'var(--text-tertiary)' }}
+            >
+              Clear
+            </button>
+          </div>
+        )}
+
+        {/* Search input */}
+        <div className="flex gap-2">
+          <div
+            className="flex items-center gap-2 flex-1 px-3 rounded-lg"
+            style={{ ...inputStyle, padding: 0 }}
+          >
+            <Search className="w-3.5 h-3.5 ml-3 shrink-0" style={{ color: 'var(--text-tertiary)' }} />
+            <input
+              type="text"
+              value={setSearchQuery}
+              onChange={e => setSetSearchQuery(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); searchCHSets(); } }}
+              placeholder={`e.g. "${form.name || '2025 Bowman Chrome'}"`}
+              className="flex-1 bg-transparent border-0 outline-none text-sm py-2 placeholder:text-muted-foreground"
+              style={{ color: 'var(--text-primary)' }}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={() => searchCHSets()}
+            disabled={setSearching || !setSearchQuery.trim()}
+            className="px-4 py-2 rounded-lg text-sm font-semibold transition-all disabled:opacity-40 whitespace-nowrap"
+            style={{ backgroundColor: 'var(--accent-blue)', color: 'white' }}
+          >
+            {setSearching ? 'Searching…' : 'Find on CH'}
+          </button>
+        </div>
+
+        {/* Results */}
+        {setSearchResults.length > 0 && (
+          <>
+            <p className="mt-2 mb-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+              {setSearchResults.length === 1
+                ? '1 match found — click to lock it in.'
+                : `${setSearchResults.length} matches — top result highlighted.`}
+            </p>
+            <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--terminal-border)' }}>
+              {setSearchResults.map((s, idx) => {
+                const isTop = idx === 0;
+                return (
+                  <button
+                    key={s.set_name}
+                    type="button"
+                    onClick={() => { setChSetName(s.set_name); setSetSearchResults([]); setSetSearchQuery(''); }}
+                    className="w-full flex items-center justify-between px-3 py-2.5 text-left transition-colors hover:bg-[var(--terminal-surface-hover)] border-b last:border-0"
+                    style={{
+                      borderColor: 'var(--terminal-border)',
+                      backgroundColor: isTop ? 'rgba(59,130,246,0.08)' : undefined,
+                    }}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      {isTop && (
+                        <span
+                          className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0"
+                          style={{ backgroundColor: 'var(--accent-blue)', color: 'white' }}
+                        >
+                          Top match
+                        </span>
+                      )}
+                      <div className="min-w-0">
+                        <p className="text-sm font-mono truncate" style={{ color: 'var(--text-primary)' }}>{s.set_name}</p>
+                        <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>{s.year} · {s.category}</p>
+                      </div>
+                    </div>
+                    {s.thirty_day_sales ? (
+                      <span className="text-xs font-mono ml-4 shrink-0" style={{ color: 'var(--text-tertiary)' }}>
+                        {s.thirty_day_sales.toLocaleString()} sales / 30d
+                      </span>
+                    ) : null}
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {setSearchResults.length === 0 && !setSearching && setSearchQuery && autoSearchedRef.current && (
+          <p className="mt-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+            No results — try a shorter query or check the set name spelling.
+          </p>
+        )}
       </div>
 
       {/* Case Costs */}
