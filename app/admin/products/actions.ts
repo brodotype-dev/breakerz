@@ -36,6 +36,7 @@ export async function createProduct(formData: {
     .single();
 
   if (error) return { error: error.message };
+  revalidatePath('/admin');
   revalidatePath('/admin/products');
   return { id: data.id };
 }
@@ -66,6 +67,7 @@ export async function updateProduct(
     .eq('id', productId);
 
   if (error) return { error: error.message };
+  revalidatePath('/admin');
   revalidatePath('/admin/products');
   revalidatePath(`/admin/products/${productId}`);
   return {};
@@ -176,6 +178,7 @@ export async function deleteProduct(productId: string): Promise<{ error?: string
     .eq('id', productId);
 
   if (error) return { error: error.message };
+  revalidatePath('/admin');
   revalidatePath('/admin/products');
   return {};
 }
