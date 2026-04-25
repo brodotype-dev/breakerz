@@ -1,10 +1,13 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
+import { ArrowLeft, ChevronDown } from 'lucide-react';
 import ChecklistUpload from '@/components/admin/ChecklistUpload';
 import PlayerBulkForm from '@/components/admin/PlayerBulkForm';
-import PlayerFlagsManager from './PlayerFlagsManager';
+import PlayersManager, { type PlayerRow } from './PlayersManager';
 import type { Product, PlayerProduct, Player, Sport } from '@/lib/types';
+
+export const dynamic = 'force-dynamic';
 
 type PageProps = { params: Promise<{ id: string }> };
 
@@ -19,16 +22,15 @@ export default async function AdminPlayersPage({ params }: PageProps) {
 
   if (!product) notFound();
 
-  const { data: playerProducts } = await supabaseAdmin
+  const { data: playerProductsRaw } = await supabaseAdmin
     .from('player_products')
     .select('*, player:players(*)')
     .eq('product_id', id)
     .order('id') as { data: (PlayerProduct & { player: Player })[] | null };
 
-  const players = playerProducts ?? [];
-  const ppIds = players.map(pp => pp.id);
+  const playerProducts = playerProductsRaw ?? [];
+  const ppIds = playerProducts.map(pp => pp.id);
 
-  // Fetch active risk flags for this product's players
   const { data: riskFlags } = ppIds.length
     ? await supabaseAdmin
         .from('player_risk_flags')
@@ -44,120 +46,93 @@ export default async function AdminPlayersPage({ params }: PageProps) {
     flagsByPP.set(f.player_product_id, list);
   }
 
-  const flagPlayers = players
-    .filter(pp => !pp.insert_only && pp.player?.name)
+  const players: PlayerRow[] = playerProducts
+    .filter(pp => pp.player?.name)
     .map(pp => ({
       playerProductId: pp.id,
-      playerId: pp.player_id,
+      playerId: pp.player_id!,
       name: pp.player?.name ?? '',
       team: pp.player?.team ?? '',
-      isIcon: (pp.player as any)?.is_icon ?? false,
-      isHighVolatility: (pp as any).is_high_volatility ?? false,
+      isRookie: !!pp.player?.is_rookie,
+      hobbySets: pp.hobby_sets ?? 0,
+      bdOnlySets: pp.bd_only_sets ?? 0,
+      insertOnly: !!pp.insert_only,
+      isIcon: !!(pp.player as any)?.is_icon,
+      isHighVolatility: !!(pp as any).is_high_volatility,
       activeFlags: flagsByPP.get(pp.id) ?? [],
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-card sticky top-0 z-10">
-        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
-          <Link href="/admin/products" className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-            ← Products
+    <div className="space-y-6">
+      {/* Compact header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/admin/products"
+            className="flex items-center justify-center w-9 h-9 rounded-lg transition-colors hover:bg-[var(--terminal-surface-hover)]"
+            style={{ border: '1px solid var(--terminal-border)', color: 'var(--text-secondary)' }}
+          >
+            <ArrowLeft className="w-4 h-4" />
           </Link>
-          <div className="text-right">
-            <p className="text-sm font-semibold">{product.name}</p>
-            <p className="text-[10px] text-muted-foreground uppercase tracking-widest">
-              {product.sport?.name} · {product.year} · Admin
+          <div>
+            <p className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-0.5">
+              {product.sport?.name} · {product.year}
             </p>
+            <h1 className="text-2xl font-black leading-tight">{product.name}</h1>
+            <p className="text-xs text-muted-foreground mt-0.5">Players & Flags</p>
           </div>
         </div>
-      </header>
+        <Link
+          href={`/admin/products/${id}`}
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          ← Back to product dashboard
+        </Link>
+      </div>
 
-      <main className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-        {/* Existing players */}
-        {players.length > 0 && (
-          <div className="bg-card border rounded overflow-hidden">
-            <div className="h-1 bg-[var(--topps-red)]" />
-            <div className="p-4">
-              <p className="text-sm font-medium mb-3">
-                {players.length} player{players.length !== 1 ? 's' : ''} in roster
-              </p>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b">
-                      <th className="pb-2 text-left font-medium text-muted-foreground">Name</th>
-                      <th className="pb-2 text-left font-medium text-muted-foreground">Team</th>
-                      <th className="pb-2 text-center font-medium text-muted-foreground">RC</th>
-                      <th className="pb-2 text-center font-medium text-muted-foreground">Hobby Sets</th>
-                      <th className="pb-2 text-center font-medium text-muted-foreground">BD Only</th>
-                      <th className="pb-2 text-center font-medium text-muted-foreground">Insert</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {players.map(pp => (
-                      <tr key={pp.id} className="hover:bg-muted/20">
-                        <td className="py-1.5">{pp.player?.name}</td>
-                        <td className="py-1.5 text-muted-foreground">{pp.player?.team || '—'}</td>
-                        <td className="py-1.5 text-center">{pp.player?.is_rookie ? '✓' : ''}</td>
-                        <td className="py-1.5 text-center">{pp.hobby_sets}</td>
-                        <td className="py-1.5 text-center">{pp.bd_only_sets}</td>
-                        <td className="py-1.5 text-center">{pp.insert_only ? '✓' : ''}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
+      {/* Player manager (search + table + flag controls) */}
+      <PlayersManager productId={id} players={players} />
 
-        {/* Player flags: icon tier, high volatility, risk flags */}
-        {flagPlayers.length > 0 && (
-          <div className="bg-card border rounded overflow-hidden">
-            <div className="h-1" style={{ background: 'oklch(0.52 0.22 27)' }} />
-            <div className="p-4 space-y-3">
-              <div>
-                <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-                  Player Flags &amp; Settings
-                </h2>
-                <p className="text-xs text-muted-foreground mt-1">
-                  <span className="font-semibold text-purple-600 dark:text-purple-400">★ Icon</span>
-                  {' '}— skips buzz multiplier (structural demand already in EV).{' '}
-                  <span className="font-semibold text-amber-600 dark:text-amber-400">⚡ High Volatility</span>
-                  {' '}— market pricing is unusually uncertain.{' '}
-                  <span className="font-semibold text-red-600 dark:text-red-400">⚑ Flag</span>
-                  {' '}— consumer-visible risk disclosure (injury, suspension, etc.).
-                </p>
-              </div>
-              <PlayerFlagsManager productId={id} players={flagPlayers} />
-            </div>
+      {/* Add players — collapsed by default */}
+      <details
+        className="rounded-lg border overflow-hidden group"
+        style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
+      >
+        <summary className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-[var(--terminal-surface-hover)] list-none">
+          <div>
+            <h2 className="text-sm font-semibold">Import Checklist</h2>
+            <p className="text-xs text-muted-foreground">PDF or CSV upload — auto-creates players and variants</p>
           </div>
-        )}
-
-        {/* PDF Import */}
-        <div className="bg-card border rounded overflow-hidden">
-          <div className="h-1 bg-[var(--topps-red)]" />
-          <div className="p-6">
-            <ChecklistUpload
-              productId={id}
-              sportId={product.sport_id}
-              productName={product.name}
-            />
-          </div>
+          <ChevronDown className="w-4 h-4 transition-transform group-open:rotate-180 text-muted-foreground" />
+        </summary>
+        <div className="px-4 py-4 border-t" style={{ borderColor: 'var(--terminal-border)' }}>
+          <ChecklistUpload
+            productId={id}
+            sportId={product.sport_id}
+            productName={product.name}
+          />
         </div>
+      </details>
 
-        {/* Manual bulk entry */}
-        <div className="bg-card border rounded overflow-hidden">
-          <div className="h-1 bg-muted" />
-          <div className="p-6">
-            <PlayerBulkForm
-              productId={id}
-              sportId={product.sport_id}
-            />
+      <details
+        className="rounded-lg border overflow-hidden group"
+        style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
+      >
+        <summary className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-[var(--terminal-surface-hover)] list-none">
+          <div>
+            <h2 className="text-sm font-semibold">Bulk Add Players Manually</h2>
+            <p className="text-xs text-muted-foreground">Paste a list or fill in rows directly</p>
           </div>
+          <ChevronDown className="w-4 h-4 transition-transform group-open:rotate-180 text-muted-foreground" />
+        </summary>
+        <div className="px-4 py-4 border-t" style={{ borderColor: 'var(--terminal-border)' }}>
+          <PlayerBulkForm
+            productId={id}
+            sportId={product.sport_id}
+          />
         </div>
-      </main>
+      </details>
     </div>
   );
 }
