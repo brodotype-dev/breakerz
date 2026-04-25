@@ -33,12 +33,24 @@ async function getProducts() {
 }
 
 async function getPlayerCounts() {
-  const { data } = await supabaseAdmin
-    .from('player_products')
-    .select('product_id');
+  // Supabase PostgREST defaults to 1000 rows per request. We now have products
+  // (e.g. Bowman Chrome hydrated from catalog) that push total player_products
+  // well past that, so paginate until we get every row.
   const counts: Record<string, number> = {};
-  for (const row of data ?? []) {
-    counts[row.product_id] = (counts[row.product_id] ?? 0) + 1;
+  const pageSize = 1000;
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabaseAdmin
+      .from('player_products')
+      .select('product_id')
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    for (const row of data) {
+      counts[row.product_id] = (counts[row.product_id] ?? 0) + 1;
+    }
+    if (data.length < pageSize) break;
+    from += pageSize;
   }
   return counts;
 }
