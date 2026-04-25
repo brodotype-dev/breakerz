@@ -56,7 +56,7 @@ function NavLink({ icon: Icon, label, href, exact, secondary }: NavLinkProps) {
 export default function AdminNav() {
   return (
     <nav className="flex-1 p-4 space-y-1 relative">
-      <NavLink icon={Package} label="Products" href="/admin" exact />
+      <NavLink icon={Package} label="Products" href="/admin/products" exact />
       <NavLink icon={PlusCircle} label="New Product" href="/admin/products/new" />
 <NavLink icon={Sparkles} label="BreakIQ Bets" href="/admin/breakiq-betz" />
       <NavLink icon={Users} label="Waitlist" href="/admin/waitlist" />
