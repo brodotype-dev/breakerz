@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { supabaseAdmin } from '@/lib/supabase';
+
+export const dynamic = 'force-dynamic';
 import type { Product, Sport } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import {
