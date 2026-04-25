@@ -35,15 +35,31 @@ function formatFetchedAt(ts: string | null | undefined): string {
 export default async function AdminProductsPage({ searchParams }: { searchParams: Promise<{ filter?: string }> }) {
   const { filter } = await searchParams;
 
-  const [{ data: allProducts }, { data: playerCountRows }, { data: cacheRows }, { data: catalogLogRows }] = await Promise.all([
+  const [{ data: allProducts }, playerCountRows, { data: cacheRows }, { data: catalogLogRows }] = await Promise.all([
     supabaseAdmin
       .from('products')
       .select('id, name, slug, year, manufacturer, is_active, has_odds, sport:sports(name)')
       .order('name'),
-    supabaseAdmin
-      .from('player_products')
-      .select('product_id')
-      .eq('insert_only', false),
+    // Counts ALL players in each product (insert_only included) — matches /admin.
+    // Paginate past PostgREST's 1000-row default since hydrated products push
+    // total player_products well past that.
+    (async () => {
+      const rows: { product_id: string }[] = [];
+      const pageSize = 1000;
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabaseAdmin
+          .from('player_products')
+          .select('product_id')
+          .range(from, from + pageSize - 1);
+        if (error) throw error;
+        if (!data || data.length === 0) break;
+        rows.push(...data);
+        if (data.length < pageSize) break;
+        from += pageSize;
+      }
+      return rows;
+    })(),
     // One row per player_product in the cache; join gives us the parent product_id.
     // ~750–3k rows max across all products — acceptable as a full scan.
     supabaseAdmin
@@ -61,7 +77,7 @@ export default async function AdminProductsPage({ searchParams }: { searchParams
 
   // Build player count map
   const playerCountMap = new Map<string, number>();
-  for (const row of playerCountRows ?? []) {
+  for (const row of playerCountRows) {
     playerCountMap.set(row.product_id, (playerCountMap.get(row.product_id) ?? 0) + 1);
   }
 
@@ -87,7 +103,7 @@ export default async function AdminProductsPage({ searchParams }: { searchParams
     }
   }
 
-  const totalPlayers = playerCountRows?.length ?? 0;
+  const totalPlayers = playerCountRows.length;
   const activeCount = (allProducts ?? []).filter((p: any) => p.is_active).length;
   const draftCount = (allProducts?.length ?? 0) - activeCount;
 
