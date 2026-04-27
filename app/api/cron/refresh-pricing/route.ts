@@ -62,8 +62,17 @@ export async function GET(req: Request) {
     // invocation with an independent 300s budget, so one slow product can't
     // starve the others. This orchestrator's only job is to dispatch and
     // collect — it does no heavy work itself.
+    //
+    // Each per-fetch is bounded by an AbortController at 270s so the
+    // orchestrator always returns before its own 300s budget. Workers whose
+    // response we abort keep running on their own invocations and still write
+    // to pricing_cache; the orchestrator just won't include them in the
+    // returned summary.
+    const PER_FETCH_TIMEOUT_MS = 270_000;
     const results = await Promise.all(
       priceable.map(async product => {
+        const ac = new AbortController();
+        const timer = setTimeout(() => ac.abort(), PER_FETCH_TIMEOUT_MS);
         try {
           const res = await fetch(endpoint, {
             method: 'POST',
@@ -72,6 +81,7 @@ export async function GET(req: Request) {
               Authorization: `Bearer ${process.env.CRON_SECRET}`,
             },
             body: JSON.stringify({ productId: product.id }),
+            signal: ac.signal,
           });
           if (!res.ok) {
             const text = await res.text().catch(() => res.statusText);
@@ -91,12 +101,17 @@ export async function GET(req: Request) {
             summary,
           };
         } catch (err) {
+          const aborted = ac.signal.aborted;
           return {
             productId: product.id,
             productName: product.name,
             ok: false,
-            error: err instanceof Error ? err.message : String(err),
+            error: aborted
+              ? 'orchestrator timed out waiting for worker (worker may still complete on its own invocation)'
+              : err instanceof Error ? err.message : String(err),
           };
+        } finally {
+          clearTimeout(timer);
         }
       }),
     );
