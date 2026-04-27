@@ -43,16 +43,13 @@ export async function GET(req: Request) {
     if (error) throw error;
     if (!products?.length) return NextResponse.json({ refreshed: 0 });
 
-    // Find products that actually have something priceable. Skip the rest.
-    const priceable: { id: string; name: string }[] = [];
-    for (const p of products) {
-      const { count } = await supabaseAdmin
-        .from('player_products')
-        .select('id', { count: 'exact', head: true })
-        .eq('product_id', p.id)
-        .not('cardhedger_card_id', 'is', null);
-      if ((count ?? 0) > 0) priceable.push(p);
-    }
+    // Fan out to every active product. The per-product worker
+    // (refreshProductPricing) reads matched variants directly and returns a
+    // zero-row summary for products with no CH matches yet — cheap. Filtering
+    // here previously checked player_products.cardhedger_card_id, but the
+    // matcher writes matches to player_product_variants.cardhedger_card_id, so
+    // every recently-matched product was being skipped.
+    const priceable = products;
 
     // Derive base URL from the incoming request so the fan-out hits the same
     // canonical host (e.g. www.getbreakiq.com). NEXT_PUBLIC_APP_URL points at
