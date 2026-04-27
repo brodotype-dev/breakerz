@@ -22,6 +22,9 @@ export interface HydrateResult {
   autoCreatedPlayers: number;
   /** Phase 3: player_products auto-linked to this product for CH players. */
   autoCreatedPlayerProducts: number;
+  /** Phase 4: CH cards skipped because their card_number wasn't in the
+   *  player_product's checklist_card_numbers (e.g. S2 card not in S1 product). */
+  scopedOutByCardNumber: number;
   catalogCards: number;
   durationMs: number;
   setName: string;
@@ -112,15 +115,21 @@ export async function hydrateVariantsFromCatalog(productId: string): Promise<Hyd
     );
   }
 
-  // 3. Load this product's player_products with joined player names.
-  //    Paginate — PostgREST caps responses at 1000 rows by default, and several
-  //    products have >1000 player_products. Same-family bug as PR #4/#6.
+  // 3. Load this product's player_products with joined player names AND the
+  //    per-player checklist_card_numbers persisted at import time. Paginate —
+  //    PostgREST caps responses at 1000 rows by default. Same-family bug as
+  //    PR #4/#6.
   const PP_PAGE = 1000;
-  const playerProducts: { id: string; player: { name: string } | null }[] = [];
+  type PPRow = {
+    id: string;
+    player: { name: string } | null;
+    checklist_card_numbers: string[] | null;
+  };
+  const playerProducts: PPRow[] = [];
   for (let offset = 0; ; offset += PP_PAGE) {
     const { data, error: ppErr } = await supabaseAdmin
       .from('player_products')
-      .select('id, player:players(name)')
+      .select('id, checklist_card_numbers, player:players(name)')
       .eq('product_id', productId)
       .range(offset, offset + PP_PAGE - 1);
     if (ppErr) throw new Error(`player_products load failed: ${ppErr.message}`);
@@ -128,6 +137,24 @@ export async function hydrateVariantsFromCatalog(productId: string): Promise<Hyd
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     playerProducts.push(...(data as any));
     if (data.length < PP_PAGE) break;
+  }
+
+  // Build a per-player attach predicate. checklist_card_numbers carries the
+  // truth from the import-checklist parser:
+  //   - populated array → only attach CH variants whose card_number is in the
+  //     set. This is what scopes Topps S1 vs S2 when they share a ch_set_name.
+  //   - null/empty → legacy data from before we persisted card numbers. Fall
+  //     back to permissive name-only matching (current behavior). Re-importing
+  //     the checklist opts into strict scoping.
+  const attachPredicateByPpId = new Map<string, (cardNumber: string) => boolean>();
+  for (const pp of playerProducts) {
+    const nums = pp.checklist_card_numbers;
+    if (nums && nums.length > 0) {
+      const numSet = new Set(nums);
+      attachPredicateByPpId.set(pp.id, n => numSet.has(n));
+    } else {
+      attachPredicateByPpId.set(pp.id, () => true);
+    }
   }
 
   // Build normalizedName → player_product_id map
@@ -204,6 +231,7 @@ export async function hydrateVariantsFromCatalog(productId: string): Promise<Hyd
   // 4. Walk catalog rows → build variant inserts + skip list
   const variantRows: Record<string, unknown>[] = [];
   const skippedCounts = new Map<string, number>();
+  let scopedOutByCardNumber = 0;
 
   for (const c of index.cards) {
     const chName = c.player_name?.trim();
@@ -212,6 +240,16 @@ export async function hydrateVariantsFromCatalog(productId: string): Promise<Hyd
     const ppId = nameToPpId.get(normalizeName(chName));
     if (!ppId) {
       skippedCounts.set(chName, (skippedCounts.get(chName) ?? 0) + 1);
+      continue;
+    }
+
+    // Scope by checklist_card_numbers when available. This is what prevents
+    // S1 cards from attaching to the S2 product (and vice versa) when they
+    // share a ch_set_name. Predicate returns true for legacy player_products
+    // that have null checklist_card_numbers (permissive match).
+    const predicate = attachPredicateByPpId.get(ppId);
+    if (predicate && !predicate(c.number ?? '')) {
+      scopedOutByCardNumber++;
       continue;
     }
 
@@ -277,6 +315,7 @@ export async function hydrateVariantsFromCatalog(productId: string): Promise<Hyd
     skippedPlayers,
     autoCreatedPlayers,
     autoCreatedPlayerProducts,
+    scopedOutByCardNumber,
     catalogCards: index.cards.length,
     durationMs: Date.now() - started,
     setName,

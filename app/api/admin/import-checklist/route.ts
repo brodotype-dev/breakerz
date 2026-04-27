@@ -41,6 +41,18 @@ export async function POST(req: NextRequest) {
     name: string; team: string; hobbySets: number; bdSets: number; isRookie: boolean;
   }>();
 
+  // Track whether each player appears in any base-set entry. A card is "base"
+  // if its card_number is purely numeric (e.g. "1", "251") — inserts and
+  // autographs use prefixed codes ("SF-13", "TCA-JM"). This drives insert_only
+  // on the player_product so retired-legend insert subjects don't count as
+  // slot-eligible base players.
+  const playerHasBaseAppearance = new Map<string, boolean>();
+
+  // Collect every card_number per player, deduped. Persisted on the player_product
+  // so hydrate can scope CH variant attachment to what's actually in this product's
+  // checklist (key for products that share a ch_set_name like Topps S1 + S2).
+  const playerCardNumbers = new Map<string, Set<string>>();
+
   for (const section of sections) {
     for (const card of section.cards) {
       const key = `${card.playerName}||${card.team ?? ''}`;
@@ -52,6 +64,18 @@ export async function POST(req: NextRequest) {
         bdSets: (existing?.bdSets ?? 0) + section.bdSets,
         isRookie: card.isRookie || (existing?.isRookie ?? false),
       });
+
+      const isBaseCard = !!card.cardNumber && /^[0-9]+$/.test(card.cardNumber);
+      if (isBaseCard) playerHasBaseAppearance.set(card.playerName, true);
+      else if (!playerHasBaseAppearance.has(card.playerName)) {
+        playerHasBaseAppearance.set(card.playerName, false);
+      }
+
+      if (card.cardNumber) {
+        const nums = playerCardNumbers.get(card.playerName) ?? new Set<string>();
+        nums.add(card.cardNumber);
+        playerCardNumbers.set(card.playerName, nums);
+      }
     }
   }
 
@@ -92,15 +116,23 @@ export async function POST(req: NextRequest) {
   const playersCreated = upsertedPlayers?.length ?? 0;
 
   // --- Step 3: Bulk upsert player_products ---
+  // insert_only=true for players who appear ONLY in non-base sections (autograph
+  // subsets, themed inserts featuring retired legends, etc.). Drives slot
+  // eligibility: the pricing engine and dashboard counts filter on this flag.
+  // checklist_card_numbers is the union of all this player's card_numbers from
+  // the parsed checklist — hydrate uses it to scope CH variant attachment.
   const ppRows = uniquePlayers.map(p => {
     const playerId = playerNameToId.get(p.name);
     if (!playerId) return null;
+    const hasBase = playerHasBaseAppearance.get(p.name) === true;
+    const cardNumbers = Array.from(playerCardNumbers.get(p.name) ?? []);
     return {
       player_id: playerId,
       product_id: productId,
       hobby_sets: p.hobbySets,
       bd_only_sets: p.bdSets,
-      insert_only: false,
+      insert_only: !hasBase,
+      checklist_card_numbers: cardNumbers.length > 0 ? cardNumbers : null,
     };
   }).filter(Boolean) as object[];
 

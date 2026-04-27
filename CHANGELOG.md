@@ -5,6 +5,26 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-27 — Checklist becomes authoritative for product organization
+
+Architectural shift: the checklist (parsed from manufacturer PDFs/XLSXs) is now the source of truth for "what's in this product." CardHedger is the source of truth for pricing, but no longer dictates which players or variants are slot-eligible. This was the root cause of multiple bugs surfaced today (1,569 inflated player count on Topps Chrome, the 6,341 corrupt rows, and the latent Topps S1/S2 sharing problem with the upcoming Series 2 release).
+
+Four coupled changes:
+
+1. **New column `player_products.checklist_card_numbers TEXT[]`** (migration `20260427210000`). Persists the union of card numbers per player from the parsed checklist. Hydrate uses it to scope CH variant attachment.
+
+2. **`import-checklist`** now populates `checklist_card_numbers` and computes `insert_only` per player based on whether they appear in any base-set entry (numeric card number) vs only insert/auto subsets (prefixed codes like `SF-13`, `TCA-JM`).
+
+3. **`variants-from-catalog` Phase 4** now scopes CH variant attachment: a CH variant only attaches to a player_product if the variant's `card_number` is in that player_product's `checklist_card_numbers`. Legacy player_products with `null` checklist_card_numbers fall back to permissive name-only matching, so existing products keep working until they're re-imported. New `scopedOutByCardNumber` field in HydrateResult for telemetry.
+
+4. **Backfill migration `20260427220000`** flips `insert_only=true` on player_products whose variants have no numeric card_numbers — catches the existing retired-legends-on-inserts that the earlier morning's fix only addressed for *new* auto-creates.
+
+Why this matters now: Topps Series 2 drops soon and shares CH's `2025 Topps Baseball` set with Series 1. Without per-checklist scoping, both products would show all 56k variants from the combined catalog. Future Bowman/Topps releases that bundle similar series will hit the same pattern.
+
+What this doesn't touch: parser coverage gaps (if a manufacturer PDF is missing a section, those CH variants won't attach — separate parser work), the Find on CH widget, or the 5 products still missing `ch_set_name`.
+
+---
+
 ## 2026-04-27 — CH catalog refresh: retry on 5xx, lower concurrency, longer timeouts
 
 Setting up `2025 Topps Baseball` (56,027 cards / ~561 pages) as a `ch_set_name` exposed that the catalog refresh pipeline had no resilience to CH transient errors. First attempt: `500 — Server disconnected`. Retry: `502 Bad Gateway`. CH responded fine to one-off MCP queries — the issue was specifically our 8-way parallel pagination overwhelming the backend on large sets.
