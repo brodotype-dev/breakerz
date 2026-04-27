@@ -12,6 +12,20 @@ const supabaseAnonKey =
 export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
+  // Cron and admin server-to-server calls authenticate via
+  // `Authorization: Bearer <CRON_SECRET>`. The middleware only knows about
+  // cookie sessions, so without this bypass it would 307 those requests to
+  // /admin/login and the route handler's Bearer check would never run.
+  // Route handlers still validate the secret themselves — middleware just
+  // gets out of the way.
+  const cronSecret = process.env.CRON_SECRET;
+  if (cronSecret) {
+    const authHeader = request.headers.get('authorization');
+    if (authHeader === `Bearer ${cronSecret}`) {
+      return supabaseResponse;
+    }
+  }
+
   // Cookie-aware client — required by @supabase/ssr to refresh sessions
   const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
     cookies: {

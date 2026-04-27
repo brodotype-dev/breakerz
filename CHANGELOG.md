@@ -5,6 +5,18 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-27 — Fix nightly pricing cron (silent failure since fan-out switch)
+
+The pricing refresh cron has been silently no-op'ing every night since 2026-04-22 (commit cfdb397, "unbounded cron fan-out"). Discovered while looking at the admin Products table — most "Last Priced" timestamps were stuck at 17–35 days old.
+
+**Root cause:** `/api/cron/refresh-pricing` fans out HTTP POSTs to `/api/admin/refresh-product-pricing` with `Authorization: Bearer ${CRON_SECRET}`. The route handler accepted that, but `middleware.ts` matches `/api/admin/*` and only checks Supabase cookie sessions — so the inner request was 307'd to `/admin/login`. Node's `fetch` follows redirects, the login HTML returned 200, the orchestrator's `await res.json().catch(() => null)` swallowed the JSON parse error, and every product reported "ok" with `summary: null`. No errors in logs, no rows written.
+
+**Fix:** middleware now lets requests with a matching `Authorization: Bearer ${CRON_SECRET}` header pass through before the cookie check. Route handlers still validate the secret themselves.
+
+Only `refresh-pricing` was affected — `update-scores` and `refresh-ch-catalogs` do their work inline, so they never crossed the middleware boundary.
+
+---
+
 ## 2026-04-23 — Chase Board + Player Detail Drawer
 
 Two new consumer-facing features: a chase card board on the break page and a per-player detail drawer with CardHedger comps.
