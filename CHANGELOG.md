@@ -5,6 +5,30 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-27 — Cleanup: 6,341 corrupt player_products from a bad 2026-03-29 import
+
+While investigating Topps Chrome Basketball's inflated 1,569 player count, found that the `players.name` column had been polluted by a buggy import script that ran once on 2026-03-29 — card numbers (`"77"`, `"170"`, `"289"`) and subset codes (`"TCA-JM"`, `"RR-4"`, `"LD-10"`, `"SF-21"`) were saved as player names and given full `player_products` rows. 6,341 corrupt rows across 9 active products, all created at the same timestamp `2026-03-29 01:32:13.067755`. Every other import date is clean.
+
+**Verified before deleting:** 0 variants attached, 0 chase card references, 0 CH-matched variants, 2,528 cascading `pricing_cache` rows (themselves bogus). Whatever code path created these has been replaced — April imports show only real names.
+
+**Deleted:**
+- 6,341 `player_products` rows (with `pricing_cache` cascade)
+- 4,918 orphaned `players` rows whose only references were the deleted `player_products`
+
+**Post-cleanup counts:**
+- Topps Chrome Basketball: 1,569 → **391**
+- Topps 3 Basketball: 1,369 → 344
+- Topps Pristine Baseball: 1,152 → 344
+- Topps Finest Basketball: 1,012 → 248
+- Bowman Draft Baseball: 971 → 235
+- Bowman's Best Baseball: 880 → 417
+- Topps Chrome Sapphire Basketball: 866 → 331
+- Topps Chrome Basketball Midnight: 801 → 232
+
+Some count is still elevated by retired-legend insert subjects (Allen Iverson, Vince Carter, etc. on throwback inserts) auto-created by the hydrate flow with `insert_only: false`. The earlier code fix to write `insert_only: true` will land those correctly going forward; existing retired-legend rows can be flipped via PlayersManager when they're identified.
+
+---
+
 ## 2026-04-27 — Hydrate: insert subjects no longer inflate "auto-eligible" count
 
 Topps Chrome Basketball's product page showed 1,569 "auto-eligible" players — way too many for a basketball set with ~150–300 base players. Investigation:
