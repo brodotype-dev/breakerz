@@ -17,6 +17,14 @@ Sports card break slot pricing and analysis tool. Built with Kyle (Town & Line /
 
 Update CHANGELOG.md at the end of every session with what changed and why.
 
+**Multi-phase features get four touch-points** (so we can grep them later instead of digging through git history):
+1. **Plan file** in `docs/plans/YYYY-MM-DD-feature.md` — saved at the end of plan mode. Add a status header at the top noting actual shipped scope vs. the original plan.
+2. **Architecture doc** in `docs/feature-name.md` — the live reference for how it works.
+3. **CHANGELOG entry** linking to both.
+4. **CLAUDE.md** — add to docs index + add a one-line summary to the Current State section.
+
+Single-commit fixes / small features only need the CHANGELOG entry.
+
 ---
 
 ## Current State
