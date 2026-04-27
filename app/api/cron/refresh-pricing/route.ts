@@ -2,30 +2,44 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
-// Vercel Pro: 300s. The orchestrator itself is just dispatching HTTP fan-outs
-// — the actual heavy work runs on separate Vercel invocations (each with its
-// own 300s budget via app/api/admin/refresh-product-pricing/route.ts).
-// The orchestrator completes when the slowest per-product call returns, which
-// in practice is bounded by the longest product's refresh time (~200s for
-// Bowman Chrome today). All products fan out in parallel — no throttle — so
-// this scales to however many active products we have.
 export const maxDuration = 300;
 
 /**
- * Nightly at 4 AM UTC (see vercel.json).
+ * Pricing refresh orchestrator. Scheduled at 4:00, 4:30, 5:00, 5:30, 6:00 UTC
+ * (see vercel.json) — five staggered firings so the work is spread across an
+ * hour-long window and any product that doesn't fit in one invocation gets
+ * picked up by the next.
  *
- * Fans out to `/api/admin/refresh-product-pricing` once per active product
- * that has at least one CH-matched player_product. All dispatches happen in
- * parallel; each runs on its own Vercel invocation with an independent 300s
- * budget. One slow product can't starve the others.
+ * Per invocation:
+ *  - Pick active products whose latest pricing_cache.fetched_at is null or
+ *    older than STALE_AFTER_HOURS, oldest first. Already-fresh products are
+ *    skipped, so back-to-back firings don't redo work.
+ *  - Dispatch CONCURRENCY workers in parallel via HTTP POST to
+ *    /api/admin/refresh-product-pricing. Each worker runs on its own Vercel
+ *    invocation with its own 300s budget.
+ *  - Hard cap each fetch at PER_FETCH_TIMEOUT_MS so the orchestrator returns
+ *    inside its own 300s budget. Aborted workers keep running and writing to
+ *    pricing_cache regardless.
+ *  - Stop dispatching new batches once we're within DEADLINE_BUFFER_MS of the
+ *    orchestrator's 300s cap.
  *
- * We await all fan-outs here so the cron reports a useful summary in logs.
- * If a single product errors/times out, the others still complete.
- *
- * Scale note: this scales to at least 50 active products without trouble. Past
- * that, CH rate limits become the bottleneck — if we hit them, reintroduce a
- * concurrency cap here (was previously 3).
+ * Why CONCURRENCY=3: with 16 products fanning out at once, CH rate-limited
+ * everyone and individual workers blew past their 300s cap. 3 keeps CH happy.
  */
+const STALE_AFTER_HOURS = 22;
+const CONCURRENCY = 3;
+const PER_FETCH_TIMEOUT_MS = 240_000;
+const ORCHESTRATOR_BUDGET_MS = 270_000;
+
+type FetchOutcome = {
+  productId: string;
+  productName: string;
+  ok: boolean;
+  status?: number;
+  error?: string;
+  summary?: unknown;
+};
+
 export async function GET(req: Request) {
   const authHeader = req.headers.get('authorization');
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -43,93 +57,140 @@ export async function GET(req: Request) {
     if (error) throw error;
     if (!products?.length) return NextResponse.json({ refreshed: 0 });
 
-    // Fan out to every active product. The per-product worker
-    // (refreshProductPricing) reads matched variants directly and returns a
-    // zero-row summary for products with no CH matches yet — cheap. Filtering
-    // here previously checked player_products.cardhedger_card_id, but the
-    // matcher writes matches to player_product_variants.cardhedger_card_id, so
-    // every recently-matched product was being skipped.
-    const priceable = products;
+    // Build a stale-first queue: products whose latest pricing_cache row is
+    // null or older than STALE_AFTER_HOURS. Oldest first so we make progress
+    // on the most-stale products even if we run out of budget.
+    const staleCutoff = new Date(Date.now() - STALE_AFTER_HOURS * 3600 * 1000).toISOString();
+    const { data: cacheRows, error: cacheErr } = await supabaseAdmin
+      .from('pricing_cache')
+      .select('fetched_at, player_products!inner(product_id)');
+    if (cacheErr) throw cacheErr;
 
-    // Derive base URL from the incoming request so the fan-out hits the same
-    // canonical host (e.g. www.getbreakiq.com). NEXT_PUBLIC_APP_URL points at
-    // the apex, which 301s to www and silently converts the POST to GET → 405.
+    const lastFetchedByProduct = new Map<string, string>();
+    for (const row of cacheRows ?? []) {
+      const productId = (row.player_products as unknown as { product_id?: string })?.product_id;
+      if (!productId) continue;
+      const existing = lastFetchedByProduct.get(productId);
+      if (!existing || row.fetched_at > existing) {
+        lastFetchedByProduct.set(productId, row.fetched_at);
+      }
+    }
+
+    type QueueItem = { id: string; name: string; lastFetched: string | null };
+    const queue: QueueItem[] = products
+      .map(p => ({
+        id: p.id,
+        name: p.name,
+        lastFetched: lastFetchedByProduct.get(p.id) ?? null,
+      }))
+      .filter(p => p.lastFetched == null || p.lastFetched < staleCutoff)
+      .sort((a, b) => {
+        if (a.lastFetched == null && b.lastFetched == null) return 0;
+        if (a.lastFetched == null) return -1;
+        if (b.lastFetched == null) return 1;
+        return a.lastFetched < b.lastFetched ? -1 : 1;
+      });
+
+    if (queue.length === 0) {
+      return NextResponse.json({
+        total: products.length,
+        stale: 0,
+        processed: 0,
+        durationMs: Date.now() - started,
+        message: 'all products fresh, nothing to do',
+      });
+    }
+
     const reqUrl = new URL(req.url);
     const baseUrl = `${reqUrl.protocol}//${reqUrl.host}`;
     const endpoint = `${baseUrl}/api/admin/refresh-product-pricing`;
 
-    // Fan out ALL products in parallel. Each fetch spawns its own Vercel
-    // invocation with an independent 300s budget, so one slow product can't
-    // starve the others. This orchestrator's only job is to dispatch and
-    // collect — it does no heavy work itself.
-    //
-    // Each per-fetch is bounded by an AbortController at 270s so the
-    // orchestrator always returns before its own 300s budget. Workers whose
-    // response we abort keep running on their own invocations and still write
-    // to pricing_cache; the orchestrator just won't include them in the
-    // returned summary.
-    const PER_FETCH_TIMEOUT_MS = 270_000;
-    const results = await Promise.all(
-      priceable.map(async product => {
-        const ac = new AbortController();
-        const timer = setTimeout(() => ac.abort(), PER_FETCH_TIMEOUT_MS);
-        try {
-          const res = await fetch(endpoint, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${process.env.CRON_SECRET}`,
-            },
-            body: JSON.stringify({ productId: product.id }),
-            signal: ac.signal,
-          });
-          if (!res.ok) {
-            const text = await res.text().catch(() => res.statusText);
-            return {
-              productId: product.id,
-              productName: product.name,
-              ok: false,
-              status: res.status,
-              error: text.slice(0, 200),
-            };
-          }
-          const summary = await res.json().catch(() => null);
-          return {
-            productId: product.id,
-            productName: product.name,
-            ok: true as const,
-            summary,
-          };
-        } catch (err) {
-          const aborted = ac.signal.aborted;
+    const dispatchOne = async (product: QueueItem): Promise<FetchOutcome> => {
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), PER_FETCH_TIMEOUT_MS);
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${process.env.CRON_SECRET}`,
+          },
+          body: JSON.stringify({ productId: product.id }),
+          signal: ac.signal,
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => res.statusText);
           return {
             productId: product.id,
             productName: product.name,
             ok: false,
-            error: aborted
-              ? 'orchestrator timed out waiting for worker (worker may still complete on its own invocation)'
-              : err instanceof Error ? err.message : String(err),
+            status: res.status,
+            error: text.slice(0, 200),
           };
-        } finally {
-          clearTimeout(timer);
         }
-      }),
-    );
+        const summary = await res.json().catch(() => null);
+        return {
+          productId: product.id,
+          productName: product.name,
+          ok: true,
+          summary,
+        };
+      } catch (err) {
+        const aborted = ac.signal.aborted;
+        return {
+          productId: product.id,
+          productName: product.name,
+          ok: false,
+          error: aborted
+            ? 'orchestrator aborted fetch (worker may still complete on its own invocation)'
+            : err instanceof Error ? err.message : String(err),
+        };
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+
+    // Process the queue with bounded concurrency. Stop dispatching new work
+    // once the orchestrator's own budget is exhausted; in-flight work
+    // continues until PER_FETCH_TIMEOUT_MS or its own completion.
+    const results: FetchOutcome[] = [];
+    let cursor = 0;
+    const skipped: QueueItem[] = [];
+
+    const worker = async () => {
+      while (true) {
+        const idx = cursor++;
+        if (idx >= queue.length) return;
+        const item = queue[idx];
+        if (Date.now() - started > ORCHESTRATOR_BUDGET_MS) {
+          skipped.push(item);
+          continue;
+        }
+        const outcome = await dispatchOne(item);
+        results.push(outcome);
+      }
+    };
+
+    await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
 
     const okCount = results.filter(r => r.ok).length;
     const errCount = results.length - okCount;
     const durationMs = Date.now() - started;
 
     console.log(
-      `[cron/refresh-pricing] ${okCount}/${results.length} ok (${errCount} errors) in ${durationMs}ms`,
+      `[cron/refresh-pricing] processed=${results.length} ok=${okCount} err=${errCount} skipped=${skipped.length} durationMs=${durationMs}`,
     );
 
     return NextResponse.json({
-      total: priceable.length,
+      total: products.length,
+      stale: queue.length,
+      processed: results.length,
       ok: okCount,
       errors: errCount,
+      skipped: skipped.length,
+      skippedProducts: skipped.map(s => s.name),
       durationMs,
-      results: results.filter(r => !r.ok), // Only return the failures in the payload
+      failures: results.filter(r => !r.ok),
     });
   } catch (err) {
     console.error('[cron/refresh-pricing]', err);

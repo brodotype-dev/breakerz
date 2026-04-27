@@ -5,6 +5,20 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-27 — Pricing cron: throttled, stale-aware, staggered
+
+Follow-up to the morning's middleware fix. Three more bugs surfaced once the cron actually started running:
+
+1. **Apex → www redirect downgraded POST to GET → 405.** The orchestrator built fan-out URLs from `NEXT_PUBLIC_APP_URL` (`https://getbreakiq.com`, the apex). Vercel's apex-to-www redirect is a 301, which converts POST to GET on follow, and the worker route only accepts POST. Fix: derive base URL from `req.url` so the fan-out always hits the same canonical host the orchestrator was invoked on.
+
+2. **"Priceable" filter checked the wrong table.** Filter queried `player_products.cardhedger_card_id`, but the matcher writes matches to `player_product_variants.cardhedger_card_id`. Recently-matched products got skipped entirely. Fix: dropped the filter — the per-product worker already short-circuits cleanly on empty input.
+
+3. **16-way parallel fan-out starved CH bandwidth, blowing per-worker 300s caps.** Pushed 9/16 products through but the 7 heaviest (Topps Chrome Basketball family, Topps Pristine, etc.) timed out. Rebuilt the orchestrator with:
+   - **Concurrency cap of 3** — keeps CH happy.
+   - **Stale-first selection** — only picks products whose latest `pricing_cache.fetched_at` is null or > 22h old, oldest first. Re-runs skip already-fresh products.
+   - **5 staggered cron firings** — 4:00, 4:30, 5:30, 6:00, 6:30 UTC (5 AM slot reserved for `update-scores`). Each invocation processes ~3–5 products in 270s; whatever doesn't fit gets picked up by the next firing. Across the hour-long window, all 16 products cycle through with comfortable margin.
+   - Per-fetch abort at 240s, orchestrator-budget abort at 270s — the function always returns within Vercel's 300s cap, and aborted workers keep running on their own invocations.
+
 ## 2026-04-27 — Fix nightly pricing cron (silent failure since fan-out switch)
 
 The pricing refresh cron has been silently no-op'ing every night since 2026-04-22 (commit cfdb397, "unbounded cron fan-out"). Discovered while looking at the admin Products table — most "Last Priced" timestamps were stuck at 17–35 days old.
