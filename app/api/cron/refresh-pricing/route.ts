@@ -54,7 +54,11 @@ export async function GET(req: Request) {
       if ((count ?? 0) > 0) priceable.push(p);
     }
 
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://getbreakiq.com';
+    // Derive base URL from the incoming request so the fan-out hits the same
+    // canonical host (e.g. www.getbreakiq.com). NEXT_PUBLIC_APP_URL points at
+    // the apex, which 301s to www and silently converts the POST to GET → 405.
+    const reqUrl = new URL(req.url);
+    const baseUrl = `${reqUrl.protocol}//${reqUrl.host}`;
     const endpoint = `${baseUrl}/api/admin/refresh-product-pricing`;
 
     // Fan out ALL products in parallel. Each fetch spawns its own Vercel
