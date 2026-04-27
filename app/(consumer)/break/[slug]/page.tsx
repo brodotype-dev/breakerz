@@ -9,6 +9,7 @@ import TeamSlotsTable from '@/components/breakiq/TeamSlotsTable';
 import TopMoversWidget from '@/components/breakiq/TopMoversWidget';
 import ChaseCardsPanel from '@/components/breakiq/ChaseCardsPanel';
 import PlayerDetailDrawer from '@/components/breakiq/PlayerDetailDrawer';
+import PreReleaseLayout from '@/components/breakiq/PreReleaseLayout';
 import { SegmentedControl, CounterInput } from '@/components/breakiq/ds';
 import { computeSlotPricing, computeTeamSlotPricing, formatCurrency } from '@/lib/engine';
 import type { BreakConfig, ChaseCard, PlayerWithPricing, Product, Sport } from '@/lib/types';
@@ -157,9 +158,11 @@ export default function BreakPage() {
     p.pricingSource === 'search-fallback' || p.pricingSource === 'cross-product' || p.pricingSource === 'default'
   ).length;
 
-  const isPreRelease = product?.release_date
-    ? new Date(product.release_date + 'T00:00:00') > new Date()
-    : false;
+  // Lifecycle drives layout. release_date is informational (countdown).
+  // Default to 'live' for products that pre-date the lifecycle column.
+  const lifecycle = (product?.lifecycle_status ?? 'live') as 'pre_release' | 'live' | 'dormant';
+  const isPreRelease = lifecycle === 'pre_release';
+  const isDormant = lifecycle === 'dormant';
 
   function formatReleaseDate(d: string) {
     return new Date(d + 'T00:00:00').toLocaleDateString('en-US', {
@@ -279,17 +282,27 @@ export default function BreakPage() {
       </div>
 
       {/* Info banners */}
-      {isPreRelease && product.release_date && (
-        <div className="border-b px-6 py-3" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'rgba(59,130,246,0.08)' }}>
-          <p className="text-xs font-semibold" style={{ color: '#93c5fd' }}>
-            Pre-release · {product.name} launches {formatReleaseDate(product.release_date)}
+      {isPreRelease && (
+        <div className="border-b px-6 py-3" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'rgba(168,85,247,0.08)' }}>
+          <p className="text-xs font-semibold" style={{ color: '#c4b5fd' }}>
+            Pre-release · {product.release_date ? `${product.name} launches ${formatReleaseDate(product.release_date)}` : `${product.name} hasn't launched yet`}
           </p>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-t-secondary)' }}>
-            Slot values are approximations from historical comps. Prices update once the market establishes real sales.
+            No live pricing yet — the secondary market hasn't established. Below: chase cards we're watching plus historical comps from these players' existing cards.
           </p>
         </div>
       )}
-      {!isPreRelease && estimatedCount > 0 && (
+      {isDormant && (
+        <div className="border-b px-6 py-3" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'rgba(148,163,184,0.08)' }}>
+          <p className="text-xs font-semibold" style={{ color: '#cbd5e1' }}>
+            Dormant · {product.name} is no longer actively tracked
+          </p>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text-t-secondary)' }}>
+            Pricing snapshot is frozen — it&apos;s not refreshed nightly. Use as historical reference only.
+          </p>
+        </div>
+      )}
+      {!isPreRelease && !isDormant && estimatedCount > 0 && (
         <div className="border-b px-6 py-2.5 flex items-center gap-2" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'rgba(245,158,11,0.06)' }}>
           <span className="text-[10px]" style={{ color: '#f59e0b' }}>▲</span>
           <p className="text-xs" style={{ color: 'var(--text-t-secondary)' }}>
@@ -297,7 +310,7 @@ export default function BreakPage() {
           </p>
         </div>
       )}
-      {!isPreRelease && hasPricing && (
+      {!isPreRelease && !isDormant && hasPricing && (
         <div className="border-b px-6 py-2 flex items-center gap-2" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'rgba(148,163,184,0.05)' }}>
           <span className="text-[10px]" style={{ color: 'var(--text-t-tertiary)' }}>◎</span>
           <p className="text-[11px]" style={{ color: 'var(--text-t-tertiary)' }}>
@@ -307,6 +320,15 @@ export default function BreakPage() {
       )}
 
       <main ref={mainRef} className="px-4 md:px-6 py-6 space-y-5 max-w-[1400px] mx-auto">
+        {isPreRelease ? (
+          <PreReleaseLayout
+            product={product}
+            chaseCards={chaseCards}
+            players={rawPlayers}
+            riskFlagMap={riskFlagMap}
+          />
+        ) : (
+          <>
         <ChaseCardsPanel chaseCards={chaseCards} />
         <TopMoversWidget players={rawPlayers} />
 
@@ -407,6 +429,8 @@ export default function BreakPage() {
             />
           )}
         </div>
+          </>
+        )}
       </main>
 
       <PlayerDetailDrawer
