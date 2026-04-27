@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import ChaseCardsPanel from './ChaseCardsPanel';
 import type { ChaseCard, PlayerWithPricing, Product, Sport } from '@/lib/types';
 
@@ -9,6 +9,23 @@ interface Props {
   chaseCards: ChaseCard[];
   players: PlayerWithPricing[];
   riskFlagMap: Map<string, Array<{ flagType: string; note: string }>>;
+}
+
+interface Snapshot {
+  player_product_id: string;
+  has_history: boolean;
+  raw_avg_90d: number | null;
+  psa10_avg_90d: number | null;
+  raw_sales_90d: number | null;
+  psa10_sales_90d: number | null;
+}
+
+function formatPrice(n: number | null): string {
+  if (n == null) return '—';
+  if (n < 1) return `$${n.toFixed(2)}`;
+  if (n < 100) return `$${n.toFixed(0)}`;
+  if (n < 1000) return `$${Math.round(n)}`;
+  return `$${(n / 1000).toFixed(1)}k`;
 }
 
 /**
@@ -24,6 +41,32 @@ interface Props {
  * regardless of pricing (injury, suspension, etc.).
  */
 export default function PreReleaseLayout({ product, chaseCards, players, riskFlagMap }: Props) {
+  const [snapshots, setSnapshots] = useState<Map<string, Snapshot>>(new Map());
+  const [snapshotsLoading, setSnapshotsLoading] = useState(false);
+
+  // Fetch player historical comps once players are known. Skips when no
+  // players (checklist hasn't been imported yet).
+  useEffect(() => {
+    if (!players.length || !product.id) return;
+    let cancelled = false;
+    setSnapshotsLoading(true);
+    fetch('/api/pre-release/player-snapshots', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ productId: product.id }),
+    })
+      .then(r => r.json())
+      .then((data: { snapshots?: Snapshot[] }) => {
+        if (cancelled) return;
+        const m = new Map<string, Snapshot>();
+        for (const s of data.snapshots ?? []) m.set(s.player_product_id, s);
+        setSnapshots(m);
+      })
+      .catch(err => console.error('[PreReleaseLayout] snapshot fetch failed', err))
+      .finally(() => { if (!cancelled) setSnapshotsLoading(false); });
+    return () => { cancelled = true; };
+  }, [product.id, players.length]);
+
   const daysUntilRelease = useMemo(() => {
     if (!product.release_date) return null;
     const today = new Date();
@@ -70,7 +113,7 @@ export default function PreReleaseLayout({ product, chaseCards, players, riskFla
       {/* Chase cards — primary signal during pre-release */}
       {chaseCards.length > 0 && <ChaseCardsPanel chaseCards={chaseCards} />}
 
-      {/* Player checklist — read-only roster */}
+      {/* Player checklist — read-only roster + 90-day historical comps */}
       {sorted.length > 0 && (
         <div
           className="rounded-xl border overflow-hidden"
@@ -81,48 +124,74 @@ export default function PreReleaseLayout({ product, chaseCards, players, riskFla
               Checklist · {sorted.length} {sorted.length === 1 ? 'player' : 'players'}
             </h2>
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-              Player historical comps coming once the release window opens.
+              90-day comps from each player&apos;s existing cards (not from this product).{' '}
+              Rookies show data-light — first-year cards aren&apos;t out yet.
+              {snapshotsLoading && <span className="ml-2 italic">Loading comps…</span>}
             </p>
+          </div>
+          <div className="hidden md:grid grid-cols-[1fr_90px_90px_90px_60px] gap-3 px-5 py-2 border-b text-[10px] uppercase tracking-wider font-bold"
+            style={{ borderColor: 'var(--terminal-border)', color: 'var(--text-tertiary)', backgroundColor: 'var(--terminal-surface-hover)' }}>
+            <span>Player</span>
+            <span className="text-right">Raw avg</span>
+            <span className="text-right">PSA 10 avg</span>
+            <span className="text-right">Sales 90d</span>
+            <span className="text-right">Team</span>
           </div>
           <div className="divide-y" style={{ borderColor: 'var(--terminal-border)' }}>
             {sorted.map(p => {
               const flags = riskFlagMap.get(p.id) ?? [];
+              const snap = snapshots.get(p.id);
+              const isRookie = !!p.player?.is_rookie;
               return (
                 <div
                   key={p.id}
-                  className="flex items-center gap-3 px-5 py-2.5"
+                  className="md:grid md:grid-cols-[1fr_90px_90px_90px_60px] md:gap-3 px-5 py-2.5 flex items-center gap-3 flex-wrap"
                   style={{ borderColor: 'var(--terminal-border)' }}
                 >
-                  <span className="text-sm font-medium flex-1" style={{ color: 'var(--text-primary)' }}>
-                    {p.player?.name}
-                    {p.player?.is_rookie && (
+                  {/* Name + RC + flags */}
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                      {p.player?.name}
+                    </span>
+                    {isRookie && (
                       <span
-                        className="ml-2 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide"
+                        className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide"
                         style={{ backgroundColor: 'rgba(16, 185, 129, 0.12)', color: '#10b981' }}
                       >
                         RC
                       </span>
                     )}
+                    {flags.map((f, i) => (
+                      <span
+                        key={i}
+                        title={f.note}
+                        className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide"
+                        style={{ backgroundColor: 'rgba(239, 68, 68, 0.12)', color: '#ef4444' }}
+                      >
+                        {f.flagType}
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Raw avg */}
+                  <span className="md:text-right text-xs font-mono" style={{ color: snap?.has_history ? 'var(--text-primary)' : 'var(--text-disabled)' }}>
+                    {snap?.has_history ? formatPrice(snap.raw_avg_90d) : isRookie ? 'No data' : '—'}
                   </span>
-                  {p.player?.team && (
-                    <span className="text-xs font-mono" style={{ color: 'var(--text-tertiary)' }}>
-                      {p.player.team}
-                    </span>
-                  )}
-                  {flags.length > 0 && (
-                    <div className="flex items-center gap-1">
-                      {flags.map((f, i) => (
-                        <span
-                          key={i}
-                          title={f.note}
-                          className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide"
-                          style={{ backgroundColor: 'rgba(239, 68, 68, 0.12)', color: '#ef4444' }}
-                        >
-                          {f.flagType}
-                        </span>
-                      ))}
-                    </div>
-                  )}
+
+                  {/* PSA 10 avg */}
+                  <span className="md:text-right text-xs font-mono" style={{ color: snap?.psa10_avg_90d != null ? 'var(--text-primary)' : 'var(--text-disabled)' }}>
+                    {snap?.psa10_avg_90d != null ? formatPrice(snap.psa10_avg_90d) : '—'}
+                  </span>
+
+                  {/* Sales count */}
+                  <span className="md:text-right text-xs font-mono" style={{ color: snap?.has_history ? 'var(--text-secondary)' : 'var(--text-disabled)' }}>
+                    {snap?.has_history && snap.raw_sales_90d != null ? snap.raw_sales_90d.toLocaleString() : '—'}
+                  </span>
+
+                  {/* Team */}
+                  <span className="md:text-right text-xs font-mono" style={{ color: 'var(--text-tertiary)' }}>
+                    {p.player?.team || '—'}
+                  </span>
                 </div>
               );
             })}
