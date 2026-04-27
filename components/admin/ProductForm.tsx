@@ -148,6 +148,9 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
   const [bdAmCaseCost, setBdAmCaseCost] = useState(product?.bd_am_case_cost?.toString() ?? '');
   const [releaseDate, setReleaseDate] = useState(product?.release_date ?? '');
   const [isActive, setIsActive] = useState(product?.is_active ?? false);
+  const [lifecycleStatus, setLifecycleStatus] = useState<'pre_release' | 'live' | 'dormant'>(
+    product?.lifecycle_status ?? 'live',
+  );
 
   const [chSetName, setChSetName] = useState(product?.ch_set_name ?? '');
   const [setSearchQuery, setSetSearchQuery] = useState('');
@@ -254,6 +257,7 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
       release_date: releaseDate || null,
       ch_set_name: chSetName || null,
       is_active: publish ? true : isActive,
+      lifecycle_status: lifecycleStatus,
     };
 
     const result = product
@@ -471,6 +475,43 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
 
       {sectionDivider}
 
+      {/* Lifecycle */}
+      <div>
+        <p style={{ fontSize: '0.625rem', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 700, color: 'var(--accent-blue)', marginBottom: '0.5rem' }}>
+          Lifecycle
+        </p>
+        <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginBottom: '0.75rem' }}>
+          Drives consumer rendering and which crons touch this product.
+        </p>
+        <div className="flex items-center gap-1 p-1 rounded-lg max-w-md" style={{ backgroundColor: 'var(--terminal-surface-hover)', border: '1px solid var(--terminal-border)' }}>
+          {([
+            { value: 'pre_release', label: 'Pre-release', desc: 'Hype only — no CH pricing' },
+            { value: 'live', label: 'Live', desc: 'Full pipeline runs' },
+            { value: 'dormant', label: 'Dormant', desc: 'Wound down — no refresh' },
+          ] as const).map(opt => {
+            const active = lifecycleStatus === opt.value;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setLifecycleStatus(opt.value)}
+                title={opt.desc}
+                className="flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all"
+                style={{
+                  backgroundColor: active ? 'var(--terminal-surface-active)' : 'transparent',
+                  color: active ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                  border: active ? '1px solid var(--terminal-border)' : '1px solid transparent',
+                }}
+              >
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {sectionDivider}
+
       {/* Status toggle */}
       <div className="flex items-center gap-3">
         <button
@@ -487,7 +528,7 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
           />
         </button>
         <label className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-          Active (visible on homepage)
+          Active (published and visible to consumers)
         </label>
       </div>
 

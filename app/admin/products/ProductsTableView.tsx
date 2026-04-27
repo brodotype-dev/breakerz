@@ -15,12 +15,21 @@ export type ProductRow = {
   sportName: string | null;
   isActive: boolean;
   hasOdds: boolean;
+  lifecycleStatus: 'pre_release' | 'live' | 'dormant';
+  releaseDate: string | null;
   playerCount: number;
   lastPriced: string | null;
   needsRefresh: boolean;
 };
 
 type StatusFilter = 'all' | 'active' | 'draft';
+type LifecycleFilter = 'all' | 'pre_release' | 'live' | 'dormant';
+
+const lifecycleStyles: Record<'pre_release' | 'live' | 'dormant', { bg: string; text: string; label: string }> = {
+  pre_release: { bg: 'rgba(168, 85, 247, 0.12)', text: '#a855f7', label: 'Pre-release' },
+  live: { bg: 'rgba(16, 185, 129, 0.12)', text: '#10b981', label: 'Live' },
+  dormant: { bg: 'rgba(148, 163, 184, 0.15)', text: '#94a3b8', label: 'Dormant' },
+};
 
 const sportColors: Record<string, string> = {
   Baseball: 'var(--sport-baseball-primary)',
@@ -50,6 +59,7 @@ export default function ProductsTableView({
   const [sport, setSport] = useState<string>('all');
   const [year, setYear] = useState<string>('all');
   const [status, setStatus] = useState<StatusFilter>('all');
+  const [lifecycle, setLifecycle] = useState<LifecycleFilter>('all');
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -59,14 +69,22 @@ export default function ProductsTableView({
       if (year !== 'all' && p.year !== year) return false;
       if (status === 'active' && !p.isActive) return false;
       if (status === 'draft' && p.isActive) return false;
+      if (lifecycle !== 'all' && p.lifecycleStatus !== lifecycle) return false;
       return true;
     });
-  }, [products, search, sport, year, status]);
+  }, [products, search, sport, year, status, lifecycle]);
 
   const counts = useMemo(() => ({
     all: products.length,
     active: products.filter(p => p.isActive).length,
     draft: products.filter(p => !p.isActive).length,
+  }), [products]);
+
+  const lifecycleCounts = useMemo(() => ({
+    all: products.length,
+    pre_release: products.filter(p => p.lifecycleStatus === 'pre_release').length,
+    live: products.filter(p => p.lifecycleStatus === 'live').length,
+    dormant: products.filter(p => p.lifecycleStatus === 'dormant').length,
   }), [products]);
 
   return (
@@ -89,6 +107,16 @@ export default function ProductsTableView({
 
         <FilterSelect value={sport} onChange={setSport} options={[{ value: 'all', label: 'All sports' }, ...sports.map(s => ({ value: s, label: s }))]} />
         <FilterSelect value={year} onChange={setYear} options={[{ value: 'all', label: 'All years' }, ...years.map(y => ({ value: y, label: y }))]} />
+        <FilterSelect
+          value={lifecycle}
+          onChange={(v) => setLifecycle(v as LifecycleFilter)}
+          options={[
+            { value: 'all', label: `All lifecycle (${lifecycleCounts.all})` },
+            { value: 'pre_release', label: `Pre-release (${lifecycleCounts.pre_release})` },
+            { value: 'live', label: `Live (${lifecycleCounts.live})` },
+            { value: 'dormant', label: `Dormant (${lifecycleCounts.dormant})` },
+          ]}
+        />
 
         <div className="flex items-center gap-1 p-1 rounded-lg" style={{ backgroundColor: 'var(--terminal-surface)' }}>
           {(['all', 'active', 'draft'] as const).map(s => {
@@ -133,6 +161,7 @@ export default function ProductsTableView({
                 <TableHead>Name</TableHead>
                 <TableHead className="w-[110px]">Sport</TableHead>
                 <TableHead className="w-[80px]">Year</TableHead>
+                <TableHead className="w-[110px]">Lifecycle</TableHead>
                 <TableHead className="w-[120px]">Manufacturer</TableHead>
                 <TableHead className="w-[80px] text-right">Players</TableHead>
                 <TableHead className="w-[110px]">Last Priced</TableHead>
@@ -175,6 +204,19 @@ export default function ProductsTableView({
                     )}
                   </TableCell>
                   <TableCell className="font-mono text-sm">{p.year}</TableCell>
+                  <TableCell>
+                    {(() => {
+                      const ls = lifecycleStyles[p.lifecycleStatus];
+                      return (
+                        <span
+                          className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide"
+                          style={{ backgroundColor: ls.bg, color: ls.text }}
+                        >
+                          {ls.label}
+                        </span>
+                      );
+                    })()}
+                  </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{p.manufacturer}</TableCell>
                   <TableCell className="font-mono text-sm text-right">{p.playerCount.toLocaleString()}</TableCell>
                   <TableCell className="font-mono text-sm text-muted-foreground">

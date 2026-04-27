@@ -6,6 +6,8 @@ export interface Sport {
   slug: string;
 }
 
+export type ProductLifecycle = 'pre_release' | 'live' | 'dormant';
+
 export interface Product {
   id: string;
   sport_id: string;
@@ -23,6 +25,7 @@ export interface Product {
   has_odds: boolean;
   release_date: string | null; // ISO date string (YYYY-MM-DD)
   ch_set_name: string | null; // Exact CardHedger canonical set name for matching
+  lifecycle_status: ProductLifecycle; // pre_release | live | dormant
   sport?: Sport;
 }
 

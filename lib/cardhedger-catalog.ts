@@ -281,6 +281,7 @@ export async function listActiveProductsWithCHSet(): Promise<
     .from('products')
     .select('id, name, ch_set_name')
     .eq('is_active', true)
+    .eq('lifecycle_status', 'live')
     .not('ch_set_name', 'is', null);
   if (error) throw new Error(`list active products failed: ${error.message}`);
   return (data ?? []) as Array<{ id: string; name: string; ch_set_name: string }>;

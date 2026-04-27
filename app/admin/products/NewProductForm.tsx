@@ -116,6 +116,8 @@ export default function NewProductForm({ sports }: Props) {
     bd_case_cost: '',
     hobby_am_case_cost: '',
     bd_am_case_cost: '',
+    release_date: '',
+    lifecycle_status: 'live' as 'pre_release' | 'live' | 'dormant',
   });
 
   // CardHedger set picker state
@@ -188,8 +190,9 @@ export default function NewProductForm({ sports }: Props) {
       bd_am_case_cost: form.bd_am_case_cost ? parseFloat(form.bd_am_case_cost) : null,
       hobby_autos_per_case: null,
       bd_autos_per_case: null,
-      release_date: null,
+      release_date: form.release_date || null,
       ch_set_name: chSetName || null,
+      lifecycle_status: form.lifecycle_status,
     });
 
     if (result.error) {
@@ -322,6 +325,58 @@ export default function NewProductForm({ sports }: Props) {
               value={form.year}
               onChange={e => set('year', e.target.value)}
             />
+          </div>
+
+          <div>
+            <label style={labelStyle}>Release Date <span style={{ color: 'var(--text-tertiary)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></label>
+            <FocusInput
+              type="date"
+              value={form.release_date}
+              onChange={e => {
+                const next = e.target.value;
+                setForm(f => {
+                  // If admin hasn't manually overridden lifecycle yet, default it from the date.
+                  // (We treat the initial 'live' value as the default; only auto-flip in that case.)
+                  const isFutureDate = next && new Date(next + 'T00:00:00') > new Date();
+                  const nextLifecycle = f.lifecycle_status === 'dormant'
+                    ? f.lifecycle_status
+                    : (isFutureDate ? 'pre_release' : 'live');
+                  return { ...f, release_date: next, lifecycle_status: nextLifecycle };
+                });
+              }}
+            />
+          </div>
+
+          <div className="sm:col-span-2">
+            <label style={labelStyle}>Lifecycle</label>
+            <div className="flex items-center gap-1 p-1 rounded-lg" style={{ backgroundColor: 'var(--terminal-surface-hover)', border: '1px solid var(--terminal-border)' }}>
+              {([
+                { value: 'pre_release', label: 'Pre-release', desc: 'Hype only — no CH pricing' },
+                { value: 'live', label: 'Live', desc: 'Full pipeline runs' },
+                { value: 'dormant', label: 'Dormant', desc: 'Wound down — no refresh' },
+              ] as const).map(opt => {
+                const active = form.lifecycle_status === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => set('lifecycle_status', opt.value)}
+                    title={opt.desc}
+                    className="flex-1 px-3 py-1.5 rounded-md text-xs font-medium transition-all"
+                    style={{
+                      backgroundColor: active ? 'var(--terminal-surface-active)' : 'transparent',
+                      color: active ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                      border: active ? '1px solid var(--terminal-border)' : '1px solid transparent',
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1 text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+              Defaults from release date — future dates = pre-release, past/today = live. Override here if needed.
+            </p>
           </div>
         </div>
       </div>

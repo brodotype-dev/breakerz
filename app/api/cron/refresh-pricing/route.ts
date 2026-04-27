@@ -52,7 +52,8 @@ export async function GET(req: Request) {
     const { data: products, error } = await supabaseAdmin
       .from('products')
       .select('id, name')
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .eq('lifecycle_status', 'live');
 
     if (error) throw error;
     if (!products?.length) return NextResponse.json({ refreshed: 0 });

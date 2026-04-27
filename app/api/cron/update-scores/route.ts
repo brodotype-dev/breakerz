@@ -68,8 +68,9 @@ export async function GET(req: Request) {
     // ── 4. Fetch all active player_product IDs ────────────────────────────────
     const { data: allPlayerProducts, error: ppError } = await supabaseAdmin
       .from('player_products')
-      .select('id, product_id, products!inner(is_active)')
-      .eq('products.is_active', true);
+      .select('id, product_id, products!inner(is_active, lifecycle_status)')
+      .eq('products.is_active', true)
+      .eq('products.lifecycle_status', 'live');
 
     if (ppError) throw ppError;
     if (!allPlayerProducts?.length) {

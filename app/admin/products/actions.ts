@@ -3,6 +3,7 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { requireRole } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
+import type { ProductLifecycle } from '@/lib/types';
 
 export async function createProduct(formData: {
   name: string;
@@ -18,6 +19,7 @@ export async function createProduct(formData: {
   release_date: string | null;
   ch_set_name?: string | null;
   is_active?: boolean;
+  lifecycle_status?: ProductLifecycle;
 }): Promise<{ id?: string; error?: string }> {
   await requireRole('admin', 'contributor');
   const slug = formData.name
@@ -58,6 +60,7 @@ export async function updateProduct(
     release_date: string | null;
     ch_set_name?: string | null;
     is_active: boolean;
+    lifecycle_status?: ProductLifecycle;
   }
 ): Promise<{ error?: string }> {
   await requireRole('admin', 'contributor');

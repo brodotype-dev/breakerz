@@ -34,7 +34,7 @@ export default async function AdminProductsPage() {
   ] = await Promise.all([
     supabaseAdmin
       .from('products')
-      .select('id, name, slug, year, manufacturer, is_active, has_odds, sport:sports(name)')
+      .select('id, name, slug, year, manufacturer, is_active, has_odds, lifecycle_status, release_date, sport:sports(name)')
       .order('name'),
     getAllPlayerProducts(),
     supabaseAdmin
@@ -82,6 +82,8 @@ export default async function AdminProductsPage() {
       sportName: p.sport?.name ?? null,
       isActive: !!p.is_active,
       hasOdds: !!p.has_odds,
+      lifecycleStatus: (p.lifecycle_status ?? 'live') as 'pre_release' | 'live' | 'dormant',
+      releaseDate: p.release_date ?? null,
       playerCount: playerCountMap.get(p.id) ?? 0,
       lastPriced,
       needsRefresh: lastCatalog != null && (lastPriced == null || lastCatalog > lastPriced),
