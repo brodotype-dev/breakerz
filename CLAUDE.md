@@ -13,6 +13,7 @@ Sports card break slot pricing and analysis tool. Built with Kyle (Town & Line /
 - [docs/cost-analysis.md](./docs/cost-analysis.md) — unit economics, breakeven, service costs
 - [docs/manufacturer-rules/bowman.md](./docs/manufacturer-rules/bowman.md) — Bowman/Topps prefix names, CH naming conventions, match rate history
 - [docs/breaker-identity-prd.md](./docs/breaker-identity-prd.md) — Breaker role + crowdsourced case pricing PRD (backlogged, post-public-beta)
+- [docs/product-lifecycle.md](./docs/product-lifecycle.md) — pre_release / live / dormant lifecycle: schema, crons, transitions, consumer rendering
 
 Update CHANGELOG.md at the end of every session with what changed and why.
 
@@ -47,6 +48,8 @@ Live at [getbreakiq.com](https://getbreakiq.com). Private beta — consumer rout
 **Security** ✅ RLS enabled on all 11 tables. Auth guards on all admin actions and API routes. Security headers. See security section in BACKLOG for remaining items (rate limiting, file validation).
 
 **After-Market Case Pricing** ✅ (2026-04-23) Admin can set `hobby_am_case_cost` / `bd_am_case_cost` separate from MSRP. Consumer break page defaults to AM price when available. `DashboardConfig` shows MSRP · Market reference row. Phase 2 (Breaker identity + crowdsourced pricing) backlogged — see `docs/breaker-identity-prd.md`.
+
+**Product Lifecycle** ✅ (2026-04-27) Three-state lifecycle (`pre_release` / `live` / `dormant`) on products, orthogonal to `is_active`. Drives admin UX, cron behavior, and consumer rendering. Pre-release products skip all daily crons and render a hype layout (countdown + chase cards + 90-day player historical comps); live products run the full pipeline; dormant products skip daily crons but get a biweekly pricing refresh (1st + 15th, `/api/cron/refresh-dormant-pricing`). Admin transitions via confirm-dialog buttons; `pre_release → live` blocks unless `ch_set_name` is set. See `docs/product-lifecycle.md`.
 
 **Next up:** Phase 5 C-score (blocked on Kyle), My Breaks Phase 2 (chase/hit card tracking), Sentry error tracking, rate limiting, 2025-26 Bowman Basketball re-match (CPA cards being added by CH this week)
 

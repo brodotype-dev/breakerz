@@ -5,6 +5,32 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-27 — Product lifecycle: pre_release / live / dormant
+
+Made "what kind of product is this" a first-class concept that drives admin UX, cron behavior, and consumer rendering. Previously a product was just `is_active` (Draft / Active) and we inferred pre-release from `release_date`. That conflated two different ideas and forced pre-release products through a live pipeline they couldn't satisfy.
+
+New `product_lifecycle` enum with three states:
+
+- **`pre_release`** — Hype-only mode. All crons skip. Consumer page renders a new `PreReleaseLayout` with a countdown, the existing `ChaseCardsPanel`, and a player checklist enriched with 90-day historical comps from each player's existing CH cards. Rookies are deliberately data-light (no CH lookup — first-year cards mostly don't exist yet and querying for "Wemby" pre-launch returned college noise).
+- **`live`** — Current behavior. Daily pricing + CH-catalog crons, full pricing engine on the consumer page.
+- **`dormant`** — Wound-down state for products no one is breaking anymore. Daily crons skip; a separate biweekly cron (`/api/cron/refresh-dormant-pricing`, 1st + 15th at 7 AM UTC) keeps the snapshot from drifting too far. Consumer cases counter is hidden — the page becomes a historical reference.
+
+Lifecycle is **orthogonal to `is_active`**: `is_active` is the publish/Draft gate, `lifecycle_status` is the kind-of-product axis. A product can be Draft + pre-release (admin prepping), Active + pre-release (consumers see hype), Active + dormant (consumers see frozen reference), etc.
+
+**Key implementation details:**
+
+- New `pre_release_player_snapshots` cache table backs the pre-release historical-comp lookup (24h TTL). Endpoint at `/api/pre-release/player-snapshots` fans out to CH `get90DayPrices` with a concurrency cap of 5; 100-player rosters cold-cache in well under 60s.
+- Threshold of 3 raw sales in 90d separates `has_history` from data-light. Below the threshold, the player renders as "No data."
+- Lifecycle transitions are admin-driven via a new `LifecycleTransitionButton` with confirm dialogs. `pre_release → live` is blocked unless `ch_set_name` is set — without it, the catalog/hydrate/pricing pipeline has nothing to anchor on. **Deliberately does NOT auto-chain catalog refresh / hydrate / pricing on flip-to-live** — admin clicks the existing Quick Actions buttons, so any failure is visible instead of silently producing a broken live product.
+- All four crons (`refresh-pricing`, `refresh-ch-catalogs`, `update-scores`, plus the lib helper `listActiveProductsWithCHSet`) gate on `lifecycle_status = 'live'` in addition to the existing `is_active` filter.
+- New `pre_release` and `dormant` filters on the admin products table. Lifecycle column with colored badges. Lifecycle picker on both create and edit forms (auto-derives from `release_date` on create — future = pre-release, past/today = live).
+
+Migrations: `20260427120000_product_lifecycle.sql`, `20260427130000_pre_release_player_snapshots.sql`. Existing products were backfilled to `'live'` so behavior is unchanged on deploy.
+
+See `docs/product-lifecycle.md` for the full architecture doc and `docs/plans/2026-04-27-product-lifecycle.md` for the planning record.
+
+---
+
 ## 2026-04-27 — Pricing cron: throttled, stale-aware, staggered
 
 Follow-up to the morning's middleware fix. Three more bugs surfaced once the cron actually started running:
