@@ -16,8 +16,14 @@ export const maxDuration = 120;
  * Returns: HydrateResult — see lib/variants-from-catalog.ts
  */
 export async function POST(req: NextRequest) {
-  const auth = await checkRole('admin', 'contributor');
-  if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  // Accept admin cookie auth OR Authorization: Bearer <CRON_SECRET> for
+  // server-to-server invocations (e.g. one-off bulk re-hydrate scripts).
+  const authHeader = req.headers.get('authorization');
+  const isCron = authHeader === `Bearer ${process.env.CRON_SECRET}`;
+  if (!isCron) {
+    const auth = await checkRole('admin', 'contributor');
+    if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const { productId } = await req.json();
   if (!productId) {
