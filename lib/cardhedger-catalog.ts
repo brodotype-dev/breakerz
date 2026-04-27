@@ -92,13 +92,22 @@ async function runConcurrent<T>(tasks: (() => Promise<T>)[], limit: number): Pro
  * @param setName  canonical CH set name — must match CH's catalog exactly or the
  *                 /card-search set filter silently returns the full 2.9M-card corpus
  * @param opts.productId  optional — attach the refresh to a specific product for log filtering
- * @param opts.maxPages   safety cap — default 200 pages (20k cards)
+ * @param opts.maxPages   optional hard cap on pages fetched. No cap by default —
+ *                        we trust CH's reported page count, sanity-bound by
+ *                        CORPUS_FALLTHROUGH_THRESHOLD below.
  */
+// If CH reports more than this many pages for a single set, the set filter
+// almost certainly fell through to the full ~2.9M-card corpus (~29,000 pages).
+// Real single sets max out around 250–400 pages (Topps Chrome Basketball is
+// ~280). Anything between this threshold and the corpus size is a bug we want
+// to refuse, not silently truncate.
+const CORPUS_FALLTHROUGH_THRESHOLD = 1000;
+
 export async function refreshSetCatalog(
   setName: string,
   opts: { productId?: string; maxPages?: number } = {},
 ): Promise<RefreshResult> {
-  const { productId, maxPages = 200 } = opts;
+  const { productId, maxPages } = opts;
   const started = Date.now();
 
   // Open a refresh-log row immediately so we can trace failures mid-pull.
@@ -111,7 +120,18 @@ export async function refreshSetCatalog(
   try {
     // First page tells us how many pages we need.
     const firstPage = await getCardsBySet(setName, 1, PAGE_SIZE);
-    const totalPages = Math.min(firstPage.pages ?? 1, maxPages);
+    const reportedPages = firstPage.pages ?? 1;
+
+    // Refuse a corpus fall-through up front, before fetching anything else.
+    if (reportedPages > CORPUS_FALLTHROUGH_THRESHOLD) {
+      throw new Error(
+        `Set "${setName}" returned ${reportedPages} pages — likely a set-name ` +
+          `mismatch falling through to the full CH corpus. Verify via ` +
+          `findCanonicalSet() and update products.ch_set_name.`,
+      );
+    }
+
+    const totalPages = maxPages != null ? Math.min(reportedPages, maxPages) : reportedPages;
     const allCards = [...(firstPage.cards ?? [])];
 
     // Fetch remaining pages concurrently.
@@ -122,16 +142,6 @@ export async function refreshSetCatalog(
         PAGE_CONCURRENCY,
       );
       for (const r of pages) allCards.push(...(r.cards ?? []));
-    }
-
-    // Sanity check: if the set filter failed silently, CH returns the full corpus
-    // (~2.9M cards across ~29,000 pages). Refuse to write that to our cache.
-    if (totalPages > maxPages) {
-      throw new Error(
-        `Set "${setName}" returned ${totalPages} pages (max ${maxPages}). ` +
-          `Likely a set-name mismatch — filter fell through to full corpus. ` +
-          `Verify via findCanonicalSet() and update products.ch_set_name.`,
-      );
     }
 
     // Transactional replace: delete-then-insert for this set.

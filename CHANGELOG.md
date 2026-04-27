@@ -5,6 +5,20 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-27 — CH catalog refresh: remove 20k-card cap, fix dead sanity check
+
+Topps Chrome Basketball's product page showed exactly "20,000 CH-native variants" — a suspicious round number. Found two bugs in `refreshSetCatalog`:
+
+1. **The 20k cap was real and silently truncating.** `maxPages` defaulted to 200, page size 100 = 20,000 cards hard cap. Topps Chrome Basketball's full catalog is ~280 pages (~28k cards), so we were missing ~8k cards every refresh. Hit rate on player matching for the truncated tail dropped accordingly.
+
+2. **The "set fall-through to corpus" sanity check was dead code.** It compared `totalPages > maxPages` *after* `totalPages` was clamped via `Math.min(firstPage.pages, maxPages)`. Always evaluated false. Wouldn't have caught a real corpus fall-through (~29k pages).
+
+Fix: replace the conflated cap with a separate `CORPUS_FALLTHROUGH_THRESHOLD = 1000` constant. Real single sets max around 250–400 pages; anything over 1000 is a set-name mismatch we refuse upfront. `maxPages` becomes optional with no default — caller can still impose a hard cap (e.g. for testing) but production fetches all pages CH reports.
+
+After re-running the catalog refresh, products with more than 20k CH-native variants will reflect actual catalog size.
+
+---
+
 ## 2026-04-27 — Product lifecycle: pre_release / live / dormant
 
 Made "what kind of product is this" a first-class concept that drives admin UX, cron behavior, and consumer rendering. Previously a product was just `is_active` (Draft / Active) and we inferred pre-release from `release_date`. That conflated two different ideas and forced pre-release products through a live pipeline they couldn't satisfy.
