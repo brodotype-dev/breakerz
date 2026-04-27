@@ -17,9 +17,11 @@ export async function sendInviteEmail({
   inviteCode: string;
 }) {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://breakerz.vercel.app';
-  const inviteUrl = `${baseUrl}/auth/signup?code=${inviteCode}`;
-  const rawFirst = fullName?.split(' ')[0] ?? 'there';
-  const firstName = rawFirst.replace(/[<>"'&]/g, c => ({ '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '&': '&amp;' }[c] ?? c));
+  const inviteUrl = `${baseUrl}/auth/signup?code=${encodeURIComponent(inviteCode)}`;
+  const escapeHtml = (s: string) =>
+    s.replace(/[<>"'&]/g, c => ({ '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '&': '&amp;' }[c] ?? c));
+  const firstName = escapeHtml(fullName?.split(' ')[0] ?? 'there');
+  const safeTo = escapeHtml(to);
 
   await getResend().emails.send({
     from: FROM,
@@ -40,7 +42,7 @@ export async function sendInviteEmail({
         </p>
         <hr style="border: none; border-top: 1px solid #1e293b; margin: 32px 0;" />
         <p style="font-size: 11px; color: #334155; margin: 0;">
-          This invite is for ${to} only. If you didn't request access, ignore this email.
+          This invite is for ${safeTo} only. If you didn't request access, ignore this email.
         </p>
       </div>
     `,
