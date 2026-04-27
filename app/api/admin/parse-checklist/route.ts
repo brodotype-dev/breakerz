@@ -64,8 +64,14 @@ async function extractPdfText(buffer: Buffer): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await checkRole('admin', 'contributor');
-  if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  // Accept admin cookie auth OR Authorization: Bearer <CRON_SECRET> for
+  // server-to-server bulk-import scripts.
+  const authHeader = req.headers.get('authorization');
+  const isCron = authHeader === `Bearer ${process.env.CRON_SECRET}`;
+  if (!isCron) {
+    const auth = await checkRole('admin', 'contributor');
+    if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const formData = await req.formData();
   const files = formData.getAll('file') as File[];
