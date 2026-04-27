@@ -5,6 +5,19 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-27 — CH catalog refresh: retry on 5xx, lower concurrency, longer timeouts
+
+Setting up `2025 Topps Baseball` (56,027 cards / ~561 pages) as a `ch_set_name` exposed that the catalog refresh pipeline had no resilience to CH transient errors. First attempt: `500 — Server disconnected`. Retry: `502 Bad Gateway`. CH responded fine to one-off MCP queries — the issue was specifically our 8-way parallel pagination overwhelming the backend on large sets.
+
+Three changes:
+1. **Retry-on-5xx in `lib/cardhedger.ts` `post()`** — backoff 500ms → 1500ms → 4500ms (3 retries). Also retries `AbortError` (timeout) and network errors. 4xx still throws immediately. Worst-case retry chain bounded at ~36s, well within route budgets. Logs `[cardhedger] retry N/3` to Vercel for observability.
+2. **30s timeout for catalog page-fetches** (was inheriting the 10s default). CH `/card-search` is normally <1s per page, but tail latency creeps under load on big sets.
+3. **`PAGE_CONCURRENCY` from 8 → 4** in `lib/cardhedger-catalog.ts`. Same lesson as the pricing cron throttle from earlier today: CH degrades faster than expected under aggressive parallelism, so lean conservative.
+
+Topps Series 1 / Series 2 Baseball products (which both use `2025 Topps Baseball` as their CH set name — CH lumps the two series together) can now hydrate. Smaller sets are unaffected by the concurrency drop in any meaningful way (~50–100s vs ~25–50s wall clock).
+
+---
+
 ## 2026-04-27 — Cleanup: 6,341 corrupt player_products from a bad 2026-03-29 import
 
 While investigating Topps Chrome Basketball's inflated 1,569 player count, found that the `players.name` column had been polluted by a buggy import script that ran once on 2026-03-29 — card numbers (`"77"`, `"170"`, `"289"`) and subset codes (`"TCA-JM"`, `"RR-4"`, `"LD-10"`, `"SF-21"`) were saved as player names and given full `player_products` rows. 6,341 corrupt rows across 9 active products, all created at the same timestamp `2026-03-29 01:32:13.067755`. Every other import date is clean.

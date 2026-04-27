@@ -49,28 +49,69 @@ export async function getTopMovers(count = 100, category?: string): Promise<TopM
   return res.json();
 }
 
+// Retry on 5xx, AbortError (timeout), and network errors. Don't retry on 4xx
+// (auth/bad request won't fix themselves). Backoff is bounded so a worst-case
+// 3-retry chain on a 30s-timeout fetch tops out around 36s — well within the
+// 120-300s budgets of the routes that call us.
+const RETRY_BACKOFF_MS = [500, 1500, 4500];
+
 async function post<T>(
   path: string,
   body: Record<string, unknown>,
-  options?: { timeoutMs?: number },
+  options?: { timeoutMs?: number; retry?: boolean },
 ): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-API-Key': API_KEY,
-    },
-    body: JSON.stringify(body),
-    next: { revalidate: 0 },
-    signal: AbortSignal.timeout(options?.timeoutMs ?? 10_000),
-  });
+  const shouldRetry = options?.retry !== false;
+  const maxAttempts = shouldRetry ? RETRY_BACKOFF_MS.length + 1 : 1;
+  let lastErr: unknown;
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    throw new Error(`CardHedger ${path} failed: ${res.status} — ${text}`);
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const res = await fetch(`${BASE_URL}${path}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-API-Key': API_KEY,
+        },
+        body: JSON.stringify(body),
+        next: { revalidate: 0 },
+        signal: AbortSignal.timeout(options?.timeoutMs ?? 10_000),
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => res.statusText);
+        const err = new Error(`CardHedger ${path} failed: ${res.status} — ${text}`);
+        if (res.status >= 500 && res.status < 600 && attempt + 1 < maxAttempts) {
+          console.warn(
+            `[cardhedger] retry ${attempt + 1}/${RETRY_BACKOFF_MS.length} on ${path}: ${res.status}`,
+          );
+          await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS[attempt]));
+          lastErr = err;
+          continue;
+        }
+        throw err;
+      }
+
+      return res.json();
+    } catch (err) {
+      // Network errors (TypeError: fetch failed) and AbortError (timeout) are
+      // retryable. Re-throw anything that already passed through the !res.ok
+      // branch above without becoming retryable.
+      const isAbort = err instanceof Error && err.name === 'AbortError';
+      const isNetwork = err instanceof TypeError;
+      const isRetryable = isAbort || isNetwork;
+      if (isRetryable && attempt + 1 < maxAttempts) {
+        console.warn(
+          `[cardhedger] retry ${attempt + 1}/${RETRY_BACKOFF_MS.length} on ${path}: ${(err as Error).message}`,
+        );
+        await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS[attempt]));
+        lastErr = err;
+        continue;
+      }
+      throw err;
+    }
   }
 
-  return res.json();
+  throw lastErr ?? new Error(`CardHedger ${path}: exhausted retries`);
 }
 
 // Search response card shape from the API
@@ -128,10 +169,14 @@ function normalizeCard(raw: RawCardHedgerCard): CardHedgerSearchCard {
   };
 }
 
-async function cardSearch(body: Record<string, unknown>): Promise<SearchResponse> {
+async function cardSearch(
+  body: Record<string, unknown>,
+  options?: { timeoutMs?: number },
+): Promise<SearchResponse> {
   const raw = await post<{ count: number; pages: number; cards: RawCardHedgerCard[] }>(
     '/v1/cards/card-search',
     body,
+    options,
   );
   return {
     count: raw.count,
@@ -181,8 +226,13 @@ export async function searchSets(query: string, category?: string) {
 // Paginate through every card in a set — replaces 1000+ individual player queries.
 // Always call searchSets first to get the canonical set_name string.
 // set_name must match CH's canonical name exactly — mismatch silently returns full corpus.
-export async function getCardsBySet(setName: string, page = 1, pageSize = 100) {
-  return cardSearch({ set: setName, page, page_size: pageSize });
+export async function getCardsBySet(
+  setName: string,
+  page = 1,
+  pageSize = 100,
+  options?: { timeoutMs?: number },
+) {
+  return cardSearch({ set: setName, page, page_size: pageSize }, options);
 }
 
 // Look up a graded card by cert number (PSA, BGS, SGC, etc.)

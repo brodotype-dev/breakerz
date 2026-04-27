@@ -47,9 +47,14 @@ export interface RefreshResult {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const PAGE_SIZE = 100;
-// CH hasn't pushed back on 10-wide concurrency in the ad-hoc path.
-// Keep conservative; this runs on cron too and we don't want to spike their API.
-const PAGE_CONCURRENCY = 8;
+// 4-way is the conservative number after 8-way surfaced 500/502s on a 56k-card
+// set (2025 Topps Baseball, ~561 pages). Smaller sets still parallelize well at
+// this rate; large sets are bounded by CH's tolerance, not ours.
+const PAGE_CONCURRENCY = 4;
+// 30s per page-fetch — typical CH /card-search pages return in <1s, but under
+// load on large sets the tail latency can creep past the default 10s. Pair with
+// the retry-on-5xx in lib/cardhedger.ts post() to handle transient hiccups.
+const PAGE_TIMEOUT_MS = 30_000;
 
 // ── Canonical set resolution ──────────────────────────────────────────────────
 
@@ -119,7 +124,7 @@ export async function refreshSetCatalog(
 
   try {
     // First page tells us how many pages we need.
-    const firstPage = await getCardsBySet(setName, 1, PAGE_SIZE);
+    const firstPage = await getCardsBySet(setName, 1, PAGE_SIZE, { timeoutMs: PAGE_TIMEOUT_MS });
     const reportedPages = firstPage.pages ?? 1;
 
     // Refuse a corpus fall-through up front, before fetching anything else.
@@ -138,7 +143,7 @@ export async function refreshSetCatalog(
     if (totalPages > 1) {
       const pageNums = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
       const pages = await runConcurrent(
-        pageNums.map(p => () => getCardsBySet(setName, p, PAGE_SIZE)),
+        pageNums.map(p => () => getCardsBySet(setName, p, PAGE_SIZE, { timeoutMs: PAGE_TIMEOUT_MS })),
         PAGE_CONCURRENCY,
       );
       for (const r of pages) allCards.push(...(r.cards ?? []));
