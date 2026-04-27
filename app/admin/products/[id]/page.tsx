@@ -6,6 +6,7 @@ import OddsUpload from './OddsUpload';
 import RefreshCatalogButton from './RefreshCatalogButton';
 import RefreshPricingButton from './RefreshPricingButton';
 import HydrateVariantsButton from './HydrateVariantsButton';
+import LifecycleTransitionButton from './LifecycleTransitionButton';
 import BreakIQBetsDebrief from './BreakIQBetsDebrief';
 import BreakerComparisonPanel from './BreakerComparisonPanel';
 import PricingBreakdownPanel from './PricingBreakdownPanel';
@@ -384,12 +385,22 @@ export default async function ProductDashboardPage({ params }: PageProps) {
             className="rounded-xl border p-4"
             style={{ borderColor: 'rgba(168,85,247,0.3)', backgroundColor: 'rgba(168,85,247,0.08)' }}
           >
-            <p className="text-sm font-semibold mb-1" style={{ color: '#c4b5fd' }}>
-              Pre-release · Pipeline activates on launch
-            </p>
-            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-              CH catalog refresh, variant hydration, odds, and pricing are skipped by the nightly crons while this product is pre-release. Set up <strong>Chase Cards</strong> below — that&apos;s what consumers see right now. The pipeline below is still runnable manually for prep, but values won&apos;t affect the consumer view until you flip lifecycle to <code>live</code>.
-            </p>
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <p className="text-sm font-semibold mb-1" style={{ color: '#c4b5fd' }}>
+                  Pre-release · Pipeline activates on launch
+                </p>
+                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  CH catalog refresh, variant hydration, odds, and pricing are skipped by the nightly crons while this product is pre-release. Set up <strong>Chase Cards</strong> below — that&apos;s what consumers see right now. The pipeline below is still runnable manually for prep, but values won&apos;t affect the consumer view until you flip lifecycle to <code>live</code>.
+                </p>
+              </div>
+              <LifecycleTransitionButton productId={id} variant="to_live" />
+            </div>
+          </div>
+        )}
+        {product.lifecycle_status === 'live' && (
+          <div className="flex items-center justify-end">
+            <LifecycleTransitionButton productId={id} variant="to_dormant" />
           </div>
         )}
         {product.lifecycle_status === 'dormant' && (
@@ -397,12 +408,17 @@ export default async function ProductDashboardPage({ params }: PageProps) {
             className="rounded-xl border p-4"
             style={{ borderColor: 'rgba(148,163,184,0.3)', backgroundColor: 'rgba(148,163,184,0.08)' }}
           >
-            <p className="text-sm font-semibold mb-1" style={{ color: '#cbd5e1' }}>
-              Dormant · Biweekly refresh only
-            </p>
-            <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-              Daily pricing + CH-catalog crons skip this product. A separate <code>refresh-dormant-pricing</code> cron runs on the 1st and 15th of each month so the snapshot doesn&apos;t drift too far from market. Reactivate by switching lifecycle back to <code>live</code> in the edit form.
-            </p>
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <p className="text-sm font-semibold mb-1" style={{ color: '#cbd5e1' }}>
+                  Dormant · Biweekly refresh only
+                </p>
+                <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  Daily pricing + CH-catalog crons skip this product. A separate <code>refresh-dormant-pricing</code> cron runs on the 1st and 15th of each month so the snapshot doesn&apos;t drift too far from market.
+                </p>
+              </div>
+              <LifecycleTransitionButton productId={id} variant="reactivate_to_live" />
+            </div>
           </div>
         )}
 

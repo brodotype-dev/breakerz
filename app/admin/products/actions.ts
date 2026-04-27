@@ -76,6 +76,39 @@ export async function updateProduct(
   return {};
 }
 
+export async function setProductLifecycle(
+  productId: string,
+  next: ProductLifecycle,
+): Promise<{ error?: string }> {
+  await requireRole('admin', 'contributor');
+
+  // Going live requires a CH set name — without it, the catalog refresh and
+  // pricing pipeline have nothing to anchor on. Block the transition with
+  // clear messaging instead of letting the admin produce a broken product.
+  if (next === 'live') {
+    const { data: product, error: readErr } = await supabaseAdmin
+      .from('products')
+      .select('ch_set_name')
+      .eq('id', productId)
+      .single();
+    if (readErr) return { error: readErr.message };
+    if (!product?.ch_set_name) {
+      return { error: 'Set a CardHedger set name on this product before marking it live.' };
+    }
+  }
+
+  const { error } = await supabaseAdmin
+    .from('products')
+    .update({ lifecycle_status: next })
+    .eq('id', productId);
+
+  if (error) return { error: error.message };
+  revalidatePath('/admin');
+  revalidatePath('/admin/products');
+  revalidatePath(`/admin/products/${productId}`);
+  return {};
+}
+
 export async function setProductChSetName(
   productId: string,
   chSetName: string | null,

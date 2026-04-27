@@ -346,7 +346,8 @@ export default function BreakPage() {
           </div>
         )}
 
-        {/* Cases counter + cost summary */}
+        {/* Cases counter + cost summary — hidden when dormant since there's no active break to configure */}
+        {!isDormant && (
         <div
           className="flex items-center gap-4 flex-wrap px-4 py-2.5 rounded-lg"
           style={{ backgroundColor: 'var(--terminal-surface)', border: '1px solid var(--terminal-border)' }}
@@ -382,6 +383,7 @@ export default function BreakPage() {
             );
           })()}
         </div>
+        )}
 
         {/* Tab bar */}
         <div className="flex gap-1 p-1 rounded-lg" style={{ backgroundColor: 'var(--terminal-surface)', border: '1px solid var(--terminal-border)' }}>
