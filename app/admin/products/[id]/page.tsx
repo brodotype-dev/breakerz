@@ -398,10 +398,10 @@ export default async function ProductDashboardPage({ params }: PageProps) {
             style={{ borderColor: 'rgba(148,163,184,0.3)', backgroundColor: 'rgba(148,163,184,0.08)' }}
           >
             <p className="text-sm font-semibold mb-1" style={{ color: '#cbd5e1' }}>
-              Dormant · No active refresh
+              Dormant · Biweekly refresh only
             </p>
             <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-              Crons skip this product. Pricing snapshot is frozen at the last refresh. Reactivate by switching lifecycle back to <code>live</code> in the edit form.
+              Daily pricing + CH-catalog crons skip this product. A separate <code>refresh-dormant-pricing</code> cron runs on the 1st and 15th of each month so the snapshot doesn&apos;t drift too far from market. Reactivate by switching lifecycle back to <code>live</code> in the edit form.
             </p>
           </div>
         )}

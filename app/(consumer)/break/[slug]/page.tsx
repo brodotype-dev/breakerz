@@ -298,7 +298,7 @@ export default function BreakPage() {
             Dormant · {product.name} is no longer actively tracked
           </p>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-t-secondary)' }}>
-            Pricing snapshot is frozen — it&apos;s not refreshed nightly. Use as historical reference only.
+            Pricing refreshes biweekly instead of nightly — values may lag the live market. Treat as historical reference, not a real-time read.
           </p>
         </div>
       )}
