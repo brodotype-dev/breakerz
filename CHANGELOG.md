@@ -5,6 +5,21 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-27 — Hydrate: insert subjects no longer inflate "auto-eligible" count
+
+Topps Chrome Basketball's product page showed 1,569 "auto-eligible" players — way too many for a basketball set with ~150–300 base players. Investigation:
+
+- CardHedger's catalog for that set returns ~29,936 cards across base, parallels, autos, *and* inserts. Inserts include legends (Allen Iverson, Vince Carter, Dwyane Wade) and other retired players that don't appear in the checklist.
+- `lib/variants-from-catalog.ts` Phase 3 auto-creates a `player_product` row for every CH-catalog player not present in the checklist — by definition these are insert subjects. But it was marking them `insert_only: false`, so they counted as base slots and showed up in "auto-eligible."
+
+Two changes:
+1. **Code:** auto-created rows now get `insert_only: true`. They still exist (so insert variants can attach for chase-card lookups) but don't count as slots and are excluded from the pricing engine.
+2. **Backfill migration** (`20260427180000_backfill_insert_only_for_auto_created.sql`): flips existing rows where `hobby_sets = 0 AND bd_only_sets = 0 AND insert_only = false` — the exact signature of buggy auto-created entries. Checklist players have at least one of `hobby_sets` / `bd_only_sets` set by the parser. Admins can manually flip false positives via PlayersManager.
+
+After running the backfill and re-hydrating Topps Chrome Basketball, the auto-eligible count should drop from 1,569 to the actual checklist size.
+
+---
+
 ## 2026-04-27 — CH catalog refresh: remove 20k-card cap, fix dead sanity check
 
 Topps Chrome Basketball's product page showed exactly "20,000 CH-native variants" — a suspicious round number. Found two bugs in `refreshSetCatalog`:

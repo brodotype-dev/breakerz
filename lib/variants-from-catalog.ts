@@ -174,10 +174,16 @@ export async function hydrateVariantsFromCatalog(productId: string): Promise<Hyd
     if (pErr) throw new Error(`Player auto-create failed: ${pErr.message}`);
     autoCreatedPlayers = upsertedPlayers?.length ?? 0;
 
+    // Auto-created from CH catalog means: player appears in CH but NOT in our
+    // parsed checklist. By definition these are insert subjects (legends on
+    // throwback inserts, multi-player inserts, etc.) — not base slots. Mark
+    // insert_only=true so they don't inflate slot-eligible counts and don't
+    // get pricing slots in the engine. They still exist as player_product
+    // rows so variant rows from inserts can attach for chase-card lookups.
     const ppRows = (upsertedPlayers ?? []).map(p => ({
       player_id: p.id,
       product_id: productId,
-      insert_only: false,
+      insert_only: true,
     }));
 
     const { data: upsertedPPs, error: ppErr } = await supabaseAdmin
