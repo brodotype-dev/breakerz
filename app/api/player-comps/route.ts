@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { createClient } from '@/lib/supabase-server';
 import { getAllPrices, getComps } from '@/lib/cardhedger';
 import type { VariantWithPrices } from '@/lib/types';
 
@@ -9,6 +10,12 @@ export const maxDuration = 30;
 // GET /api/player-comps?playerProductId=xxx
 // Returns all variants for a player+product with CH prices (grades 8/9/10) + recent PSA 10 comps
 export async function GET(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user && process.env.NODE_ENV !== 'development') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   const playerProductId = req.nextUrl.searchParams.get('playerProductId');
   if (!playerProductId) {
     return NextResponse.json({ error: 'playerProductId required' }, { status: 400 });

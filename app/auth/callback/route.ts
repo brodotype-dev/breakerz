@@ -56,8 +56,36 @@ export async function GET(request: NextRequest) {
 
   const user = sessionData.user!;
 
-  // Upsert profile
+  // Beta gate: new sign-ups require a valid, approved invite code.
+  // Returning users (existing profile + admin/contributor allow-list) skip this check.
   const isNewProfile = (await supabaseAdmin.from('profiles').select('id').eq('id', user.id).single()).data === null;
+
+  if (isNewProfile) {
+    const { data: hasRole } = await supabaseAdmin
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .limit(1)
+      .maybeSingle();
+
+    if (!hasRole) {
+      if (!inviteCode) {
+        await supabase.auth.signOut();
+        return NextResponse.redirect(`${origin}/waitlist?error=missing_invite`);
+      }
+      const { data: entry } = await supabaseAdmin
+        .from('waitlist')
+        .select('id, status')
+        .eq('invite_code', inviteCode)
+        .maybeSingle();
+      if (!entry || entry.status !== 'approved') {
+        await supabase.auth.signOut();
+        return NextResponse.redirect(`${origin}/waitlist?error=invalid_invite`);
+      }
+    }
+  }
+
+  // Upsert profile (only reached if invite is valid OR user is returning OR has a role)
   await supabaseAdmin.from('profiles').upsert({
     id: user.id,
     full_name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
@@ -84,13 +112,13 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  // Validate and consume invite code
+  // Mark the invite as converted (re-fetch to handle the returning-user path that skipped validation)
   if (inviteCode) {
     const { data: entry } = await supabaseAdmin
       .from('waitlist')
       .select('id, status')
       .eq('invite_code', inviteCode)
-      .single();
+      .maybeSingle();
 
     if (entry && entry.status === 'approved') {
       await supabaseAdmin

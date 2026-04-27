@@ -20,24 +20,31 @@ export async function PUT(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Use admin client in dev (no RLS session), cookie client in prod
+  // Use admin client in dev (no RLS session), cookie client in prod.
+  // Defense in depth: also resolve a userId for an explicit .eq('user_id', ...)
+  // filter so the update is scoped even if RLS is ever misconfigured.
   const db = isDev && !user ? supabaseAdmin : supabase;
+  let scopedUserId: string | null = user?.id ?? null;
+  if (!scopedUserId && isDev) {
+    const { data } = await supabaseAdmin.from('profiles').select('id').limit(1).single();
+    scopedUserId = data?.id ?? null;
+  }
 
   try {
     const body = await req.json();
 
     // Abandon (didn't buy in)
     if (body.abandon) {
-      const { data, error } = await db
+      let q = db
         .from('user_breaks')
         .update({
           status: 'abandoned',
           updated_at: new Date().toISOString(),
         })
         .eq('id', id)
-        .eq('status', 'pending')
-        .select()
-        .single();
+        .eq('status', 'pending');
+      if (scopedUserId) q = q.eq('user_id', scopedUserId);
+      const { data, error } = await q.select().single();
 
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       if (!data) return NextResponse.json({ error: 'Break not found or already completed' }, { status: 404 });
@@ -51,7 +58,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Valid outcome required (win, mediocre, bust)' }, { status: 400 });
     }
 
-    const { data, error } = await db
+    let q = db
       .from('user_breaks')
       .update({
         outcome,
@@ -62,9 +69,9 @@ export async function PUT(
         updated_at: new Date().toISOString(),
       })
       .eq('id', id)
-      .eq('status', 'pending')
-      .select()
-      .single();
+      .eq('status', 'pending');
+    if (scopedUserId) q = q.eq('user_id', scopedUserId);
+    const { data, error } = await q.select().single();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     if (!data) return NextResponse.json({ error: 'Break not found or already completed' }, { status: 404 });

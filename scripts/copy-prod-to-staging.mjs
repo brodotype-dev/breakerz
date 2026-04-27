@@ -3,7 +3,7 @@
  * Tables: sports, products, players, player_products, player_product_variants
  *
  * Usage:
- *   STAGING_SERVICE_ROLE_KEY=<key> node scripts/copy-prod-to-staging.mjs
+ *   PROD_SERVICE_ROLE_KEY=<key> STAGING_SERVICE_ROLE_KEY=<key> node scripts/copy-prod-to-staging.mjs
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -11,8 +11,11 @@ import { createClient } from '@supabase/supabase-js';
 const PROD_URL = 'https://zucuzhtiitibsvryenpi.supabase.co';
 const STAGING_URL = 'https://isqxqsznbozlipjvttha.supabase.co';
 
-const PROD_KEY = process.env.PROD_SERVICE_ROLE_KEY ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp1Y3V6aHRpaXRpYnN2cnllbnBpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MzYxNzgyOSwiZXhwIjoyMDg5MTkzODI5fQ.Ihm0gjb9aDvT24EOv32NouYQBYf2NFlgvHjX_qyEoiQ';
+const PROD_KEY = process.env.PROD_SERVICE_ROLE_KEY;
+if (!PROD_KEY) {
+  console.error('Missing PROD_SERVICE_ROLE_KEY env var');
+  process.exit(1);
+}
 
 const STAGING_KEY = process.env.STAGING_SERVICE_ROLE_KEY;
 if (!STAGING_KEY) {
