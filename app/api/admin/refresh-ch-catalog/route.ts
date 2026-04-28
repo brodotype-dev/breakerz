@@ -4,7 +4,11 @@ import { checkRole } from '@/lib/auth';
 import { refreshSetCatalog, findCanonicalSet } from '@/lib/cardhedger-catalog';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 120;
+// 300s — large sets (Topps Baseball at 56k cards across ~561 pages with
+// CONCURRENCY=4) take 100–200s including retries on CH transient 5xx.
+// Match the cron's budget so admin-on-demand never times out where the cron
+// would have completed.
+export const maxDuration = 300;
 
 /**
  * Admin-invoked on-demand CH catalog refresh for a single product.
