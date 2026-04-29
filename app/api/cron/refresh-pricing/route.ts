@@ -102,9 +102,24 @@ export async function GET(req: Request) {
       });
     }
 
+    // Vercel cron invokes us at the deployment URL (*.vercel.app), which is
+    // behind Vercel Deployment Protection (SSO). Fan-out POSTs to that host
+    // hit the SSO wall before reaching the app and fail 16/16 — the silent
+    // failure pattern that hid this for weeks. Always fan out to the
+    // production alias (NEXT_PUBLIC_APP_URL) which has no SSO. We still fall
+    // back to req.url for local dev / preview deployments.
+    //
+    // NEXT_PUBLIC_APP_URL must be the canonical www host (e.g.
+    // https://www.getbreakiq.com). If you set it to the apex, the apex→www
+    // 301 downgrades POST to GET.
     const reqUrl = new URL(req.url);
-    const baseUrl = `${reqUrl.protocol}//${reqUrl.host}`;
+    const productionAlias = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '');
+    const isDeploymentHost = /\.vercel\.app$/i.test(reqUrl.host);
+    const baseUrl = isDeploymentHost && productionAlias
+      ? productionAlias
+      : `${reqUrl.protocol}//${reqUrl.host}`;
     const endpoint = `${baseUrl}/api/admin/refresh-product-pricing`;
+    console.log(`[cron/refresh-pricing] reqHost=${reqUrl.host} fanOutHost=${new URL(endpoint).host}`);
 
     const dispatchOne = async (product: QueueItem): Promise<FetchOutcome> => {
       const ac = new AbortController();

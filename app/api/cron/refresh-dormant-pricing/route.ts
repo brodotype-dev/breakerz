@@ -46,8 +46,14 @@ export async function GET(req: Request) {
       });
     }
 
+    // Same Vercel-Deployment-Protection workaround as refresh-pricing — fan
+    // out to NEXT_PUBLIC_APP_URL when running on a *.vercel.app host.
     const reqUrl = new URL(req.url);
-    const baseUrl = `${reqUrl.protocol}//${reqUrl.host}`;
+    const productionAlias = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '');
+    const isDeploymentHost = /\.vercel\.app$/i.test(reqUrl.host);
+    const baseUrl = isDeploymentHost && productionAlias
+      ? productionAlias
+      : `${reqUrl.protocol}//${reqUrl.host}`;
     const endpoint = `${baseUrl}/api/admin/refresh-product-pricing`;
 
     const dispatchOne = async (product: { id: string; name: string }) => {
