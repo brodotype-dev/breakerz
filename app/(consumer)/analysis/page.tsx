@@ -14,6 +14,7 @@ import {
   CounterInput,
   LargeCTAButton,
 } from '@/components/breakiq/ds';
+import TeamChip from '@/components/breakiq/TeamChip';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -318,7 +319,8 @@ export default function AnalysisPage() {
                   </div>
                 )}
 
-                {/* Teams */}
+                {/* Teams — logos when we can map them, text fallback otherwise.
+                    Combined slots ("Pirates/White Sox") show both logos. */}
                 {selectedProduct && (
                   <div>
                     <FormLabel>Teams</FormLabel>
@@ -326,23 +328,15 @@ export default function AnalysisPage() {
                       <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Loading teams…</p>
                     ) : (
                       <div className="flex flex-wrap gap-2">
-                        {teams.map(t => {
-                          const active = selectedTeams.includes(t);
-                          return (
-                            <button
-                              key={t}
-                              onClick={() => toggleTeam(t)}
-                              className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all border"
-                              style={{
-                                backgroundColor: active ? 'var(--accent-blue)' : 'transparent',
-                                color: active ? 'white' : 'var(--text-secondary)',
-                                borderColor: active ? 'var(--accent-blue)' : 'var(--terminal-border)',
-                              }}
-                            >
-                              {t}
-                            </button>
-                          );
-                        })}
+                        {teams.map(t => (
+                          <TeamChip
+                            key={t}
+                            team={t}
+                            sport={selectedProduct.sport?.name}
+                            selected={selectedTeams.includes(t)}
+                            onClick={() => toggleTeam(t)}
+                          />
+                        ))}
                       </div>
                     )}
                   </div>
@@ -360,14 +354,19 @@ export default function AnalysisPage() {
                           return (
                             <span
                               key={id}
-                              className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full text-xs font-semibold"
-                              style={{ backgroundColor: 'var(--badge-icon)', color: 'var(--terminal-bg)' }}
+                              className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full text-xs font-semibold border"
+                              style={{
+                                backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                                color: 'var(--text-primary)',
+                                borderColor: 'rgba(59, 130, 246, 0.4)',
+                              }}
                             >
                               {p.name}
-                              <span className="opacity-70 text-[10px]">{p.team}</span>
+                              <span className="opacity-60 text-[10px] font-normal">{p.team}</span>
                               <button
                                 onClick={() => removePlayer(id)}
-                                className="w-4 h-4 inline-flex items-center justify-center rounded-full hover:bg-black/20"
+                                className="w-4 h-4 inline-flex items-center justify-center rounded-full transition-opacity hover:opacity-70"
+                                style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}
                                 aria-label="Remove player"
                               >
                                 <X className="w-3 h-3" />
@@ -412,9 +411,9 @@ export default function AnalysisPage() {
                   </div>
                 )}
 
-                {/* Bundle price */}
+                {/* Total cost */}
                 <div>
-                  <FormLabel>Bundle price</FormLabel>
+                  <FormLabel>Total cost</FormLabel>
                   <div className="relative">
                     <span className="absolute left-5 top-1/2 -translate-y-1/2 text-2xl font-mono font-bold pointer-events-none" style={{ color: 'var(--text-secondary)' }}>$</span>
                     <input
@@ -428,7 +427,7 @@ export default function AnalysisPage() {
                     />
                   </div>
                   <p className="text-[10px] mt-1.5" style={{ color: 'var(--text-tertiary)' }}>
-                    Total you&apos;d pay for this combination of teams, players, and cases.
+                    Total estimated price for this combination of teams, players, and cases.
                   </p>
                 </div>
 
@@ -512,7 +511,7 @@ function AnalysisResultPanel({
             <p className="font-mono text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{formatCurrency(result.fairValue)}</p>
           </div>
           <div>
-            <p className="terminal-label mb-1">You&apos;re Paying</p>
+            <p className="terminal-label mb-1">Total Cost</p>
             <p className="font-mono text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{formatCurrency(result.askPrice)}</p>
           </div>
         </div>
@@ -530,7 +529,17 @@ function AnalysisResultPanel({
               <span key={t} className="text-[10px] font-bold px-2 py-1 rounded-full" style={{ backgroundColor: 'var(--accent-blue)', color: 'white' }}>{t}</span>
             ))}
             {result.extraPlayerNames.map(n => (
-              <span key={n} className="text-[10px] font-bold px-2 py-1 rounded-full" style={{ backgroundColor: 'var(--badge-icon)', color: 'var(--terminal-bg)' }}>{n}</span>
+              <span
+                key={n}
+                className="text-[10px] font-bold px-2 py-1 rounded-full border"
+                style={{
+                  backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                  color: 'var(--text-primary)',
+                  borderColor: 'rgba(59, 130, 246, 0.4)',
+                }}
+              >
+                {n}
+              </span>
             ))}
           </div>
         </div>
