@@ -12,10 +12,13 @@ export async function createProduct(formData: {
   year: string;
   hobby_case_cost: number | null;
   bd_case_cost: number | null;
+  jumbo_case_cost?: number | null;
   hobby_am_case_cost?: number | null;
   bd_am_case_cost?: number | null;
+  jumbo_am_case_cost?: number | null;
   hobby_autos_per_case: number | null;
   bd_autos_per_case: number | null;
+  jumbo_autos_per_case?: number | null;
   release_date: string | null;
   ch_set_name?: string | null;
   is_active?: boolean;

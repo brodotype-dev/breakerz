@@ -82,13 +82,20 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Run analysis to capture snapshot
+    // My Breaks today is single-team / single-format — the multi-* analyzer
+    // accepts that as a degenerate case. Map breakType/numCases into the
+    // formats shape so we keep the same per-break snapshot semantics.
+    const cases = Math.max(1, Math.min(50, parseInt(numCases) || 1));
+    const formats = {
+      hobby: breakType === 'hobby' ? cases : 0,
+      bd:    breakType === 'bd'    ? cases : 0,
+      jumbo: breakType === 'jumbo' ? cases : 0,
+    };
     const analysis = await runBreakAnalysis({
       productId,
-      team,
+      teams: [team],
+      formats,
       askPrice: parseFloat(askPrice),
-      breakType,
-      numCases: parseInt(numCases) || 1,
     });
 
     const isLog = mode === 'log';

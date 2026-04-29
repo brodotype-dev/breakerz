@@ -2,19 +2,25 @@
 
 import { formatCurrency, computeEffectiveScore } from '@/lib/engine';
 import { IconPlayerBadge, BullishBadge, BearishBadge, HighVolatilityBadge, RiskFlagBadge } from '@/components/breakiq/SocialBadges';
-import type { PlayerWithPricing } from '@/lib/types';
+import type { BreakFormat, PlayerWithPricing } from '@/lib/types';
 
 type RiskFlagEntry = { flagType: string; note: string };
 
 interface Props {
   players: PlayerWithPricing[];
   fetching?: boolean;
-  breakType: 'hobby' | 'bd';
+  viewFormat: BreakFormat;
   riskFlagMap?: Map<string, RiskFlagEntry[]>;
   onPlayerClick?: (playerProductId: string) => void;
 }
 
-export default function PlayerTable({ players, fetching = false, breakType, riskFlagMap = new Map(), onPlayerClick }: Props) {
+function pickSlot(row: PlayerWithPricing, fmt: BreakFormat): number {
+  return fmt === 'hobby' ? row.hobbySlotCost
+    : fmt === 'bd'       ? row.bdSlotCost
+    :                      row.jumboSlotCost;
+}
+
+export default function PlayerTable({ players, fetching = false, viewFormat, riskFlagMap = new Map(), onPlayerClick }: Props) {
   if (players.length === 0) {
     return (
       <div
@@ -131,7 +137,7 @@ export default function PlayerTable({ players, fetching = false, breakType, risk
                       </td>
                       <td className="px-4 py-2.5 text-right font-mono text-xs" style={{ color: 'var(--text-tertiary)' }}>{formatCurrency(row.evHigh)}</td>
                       <td className="px-4 py-2.5 text-right font-mono text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                        {formatCurrency(breakType === 'hobby' ? row.hobbySlotCost : row.bdSlotCost)}
+                        {formatCurrency(pickSlot(row, viewFormat))}
                       </td>
                       <td className="px-4 py-2.5 text-right font-mono text-xs" style={{ color: 'var(--signal-buy)' }}>{formatCurrency(row.maxPay)}</td>
                     </>

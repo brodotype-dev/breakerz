@@ -8,6 +8,8 @@ export interface Sport {
 
 export type ProductLifecycle = 'pre_release' | 'live' | 'dormant';
 
+export type BreakFormat = 'hobby' | 'bd' | 'jumbo';
+
 export interface Product {
   id: string;
   sport_id: string;
@@ -17,10 +19,13 @@ export interface Product {
   year: string;
   hobby_case_cost: number;
   bd_case_cost: number | null;
+  jumbo_case_cost: number | null;
   hobby_am_case_cost: number | null;
   bd_am_case_cost: number | null;
+  jumbo_am_case_cost: number | null;
   hobby_autos_per_case: number;
   bd_autos_per_case: number | null;
+  jumbo_autos_per_case: number | null;
   is_active: boolean;
   has_odds: boolean;
   release_date: string | null; // ISO date string (YYYY-MM-DD)
@@ -81,8 +86,10 @@ export interface PricingCache {
 export interface BreakConfig {
   hobbyCases: number;
   bdCases: number;
+  jumboCases: number;
   hobbyCaseCost: number;
   bdCaseCost: number;
+  jumboCaseCost: number;
 }
 
 export interface PlayerWithPricing extends PlayerProduct {
@@ -91,13 +98,17 @@ export interface PlayerWithPricing extends PlayerProduct {
   evMid: number;
   evHigh: number;
   hobbyEVPerBox: number;  // odds-weighted: Σ(variantEV × 1/hobby_odds); falls back to evMid if no odds
+  jumbo_sets?: number;
   hobbyWeight: number;
   bdWeight: number;
+  jumboWeight: number;
   hobbySlotCost: number;
   bdSlotCost: number;
+  jumboSlotCost: number;
   totalCost: number;
   hobbyPerCase: number;
   bdPerCase: number;
+  jumboPerCase: number;
   maxPay: number;
   pricingSource: 'live' | 'cached' | 'search-fallback' | 'cross-product' | 'default' | 'none';
 }
@@ -109,8 +120,11 @@ export interface PlayerProductVariant {
   cardhedger_card_id: string | null;
   hobby_sets: number;
   bd_only_sets: number;
+  jumbo_sets: number;
   match_confidence: number | null;
   hobby_odds: number | null;
+  jumbo_odds: number | null;
+  print_run: number | null;
 }
 
 export type Signal = 'BUY' | 'WATCH' | 'PASS';
@@ -121,9 +135,11 @@ export type TeamSlot = {
   rookieCount: number;
   hobbySlotCost: number;
   bdSlotCost: number;
+  jumboSlotCost: number;
   totalCost: number;
   hobbyPerCase: number;
   bdPerCase: number;
+  jumboPerCase: number;
   maxPay: number;
   players: PlayerWithPricing[];
 };

@@ -12,7 +12,13 @@ import PlayerDetailDrawer from '@/components/breakiq/PlayerDetailDrawer';
 import PreReleaseLayout from '@/components/breakiq/PreReleaseLayout';
 import { SegmentedControl, CounterInput } from '@/components/breakiq/ds';
 import { computeSlotPricing, computeTeamSlotPricing, formatCurrency } from '@/lib/engine';
-import type { BreakConfig, ChaseCard, PlayerWithPricing, Product, Sport } from '@/lib/types';
+import type { BreakConfig, BreakFormat, ChaseCard, PlayerWithPricing, Product, Sport } from '@/lib/types';
+
+const FORMAT_DEFS: Array<{ key: BreakFormat; label: string; short: string }> = [
+  { key: 'hobby', label: 'Hobby',              short: 'Hobby' },
+  { key: 'jumbo', label: 'Jumbo',              short: 'Jumbo' },
+  { key: 'bd',    label: "Breaker's Delight",  short: 'BD' },
+];
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -52,19 +58,23 @@ export default function BreakPage() {
   const [activePlayerProductId, setActivePlayerProductId] = useState<string | null>(null);
   const [drawerTop, setDrawerTop] = useState(48);
   const mainRef = useRef<HTMLElement>(null);
-  const [breakType, setBreakType] = useState<'hobby' | 'bd'>('hobby');
+  const [viewFormat, setViewFormat] = useState<BreakFormat>('hobby');
   const [activeTab, setActiveTab] = useState<'teams' | 'players'>('teams');
 
   const [config, setConfig] = useState<BreakConfig>({
     hobbyCases: 10,
-    bdCases: 10,
+    bdCases: 0,
+    jumboCases: 0,
     hobbyCaseCost: 0,
     bdCaseCost: 0,
+    jumboCaseCost: 0,
   });
   const [hobbyMsrp, setHobbyMsrp] = useState<number | null>(null);
   const [hobbyAmPrice, setHobbyAmPrice] = useState<number | null>(null);
   const [bdMsrp, setBdMsrp] = useState<number | null>(null);
   const [bdAmPrice, setBdAmPrice] = useState<number | null>(null);
+  const [jumboMsrp, setJumboMsrp] = useState<number | null>(null);
+  const [jumboAmPrice, setJumboAmPrice] = useState<number | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -84,10 +94,13 @@ export default function BreakPage() {
         setHobbyAmPrice(prod.hobby_am_case_cost ?? null);
         setBdMsrp(prod.bd_case_cost ?? null);
         setBdAmPrice(prod.bd_am_case_cost ?? null);
+        setJumboMsrp(prod.jumbo_case_cost ?? null);
+        setJumboAmPrice(prod.jumbo_am_case_cost ?? null);
         setConfig(prev => ({
           ...prev,
           hobbyCaseCost: prod.hobby_am_case_cost ?? prod.hobby_case_cost ?? prev.hobbyCaseCost,
           bdCaseCost: prod.bd_am_case_cost ?? prod.bd_case_cost ?? prev.bdCaseCost,
+          jumboCaseCost: prod.jumbo_am_case_cost ?? prod.jumbo_case_cost ?? prev.jumboCaseCost,
         }));
 
         const [pricingRes, chaseRes] = await Promise.all([
@@ -261,19 +274,19 @@ export default function BreakPage() {
               </div>
             </div>
 
-            {/* Controls */}
+            {/* Controls — pick which format the slot tables display. Cases per
+                format are configured below in the format-mix box. */}
             <div className="flex items-center gap-4 flex-wrap">
               <div>
                 <div className="text-[10px] font-semibold uppercase mb-2" style={{ color: 'rgba(255,255,255,0.7)', letterSpacing: '0.06em' }}>
-                  Break Type
+                  View Format
                 </div>
                 <SegmentedControl
-                  value={breakType}
-                  onChange={v => setBreakType(v as 'hobby' | 'bd')}
-                  options={[
-                    { value: 'hobby', label: 'Hobby' },
-                    { value: 'bd',    label: "Breaker's Delight" },
-                  ]}
+                  value={viewFormat}
+                  onChange={v => setViewFormat(v as BreakFormat)}
+                  options={FORMAT_DEFS
+                    .filter(f => (f.key === 'hobby' ? hobbyMsrp != null : f.key === 'bd' ? bdMsrp != null : jumboMsrp != null))
+                    .map(f => ({ value: f.key, label: f.short }))}
                 />
               </div>
             </div>
@@ -346,44 +359,72 @@ export default function BreakPage() {
           </div>
         )}
 
-        {/* Cases counter + cost summary — hidden when dormant since there's no active break to configure */}
-        {!isDormant && (
-        <div
-          className="flex items-center gap-4 flex-wrap px-4 py-2.5 rounded-lg"
-          style={{ backgroundColor: 'var(--terminal-surface)', border: '1px solid var(--terminal-border)' }}
-        >
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
-              {breakType === 'hobby' ? 'Hobby Cases' : 'BD Cases'}
-            </span>
-            <CounterInput
-              value={breakType === 'hobby' ? config.hobbyCases : config.bdCases}
-              onChange={v => setConfig(prev => breakType === 'hobby' ? { ...prev, hobbyCases: v } : { ...prev, bdCases: v })}
-              min={1}
-            />
-          </div>
-          {(() => {
-            const cases = breakType === 'hobby' ? config.hobbyCases : config.bdCases;
-            const cost = breakType === 'hobby' ? config.hobbyCaseCost : config.bdCaseCost;
-            const amPrice = breakType === 'hobby' ? hobbyAmPrice : bdAmPrice;
-            const msrp = breakType === 'hobby' ? hobbyMsrp : bdMsrp;
-            const priceLabel = amPrice != null ? 'market' : msrp != null ? 'MSRP' : null;
-            if (cost <= 0) return null;
-            return (
-              <div className="flex items-center gap-1.5">
-                <span className="text-xs font-mono font-bold" style={{ color: 'var(--text-primary)' }}>
-                  {formatCurrency(cases * cost)}
+        {/* Format mix — three counters, one per format the product supports.
+            Cases set to 0 zero out that pool; total break cost rolls up. */}
+        {!isDormant && (() => {
+          const formatMeta: Record<BreakFormat, { cases: number; setCases: (v: number) => void; cost: number; amPrice: number | null; msrp: number | null }> = {
+            hobby: {
+              cases: config.hobbyCases,
+              setCases: v => setConfig(prev => ({ ...prev, hobbyCases: v })),
+              cost: config.hobbyCaseCost,
+              amPrice: hobbyAmPrice,
+              msrp: hobbyMsrp,
+            },
+            bd: {
+              cases: config.bdCases,
+              setCases: v => setConfig(prev => ({ ...prev, bdCases: v })),
+              cost: config.bdCaseCost,
+              amPrice: bdAmPrice,
+              msrp: bdMsrp,
+            },
+            jumbo: {
+              cases: config.jumboCases,
+              setCases: v => setConfig(prev => ({ ...prev, jumboCases: v })),
+              cost: config.jumboCaseCost,
+              amPrice: jumboAmPrice,
+              msrp: jumboMsrp,
+            },
+          };
+          const availableFormats = FORMAT_DEFS.filter(f => formatMeta[f.key].msrp != null || formatMeta[f.key].amPrice != null);
+          if (availableFormats.length === 0) return null;
+          const totalCost = availableFormats.reduce((sum, f) => sum + formatMeta[f.key].cases * formatMeta[f.key].cost, 0);
+          return (
+            <div
+              className="px-4 py-3 rounded-lg space-y-3"
+              style={{ backgroundColor: 'var(--terminal-surface)', border: '1px solid var(--terminal-border)' }}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                  Format Mix
                 </span>
-                {priceLabel && (
-                  <span className="text-[10px]" style={{ color: amPrice != null ? 'var(--accent-orange)' : 'var(--text-disabled)' }}>
-                    ({priceLabel})
+                {totalCost > 0 && (
+                  <span className="text-xs font-mono font-bold" style={{ color: 'var(--text-primary)' }}>
+                    Break cost: {formatCurrency(totalCost)}
                   </span>
                 )}
               </div>
-            );
-          })()}
-        </div>
-        )}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {availableFormats.map(({ key, short }) => {
+                  const m = formatMeta[key];
+                  const priceLabel = m.amPrice != null ? 'market' : m.msrp != null ? 'MSRP' : null;
+                  return (
+                    <div key={key} className="flex items-center justify-between gap-2 px-3 py-2 rounded border" style={{ borderColor: 'var(--terminal-border)' }}>
+                      <div className="flex flex-col">
+                        <span className="text-[11px] font-bold uppercase" style={{ color: 'var(--text-tertiary)' }}>{short}</span>
+                        {m.cost > 0 && (
+                          <span className="text-[10px] font-mono" style={{ color: 'var(--text-tertiary)' }}>
+                            {formatCurrency(m.cost)}{priceLabel ? ` (${priceLabel})` : ''}
+                          </span>
+                        )}
+                      </div>
+                      <CounterInput value={m.cases} onChange={m.setCases} min={0} />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Tab bar */}
         <div className="flex gap-1 p-1 rounded-lg" style={{ backgroundColor: 'var(--terminal-surface)', border: '1px solid var(--terminal-border)' }}>
@@ -421,11 +462,11 @@ export default function BreakPage() {
 
         {/* Tab content */}
         <div className="mt-4">
-          {activeTab === 'teams' && <TeamSlotsTable teams={teamSlots} breakType={breakType} riskFlagMap={riskFlagMap} />}
+          {activeTab === 'teams' && <TeamSlotsTable teams={teamSlots} viewFormat={viewFormat} riskFlagMap={riskFlagMap} />}
           {activeTab === 'players' && (
             <PlayerTable
               players={players}
-              breakType={breakType}
+              viewFormat={viewFormat}
               riskFlagMap={riskFlagMap}
               onPlayerClick={id => setActivePlayerProductId(id)}
             />

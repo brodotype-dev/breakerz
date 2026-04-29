@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { computeLiveEV, get90DayPrices } from '@/lib/cardhedger';
 import { computeSlotPricing, computeTeamSlotPricing, computeSignal, formatCurrency } from '@/lib/engine';
-import type { PlayerWithPricing, BreakConfig, Signal } from '@/lib/types';
+import type { PlayerWithPricing, BreakConfig, Signal, BreakFormat } from '@/lib/types';
 
 const CACHE_TTL_HOURS = 24;
 
@@ -11,29 +11,47 @@ export interface AnalysisResult {
   fairValue: number;
   askPrice: number;
   analysis: string;
-  topPlayers: Array<{ name: string; isRookie: boolean; isIcon: boolean; evMid: number; evHigh: number }>;
-  teamName: string;
+  topPlayers: Array<{ name: string; team: string; isRookie: boolean; isIcon: boolean; evMid: number; evHigh: number }>;
+  teams: string[];
+  extraPlayerNames: string[];
   productName: string;
+  formats: { hobby: number; bd: number; jumbo: number };
   riskFlags: Array<{ playerName: string; flagType: string; note: string }>;
   hvPlayers: string[];
 }
 
-interface AnalysisInput {
+export interface AnalysisInput {
   productId: string;
-  team: string;
+  teams: string[];
+  extraPlayerProductIds?: string[];
+  formats: { hobby: number; bd: number; jumbo: number };
+  caseCosts?: { hobby?: number; bd?: number; jumbo?: number };
   askPrice: number;
-  breakType?: 'hobby' | 'bd';
-  numCases?: number;
 }
 
-export async function runBreakAnalysis({
-  productId,
-  team,
-  askPrice,
-  breakType = 'hobby',
-  numCases = 10,
-}: AnalysisInput): Promise<AnalysisResult> {
-  // Fetch product
+const formatLabel: Record<BreakFormat, string> = {
+  hobby: 'Hobby',
+  bd: "Breaker's Delight",
+  jumbo: 'Jumbo',
+};
+
+export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisResult> {
+  const {
+    productId,
+    teams,
+    extraPlayerProductIds = [],
+    formats,
+    caseCosts,
+    askPrice,
+  } = input;
+
+  if (!teams.length && !extraPlayerProductIds.length) {
+    throw new Error('Pick at least one team or player.');
+  }
+  if (formats.hobby + formats.bd + formats.jumbo <= 0) {
+    throw new Error('Pick at least one case for any format.');
+  }
+
   const { data: product } = await supabaseAdmin
     .from('products')
     .select('*, sport:sports(*)')
@@ -41,7 +59,6 @@ export async function runBreakAnalysis({
     .single();
   if (!product) throw new Error('Product not found');
 
-  // Fetch players with cached pricing
   const { data: playerProducts } = await supabaseAdmin
     .from('player_products')
     .select('*, player:players(*), buzz_score, breakerz_score')
@@ -52,12 +69,15 @@ export async function runBreakAnalysis({
 
   const ids = playerProducts.map(pp => pp.id);
 
-  // Load variants (needed for weighted EV)
+  // Variants drive weighted EV. 1/1s get filtered at the query level — they're
+  // outliers that skew slot math without representing a pull-rate path most
+  // breakers will hit.
   const { data: allVariants } = await supabaseAdmin
     .from('player_product_variants')
-    .select('id, player_product_id, cardhedger_card_id, hobby_sets, bd_only_sets, hobby_odds')
+    .select('id, player_product_id, cardhedger_card_id, hobby_sets, bd_only_sets, jumbo_sets, hobby_odds, print_run')
     .in('player_product_id', ids)
-    .not('cardhedger_card_id', 'is', null);
+    .not('cardhedger_card_id', 'is', null)
+    .or('print_run.is.null,print_run.gt.1');
 
   const variantMap = new Map<string, typeof allVariants>();
   for (const v of allVariants ?? []) {
@@ -85,8 +105,11 @@ export async function runBreakAnalysis({
           ...pp,
           evLow: c.ev_low, evMid: c.ev_mid, evHigh: c.ev_high,
           hobbyEVPerBox: c.ev_mid,
-          hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
-          totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
+          hobbyWeight: 0, bdWeight: 0, jumboWeight: 0,
+          hobbySlotCost: 0, bdSlotCost: 0, jumboSlotCost: 0,
+          totalCost: 0,
+          hobbyPerCase: 0, bdPerCase: 0, jumboPerCase: 0,
+          maxPay: 0,
           pricingSource: 'cached' as const,
         };
       }
@@ -100,7 +123,7 @@ export async function runBreakAnalysis({
           const variantEVs = await Promise.all(
             variants.map(async v => {
               const variantEV = await computeLiveEV(v.cardhedger_card_id!);
-              const sets = (v.hobby_sets ?? 0) + (v.bd_only_sets ?? 0);
+              const sets = (v.hobby_sets ?? 0) + (v.bd_only_sets ?? 0) + (v.jumbo_sets ?? 0);
               return { ...variantEV, sets: Math.max(sets, 1), hobby_odds: v.hobby_odds };
             })
           );
@@ -148,8 +171,11 @@ export async function runBreakAnalysis({
           ...pp,
           evLow: ev.evLow, evMid: ev.evMid, evHigh: ev.evHigh,
           hobbyEVPerBox,
-          hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
-          totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
+          hobbyWeight: 0, bdWeight: 0, jumboWeight: 0,
+          hobbySlotCost: 0, bdSlotCost: 0, jumboSlotCost: 0,
+          totalCost: 0,
+          hobbyPerCase: 0, bdPerCase: 0, jumboPerCase: 0,
+          maxPay: 0,
           pricingSource: 'live' as const,
         };
       } catch {
@@ -158,75 +184,120 @@ export async function runBreakAnalysis({
           ...pp,
           evLow: Math.round(evMid * 0.35), evMid, evHigh: Math.round(evMid * 2.5),
           hobbyEVPerBox: evMid,
-          hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
-          totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
+          hobbyWeight: 0, bdWeight: 0, jumboWeight: 0,
+          hobbySlotCost: 0, bdSlotCost: 0, jumboSlotCost: 0,
+          totalCost: 0,
+          hobbyPerCase: 0, bdPerCase: 0, jumboPerCase: 0,
+          maxPay: 0,
           pricingSource: 'default' as const,
         };
       }
     })
   );
 
-  const cases = Math.max(1, Math.min(50, numCases));
+  // Resolve case costs — explicit override > AM > MSRP.
+  const hobbyCaseCost = caseCosts?.hobby ?? product.hobby_am_case_cost ?? product.hobby_case_cost ?? 0;
+  const bdCaseCost = caseCosts?.bd ?? product.bd_am_case_cost ?? product.bd_case_cost ?? 0;
+  const jumboCaseCost = caseCosts?.jumbo ?? product.jumbo_am_case_cost ?? product.jumbo_case_cost ?? 0;
+
   const config: BreakConfig = {
-    hobbyCases: cases,
-    bdCases: cases,
-    hobbyCaseCost: product.hobby_case_cost ?? 1200,
-    bdCaseCost: product.bd_case_cost ?? 800,
+    hobbyCases: Math.max(0, Math.min(50, formats.hobby)),
+    bdCases: Math.max(0, Math.min(50, formats.bd)),
+    jumboCases: Math.max(0, Math.min(50, formats.jumbo)),
+    hobbyCaseCost,
+    bdCaseCost,
+    jumboCaseCost,
   };
 
   const pricedPlayers = computeSlotPricing(rawPlayers, config);
+  const playerById = new Map(pricedPlayers.map(p => [p.id, p]));
   const teamSlots = computeTeamSlotPricing(pricedPlayers, config);
-  const teamSlot = teamSlots.find(t => t.team === team);
 
-  if (!teamSlot) throw new Error('Team not found in this product');
+  // Resolve selected teams — surface unknown teams as a single combined error
+  // instead of failing on the first one (better UX for typos in API callers).
+  const knownTeams = new Set(teamSlots.map(t => t.team));
+  const missingTeams = teams.filter(t => !knownTeams.has(t));
+  if (missingTeams.length) {
+    throw new Error(`Team(s) not found in this product: ${missingTeams.join(', ')}`);
+  }
+  const selectedTeamSlots = teamSlots.filter(t => teams.includes(t.team));
 
-  const fairValue = breakType === 'hobby' ? teamSlot.hobbySlotCost : teamSlot.bdSlotCost;
+  // Resolve standalone players (must belong to the product, must not be on a
+  // selected team to avoid double-counting).
+  const selectedTeamSet = new Set(teams);
+  const extraPlayers = extraPlayerProductIds
+    .map(id => playerById.get(id))
+    .filter((p): p is PlayerWithPricing => !!p && !selectedTeamSet.has(p.player?.team ?? ''));
+
+  // Bundle fair value = sum of selected teams + standalone players across all formats.
+  const teamsTotal = selectedTeamSlots.reduce((sum, t) => sum + t.totalCost, 0);
+  const playersTotal = extraPlayers.reduce((sum, p) => sum + p.totalCost, 0);
+  const fairValue = teamsTotal + playersTotal;
+
   const { signal, valuePct } = computeSignal(fairValue, askPrice);
 
-  const teamPlayers = teamSlot.players.sort((a, b) => b.evMid - a.evMid);
-  const teamPlayerProductIds = teamPlayers.map(p => p.id);
+  // Union of all players in the bundle for top-players, risk flags, HV.
+  const teamPlayers = selectedTeamSlots.flatMap(t => t.players);
+  const allBundlePlayers = [...teamPlayers, ...extraPlayers]
+    .sort((a, b) => b.evMid - a.evMid);
+  const bundlePlayerProductIds = allBundlePlayers.map(p => p.id);
 
-  // Fetch active risk flags
-  const { data: teamFlags } = teamPlayerProductIds.length
+  const { data: bundleFlags } = bundlePlayerProductIds.length
     ? await supabaseAdmin
         .from('player_risk_flags')
         .select('player_product_id, flag_type, note')
-        .in('player_product_id', teamPlayerProductIds)
+        .in('player_product_id', bundlePlayerProductIds)
         .is('cleared_at', null)
     : { data: [] };
 
-  const ppNameMap = new Map(teamPlayers.map(p => [p.id, p.player.name]));
-  const riskFlags = (teamFlags ?? []).map(f => ({
+  const ppNameMap = new Map(allBundlePlayers.map(p => [p.id, p.player.name]));
+  const riskFlags = (bundleFlags ?? []).map(f => ({
     playerName: ppNameMap.get(f.player_product_id) ?? '',
     flagType: f.flag_type as string,
     note: f.note,
   }));
 
-  const hvPlayers = teamPlayers
+  const hvPlayers = allBundlePlayers
     .filter(p => p.is_high_volatility)
     .map(p => p.player.name);
 
-  const top5 = teamPlayers.slice(0, 5);
-  const iconPlayersOutsideTop5 = teamPlayers.slice(5).filter(p => p.player.is_icon);
-  const topPlayers = [...top5, ...iconPlayersOutsideTop5].map(p => ({
+  const top10 = allBundlePlayers.slice(0, 10);
+  const iconPlayersOutsideTop10 = allBundlePlayers.slice(10).filter(p => p.player.is_icon);
+  const topPlayers = [...top10, ...iconPlayersOutsideTop10].map(p => ({
     name: p.player.name,
+    team: p.player.team,
     isRookie: p.player.is_rookie,
     isIcon: p.player.is_icon ?? false,
     evMid: p.evMid,
     evHigh: p.evHigh,
   }));
 
-  // Build Claude prompt
-  const playerLines = teamPlayers.slice(0, 10).map(p =>
-    `- ${p.player.name}${p.player.is_rookie ? ' (RC)' : ''}: EV $${p.evMid} | Upside $${p.evHigh}`
+  // --- Build Claude prompt ---
+  const activeFormats: BreakFormat[] = (['hobby', 'jumbo', 'bd'] as BreakFormat[])
+    .filter(f => (f === 'hobby' ? config.hobbyCases : f === 'bd' ? config.bdCases : config.jumboCases) > 0);
+  const formatSummary = activeFormats
+    .map(f => `${f === 'hobby' ? config.hobbyCases : f === 'bd' ? config.bdCases : config.jumboCases} ${formatLabel[f]}`)
+    .join(' + ');
+
+  const teamLines = selectedTeamSlots
+    .map(t => `- ${t.team}: fair ${formatCurrency(t.totalCost)} (${t.players.length} players, ${t.rookieCount} RC)`)
+    .join('\n');
+  const extraPlayerLines = extraPlayers.length
+    ? extraPlayers
+        .map(p => `- ${p.player.name} (${p.player.team})${p.player.is_rookie ? ' RC' : ''}: fair ${formatCurrency(p.totalCost)}`)
+        .join('\n')
+    : '';
+
+  const playerLines = top10.map(p =>
+    `- ${p.player.name} (${p.player.team})${p.player.is_rookie ? ' RC' : ''}: EV $${p.evMid} | Upside $${p.evHigh}`
   ).join('\n');
 
-  const rookies = teamPlayers.filter(p => p.player.is_rookie);
+  const rookies = allBundlePlayers.filter(p => p.player.is_rookie);
   const rookieNote = rookies.length > 0
-    ? `Rookies on this team: ${rookies.map(r => r.player.name).join(', ')}.`
-    : 'No rookies on this team.';
+    ? `Rookies in this bundle: ${rookies.map(r => r.player.name).join(', ')}.`
+    : 'No rookies in this bundle.';
 
-  const betsNotes = teamPlayers
+  const betsNotes = allBundlePlayers
     .filter(p => p.breakerz_score != null && p.breakerz_score !== 0)
     .map(p => {
       const direction = (p.breakerz_score ?? 0) > 0 ? 'bullish' : 'bearish';
@@ -236,9 +307,9 @@ export async function runBreakAnalysis({
 
   const betsSection = betsNotes ? `\nBreakerz editorial market read:\n${betsNotes}` : '';
 
-  const iconNames = teamPlayers.filter(p => p.player.is_icon).map(p => p.player.name);
+  const iconNames = allBundlePlayers.filter(p => p.player.is_icon).map(p => p.player.name);
   const iconSection = iconNames.length
-    ? `\nIcon-tier players on this team (structural demand baked into EV — not amplified by buzz): ${iconNames.join(', ')}.`
+    ? `\nIcon-tier players in this bundle (structural demand baked into EV — not amplified by buzz): ${iconNames.join(', ')}.`
     : '';
 
   const flagLines = riskFlags.map(f => `- ${f.playerName} [${f.flagType}]: ${f.note}`).join('\n');
@@ -250,30 +321,38 @@ export async function runBreakAnalysis({
     ? `\nHigh Volatility: ${hvPlayers.join(', ')} — pricing for these players is unusually uncertain. Note this in your analysis.`
     : '';
 
-  const prompt = `You are a sports card break analyst at Card Breakerz. A collector is evaluating a group break slot.
+  const composition = teams.length && extraPlayers.length
+    ? `${teams.length} team slot(s) plus ${extraPlayers.length} standalone player slot(s)`
+    : teams.length
+      ? `${teams.length} team slot(s)`
+      : `${extraPlayers.length} standalone player slot(s)`;
+
+  const prompt = `You are a sports card break analyst at Card Breakerz. A collector is evaluating a bundled break configuration.
 
 Product: ${product.name} (${product.year})
 Sport: ${(product.sport as any)?.name ?? 'Unknown'}
-Team: ${team}
-Break type: ${breakType === 'hobby' ? 'Hobby Case' : "Breaker's Delight"}
-Fair slot value (our model): ${formatCurrency(fairValue)}
-Break price being offered: ${formatCurrency(askPrice)}
+Bundle composition: ${composition}
+Format mix: ${formatSummary}
+Selected teams:
+${teamLines || '(none)'}
+${extraPlayerLines ? `Standalone players:\n${extraPlayerLines}\n` : ''}
+Bundle fair value (our model): ${formatCurrency(fairValue)}
+Bundle ask price: ${formatCurrency(askPrice)}
 Signal: ${signal} (${Math.abs(valuePct).toFixed(1)}% ${valuePct >= 0 ? 'below' : 'above'} fair value)
 
-Top players on ${team}:
+Top players in bundle:
 ${playerLines}
 
-${rookieNote}
-Total players on team: ${teamSlot.playerCount}${betsSection}${iconSection}${flagSection}${hvSection}
+${rookieNote}${betsSection}${iconSection}${flagSection}${hvSection}
 
-Write a 2–3 sentence analysis explaining whether this break slot is worth buying at this price. Be direct — lead with the signal. Mention the most important player(s) to hit, the rookie upside if applicable, and whether the price justifies the risk. Use plain conversational language, no bullet points, no markdown.`;
+Write a 2–3 sentence analysis explaining whether this bundle is worth buying at this price. Be direct — lead with the signal. Mention the most important player(s) to hit, the rookie upside if applicable, and whether the price justifies the risk. If the bundle mixes teams and standalone players, briefly call out which slot is carrying the value. Use plain conversational language, no bullet points, no markdown.`;
 
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   const message = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 300,
+    max_tokens: 350,
     messages: [{ role: 'user', content: prompt }],
   }, { timeout: 15_000 });
 
@@ -286,8 +365,10 @@ Write a 2–3 sentence analysis explaining whether this break slot is worth buyi
     askPrice,
     analysis,
     topPlayers,
-    teamName: team,
+    teams,
+    extraPlayerNames: extraPlayers.map(p => p.player.name),
     productName: product.name,
+    formats: { hobby: config.hobbyCases, bd: config.bdCases, jumbo: config.jumboCases },
     riskFlags,
     hvPlayers,
   };

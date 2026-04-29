@@ -85,7 +85,9 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     cardhedger_card_id: string | null;
     hobby_sets: number | null;
     bd_only_sets: number | null;
+    jumbo_sets: number | null;
     hobby_odds: number | null;
+    print_run: number | null;
   };
   const allVariants: VariantRow[] = [];
   for (let i = 0; i < ids.length; i += IN_CHUNK) {
@@ -93,7 +95,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     for (let offset = 0; ; offset += PAGE) {
       const { data, error: vErr } = await supabaseAdmin
         .from('player_product_variants')
-        .select('id, player_product_id, cardhedger_card_id, hobby_sets, bd_only_sets, hobby_odds')
+        .select('id, player_product_id, cardhedger_card_id, hobby_sets, bd_only_sets, jumbo_sets, hobby_odds, print_run')
         .in('player_product_id', slice)
         .not('cardhedger_card_id', 'is', null)
         .range(offset, offset + PAGE - 1);
@@ -280,9 +282,14 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
 
     // Hydrated product path
     if (variants.length > 0) {
-      const variantEVs = variants.map(v => {
+      // Exclude 1/1s from per-player aggregation. A single 1/1 sale (e.g. a $2,200
+      // SuperFractor) skews the slot-pricing average wildly because the variant has
+      // no replacement in the pull pool. They still get priced and displayed at the
+      // variant level via /api/pricing/comps; they just don't pollute slot math.
+      const aggregatableVariants = variants.filter(v => v.print_run == null || v.print_run > 1);
+      const variantEVs = aggregatableVariants.map(v => {
         const price = pricesOnly.get(v.cardhedger_card_id!);
-        const sets = (v.hobby_sets ?? 0) + (v.bd_only_sets ?? 0);
+        const sets = (v.hobby_sets ?? 0) + (v.bd_only_sets ?? 0) + (v.jumbo_sets ?? 0);
         return {
           evLow: price?.evLow ?? 0,
           evMid: price?.evMid ?? 0,

@@ -14,6 +14,7 @@ Sports card break slot pricing and analysis tool. Built with Kyle (Town & Line /
 - [docs/manufacturer-rules/bowman.md](./docs/manufacturer-rules/bowman.md) — Bowman/Topps prefix names, CH naming conventions, match rate history
 - [docs/breaker-identity-prd.md](./docs/breaker-identity-prd.md) — Breaker role + crowdsourced case pricing PRD (backlogged, post-public-beta)
 - [docs/product-lifecycle.md](./docs/product-lifecycle.md) — pre_release / live / dormant lifecycle: schema, crons, transitions, consumer rendering
+- [docs/plans/2026-04-29-break-analysis-v2.md](./docs/plans/2026-04-29-break-analysis-v2.md) — Break Analysis v2 plan (multi-format, multi-team, insight capture roadmap)
 
 Update CHANGELOG.md at the end of every session with what changed and why.
 
@@ -59,7 +60,11 @@ Live at [getbreakiq.com](https://getbreakiq.com). Private beta — consumer rout
 
 **Product Lifecycle** ✅ (2026-04-27) Three-state lifecycle (`pre_release` / `live` / `dormant`) on products, orthogonal to `is_active`. Drives admin UX, cron behavior, and consumer rendering. Pre-release products skip all daily crons and render a hype layout (countdown + chase cards + 90-day player historical comps); live products run the full pipeline; dormant products skip daily crons but get a biweekly pricing refresh (1st + 15th, `/api/cron/refresh-dormant-pricing`). Admin transitions via confirm-dialog buttons; `pre_release → live` blocks unless `ch_set_name` is set. See `docs/product-lifecycle.md`.
 
-**Next up:** Phase 5 C-score (blocked on Kyle), My Breaks Phase 2 (chase/hit card tracking), Sentry error tracking, rate limiting, 2025-26 Bowman Basketball re-match (CPA cards being added by CH this week)
+**Break Analysis v2** ✅ (2026-04-29) Multi-format breaks (hobby + BD + jumbo mix), multi-team selection (chip picker), standalone player slots (searchable picker), single bundle ask price. Engine adds a third pool (jumbo) parallel to hobby. `runBreakAnalysis` takes `{ teams: string[], extraPlayerProductIds, formats: { hobby, bd, jumbo }, askPrice }` and returns one bundle fair value + signal. `POST /api/analysis` rejects the legacy single-team payload with 400. `/break/[slug]` keeps a "View Format" toggle for slot tables but configures cases via three counters in the format-mix box. Schema: `products.jumbo_case_cost` / `jumbo_am_case_cost`, `player_product_variants.jumbo_sets` / `jumbo_odds`. Phase 2/3 (asking-price observation capture, hype tags, dedicated mobile capture surface) deferred — see plan.
+
+**1/1 Filter** ✅ (2026-04-29) `lib/pricing-refresh.ts` and `lib/analysis.ts` exclude variants with `print_run <= 1` from per-player aggregated EV. Eliminates the Austin Reaves bug where a single $2,200 SuperFractor sale pulled his slot to $4,400. Variant-level EV for 1/1s is preserved (still rendered in the player drawer); they just no longer skew the sets-weighted slot math.
+
+**Next up:** Phase 2 of break analysis v2 (asking-price + hype-tag capture extending global BreakIQ Bets), Phase 5 C-score (blocked on Kyle), My Breaks Phase 2 (chase/hit card tracking), Sentry error tracking, rate limiting, 2025-26 Bowman Basketball re-match (CPA cards being added by CH this week)
 
 ---
 

@@ -5,19 +5,25 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { formatCurrency, computeSignal, formatPct, computeEffectiveScore } from '@/lib/engine';
 import SignalBadge from '@/components/breakiq/SignalBadge';
 import { IconPlayerBadge, BullishBadge, BearishBadge, HighVolatilityBadge, RiskFlagBadge } from '@/components/breakiq/SocialBadges';
-import type { TeamSlot } from '@/lib/types';
+import type { BreakFormat, TeamSlot } from '@/lib/types';
 
 type RiskFlagEntry = { flagType: string; note: string };
 
 interface Props {
   teams: TeamSlot[];
-  breakType: 'hobby' | 'bd';
+  viewFormat: BreakFormat;
   riskFlagMap?: Map<string, RiskFlagEntry[]>;
 }
 
 const COL = 'grid-cols-[36px_1fr_160px_72px_56px_104px_88px_88px]';
 
-export default function TeamSlotsTable({ teams, breakType, riskFlagMap = new Map() }: Props) {
+function pickSlot(t: TeamSlot, fmt: BreakFormat) {
+  return fmt === 'hobby' ? { slot: t.hobbySlotCost, perCase: t.hobbyPerCase }
+    : fmt === 'bd'       ? { slot: t.bdSlotCost,    perCase: t.bdPerCase }
+    :                      { slot: t.jumboSlotCost, perCase: t.jumboPerCase };
+}
+
+export default function TeamSlotsTable({ teams, viewFormat, riskFlagMap = new Map() }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [askPrices, setAskPrices] = useState<Record<string, string>>({});
 
@@ -37,8 +43,6 @@ export default function TeamSlotsTable({ teams, breakType, riskFlagMap = new Map
     });
   };
 
-  const isHobby = breakType === 'hobby';
-
   return (
     <div className="rounded-lg overflow-hidden border" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
       <div className="overflow-x-auto">
@@ -56,8 +60,7 @@ export default function TeamSlotsTable({ teams, breakType, riskFlagMap = new Map
         <div>
           {teams.map((row, i) => {
             const isOpen = expanded.has(row.team);
-            const slotCost = isHobby ? row.hobbySlotCost : row.bdSlotCost;
-            const perCase  = isHobby ? row.hobbyPerCase  : row.bdPerCase;
+            const { slot: slotCost, perCase } = pickSlot(row, viewFormat);
             const askRaw = askPrices[row.team] ?? '';
             const askNum = parseFloat(askRaw);
             const dealCheck = askRaw && !isNaN(askNum) && slotCost > 0
@@ -195,7 +198,7 @@ export default function TeamSlotsTable({ teams, breakType, riskFlagMap = new Map
                       {/* Slot cost for this player */}
                       <div className="flex items-center">
                         <span className="font-mono text-xs" style={{ color: 'var(--text-t-tertiary)' }}>
-                          {formatCurrency(isHobby ? p.hobbySlotCost : p.bdSlotCost)}
+                          {formatCurrency(viewFormat === 'hobby' ? p.hobbySlotCost : viewFormat === 'bd' ? p.bdSlotCost : p.jumboSlotCost)}
                         </span>
                       </div>
                       <div />

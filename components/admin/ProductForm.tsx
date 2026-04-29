@@ -144,8 +144,10 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
   const [slug, setSlug] = useState(product?.slug ?? '');
   const [hobbyCaseCost, setHobbyCaseCost] = useState(product?.hobby_case_cost?.toString() ?? '');
   const [bdCaseCost, setBdCaseCost] = useState(product?.bd_case_cost?.toString() ?? '');
+  const [jumboCaseCost, setJumboCaseCost] = useState(product?.jumbo_case_cost?.toString() ?? '');
   const [hobbyAmCaseCost, setHobbyAmCaseCost] = useState(product?.hobby_am_case_cost?.toString() ?? '');
   const [bdAmCaseCost, setBdAmCaseCost] = useState(product?.bd_am_case_cost?.toString() ?? '');
+  const [jumboAmCaseCost, setJumboAmCaseCost] = useState(product?.jumbo_am_case_cost?.toString() ?? '');
   const [releaseDate, setReleaseDate] = useState(product?.release_date ?? '');
   const [isActive, setIsActive] = useState(product?.is_active ?? false);
   const [lifecycleStatus, setLifecycleStatus] = useState<'pre_release' | 'live' | 'dormant'>(
@@ -250,10 +252,13 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
       slug,
       hobby_case_cost: hobbyCaseCost ? parseFloat(hobbyCaseCost) : null,
       bd_case_cost: bdCaseCost ? parseFloat(bdCaseCost) : null,
+      jumbo_case_cost: jumboCaseCost ? parseFloat(jumboCaseCost) : null,
       hobby_am_case_cost: hobbyAmCaseCost ? parseFloat(hobbyAmCaseCost) : null,
       bd_am_case_cost: bdAmCaseCost ? parseFloat(bdAmCaseCost) : null,
+      jumbo_am_case_cost: jumboAmCaseCost ? parseFloat(jumboAmCaseCost) : null,
       hobby_autos_per_case: null,
       bd_autos_per_case: null,
+      jumbo_autos_per_case: null,
       release_date: releaseDate || null,
       ch_set_name: chSetName || null,
       is_active: publish ? true : isActive,
@@ -460,8 +465,10 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
         <div className="grid grid-cols-2 gap-4">
           <FormInput label="Hobby / Case" hint="(MSRP)" value={hobbyCaseCost} onChange={e => setHobbyCaseCost(e.target.value)} prefix="$" placeholder="1200" type="number" mono />
           <FormInput label="BD / Case" hint="(MSRP)" value={bdCaseCost} onChange={e => setBdCaseCost(e.target.value)} prefix="$" placeholder="Optional" type="number" mono />
+          <FormInput label="Jumbo / Case" hint="(MSRP)" value={jumboCaseCost} onChange={e => setJumboCaseCost(e.target.value)} prefix="$" placeholder="Optional" type="number" mono />
           <FormInput label="Hobby AM / Case" hint="(after-market)" value={hobbyAmCaseCost} onChange={e => setHobbyAmCaseCost(e.target.value)} prefix="$" placeholder="Optional" type="number" mono />
           <FormInput label="BD AM / Case" hint="(after-market)" value={bdAmCaseCost} onChange={e => setBdAmCaseCost(e.target.value)} prefix="$" placeholder="Optional" type="number" mono />
+          <FormInput label="Jumbo AM / Case" hint="(after-market)" value={jumboAmCaseCost} onChange={e => setJumboAmCaseCost(e.target.value)} prefix="$" placeholder="Optional" type="number" mono />
           <FormInput
             label="Release Date"
             hint="(used for pre-release banner)"

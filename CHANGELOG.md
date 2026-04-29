@@ -5,6 +5,28 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-29 — Break Analysis v2: multi-format, multi-team, multi-player + 1/1 filter
+
+After a working session with Kyle (transcript captured in `docs/plans/2026-04-29-break-analysis-v2.md`), we surfaced that the consumer break analyzer didn't match how breaks are actually sold. Real breaks mix formats (hobby + BD + jumbo), often span multiple teams, and frequently include standalone player slots. Phase 1 of the rethink lands here.
+
+Five coupled changes:
+
+1. **Schema migration `20260429120000_jumbo_format.sql`** — adds `products.jumbo_case_cost`, `products.jumbo_am_case_cost`, `products.jumbo_autos_per_case`, `player_product_variants.jumbo_sets`, `player_product_variants.jumbo_odds`. Backfill is a no-op; products without jumbo leave the columns null and the format is hidden in the UI.
+
+2. **Engine + analysis multi-format support** — `BreakConfig` extends to `{ hobbyCases, bdCases, jumboCases, hobbyCaseCost, bdCaseCost, jumboCaseCost }`. `computeSlotPricing` adds a third pool parallel to hobby (jumbo uses the same `effectiveScore` multiplier; BD keeps raw `evMid` weighting). `computeTeamSlotPricing` rolls jumbo into team totals.
+
+3. **`runBreakAnalysis` now takes a bundle** — new signature: `{ productId, teams: string[], extraPlayerProductIds?: string[], formats: { hobby, bd, jumbo }, caseCosts?, askPrice }`. Returns one bundle fair value, one signal, top players unioned across selected teams + standalone player slots. Claude prompt expanded to explain mixed-format / multi-slot bundles. Unknown teams surface as a single combined error instead of failing on first.
+
+4. **Consumer + admin UX** — `/(consumer)/analysis` rebuilt: multi-select team chips, searchable player picker for standalone slots, three format counters (hobby/BD/jumbo, hidden when product lacks that format's case cost), single bundle price input. `/(consumer)/break/[slug]` replaces hobby/BD segmented control with three format counters; segmented control retained as a "View Format" toggle for the slot tables. `TeamSlotsTable` + `PlayerTable` accept `viewFormat: BreakFormat`. Admin product editor and dashboard display add jumbo MSRP/AM fields.
+
+5. **1-of-1 sales no longer pollute slot pricing** — `lib/pricing-refresh.ts` and `lib/analysis.ts` filter out variants with `print_run <= 1` from per-player aggregation. Variant-level EV for actual 1/1 cards is preserved (still rendered in the player drawer), but a single $2,200 SuperFractor sale no longer pulls Austin Reaves' slot to $4,400 by skewing the sets-weighted average.
+
+API breaking change: `POST /api/analysis` rejects the legacy single-team payload (`{ team, breakType, numCases }`) with a 400. The internal `/api/my-breaks` caller was updated to map its single-team / single-format inputs into the new shape; external clients (none today) would need to update.
+
+What this doesn't touch yet (Phase 2/3 in the plan): asking-price observation capture, hype tags, mid-tier (orange/gold) weighted anchor, release-window premium decay, dedicated mobile insight-capture surface. See `docs/plans/2026-04-29-break-analysis-v2.md` for the full roadmap.
+
+---
+
 ## 2026-04-27 — Checklist becomes authoritative for product organization
 
 Architectural shift: the checklist (parsed from manufacturer PDFs/XLSXs) is now the source of truth for "what's in this product." CardHedger is the source of truth for pricing, but no longer dictates which players or variants are slot-eligible. This was the root cause of multiple bugs surfaced today (1,569 inflated player count on Topps Chrome, the 6,341 corrupt rows, and the latent Topps S1/S2 sharing problem with the upcoming Series 2 release).
