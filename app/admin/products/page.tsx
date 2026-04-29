@@ -134,9 +134,9 @@ export default async function AdminProductsPage() {
         <Stat label="Total Players" value={totalPlayers.toLocaleString()} />
       </div>
 
-      <CronStatusPanel />
-
       <ProductsTableView products={products} sports={sports} years={years} />
+
+      <CronStatusPanel />
     </div>
   );
 }
