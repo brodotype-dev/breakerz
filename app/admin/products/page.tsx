@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { supabaseAdmin } from '@/lib/supabase';
 import { Plus } from 'lucide-react';
 import ProductsTableView, { type ProductRow } from './ProductsTableView';
+import CronStatusPanel from '@/components/admin/CronStatusPanel';
 
 export const dynamic = 'force-dynamic';
 
@@ -132,6 +133,8 @@ export default async function AdminProductsPage() {
         <Divider />
         <Stat label="Total Players" value={totalPlayers.toLocaleString()} />
       </div>
+
+      <CronStatusPanel />
 
       <ProductsTableView products={products} sports={sports} years={years} />
     </div>

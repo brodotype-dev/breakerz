@@ -3,6 +3,7 @@ import {
   listActiveProductsWithCHSet,
   refreshSetCatalog,
 } from '@/lib/cardhedger-catalog';
+import { recordCronRun } from '@/lib/cron-log';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // 5 minutes — large sets can take a minute each
@@ -27,6 +28,12 @@ export async function GET(req: Request) {
   try {
     const products = await listActiveProductsWithCHSet();
     if (!products.length) {
+      await recordCronRun({
+        cronPath: '/api/cron/refresh-ch-catalogs',
+        startedAt: started,
+        processed: 0, ok: 0, errors: 0, skipped: 0,
+        details: { message: 'no products with ch_set_name' },
+      });
       return NextResponse.json({ refreshed: 0, total: 0, durationMs: Date.now() - started });
     }
 
@@ -60,6 +67,16 @@ export async function GET(req: Request) {
       }
     }
 
+    await recordCronRun({
+      cronPath: '/api/cron/refresh-ch-catalogs',
+      startedAt: started,
+      processed: uniqueSets.size,
+      ok: refreshed,
+      errors: errors.length,
+      skipped: 0,
+      details: { errors: errors.slice(0, 10) },
+    });
+
     return NextResponse.json({
       refreshed,
       total: uniqueSets.size,
@@ -68,6 +85,12 @@ export async function GET(req: Request) {
     });
   } catch (err) {
     console.error('[cron/refresh-ch-catalogs] fatal', err);
+    await recordCronRun({
+      cronPath: '/api/cron/refresh-ch-catalogs',
+      startedAt: started,
+      processed: 0, ok: 0, errors: 1, skipped: 0,
+      details: { fatal: err instanceof Error ? err.message : String(err) },
+    });
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Unknown error' },
       { status: 500 },

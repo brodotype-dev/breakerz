@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { recordCronRun } from '@/lib/cron-log';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -39,6 +40,12 @@ export async function GET(req: Request) {
 
     if (error) throw error;
     if (!products?.length) {
+      await recordCronRun({
+        cronPath: '/api/cron/refresh-dormant-pricing',
+        startedAt: started,
+        processed: 0, ok: 0, errors: 0, skipped: 0,
+        details: { message: 'no dormant products' },
+      });
       return NextResponse.json({
         refreshed: 0,
         durationMs: Date.now() - started,
@@ -107,6 +114,16 @@ export async function GET(req: Request) {
       `[cron/refresh-dormant-pricing] processed=${results.length} ok=${okCount} err=${errCount} durationMs=${durationMs}`,
     );
 
+    await recordCronRun({
+      cronPath: '/api/cron/refresh-dormant-pricing',
+      startedAt: started,
+      processed: results.length,
+      ok: okCount,
+      errors: errCount,
+      skipped: 0,
+      details: { failures: results.filter(r => !r.ok).slice(0, 10) },
+    });
+
     return NextResponse.json({
       total: products.length,
       ok: okCount,
@@ -116,6 +133,12 @@ export async function GET(req: Request) {
     });
   } catch (err) {
     console.error('[cron/refresh-dormant-pricing]', err);
+    await recordCronRun({
+      cronPath: '/api/cron/refresh-dormant-pricing',
+      startedAt: started,
+      processed: 0, ok: 0, errors: 1, skipped: 0,
+      details: { fatal: err instanceof Error ? err.message : String(err) },
+    });
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Unknown error' },
       { status: 500 },

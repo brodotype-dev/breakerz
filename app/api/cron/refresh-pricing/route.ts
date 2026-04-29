@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { recordCronRun } from '@/lib/cron-log';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -93,6 +94,15 @@ export async function GET(req: Request) {
       });
 
     if (queue.length === 0) {
+      await recordCronRun({
+        cronPath: '/api/cron/refresh-pricing',
+        startedAt: started,
+        processed: 0,
+        ok: 0,
+        errors: 0,
+        skipped: 0,
+        details: { total: products.length, message: 'all products fresh' },
+      });
       return NextResponse.json({
         total: products.length,
         stale: 0,
@@ -197,6 +207,21 @@ export async function GET(req: Request) {
       `[cron/refresh-pricing] processed=${results.length} ok=${okCount} err=${errCount} skipped=${skipped.length} durationMs=${durationMs}`,
     );
 
+    await recordCronRun({
+      cronPath: '/api/cron/refresh-pricing',
+      startedAt: started,
+      processed: results.length,
+      ok: okCount,
+      errors: errCount,
+      skipped: skipped.length,
+      details: {
+        total: products.length,
+        stale: queue.length,
+        skippedProducts: skipped.map(s => s.name),
+        failures: results.filter(r => !r.ok).slice(0, 10),
+      },
+    });
+
     return NextResponse.json({
       total: products.length,
       stale: queue.length,
@@ -210,6 +235,15 @@ export async function GET(req: Request) {
     });
   } catch (err) {
     console.error('[cron/refresh-pricing]', err);
+    await recordCronRun({
+      cronPath: '/api/cron/refresh-pricing',
+      startedAt: started,
+      processed: 0,
+      ok: 0,
+      errors: 1,
+      skipped: 0,
+      details: { fatal: err instanceof Error ? err.message : String(err) },
+    });
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Unknown error' },
       { status: 500 },

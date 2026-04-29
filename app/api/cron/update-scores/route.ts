@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getTopMovers } from '@/lib/cardhedger';
+import { recordCronRun } from '@/lib/cron-log';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -19,6 +20,8 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const started = Date.now();
+
   try {
     // ── 1. Fetch top movers ────────────────────────────────────────────────────
     const { cards: movers } = await getTopMovers(100);
@@ -36,6 +39,12 @@ export async function GET(req: Request) {
     }
 
     if (moverMap.size === 0) {
+      await recordCronRun({
+        cronPath: '/api/cron/update-scores',
+        startedAt: started,
+        processed: 0, ok: 0, errors: 0, skipped: 0,
+        details: { note: 'No movers passed volume floor' },
+      });
       return NextResponse.json({ updated: 0, reset: 0, note: 'No movers passed volume floor' });
     }
 
@@ -104,6 +113,16 @@ export async function GET(req: Request) {
 
     console.log(`[cron/update-scores] updated=${updatedCount} movers=${moversFound} reset=${reset}`);
 
+    await recordCronRun({
+      cronPath: '/api/cron/update-scores',
+      startedAt: started,
+      processed: updatedCount,
+      ok: updatedCount,
+      errors: 0,
+      skipped: 0,
+      details: { moversMatched: moversFound, reset, totalChMovers: movers.length },
+    });
+
     return NextResponse.json({
       updated: updatedCount,
       movers_matched: moversFound,
@@ -113,6 +132,12 @@ export async function GET(req: Request) {
     });
   } catch (err) {
     console.error('[cron/update-scores]', err);
+    await recordCronRun({
+      cronPath: '/api/cron/update-scores',
+      startedAt: started,
+      processed: 0, ok: 0, errors: 1, skipped: 0,
+      details: { fatal: err instanceof Error ? err.message : String(err) },
+    });
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Unknown error' },
       { status: 500 }
