@@ -114,20 +114,25 @@ export async function GET(req: Request) {
 
     // Vercel cron invokes us at the deployment URL (*.vercel.app), which is
     // behind Vercel Deployment Protection (SSO). Fan-out POSTs to that host
-    // hit the SSO wall before reaching the app and fail 16/16 — the silent
-    // failure pattern that hid this for weeks. Always fan out to the
-    // production alias (NEXT_PUBLIC_APP_URL) which has no SSO. We still fall
-    // back to req.url for local dev / preview deployments.
-    //
-    // NEXT_PUBLIC_APP_URL must be the canonical www host (e.g.
-    // https://www.getbreakiq.com). If you set it to the apex, the apex→www
-    // 301 downgrades POST to GET.
+    // hit the SSO wall before reaching the app and fail 16/16 silently.
+    // Resolve to the production alias (NEXT_PUBLIC_APP_URL), forcing the
+    // www-prefixed host: an apex POST 307s to www and Vercel's edge strips
+    // the Authorization header on that host change, so the fan-out arrives
+    // unauthenticated and middleware redirects it to /admin/login (405).
     const reqUrl = new URL(req.url);
-    const productionAlias = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '');
     const isDeploymentHost = /\.vercel\.app$/i.test(reqUrl.host);
-    const baseUrl = isDeploymentHost && productionAlias
-      ? productionAlias
-      : `${reqUrl.protocol}//${reqUrl.host}`;
+    let baseUrl: string;
+    if (isDeploymentHost && process.env.NEXT_PUBLIC_APP_URL) {
+      const aliasUrl = new URL(process.env.NEXT_PUBLIC_APP_URL);
+      // Normalize bare apex (getbreakiq.com) to www to skip the redirect that
+      // would otherwise drop our bearer header.
+      if (aliasUrl.hostname.split('.').length === 2) {
+        aliasUrl.hostname = `www.${aliasUrl.hostname}`;
+      }
+      baseUrl = `${aliasUrl.protocol}//${aliasUrl.host}`;
+    } else {
+      baseUrl = `${reqUrl.protocol}//${reqUrl.host}`;
+    }
     const endpoint = `${baseUrl}/api/admin/refresh-product-pricing`;
     console.log(`[cron/refresh-pricing] reqHost=${reqUrl.host} fanOutHost=${new URL(endpoint).host}`);
 
@@ -143,7 +148,21 @@ export async function GET(req: Request) {
           },
           body: JSON.stringify({ productId: product.id }),
           signal: ac.signal,
+          // Don't auto-follow: a redirect means our bearer was dropped or
+          // we're talking to the wrong host. Surface it as an explicit
+          // failure with the redirect target so we can diagnose instead of
+          // ending up at /admin/login with a confusing 405.
+          redirect: 'manual',
         });
+        if (res.status >= 300 && res.status < 400) {
+          return {
+            productId: product.id,
+            productName: product.name,
+            ok: false,
+            status: res.status,
+            error: `redirected to ${res.headers.get('location') ?? 'unknown'}`,
+          };
+        }
         if (!res.ok) {
           const text = await res.text().catch(() => res.statusText);
           return {
@@ -217,6 +236,7 @@ export async function GET(req: Request) {
       details: {
         total: products.length,
         stale: queue.length,
+        fanOutHost: new URL(endpoint).host,
         skippedProducts: skipped.map(s => s.name),
         failures: results.filter(r => !r.ok).slice(0, 10),
       },

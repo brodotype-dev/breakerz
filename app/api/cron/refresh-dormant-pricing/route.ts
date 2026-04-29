@@ -53,14 +53,21 @@ export async function GET(req: Request) {
       });
     }
 
-    // Same Vercel-Deployment-Protection workaround as refresh-pricing — fan
-    // out to NEXT_PUBLIC_APP_URL when running on a *.vercel.app host.
+    // Same Vercel-Deployment-Protection workaround as refresh-pricing —
+    // fan out to NEXT_PUBLIC_APP_URL with the host normalized to www so
+    // the apex→www redirect doesn't drop our bearer header.
     const reqUrl = new URL(req.url);
-    const productionAlias = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '');
     const isDeploymentHost = /\.vercel\.app$/i.test(reqUrl.host);
-    const baseUrl = isDeploymentHost && productionAlias
-      ? productionAlias
-      : `${reqUrl.protocol}//${reqUrl.host}`;
+    let baseUrl: string;
+    if (isDeploymentHost && process.env.NEXT_PUBLIC_APP_URL) {
+      const aliasUrl = new URL(process.env.NEXT_PUBLIC_APP_URL);
+      if (aliasUrl.hostname.split('.').length === 2) {
+        aliasUrl.hostname = `www.${aliasUrl.hostname}`;
+      }
+      baseUrl = `${aliasUrl.protocol}//${aliasUrl.host}`;
+    } else {
+      baseUrl = `${reqUrl.protocol}//${reqUrl.host}`;
+    }
     const endpoint = `${baseUrl}/api/admin/refresh-product-pricing`;
 
     const dispatchOne = async (product: { id: string; name: string }) => {
@@ -75,7 +82,17 @@ export async function GET(req: Request) {
           },
           body: JSON.stringify({ productId: product.id }),
           signal: ac.signal,
+          redirect: 'manual',
         });
+        if (res.status >= 300 && res.status < 400) {
+          return {
+            productId: product.id,
+            productName: product.name,
+            ok: false,
+            status: res.status,
+            error: `redirected to ${res.headers.get('location') ?? 'unknown'}`,
+          };
+        }
         if (!res.ok) {
           const text = await res.text().catch(() => res.statusText);
           return {
