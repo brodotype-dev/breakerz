@@ -20,11 +20,16 @@ async function getAuthUserId(): Promise<string | null> {
   const { data: { user } } = await supabase.auth.getUser();
   if (user) return user.id;
   if (isDev) {
-    // Dev mode: use first available profile so you can test without signing in
     const { data } = await supabaseAdmin.from('profiles').select('id').limit(1).single();
     return data?.id ?? null;
   }
   return null;
+}
+
+function clampInt(n: unknown, min: number, max: number, fallback: number): number {
+  const parsed = typeof n === 'number' ? n : parseInt(String(n ?? ''), 10);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(min, Math.min(max, Math.floor(parsed)));
 }
 
 // GET — list the authenticated user's breaks
@@ -43,7 +48,9 @@ export async function GET() {
   return NextResponse.json({ breaks: breaks ?? [] });
 }
 
-// POST — create a new break
+// POST — create a new break (multi-team / multi-player / mixed-format).
+// Body: { mode: 'new' | 'log', productId, teams: string[], extraPlayerProductIds?: string[],
+//         formats: { hobby, bd, jumbo }, askPrice, platform, platformOther?, outcome?, outcomeNotes? }
 export async function POST(req: NextRequest) {
   const userId = await getAuthUserId();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -51,20 +58,28 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const {
-      mode,          // 'new' (pre-break) or 'log' (post-break)
+      mode,
       productId,
-      team,
-      breakType = 'hobby',
-      numCases = 1,
+      teams,
+      extraPlayerProductIds,
+      formats,
       askPrice,
       platform,
       platformOther,
-      outcome,       // only for mode='log'
-      outcomeNotes,  // only for mode='log'
+      outcome,
+      outcomeNotes,
     } = body;
 
-    if (!productId || !team || askPrice == null || !platform) {
-      return NextResponse.json({ error: 'productId, team, askPrice, and platform required' }, { status: 400 });
+    const teamList = Array.isArray(teams) ? teams.filter((t): t is string => typeof t === 'string') : [];
+    const extraIds = Array.isArray(extraPlayerProductIds)
+      ? extraPlayerProductIds.filter((t): t is string => typeof t === 'string')
+      : [];
+
+    if (!productId || (!teamList.length && !extraIds.length) || askPrice == null || !platform) {
+      return NextResponse.json(
+        { error: 'productId, at least one team or player slot, askPrice, and platform required' },
+        { status: 400 },
+      );
     }
     if (!VALID_PLATFORMS.includes(platform)) {
       return NextResponse.json({ error: 'Invalid platform' }, { status: 400 });
@@ -73,29 +88,32 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'outcome required for log mode' }, { status: 400 });
     }
 
-    // Usage gate — both 'new' and 'log' modes run analysis
-    const authUserId = userId; // from getAuthUserId()
-    if (authUserId && process.env.NODE_ENV !== 'development') {
-      const usage = await checkAndIncrementUsage(authUserId);
+    const cases = {
+      hobby: clampInt(formats?.hobby, 0, 50, 0),
+      bd:    clampInt(formats?.bd,    0, 50, 0),
+      jumbo: clampInt(formats?.jumbo, 0, 50, 0),
+    };
+    if (cases.hobby + cases.bd + cases.jumbo === 0) {
+      return NextResponse.json({ error: 'Pick at least one case for any format.' }, { status: 400 });
+    }
+
+    if (process.env.NODE_ENV !== 'development') {
+      const usage = await checkAndIncrementUsage(userId);
       if (!usage.allowed) {
-        return NextResponse.json({ error: 'Usage limit reached', upgrade: true, plan: usage.plan }, { status: 403 });
+        return NextResponse.json(
+          { error: 'Usage limit reached', upgrade: true, plan: usage.plan },
+          { status: 403 },
+        );
       }
     }
 
-    // My Breaks today is single-team / single-format — the multi-* analyzer
-    // accepts that as a degenerate case. Map breakType/numCases into the
-    // formats shape so we keep the same per-break snapshot semantics.
-    const cases = Math.max(1, Math.min(50, parseInt(numCases) || 1));
-    const formats = {
-      hobby: breakType === 'hobby' ? cases : 0,
-      bd:    breakType === 'bd'    ? cases : 0,
-      jumbo: breakType === 'jumbo' ? cases : 0,
-    };
+    const askNum = parseFloat(askPrice);
     const analysis = await runBreakAnalysis({
       productId,
-      teams: [team],
-      formats,
-      askPrice: parseFloat(askPrice),
+      teams: teamList,
+      extraPlayerProductIds: extraIds,
+      formats: cases,
+      askPrice: askNum,
     });
 
     const isLog = mode === 'log';
@@ -105,10 +123,10 @@ export async function POST(req: NextRequest) {
       .insert({
         user_id: userId,
         product_id: productId,
-        team,
-        break_type: breakType,
-        num_cases: Math.max(1, Math.min(50, parseInt(numCases) || 1)),
-        ask_price: parseFloat(askPrice),
+        teams: teamList,
+        extra_player_product_ids: extraIds,
+        formats: cases,
+        ask_price: askNum,
         platform,
         platform_other: platform === 'other' ? platformOther ?? null : null,
         snapshot_signal: analysis.signal,
@@ -135,10 +153,10 @@ export async function POST(req: NextRequest) {
       properties: {
         mode,
         product_id: productId,
-        team,
-        break_type: breakType,
-        num_cases: Math.max(1, Math.min(50, parseInt(numCases) || 1)),
-        ask_price: parseFloat(askPrice),
+        teams: teamList,
+        extra_player_count: extraIds.length,
+        formats: cases,
+        ask_price: askNum,
         platform,
         signal: analysis.signal,
         value_pct: analysis.valuePct,

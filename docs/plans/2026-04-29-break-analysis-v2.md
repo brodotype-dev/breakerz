@@ -9,7 +9,7 @@ Separately, Kyle has a constant stream of market intelligence in his head (eBay 
 Decisions confirmed with the user:
 - **Phase 1 wedge:** Break composition v2 (mixed formats including jumbo, multi-team, multi-player).
 - **Format scope:** Mixed formats *and* jumbo as a third format — single product per break for v1.
-- **Insight capture:** Phased. Extend the existing global BreakIQ Bets first; dedicated mobile surface comes later.
+- **Insight capture (revised 2026-04-29):** Discord-driven instead of dedicated mobile surface. A `#breakiq-insights` channel becomes the input surface; a bot pipes messages through the parser and uses ✅/❌ reactions for confirm/discard.
 - **Asking-price tracking:** Capture observed prices *and* show the range to consumers ("Streams asking $12k–$15k, our model says $9k").
 
 ## Synthesis of the Kyle session
@@ -120,79 +120,95 @@ Mid-tier (orange/gold) anchor: parked. Kyle was directionally right but data spa
 
 ---
 
-## Phase 2: Insight Capture v2 (extends global BreakIQ Bets)
+## Phase 2: Discord-driven insight capture (replaces both BreakIQ-Bets-extension and dedicated-mobile plans)
 
-### What the parser learns to extract
+### Why Discord, not a custom surface
 
-Today the global BreakIQ Bets parser (`/api/admin/parse-bets-global`) only emits `{ player_id, suggested_score, reason_note, confidence }`. Extend the prompt + output schema to ALSO emit:
+Earlier drafts of this plan tried to extend the BreakIQ Bets debrief or build a dedicated mobile capture route. Both miss the point: Kyle (and any contributor we add later) already lives on his phone with chat apps open all day. Building a custom mobile surface for "type or voice-note your read" is reinventing what Discord already gets right — voice-to-text input, mobile UX, multi-user, search, edit, archive — for free.
 
-1. **Asking-price observations** — `{ scope: 'team' | 'player' | 'variant', scope_id, format: 'hobby'|'bd'|'jumbo', observed_price_low, observed_price_high, source_note, confidence }`. e.g. "Cooper Flagg PYP is going for 12 to 15k on most streams this week."
-2. **Hype tags** — `{ scope_type, scope_id, tag: 'release_premium' | 'cooled' | 'overhyped' | 'underhyped', strength: 0–1, decay_days }`. e.g. "Bowman Concan crystallized was hot at $8k release week, now $7k and not bidding" → `cooled`, decay 14d.
-3. **Risk flags** — already a table; surface it from the same capture flow ("Wemby is injured, downgrade") instead of requiring a separate admin route.
+A dedicated `#breakiq-insights` Discord channel where contributors post observations becomes the input surface. A bot listens, pipes each message through the existing parser, and replies with proposed updates. ✅/❌ reactions confirm or discard.
 
-The review screen gets new sections matching each output type, defaulting to confidence ≥ 0.5 = included, with edit/exclude controls per row.
+### Flow
+
+1. Trusted contributor posts a message in `#breakiq-insights`. Voice memos are auto-transcribed by Discord (or we transcribe via Whisper if Discord's accuracy is poor).
+2. Bot receives the message via Discord webhook / gateway event, fires `POST /api/admin/parse-bets-discord` with the text.
+3. The endpoint runs the existing global BreakIQ Bets parser logic (extended for asking-price + hype-tag outputs, see "What the parser extracts" below) and stores a *pending* row per proposed update.
+4. Bot replies in-channel with the proposed updates as a numbered list, plus ✅ / ❌ reactions on the bot's own reply.
+5. ✅ from a trusted user → endpoint commits the pending updates to the underlying tables (`player_products.breakerz_score`, `market_observations`, `player_risk_flags`). ❌ → discards.
+6. Bot edits its reply to show "Applied 3 of 4 updates" or "Discarded".
+
+### What the parser extracts
+
+Same three outputs as the original Phase 2 plan, just sourced from Discord messages:
+
+1. **Player sentiment** — `{ player_id, suggested_score (-0.5..0.5), reason_note, confidence }` — writes to `player_products.breakerz_score`.
+2. **Asking-price observations** — `{ scope: 'team' | 'player' | 'variant', scope_id, format, observed_price_low, observed_price_high, source_note, confidence }` — writes to new `market_observations`.
+3. **Hype tags** — `{ scope_type, scope_id, tag: 'release_premium' | 'cooled' | 'overhyped' | 'underhyped', strength, decay_days }` — also `market_observations`.
+4. **Risk flags** — `{ player_id, flag_type, note }` — writes to existing `player_risk_flags`.
 
 ### Storage
 
-New table `market_observations`:
+New tables:
+
+**`pending_insights`** — staging for parser output before ✅ confirmation. Keys to the originating Discord message so reactions resolve to the right row.
 ```
 id uuid pk
-observation_type text  -- 'asking_price' | 'hype_tag'
-scope_type text        -- 'product' | 'team' | 'player' | 'variant'
-scope_id uuid
-product_id uuid (fk)   -- always set so we can filter per product
-payload jsonb          -- type-specific shape
-source_user_id uuid (fk profiles)
-source_narrative text  -- the raw quote that produced this observation
-confidence numeric
-observed_at timestamptz default now()
-expires_at timestamptz -- default now() + 14 days; hype tags can override via decay_days
-superseded_at timestamptz
+discord_message_id text         -- the bot's reply that has the reactions
+discord_channel_id text
+source_user_id text             -- Discord user who posted the original message
+source_text text                -- the raw narrative from the contributor
+parsed_updates jsonb            -- array of proposed updates (typed payload)
+status text                     -- 'pending' | 'applied' | 'discarded' | 'expired'
+created_at timestamptz default now()
+resolved_at timestamptz
+expires_at timestamptz default now() + interval '24 hours'
 ```
 
-Risk flags continue to live in `player_risk_flags` — the parser writes to that existing table when it detects a flag.
+**`market_observations`** — same shape as the prior Phase 2 design (asking-price + hype-tag, with `expires_at` for natural staleness).
+
+**`discord_contributors`** — minimal allowlist of Discord user IDs who can post + ✅ confirm.
+```
+discord_user_id text pk
+display_name text
+role text                       -- 'admin' | 'contributor'
+profile_id uuid (fk profiles)   -- optional link to a BreakIQ user
+created_at timestamptz
+```
 
 ### Consumer surface
 
-On `/break/[slug]`:
-- Per team slot row, when `market_observations` of type `asking_price` exist within `expires_at` for that team or its top players, show a small "Streams asking $12k–$15k" chip next to fair value. On click → opens a popover with the source notes and observation count.
-- Per player row, show hype-tag chips next to existing badges (★ ↑↓ ⚡ ⚑) — `🔥 hot @ release` for `release_premium`, `🥶 cooled` for `cooled`. Tooltip shows the source note.
-- Asking-price observations are **display-only** for v1 — they don't yet feed back into the model's weighting. We accumulate the data and revisit weighting once we have volume.
+Same as the original Phase 2 plan: `/break/[slug]` shows asking-price chips next to team slots and hype-tag chips next to player names, with tooltips for source notes. Display-only for v1 — observations don't yet feed back into model weighting.
 
-### Auth + scope expansion
+### Bot infrastructure
 
-Today BreakIQ Bets is admin-only. Add a `contributor` role to `user_roles` (it doesn't exist yet — only `admin` does per CLAUDE.md). Contributors can create observations but not approve/feature them. Admins (Kyle, Brody) keep full access. Wire `requireRole('admin' | 'contributor')` on the parse + save endpoints.
+- **Discord application + bot token** — created once, scoped to the BreakIQ server.
+- **Slash commands** for nice UX even without typing in the channel: `/breakiq read <narrative>`, `/breakiq history`, `/breakiq retract <id>`. Optional in v1 — channel listening covers the main flow.
+- **Bot host**: a Vercel function on the same project handles incoming events. Discord requires a public webhook URL with sub-3s response; ack the webhook in 200ms then process async via `waitUntil()`.
+- **Verification**: Discord signs every webhook payload with `X-Signature-Ed25519`. We verify against the public key before processing — same security model as Stripe webhooks.
 
-### Critical files (Phase 2)
+### Critical files
 
-- `supabase/migrations/<new>_market_observations.sql` — new table + RLS policies (admins read/write all; contributors write only their own; consumers read non-expired)
-- `app/api/admin/parse-bets-global/route.ts` — extend Claude prompt + output schema
-- `app/admin/breakiq-betz/page.tsx` + `GlobalBreakIQBetsDebrief.tsx` — review UI for the three output types
-- `app/admin/breakiq-betz/actions.ts` — `saveMarketObservations()` server action
-- `lib/auth.ts` — add `contributor` to role checks
-- `app/(consumer)/break/[slug]/page.tsx` — fetch + render asking-price chip + hype tags
-- `components/breakiq/TeamSlotsTable.tsx`, `PlayerTable.tsx` — chip slots
-- `lib/types.ts` — `MarketObservation`, observation payload union types
+- `supabase/migrations/<new>_pending_insights_and_market_obs.sql` — `pending_insights`, `market_observations`, `discord_contributors`
+- `app/api/discord/interactions/route.ts` — webhook receiver (signature verify + ack within 3s + dispatch)
+- `app/api/discord/parse-and-stage/route.ts` — async handler: runs Claude parser, stages updates, posts the reply with reactions
+- `app/api/discord/reaction/route.ts` — handles ✅/❌ reactions, applies or discards `pending_insights` row
+- `lib/discord.ts` — REST helpers (post message, add reaction, edit message), signature verification
+- `lib/insights-parser.ts` — extracted Claude parser shared between Discord handler and any future channels (Slack later, etc.)
+- `app/(consumer)/break/[slug]/page.tsx` — render asking-price chip + hype-tag chips
+- `lib/types.ts` — `PendingInsight`, `MarketObservation`, parser output union
 
-### Verification (Phase 2)
+### Verification
 
-- Paste a multi-topic narrative ("Flagg PYP is 12–15k on streams. Bowman Concan crystallized cooled off, was 8k at release now 7k. Wemby injured.") → review screen shows three sections (asking-price, hype tag, risk flag) with the right scopes.
-- Save → records appear in `market_observations` and `player_risk_flags`.
-- Open the relevant `/break/[slug]` → asking-price chip renders, hype tag shows on the right player row, risk flag shows in the existing flag UI.
-- Stale observation (manually set `expires_at` to past) does not render.
-- Contributor role can save; consumer role gets 403.
+- Post in `#breakiq-insights`: "Flagg PYP is 12–15k on streams. Wemby injured." → bot replies within ~3s with two proposed updates and ✅/❌ reactions.
+- Click ✅ on the bot's reply (as an allowlisted user) → bot edits reply to "Applied 2 of 2 updates"; rows appear in `market_observations` + `player_risk_flags`.
+- Click ❌ → bot edits to "Discarded"; nothing committed.
+- Post as a non-allowlisted user → bot does not respond.
+- Webhook with bad signature → returns 401.
+- Pending row left for >24h auto-expires; the cron status panel surfaces stale pending counts.
 
----
+### Why no Phase 3 anymore
 
-## Phase 3: Dedicated mobile capture surface (deferred, after Phase 2 has run for a few weeks)
-
-Once we know which observation types Kyle uses most often and which take the most clicks today, build `/m/insights` (or PWA-installable equivalent) optimized for one-handed phone use:
-- Voice-to-text first input, single tap to start.
-- Quick category chips (asking price, hype, risk, sentiment) so Kyle can narrow Claude's parsing scope.
-- Save-as-you-go (don't require parse → review → save for every observation).
-- "Last 24h" feed of his observations so he can edit/retract.
-
-Out of scope for the immediate plan — flagged so we don't build it speculatively before Phase 2 reveals the right ergonomics.
+The dedicated mobile capture surface from the prior plan is obsolete. Discord on phone is the mobile capture surface. If voice-memo transcription accuracy on Discord's side ever turns out to be a problem, we add a Whisper transcription step in `parse-and-stage` — small change, no new UI.
 
 ---
 

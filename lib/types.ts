@@ -169,9 +169,12 @@ export interface UserBreak {
   id: string;
   user_id: string;
   product_id: string;
-  team: string;
-  break_type: 'hobby' | 'bd';
-  num_cases: number;
+  // Multi-team / multi-player / mixed-format shape (v2). Old single-team
+  // columns (team, break_type, num_cases) still exist as nullable for
+  // legacy rows but the app reads/writes only the new shape.
+  teams: string[];
+  extra_player_product_ids: string[];
+  formats: { hobby: number; bd: number; jumbo: number };
   ask_price: number;
   platform: Platform;
   platform_other: string | null;
@@ -179,7 +182,7 @@ export interface UserBreak {
   snapshot_value_pct: number | null;
   snapshot_fair_value: number | null;
   snapshot_analysis: string | null;
-  snapshot_top_players: Array<{ name: string; isRookie: boolean; isIcon: boolean; evMid: number; evHigh: number }> | null;
+  snapshot_top_players: Array<{ name: string; team?: string; isRookie: boolean; isIcon: boolean; evMid: number; evHigh: number }> | null;
   snapshot_risk_flags: Array<{ playerName: string; flagType: string; note: string }> | null;
   snapshot_hv_players: string[] | null;
   outcome: BreakOutcome | null;

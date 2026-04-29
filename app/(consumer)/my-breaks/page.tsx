@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
-import { ClipboardList, Plus, Clock, ArrowLeft, Sparkles, Trophy, Meh, ThumbsDown, ChevronDown, Download, Upload } from 'lucide-react';
+import { ClipboardList, Plus, Clock, ArrowLeft, Sparkles, Trophy, Meh, ThumbsDown, ChevronDown, Download, Upload, X, Search } from 'lucide-react';
 import { formatCurrency } from '@/lib/engine';
-import type { Signal, Platform, BreakOutcome, BreakStatus } from '@/lib/types';
+import type { Signal, Platform, BreakOutcome, BreakStatus, BreakFormat } from '@/lib/types';
+import TeamChip from '@/components/breakiq/TeamChip';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -19,14 +20,28 @@ interface Product {
   sport: { name: string };
   hobby_case_cost: number | null;
   bd_case_cost: number | null;
+  jumbo_case_cost: number | null;
+  hobby_am_case_cost: number | null;
+  bd_am_case_cost: number | null;
+  jumbo_am_case_cost: number | null;
+}
+
+interface PlayerOption {
+  id: string;
+  name: string;
+  team: string;
+  is_rookie: boolean;
 }
 
 interface BreakRecord {
   id: string;
   product_id: string;
-  team: string;
-  break_type: 'hobby' | 'bd';
-  num_cases: number;
+  // v2 multi-* shape — these are the fields the page reads. Old single-team
+  // columns still exist on the DB row but are nullable; legacy rows have
+  // been backfilled to single-element teams arrays.
+  teams: string[];
+  extra_player_product_ids: string[];
+  formats: { hobby: number; bd: number; jumbo: number };
   ask_price: number;
   platform: Platform;
   platform_other: string | null;
@@ -34,12 +49,33 @@ interface BreakRecord {
   snapshot_value_pct: number | null;
   snapshot_fair_value: number | null;
   snapshot_analysis: string | null;
+  snapshot_top_players: Array<{ name: string; team?: string; isRookie: boolean; isIcon: boolean; evMid: number; evHigh: number }> | null;
   outcome: BreakOutcome | null;
   outcome_notes: string | null;
   status: BreakStatus;
   created_at: string;
   completed_at: string | null;
   product?: { id: string; name: string; year: string; slug: string; sport: { name: string } };
+}
+
+const FORMAT_DEFS: Array<{ key: BreakFormat; label: string }> = [
+  { key: 'hobby', label: 'Hobby' },
+  { key: 'jumbo', label: 'Jumbo' },
+  { key: 'bd',    label: 'BD' },
+];
+
+function effectiveCaseCost(p: Product, fmt: BreakFormat): number | null {
+  if (fmt === 'hobby') return p.hobby_am_case_cost ?? p.hobby_case_cost ?? null;
+  if (fmt === 'bd')    return p.bd_am_case_cost ?? p.bd_case_cost ?? null;
+  return p.jumbo_am_case_cost ?? p.jumbo_case_cost ?? null;
+}
+
+function summarizeFormatMix(formats: { hobby: number; bd: number; jumbo: number }): string {
+  const parts: string[] = [];
+  if (formats.hobby > 0) parts.push(`${formats.hobby} Hobby`);
+  if (formats.jumbo > 0) parts.push(`${formats.jumbo} Jumbo`);
+  if (formats.bd    > 0) parts.push(`${formats.bd} BD`);
+  return parts.join(' + ') || '0 cases';
 }
 
 type View = 'list' | 'new' | 'log';
@@ -95,13 +131,18 @@ function computeStats(breaks: BreakRecord[]) {
 }
 
 function exportBreaksCSV(breaks: BreakRecord[]) {
-  const headers = ['Date', 'Product', 'Team', 'Break Type', 'Cases', 'Ask Price', 'Platform', 'Signal', 'Fair Value', 'Value %', 'Outcome', 'Notes', 'Status'];
+  // CSV columns mirror what My Breaks v2 supports. Teams join with `;` so
+  // commas inside team names don't collide with the field separator. Format
+  // counts are split across three columns rather than a single string for
+  // easier spreadsheet usage.
+  const headers = ['Date', 'Product', 'Teams', 'Hobby Cases', 'BD Cases', 'Jumbo Cases', 'Ask Price', 'Platform', 'Signal', 'Fair Value', 'Value %', 'Outcome', 'Notes', 'Status'];
   const rows = breaks.filter(b => b.status !== 'abandoned').map(b => [
     new Date(b.created_at).toLocaleDateString(),
     b.product?.name ?? '',
-    b.team,
-    b.break_type,
-    b.num_cases,
+    (b.teams ?? []).join(';'),
+    b.formats?.hobby ?? 0,
+    b.formats?.bd ?? 0,
+    b.formats?.jumbo ?? 0,
     b.ask_price,
     PLATFORM_LABELS[b.platform] ?? b.platform,
     b.snapshot_signal ?? '',
@@ -123,8 +164,8 @@ function exportBreaksCSV(breaks: BreakRecord[]) {
 }
 
 function downloadImportTemplate() {
-  const headers = ['Product Name', 'Year', 'Team', 'Break Type (hobby/bd)', 'Cases', 'Ask Price', 'Platform (fanatics_live/whatnot/ebay/dave_adams/layton_sports/local_card_shop/other)', 'Outcome (win/mediocre/bust)', 'Notes'];
-  const example = ['2025 Bowman Chrome', '2025', 'New York Yankees', 'hobby', '1', '125', 'whatnot', 'win', 'Pulled a nice auto'];
+  const headers = ['Product Name', 'Year', 'Teams (semicolon-separated)', 'Hobby Cases', 'BD Cases', 'Jumbo Cases', 'Ask Price', 'Platform (fanatics_live/whatnot/ebay/dave_adams/layton_sports/local_card_shop/other)', 'Outcome (win/mediocre/bust)', 'Notes'];
+  const example = ['2025 Bowman Chrome', '2025', 'New York Yankees;Boston Red Sox', '1', '0', '0', '125', 'whatnot', 'win', 'Pulled a nice auto'];
   const csv = [headers, example].map(r => r.map(c => `"${c}"`).join(',')).join('\n');
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);
@@ -465,10 +506,10 @@ function PendingBreakCard({ brk, onComplete }: { brk: BreakRecord; onComplete: (
       <div className="p-4 flex items-center justify-between cursor-pointer" onClick={() => setExpanded(!expanded)}>
         <div>
           <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-            {brk.product?.name ?? 'Unknown Product'} — {brk.team}
+            {brk.product?.name ?? 'Unknown Product'} — {(brk.teams ?? []).join(', ') || '—'}
           </p>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-            {formatCurrency(brk.ask_price)} · {platformLabel} · {new Date(brk.created_at).toLocaleDateString()}
+            {formatCurrency(brk.ask_price)} · {summarizeFormatMix(brk.formats ?? { hobby: 0, bd: 0, jumbo: 0 })} · {platformLabel} · {new Date(brk.created_at).toLocaleDateString()}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -589,10 +630,10 @@ function CompletedBreakCard({ brk }: { brk: BreakRecord }) {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-            {brk.product?.name ?? 'Unknown Product'} — {brk.team}
+            {brk.product?.name ?? 'Unknown Product'} — {(brk.teams ?? []).join(', ') || '—'}
           </p>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-            {formatCurrency(brk.ask_price)} · {platformLabel} · {new Date(brk.created_at).toLocaleDateString()}
+            {formatCurrency(brk.ask_price)} · {summarizeFormatMix(brk.formats ?? { hobby: 0, bd: 0, jumbo: 0 })} · {platformLabel} · {new Date(brk.created_at).toLocaleDateString()}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -629,10 +670,11 @@ function BreakForm({
   onCancel: () => void;
 }) {
   const [productId, setProductId] = useState('');
-  const [teams, setTeams] = useState<string[]>([]);
-  const [team, setTeam] = useState('');
-  const [breakType, setBreakType] = useState<'hobby' | 'bd'>('hobby');
-  const [numCases, setNumCases] = useState(1);
+  const [allPlayers, setAllPlayers] = useState<PlayerOption[]>([]);
+  const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
+  const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
+  const [playerSearch, setPlayerSearch] = useState('');
+  const [cases, setCases] = useState<{ hobby: number; bd: number; jumbo: number }>({ hobby: 1, bd: 0, jumbo: 0 });
   const [askPrice, setAskPrice] = useState('');
   const [platform, setPlatform] = useState<Platform | ''>('');
   const [platformOther, setPlatformOther] = useState('');
@@ -673,13 +715,23 @@ function BreakForm({
       });
       let imported = 0;
       for (const row of rows) {
-        const [productName, , team, breakType, cases, askPrice, platform, outcome, notes] = row;
-        if (!productName || !team || !askPrice) continue;
+        // Columns: Product Name, Year, Teams (semicolon-sep), Hobby Cases,
+        // BD Cases, Jumbo Cases, Ask Price, Platform, Outcome, Notes
+        const [productName, , teamsCell, hobbyCases, bdCases, jumboCases, askPrice, platform, outcome, notes] = row;
+        if (!productName || !teamsCell || !askPrice) continue;
         const matchedProduct = products.find(p =>
           p.name.toLowerCase().includes(productName.toLowerCase()) ||
           productName.toLowerCase().includes(p.name.toLowerCase())
         );
         if (!matchedProduct) continue;
+        const teams = teamsCell.split(';').map(t => t.trim()).filter(Boolean);
+        if (teams.length === 0) continue;
+        const formats = {
+          hobby: Math.max(0, parseInt(hobbyCases) || 0),
+          bd:    Math.max(0, parseInt(bdCases)    || 0),
+          jumbo: Math.max(0, parseInt(jumboCases) || 0),
+        };
+        if (formats.hobby + formats.bd + formats.jumbo === 0) continue;
         const validPlatform = PLATFORMS.find(p => p.value === platform)?.value ?? 'other';
         const validOutcome = (['win', 'mediocre', 'bust'] as const).find(o => o === outcome) ?? null;
         const res = await fetch('/api/my-breaks', {
@@ -688,9 +740,8 @@ function BreakForm({
           body: JSON.stringify({
             mode: validOutcome ? 'log' : 'new',
             productId: matchedProduct.id,
-            team,
-            breakType: breakType === 'bd' ? 'bd' : 'hobby',
-            numCases: parseInt(cases) || 1,
+            teams,
+            formats,
             askPrice: parseFloat(askPrice),
             platform: validPlatform,
             outcome: validOutcome,
@@ -710,25 +761,74 @@ function BreakForm({
   }
 
   useEffect(() => {
-    if (!productId) { setTeams([]); setTeam(''); return; }
-    setTeam('');
+    setSelectedTeams([]);
+    setSelectedPlayerIds([]);
+    setAllPlayers([]);
+    if (!productId) return;
     supabase
       .from('player_products')
-      .select('player:players(team)')
+      .select('id, player:players(name, team, is_rookie)')
       .eq('product_id', productId)
+      .eq('insert_only', false)
       .then(({ data }) => {
-        const unique = Array.from(
-          new Set((data ?? []).map((r: any) => r.player?.team).filter(Boolean))
-        ).sort() as string[];
-        setTeams(unique);
+        const rows = (data ?? [])
+          .map((r: any) => r.player ? { id: r.id, name: r.player.name, team: r.player.team, is_rookie: r.player.is_rookie } : null)
+          .filter((r): r is PlayerOption => !!r && !!r.team);
+        rows.sort((a, b) => a.name.localeCompare(b.name));
+        setAllPlayers(rows);
       });
   }, [productId]);
 
   const selectedProduct = products.find(p => p.id === productId);
-  const hasBD = selectedProduct?.bd_case_cost != null;
 
-  const canSubmit = productId && team && askPrice && platform && !submitting
+  const teams = useMemo(() => {
+    return Array.from(new Set(allPlayers.map(p => p.team))).sort();
+  }, [allPlayers]);
+
+  const availableFormats = useMemo<BreakFormat[]>(() => {
+    if (!selectedProduct) return [];
+    return FORMAT_DEFS
+      .map(f => f.key)
+      .filter(k => effectiveCaseCost(selectedProduct, k) != null);
+  }, [selectedProduct]);
+
+  // Reset format counts when product changes — first available format = 1.
+  useEffect(() => {
+    if (!availableFormats.length) {
+      setCases({ hobby: 0, bd: 0, jumbo: 0 });
+      return;
+    }
+    const fresh: { hobby: number; bd: number; jumbo: number } = { hobby: 0, bd: 0, jumbo: 0 };
+    fresh[availableFormats[0]] = 1;
+    setCases(fresh);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availableFormats.join(',')]);
+
+  const filteredPlayers = useMemo(() => {
+    const q = playerSearch.trim().toLowerCase();
+    const teamSet = new Set(selectedTeams);
+    return allPlayers
+      .filter(p => !selectedPlayerIds.includes(p.id))
+      .filter(p => !teamSet.has(p.team))
+      .filter(p => !q || p.name.toLowerCase().includes(q) || p.team.toLowerCase().includes(q))
+      .slice(0, 8);
+  }, [allPlayers, playerSearch, selectedPlayerIds, selectedTeams]);
+
+  const totalCases = cases.hobby + cases.bd + cases.jumbo;
+  const hasSelection = selectedTeams.length > 0 || selectedPlayerIds.length > 0;
+  const canSubmit = productId && hasSelection && askPrice && platform && totalCases > 0 && !submitting
     && (mode === 'new' || outcome);
+
+  function toggleTeam(t: string) {
+    setSelectedTeams(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
+  }
+  function addPlayer(id: string) {
+    setSelectedPlayerIds(prev => prev.includes(id) ? prev : [...prev, id]);
+    setPlayerSearch('');
+  }
+  function removePlayer(id: string) {
+    setSelectedPlayerIds(prev => prev.filter(x => x !== id));
+  }
 
   async function handleSubmit() {
     setSubmitting(true);
@@ -740,9 +840,9 @@ function BreakForm({
         body: JSON.stringify({
           mode,
           productId,
-          team,
-          breakType,
-          numCases,
+          teams: selectedTeams,
+          extraPlayerProductIds: selectedPlayerIds,
+          formats: cases,
           askPrice: parseFloat(askPrice),
           platform,
           platformOther: platform === 'other' ? platformOther : undefined,
@@ -844,53 +944,138 @@ function BreakForm({
             </select>
           </div>
 
-          {/* Team */}
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Team</label>
-            <select
-              value={team}
-              onChange={e => setTeam(e.target.value)}
-              disabled={!productId}
-              className="w-full rounded-lg border px-3 py-2.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-40"
-              style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-bg)', color: 'var(--text-primary)' }}
-            >
-              <option value="">{productId ? 'Select team…' : 'Select a product first'}</option>
-              {teams.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-
-          {/* Break type + cases */}
-          <div className="grid grid-cols-2 gap-4">
+          {/* Format mix — three counters, only shown for formats this product supports */}
+          {selectedProduct && availableFormats.length > 0 && (
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Break Type</label>
-              <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--terminal-border)' }}>
-                {['hobby', ...(hasBD ? ['bd'] : [])].map(bt => (
-                  <button
-                    key={bt}
-                    onClick={() => setBreakType(bt as 'hobby' | 'bd')}
-                    className="flex-1 py-2 text-sm font-bold transition-all"
-                    style={{
-                      backgroundColor: breakType === bt ? 'var(--accent-blue)' : 'transparent',
-                      color: breakType === bt ? 'white' : 'var(--text-secondary)',
-                    }}
-                  >
-                    {bt === 'hobby' ? 'Hobby' : 'BD'}
-                  </button>
-                ))}
+              <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Format mix</label>
+              <div className="grid grid-cols-3 gap-2">
+                {FORMAT_DEFS.map(({ key, label }) => {
+                  const cost = effectiveCaseCost(selectedProduct, key);
+                  const disabled = cost == null;
+                  return (
+                    <div
+                      key={key}
+                      className="rounded-lg border p-2"
+                      style={{
+                        borderColor: 'var(--terminal-border)',
+                        backgroundColor: 'var(--terminal-bg)',
+                        opacity: disabled ? 0.4 : 1,
+                      }}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] font-bold uppercase" style={{ color: 'var(--text-tertiary)' }}>{label}</span>
+                        <span className="text-[9px] font-mono" style={{ color: 'var(--text-tertiary)' }}>
+                          {cost != null ? formatCurrency(cost) : 'n/a'}
+                        </span>
+                      </div>
+                      <input
+                        type="number"
+                        min={0}
+                        max={50}
+                        value={cases[key]}
+                        disabled={disabled}
+                        onChange={e => setCases(prev => ({ ...prev, [key]: Math.max(0, Math.min(50, parseInt(e.target.value) || 0)) }))}
+                        className="w-full rounded border px-2 py-1 text-sm font-mono text-center focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-40"
+                        style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)', color: 'var(--text-primary)' }}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             </div>
+          )}
+
+          {/* Teams (multi-select chips) */}
+          {selectedProduct && (
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Cases</label>
-              <input
-                type="number"
-                value={numCases}
-                onChange={e => setNumCases(Math.max(1, Math.min(50, parseInt(e.target.value) || 1)))}
-                min={1} max={50}
-                className="w-full rounded-lg border px-3 py-2 text-sm font-mono text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
-                style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-bg)', color: 'var(--text-primary)' }}
-              />
+              <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Teams</label>
+              {teams.length === 0 ? (
+                <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Loading teams…</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {teams.map(t => (
+                    <TeamChip
+                      key={t}
+                      team={t}
+                      sport={selectedProduct.sport?.name}
+                      selected={selectedTeams.includes(t)}
+                      onClick={() => toggleTeam(t)}
+                    />
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
+          )}
+
+          {/* Specific player slots (optional) */}
+          {selectedProduct && (
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
+                Specific player slots <span className="font-normal opacity-60">(optional)</span>
+              </label>
+              {selectedPlayerIds.length > 0 && (
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {selectedPlayerIds.map(id => {
+                    const p = allPlayers.find(x => x.id === id);
+                    if (!p) return null;
+                    return (
+                      <span
+                        key={id}
+                        className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full text-xs font-semibold border"
+                        style={{
+                          backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                          color: 'var(--text-primary)',
+                          borderColor: 'rgba(59, 130, 246, 0.4)',
+                        }}
+                      >
+                        {p.name}
+                        <span className="opacity-60 text-[10px] font-normal">{p.team}</span>
+                        <button
+                          onClick={() => removePlayer(id)}
+                          className="w-4 h-4 inline-flex items-center justify-center rounded-full transition-opacity hover:opacity-70"
+                          style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: 'var(--text-tertiary)' }} />
+                <input
+                  type="text"
+                  placeholder="Search by player name or team…"
+                  value={playerSearch}
+                  onChange={e => setPlayerSearch(e.target.value)}
+                  className="w-full rounded-lg border pl-9 pr-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-bg)', color: 'var(--text-primary)' }}
+                />
+              </div>
+              {playerSearch.trim().length > 0 && filteredPlayers.length > 0 && (
+                <div className="mt-2 border rounded-lg overflow-hidden" style={{ borderColor: 'var(--terminal-border)' }}>
+                  {filteredPlayers.map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => addPlayer(p.id)}
+                      className="w-full flex items-center justify-between px-3 py-2 text-sm hover:opacity-80 transition-opacity border-b last:border-b-0"
+                      style={{ backgroundColor: 'var(--terminal-bg)', borderColor: 'var(--terminal-border)', color: 'var(--text-primary)' }}
+                    >
+                      <span className="flex items-center gap-2">
+                        <Plus className="w-3 h-3 opacity-60" />
+                        <span>{p.name}</span>
+                        {p.is_rookie && (
+                          <span className="text-[9px] px-1 py-0.5 rounded font-bold" style={{ backgroundColor: 'var(--accent-blue)', color: 'white' }}>RC</span>
+                        )}
+                      </span>
+                      <span className="text-[10px] uppercase" style={{ color: 'var(--text-tertiary)' }}>{p.team}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Asking price */}
           <div>
