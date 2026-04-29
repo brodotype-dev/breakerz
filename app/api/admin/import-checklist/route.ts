@@ -85,6 +85,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Multi-player cards (League Leaders, dual autographs, etc.) come through
+  // the checklist with concatenated names ("Skubal / Blanco / Valdez") and
+  // matching teams. Per Kyle: every individual player has exactly one team,
+  // so a combined-name row isn't a real player — it's a subset card. We still
+  // record it (CardHedger may price it) but flag it `insert_only=true` below
+  // so it's excluded from team chips and slot pricing.
+  const isMultiPlayerName = (name: string) => name.includes('/');
+
   // Deduplicate by name for the players upsert — same player can appear
   // across sections with different/empty teams; keep the most complete record
   const playersByName = new Map<string, { name: string; team: string; hobbySets: number; bdSets: number; isRookie: boolean }>();
@@ -123,10 +131,13 @@ export async function POST(req: NextRequest) {
 
   // --- Step 3: Bulk upsert player_products ---
   // insert_only=true for players who appear ONLY in non-base sections (autograph
-  // subsets, themed inserts featuring retired legends, etc.). Drives slot
-  // eligibility: the pricing engine and dashboard counts filter on this flag.
-  // checklist_card_numbers is the union of all this player's card_numbers from
-  // the parsed checklist — hydrate uses it to scope CH variant attachment.
+  // subsets, themed inserts featuring retired legends, etc.) OR whose name is
+  // a multi-player concatenation ("Skubal / Blanco / Valdez" — League Leaders,
+  // dual autos, etc.). Both classes are subsets, not slot-eligible base players.
+  // Drives slot eligibility: the pricing engine and dashboard counts filter on
+  // this flag. checklist_card_numbers is the union of all this player's
+  // card_numbers from the parsed checklist — hydrate uses it to scope CH
+  // variant attachment.
   const ppRows = uniquePlayers.map(p => {
     const playerId = playerNameToId.get(p.name);
     if (!playerId) return null;
@@ -137,7 +148,7 @@ export async function POST(req: NextRequest) {
       product_id: productId,
       hobby_sets: p.hobbySets,
       bd_only_sets: p.bdSets,
-      insert_only: !hasBase,
+      insert_only: !hasBase || isMultiPlayerName(p.name),
       checklist_card_numbers: cardNumbers.length > 0 ? cardNumbers : null,
     };
   }).filter(Boolean) as object[];
