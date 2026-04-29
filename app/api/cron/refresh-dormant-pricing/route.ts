@@ -21,6 +21,10 @@ export const maxDuration = 300;
  * cron picks it up automatically next run; nothing to do here.
  */
 const PER_FETCH_TIMEOUT_MS = 240_000;
+// Mirror refresh-pricing: hard budget that aborts in-flight fetches so the
+// orchestrator returns cleanly inside the 300s Vercel cap and writes its
+// cron_run_log row. Dormant pool is small so we rarely hit this in practice.
+const ORCHESTRATOR_BUDGET_MS = 240_000;
 
 export async function GET(req: Request) {
   const authHeader = req.headers.get('authorization');
@@ -70,9 +74,17 @@ export async function GET(req: Request) {
     }
     const endpoint = `${baseUrl}/api/admin/refresh-product-pricing`;
 
+    const orchestratorAbort = new AbortController();
+    const orchestratorAbortTimer = setTimeout(
+      () => orchestratorAbort.abort(),
+      ORCHESTRATOR_BUDGET_MS,
+    );
+
     const dispatchOne = async (product: { id: string; name: string }) => {
       const ac = new AbortController();
       const timer = setTimeout(() => ac.abort(), PER_FETCH_TIMEOUT_MS);
+      const onOrchAbort = () => ac.abort();
+      orchestratorAbort.signal.addEventListener('abort', onOrchAbort);
       try {
         const res = await fetch(endpoint, {
           method: 'POST',
@@ -119,10 +131,12 @@ export async function GET(req: Request) {
         };
       } finally {
         clearTimeout(timer);
+        orchestratorAbort.signal.removeEventListener('abort', onOrchAbort);
       }
     };
 
     const results = await Promise.all(products.map(dispatchOne));
+    clearTimeout(orchestratorAbortTimer);
     const okCount = results.filter(r => r.ok).length;
     const errCount = results.length - okCount;
     const durationMs = Date.now() - started;

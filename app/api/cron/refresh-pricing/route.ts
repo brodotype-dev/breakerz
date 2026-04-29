@@ -30,7 +30,14 @@ export const maxDuration = 300;
 const STALE_AFTER_HOURS = 22;
 const CONCURRENCY = 3;
 const PER_FETCH_TIMEOUT_MS = 240_000;
-const ORCHESTRATOR_BUDGET_MS = 270_000;
+// Orchestrator must finish its own work + write cron_run_log + return JSON
+// before Vercel's 300s hard kill. Earlier we ran orchestrator to 270s, but
+// in-flight fan-out fetches kept us alive past 300s and Vercel killed us
+// before cron_run_log got written. 240s gives 60s headroom; in-flight
+// fetches get aborted via the shared signal so workers exit deterministically.
+// Per-product workers run on their own invocations and keep going regardless,
+// so aborting the orchestrator's *view* of them doesn't lose work.
+const ORCHESTRATOR_BUDGET_MS = 240_000;
 
 type FetchOutcome = {
   productId: string;
@@ -136,9 +143,21 @@ export async function GET(req: Request) {
     const endpoint = `${baseUrl}/api/admin/refresh-product-pricing`;
     console.log(`[cron/refresh-pricing] reqHost=${reqUrl.host} fanOutHost=${new URL(endpoint).host}`);
 
+    // Hard budget abort: when we hit ORCHESTRATOR_BUDGET_MS, every in-flight
+    // fan-out fetch is signaled to abort. Without this, a fetch dispatched at
+    // t=200s could await its own 240s timeout — orchestrator stays alive past
+    // 300s and Vercel kills it before cron_run_log writes.
+    const orchestratorAbort = new AbortController();
+    const orchestratorAbortTimer = setTimeout(
+      () => orchestratorAbort.abort(),
+      ORCHESTRATOR_BUDGET_MS,
+    );
+
     const dispatchOne = async (product: QueueItem): Promise<FetchOutcome> => {
       const ac = new AbortController();
       const timer = setTimeout(() => ac.abort(), PER_FETCH_TIMEOUT_MS);
+      const onOrchAbort = () => ac.abort();
+      orchestratorAbort.signal.addEventListener('abort', onOrchAbort);
       try {
         const res = await fetch(endpoint, {
           method: 'POST',
@@ -192,12 +211,14 @@ export async function GET(req: Request) {
         };
       } finally {
         clearTimeout(timer);
+        orchestratorAbort.signal.removeEventListener('abort', onOrchAbort);
       }
     };
 
     // Process the queue with bounded concurrency. Stop dispatching new work
-    // once the orchestrator's own budget is exhausted; in-flight work
-    // continues until PER_FETCH_TIMEOUT_MS or its own completion.
+    // once the orchestrator's own budget is exhausted; in-flight fetches get
+    // aborted by orchestratorAbort, but per-product workers run on their own
+    // Vercel invocations and finish writing pricing_cache regardless.
     const results: FetchOutcome[] = [];
     let cursor = 0;
     const skipped: QueueItem[] = [];
@@ -217,6 +238,7 @@ export async function GET(req: Request) {
     };
 
     await Promise.all(Array.from({ length: CONCURRENCY }, () => worker()));
+    clearTimeout(orchestratorAbortTimer);
 
     const okCount = results.filter(r => r.ok).length;
     const errCount = results.length - okCount;
