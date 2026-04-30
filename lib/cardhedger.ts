@@ -278,11 +278,75 @@ export async function getComps(cardId: string, days = 180, grade = 'Raw', count 
 }
 
 // Get 90-day prices for a search — no card ID required
+//
+// **Response-shape note (2026-04-30):** the actual CH endpoint returns
+// `{ page, pages, cards: [{ price, 90_day_sales, grade, ... }] }` — NOT
+// `{ prices: [...] }` as the typing here suggests. The endpoint also REQUIRES
+// `grade` and ignores `sport` (it accepts `category`). Existing callers in
+// `lib/pricing-refresh.ts` and `lib/analysis.ts` pass `result.prices.find(...)`
+// which throws on undefined and gets swallowed by their try/catch fallback —
+// so this function has effectively been a no-op for those callers. Left as-is
+// to avoid behavior changes; new callers should use `getPlayer90DayStats`
+// below, which uses the correct shape.
 export async function get90DayPrices(search: string, grade?: string, sportParam?: string) {
   return post<{ prices: Array<{ grade: string; avg_price: number; min_price: number; max_price: number; sale_count: number }> }>(
     '/v1/cards/90day-prices-by-grade',
     { search, grade, sport: sportParam }
   );
+}
+
+// Per-player 90-day rollups across all of a player's existing cards in CH's
+// catalog, aggregated per grade. Used by the pre-release page to show
+// "what does this player's existing stuff currently do?" as proxy intel for
+// products that haven't released yet.
+//
+// Implementation: 3 parallel calls (Raw / PSA 9 / PSA 10) to
+// `/v1/cards/90day-prices-by-grade`, each pulling the first page of 100 cards
+// (sorted by CH by sales volume by default — top 100 covers nearly all the
+// volume for established players). Within each grade, aggregates a
+// sales-weighted average price.
+export async function getPlayer90DayStats(
+  playerName: string,
+  category?: string,
+): Promise<{
+  raw:   { avg: number | null; sales: number };
+  psa9:  { avg: number | null; sales: number };
+  psa10: { avg: number | null; sales: number };
+}> {
+  type Card = { price?: string | number; '90_day_sales'?: number };
+
+  async function fetchGrade(grade: string): Promise<{ avg: number | null; sales: number }> {
+    try {
+      const data = await post<{ cards?: Card[] }>(
+        '/v1/cards/90day-prices-by-grade',
+        { search: playerName, grade, category, page_size: 100 },
+      );
+      const cards = data.cards ?? [];
+      let totalSales = 0;
+      let weightedSum = 0;
+      for (const c of cards) {
+        const sales = Number(c['90_day_sales'] ?? 0);
+        const price = parseFloat(String(c.price ?? '0'));
+        if (sales > 0 && price > 0) {
+          totalSales += sales;
+          weightedSum += sales * price;
+        }
+      }
+      return {
+        avg: totalSales > 0 ? weightedSum / totalSales : null,
+        sales: totalSales,
+      };
+    } catch {
+      return { avg: null, sales: 0 };
+    }
+  }
+
+  const [raw, psa9, psa10] = await Promise.all([
+    fetchGrade('Raw'),
+    fetchGrade('PSA 9'),
+    fetchGrade('PSA 10'),
+  ]);
+  return { raw, psa9, psa10 };
 }
 
 // Get price history by day (for charts)
