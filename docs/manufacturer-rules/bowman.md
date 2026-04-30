@@ -2,8 +2,8 @@
 
 Covers all Bowman and Topps baseball/basketball products. Updated as new patterns are discovered during import and matching runs.
 
-**Last updated:** 2026-04-20
-**Products imported:** 2025 Bowman Draft, 2025 Bowman Draft Chrome, 2025 Bowman's Best Baseball, 2025 Bowman Chrome Baseball, 2025-26 Bowman Basketball
+**Last updated:** 2026-04-30
+**Products imported:** 2025 Bowman Draft, 2025 Bowman Draft Chrome, 2025 Bowman's Best Baseball, 2025 Bowman Chrome Baseball, 2025-26 Bowman Basketball, **2026 Bowman Baseball** (pre-release)
 
 ---
 
@@ -70,6 +70,23 @@ New as of 2026-04-20. Pass `mode: 'set-catalog'` to `/api/admin/match-cardhedger
 | `FD-XX` | Bowman Spotlights (Future Draft) | Insert |
 | `PP-XX` | Bowman Spotlights | Insert |
 
+### Bowman Baseball (flagship — 2026+)
+
+| Prefix | Full Name | Type |
+|---|---|---|
+| `BP-XXX` | Bowman Prospects (paper) | Base prospect |
+| `BCP-XXX` | Bowman Chrome Prospects | Base prospect (chrome variant of base prospects) |
+| `BPA-XX` | Base Prospect Retail Autographs | Auto insert |
+| `CPA-XX` | Chrome Prospect Autographs | Auto insert |
+| `BA-XX` | Anime / Anime - Kanji Variations | Insert (Anime subset) |
+
+**Heuristic note (2026-04-30):** The import-checklist `hasBase` flag combines two signals — card-number shape **and** section name. A card qualifies as base if:
+
+1. `card_number` matches `^([A-Z]+-)?\d+$` (purely numeric or alpha-prefix-numeric with digits at the end). This admits `BP-1`, `BCP-1`, `350` and rejects `BPA-EH` / `CPA-EH` (autograph numbering uses player initials at the end).
+2. `section.sectionName` starts with `"Base"` or `"Chrome Prospects"` AND does not contain `"Autograph"` / `"Variation"`. Required because inserts like Anime use `BA-24` numbering that fits the same regex but aren't slot-eligible.
+
+Both must hold. Fixes the bug where every Bowman prospect was previously marked `insert_only=true` because their card numbers (`BP-1`, `BCP-1`) failed the old `^[0-9]+$` check.
+
 ### Bowman's Best
 
 | Prefix | Full Name | Type | Confirmed by |
@@ -112,7 +129,7 @@ New as of 2026-04-20. Pass `mode: 'set-catalog'` to `/api/admin/match-cardhedger
 
 **Discovered during 2025 Bowman Chrome Baseball import (2026-04-02):** The `Teams` sheet caused `players.team` to be populated with player names. The `Topps Master Checklist` added ~16,000 extra players. Both are now in the skip list.
 
-### Column layout (Bowman Chrome Baseball)
+### Column layout (Bowman Chrome Baseball — standard layout)
 
 | col | field | example |
 |---|---|---|
@@ -122,6 +139,29 @@ New as of 2026-04-20. Pass `mode: 'set-catalog'` to `/api/admin/match-cardhedger
 | 3 | flag (optional) | `"RC"` |
 
 Bowman Draft XLSX uses trailing commas on player names (`"Aaron Judge,"`); Bowman Chrome Baseball does not. Parser strips trailing commas from both fields defensively.
+
+### Parallel-prefix layout — autograph subset sheets (discovered 2026-04-30 in 2026 Bowman Baseball)
+
+Some Bowman autograph subset sheets use a **parallel-prefix** column layout that diverges from the standard. Each data row leads with the parallel/variation label in column A, shifting card-number / player / team into B / C / D:
+
+| col | field | example |
+|---|---|---|
+| 0 | parallel label | `"Base"`, `"Base - Etched In Glass Variations"`, `"Base - Red RC Variations"`, `"Refractor /50"` |
+| 1 | card number | `1`, `"BPA-EH"` |
+| 2 | player name | `"Aaron Judge,"` |
+| 3 | team | `"USA"` |
+| 4 | flag (optional) | `"RC"` |
+
+Sheets observed using this layout in 2026 Bowman Baseball:
+
+- `Under The Radar Autographs`
+- `Power Chords Autographs`
+- `Electric Sluggers Autographs`
+- `Team Sets`
+
+**Detection** (`parseChecklistXlsx`): when c0 is non-empty, c1 has content, AND c0 either matches `isParallelLabel(...)` or starts with `"Base"` (covers `"Base"` / `"Base - Etched..."` / `"Base - Red RC Variations"`), shift columns by 1 and store c0 as a per-row parallel. The standard layout still parses identically because c0 in standard rows is a card number (numeric or `BCP-`/`BPA-` prefixed), which doesn't match those patterns.
+
+**Pre-fix symptom** (any future XLSX that uses this layout will exhibit this if the sniff misfires): import produces phantom player records with `name = "1"` / `team = "Aaron Judge"` because c0's "Base" landed in `cardNumber`, c1's "1" in `playerName`, and c2's "Aaron Judge" in `team`.
 
 ### Insert set names stored as variant_name
 
@@ -199,6 +239,13 @@ Bowman/Topps-specific matching rules:
 |---|---|---|
 | 2026-04-02 | Fixed Teams + Topps Master Checklist sheet import | — |
 | 2026-04-20 | Set-catalog mode + autograph query fix | TBD — re-run matching |
+
+### 2026 Bowman Baseball (pre-release)
+
+| Date | Change | Match Rate |
+|---|---|---|
+| 2026-04-30 | First import — surfaced two parser bugs (parallel-prefix layout in autograph subsets + `BP-`/`BCP-` not recognized as base prefix). Result: 1,136 of 1,236 player_products incorrectly flagged `insert_only=true`. | — (re-import pending fix) |
+| 2026-04-30 | Parser: parallel-prefix sniff (`Base`, `Base - X`, `Refractor /N` in c0 → shift columns). Importer: `hasBase` accepts `^([A-Z]+-)?\d+$` AND requires base section name. | TBD — re-import after fix deploy |
 
 ---
 
