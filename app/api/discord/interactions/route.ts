@@ -312,30 +312,53 @@ async function applyUpdates(args: {
     try {
       switch (u.kind) {
         case 'sentiment': {
-          // Snapshot the prior score before overwriting so the history
-          // table has the full before-state. Apply to all player_products
-          // for this player — mirrors the global BreakIQ Bets behavior.
-          const { data: priors } = await supabaseAdmin
+          // 'global' fans the score across every player_product for the player
+          // (default for general player narrative). 'product' targets only the
+          // matching (player, product) so a product-specific read like "Wemby
+          // in Topps Chrome 2024 is wild" doesn't bleed across SKUs.
+          const isProductScope = u.scope === 'product' && !!u.product_id;
+
+          // Resolve the specific player_product_id for product-scoped history.
+          // Null when global — sentiment_history.player_product_id is already
+          // nullable; null = "this change applied to all of the player's
+          // product entries."
+          let scopedPpId: string | null = null;
+          if (isProductScope) {
+            const { data: pp } = await supabaseAdmin
+              .from('player_products')
+              .select('id, breakerz_score, breakerz_note')
+              .eq('player_id', u.player_id)
+              .eq('product_id', u.product_id!)
+              .maybeSingle();
+            if (!pp) throw new Error('no player_product for (player, product) — sentiment scope=product cannot apply');
+            scopedPpId = pp.id;
+          }
+
+          let priorQuery = supabaseAdmin
             .from('player_products')
             .select('breakerz_score, breakerz_note')
-            .eq('player_id', u.player_id)
-            .limit(1);
+            .eq('player_id', u.player_id);
+          if (isProductScope) priorQuery = priorQuery.eq('product_id', u.product_id!);
+          const { data: priors } = await priorQuery.limit(1);
           const prevScore = priors?.[0]?.breakerz_score ?? null;
           const prevNote = priors?.[0]?.breakerz_note ?? null;
 
-          const { error } = await supabaseAdmin
+          let updateQuery = supabaseAdmin
             .from('player_products')
             .update({
               breakerz_score: u.score,
               breakerz_note: u.note || null,
             })
             .eq('player_id', u.player_id);
+          if (isProductScope) updateQuery = updateQuery.eq('product_id', u.product_id!);
+          const { error } = await updateQuery;
           if (error) throw error;
 
           // Append-only history row so we can analyze how each contributor's
           // read on a player evolves over time, even when scores are revised.
           await supabaseAdmin.from('breakerz_sentiment_history').insert({
             player_id: u.player_id,
+            player_product_id: scopedPpId,  // null = global fan-out, set = product-scoped
             prev_score: prevScore,
             new_score: u.score,
             prev_note: prevNote,
@@ -377,20 +400,42 @@ async function applyUpdates(args: {
           break;
         }
         case 'asking_price':
-        case 'hype_tag': {
+        case 'hype_tag':
+        case 'odds_observation': {
+          // Variant scope is captured today as free-text variant_name in the
+          // payload; variant_id resolution is deferred until engine reads
+          // land (Phase 3). For now we store scope_id=null when scope='variant'
+          // and let analysts query payload->>'variant_name' directly.
           const payload =
             u.kind === 'asking_price'
               ? {
                   format: u.format,
                   price_low: u.price_low,
                   price_high: u.price_high,
+                  source: u.source,
+                  ...(u.scope_type === 'variant' && u.variant_name
+                    ? { variant_name: u.variant_name }
+                    : {}),
                 }
-              : {
-                  tag: u.tag,
-                  strength: u.strength,
-                  decay_days: u.decay_days,
-                };
+              : u.kind === 'hype_tag'
+                ? {
+                    tag: u.tag,
+                    strength: u.strength,
+                    decay_days: u.decay_days,
+                    ...(u.scope_type === 'variant' && u.variant_name
+                      ? { variant_name: u.variant_name }
+                      : {}),
+                  }
+                : {
+                    format: u.format,
+                    observed_odds_per_case: u.observed_odds_per_case,
+                    source: u.source,
+                    ...(u.scope_type === 'variant' && u.variant_name
+                      ? { variant_name: u.variant_name }
+                      : {}),
+                  };
 
+          // Asking-price + odds default 14d, hype rolls off with its own decay.
           const expiresAt = new Date(
             Date.now() +
               (u.kind === 'hype_tag'
@@ -398,11 +443,18 @@ async function applyUpdates(args: {
                 : 14 * 24 * 3600 * 1000),
           ).toISOString();
 
+          // Roll variant scope up to the player for scope_id (player_id) so
+          // queries that filter by player still match variant-scope rows.
+          const scopeId =
+            (u.kind === 'asking_price' || u.kind === 'hype_tag') && u.scope_type === 'team'
+              ? null
+              : (u as { scope_player_id?: string }).scope_player_id ?? null;
+
           const { error } = await supabaseAdmin.from('market_observations').insert({
             observation_type: u.kind,
             scope_type: u.scope_type,
-            scope_id: u.scope_type === 'player' ? u.scope_player_id : null,
-            scope_team: u.scope_type === 'team' ? u.scope_team : null,
+            scope_id: scopeId,
+            scope_team: (u.kind === 'asking_price' || u.kind === 'hype_tag') && u.scope_type === 'team' ? u.scope_team : null,
             product_id: u.product_id,
             payload,
             source_pending_id: args.pendingId,

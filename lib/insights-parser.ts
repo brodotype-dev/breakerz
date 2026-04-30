@@ -13,11 +13,25 @@
 
 import { supabaseAdmin } from '@/lib/supabase';
 
+/**
+ * Where an asking_price observation came from. CardHedger covers sold comps
+ * (reactive); the whole point of capturing observations is the things CH
+ * can't see — unsold listings, breaker stream asks, social posts during the
+ * release-week window when sold-data is sparse.
+ */
+export type AskingPriceSource = 'ebay_listing' | 'stream_ask' | 'social_post' | 'other';
+
 export type ParsedUpdate =
   | {
       kind: 'sentiment';
       player_id: string;
       player_name: string;
+      // 'global' applies to every player_product for this player (today's
+      // default behavior). 'product' applies only to the (player, product)
+      // pair — for narrative like "Wemby in 2024 Topps Chrome is going wild"
+      // where the read is product-specific and should not bleed across SKUs.
+      scope: 'global' | 'product';
+      product_id?: string;       // required when scope='product'
       score: number;            // -0.5..0.5, snaps to 0.25 increments client-side
       note: string;
       confidence: number;
@@ -26,12 +40,17 @@ export type ParsedUpdate =
       kind: 'asking_price';
       product_id: string;
       product_name: string;
-      scope_type: 'team' | 'player' | 'product';
+      // 'variant' is variant-specific ("Ohtani orange ref listed at $3.5k").
+      // variant_name is free-text — variant_id resolution is deferred until
+      // the engine starts reading variant-scope observations (Phase 3).
+      scope_type: 'team' | 'player' | 'product' | 'variant';
       scope_team?: string;       // when scope_type='team'
-      scope_player_id?: string;  // when scope_type='player'
+      scope_player_id?: string;  // when scope_type='player' OR 'variant' (variant rolls up to player)
+      variant_name?: string;     // when scope_type='variant'
       format: 'hobby' | 'bd' | 'jumbo';
       price_low: number;
       price_high: number;
+      source: AskingPriceSource;
       source_note: string;
       confidence: number;
     }
@@ -39,9 +58,10 @@ export type ParsedUpdate =
       kind: 'hype_tag';
       product_id: string;
       product_name: string;
-      scope_type: 'team' | 'player' | 'product';
+      scope_type: 'team' | 'player' | 'product' | 'variant';
       scope_team?: string;
-      scope_player_id?: string;
+      scope_player_id?: string;  // when 'player' OR 'variant'
+      variant_name?: string;     // when scope_type='variant'
       tag: 'release_premium' | 'cooled' | 'overhyped' | 'underhyped';
       strength: number;          // 0..1
       decay_days: number;
@@ -54,6 +74,23 @@ export type ParsedUpdate =
       player_name: string;
       flag_type: 'injury' | 'suspension' | 'legal' | 'trade' | 'retirement' | 'off_field';
       note: string;
+      confidence: number;
+    }
+  | {
+      // Field intel: a specific card pulls at a different rate than the
+      // odds sheet says. Variant-level by nature; format-keyed because odds
+      // differ across hobby/jumbo/bd. observed_odds_per_case is "1 in N
+      // cases" — the same shape breakers describe rare hits ("1:80 cases").
+      kind: 'odds_observation';
+      product_id: string;
+      product_name: string;
+      scope_type: 'variant' | 'player';
+      scope_player_id?: string;  // always set (variant rolls up to player too)
+      variant_name?: string;     // when scope_type='variant'
+      format: 'hobby' | 'bd' | 'jumbo';
+      observed_odds_per_case: number;  // e.g. 80 for "1 in 80 cases"
+      source: AskingPriceSource;
+      source_note: string;
       confidence: number;
     };
 
@@ -168,32 +205,58 @@ Narrative:
 ${narrative.trim()}
 """
 
-Extract zero or more updates. Each update is one of four kinds:
+Extract zero or more updates. Each update is one of five kinds:
 
 1. SENTIMENT — a player is hot/cold for non-obvious reasons (post-game buzz, injury return, etc.). Output:
-   { "kind": "sentiment", "player_id": "...", "player_name": "...", "score": 0.3, "note": "...", "confidence": 0.9 }
+   { "kind": "sentiment", "player_id": "...", "player_name": "...",
+     "scope": "global" | "product",     // see scope rules below
+     "product_id": "...",                // REQUIRED when scope='product'
+     "score": 0.3, "note": "...", "confidence": 0.9 }
    score is -0.5 (very bearish) to +0.5 (very bullish).
+   SCOPE RULES:
+   - 'global' = applies to every product the player appears in. Use for general player narrative: "Wemby is on a heater", "Flagg's stock is up post-combine", "X is a sell".
+   - 'product' = applies only to this (player, product). Use when the narrative names a specific product/set/year/break: "Wemby in 2024 Topps Chrome is going wild", "Flagg's Bowman Chrome cards are hot", "this product's [player] is moving". Default to 'global' if unsure.
 
-2. ASKING_PRICE — what streams or sellers are charging. Output:
+2. ASKING_PRICE — what streams or sellers are charging (NOT what's selling). Output:
    { "kind": "asking_price", "product_id": "...", "product_name": "...",
-     "scope_type": "team" | "player" | "product",
-     "scope_team": "Dallas Mavericks",  // only when scope_type='team'
-     "scope_player_id": "...",          // only when scope_type='player'
+     "scope_type": "team" | "player" | "product" | "variant",
+     "scope_team": "Dallas Mavericks",   // only when scope_type='team'
+     "scope_player_id": "...",           // when scope_type='player' OR 'variant' (variants roll up to a player)
+     "variant_name": "Orange Refractor /99",  // free-text variant description, only when scope_type='variant'
      "format": "hobby" | "bd" | "jumbo",
      "price_low": 12000, "price_high": 15000,
+     "source": "ebay_listing" | "stream_ask" | "social_post" | "other",
      "source_note": "...", "confidence": 0.85 }
    If only one price was mentioned, set price_low=price_high.
+   SOURCE RULES:
+   - 'ebay_listing' = unsold eBay listing (asking price on a live listing). This is the leading-indicator signal — CardHedger only sees sold comps, so eBay listings during the first few days of a release are critical intel we can't get elsewhere.
+   - 'stream_ask' = what a breaker is charging on a live break (Whatnot/Fanatics Live/etc.).
+   - 'social_post' = a price mentioned in a tweet, IG post, Discord message, etc.
+   - 'other' = anywhere else.
 
 3. HYPE_TAG — a temporary premium or cooldown. Output:
    { "kind": "hype_tag", "product_id": "...", "product_name": "...",
-     "scope_type": "team" | "player" | "product", "scope_team"|"scope_player_id": ...,
+     "scope_type": "team" | "player" | "product" | "variant",
+     "scope_team": ..., "scope_player_id": ..., "variant_name": ...,
      "tag": "release_premium" | "cooled" | "overhyped" | "underhyped",
      "strength": 0.7, "decay_days": 14,
      "source_note": "...", "confidence": 0.8 }
+   Prefer scope_type='variant' when the narrative names a specific card or parallel ("Ohtani's orange ref is wild", "the Wemby auto"). Use 'player' only when it's about the player generally in this product. Use 'product' for the whole release. Use 'team' for team-wide moves.
 
 4. RISK_FLAG — injury, suspension, trade, retirement, legal, off_field. Output:
    { "kind": "risk_flag", "player_id": "...", "player_name": "...",
      "flag_type": "injury", "note": "...", "confidence": 0.9 }
+
+5. ODDS_OBSERVATION — a specific card pulls at a different rate than the published odds. Output:
+   { "kind": "odds_observation", "product_id": "...", "product_name": "...",
+     "scope_type": "variant" | "player",
+     "scope_player_id": "...",                    // always set
+     "variant_name": "Black Prism /1",            // when scope_type='variant'
+     "format": "hobby" | "bd" | "jumbo",
+     "observed_odds_per_case": 80,                // "1 in 80 cases" → 80
+     "source": "ebay_listing" | "stream_ask" | "social_post" | "other",
+     "source_note": "...", "confidence": 0.7 }
+   Use this only when someone explicitly reports a per-case pull rate that contradicts the odds sheet (e.g. "this card is hitting 1 in 80 cases on hobby, way rarer than published"). DO NOT emit this for "X is a chase" or "X is rare" without a number.
 
 Return JSON ONLY — a JSON array of update objects. No markdown, no explanation, no text before or after. If nothing extractable, return exactly: []
 
@@ -202,6 +265,7 @@ CRITICAL:
 - For player_name / product_name fields, copy the exact name from the matching roster line so we can verify your match. Common nicknames are fine (Wemby → Victor Wembanyama) — match to the canonical roster name.
 - One narrative can produce multiple updates of different kinds.
 - DO NOT SUBSTITUTE. If a named player or product isn't in the roster, OMIT that update entirely. Do not pick "the closest match" — wrong attributions are worse than missing ones. Example: if the narrative mentions "Joe Smith" and Joe Smith is not in the roster, drop that update — do not pick John Smith or any other Joe.
+- variant_name is free text — copy it verbatim from the narrative ("Orange Refractor /99", "Black Prism /1"). We don't have a variant roster yet, so don't try to match against one.
 - It is fine to return fewer updates than the narrative implies, or even an empty array, if you can't make confident matches.`;
 
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
@@ -267,11 +331,21 @@ CRITICAL:
           dropReasons.push(`sentiment: unknown player_id=${u.player_id}`);
           continue;
         }
+        // Default to global if scope is missing/invalid — preserves today's
+        // fan-out behavior. 'product' requires a valid product_id.
+        const rawScope = (u as { scope?: string }).scope;
+        const scope: 'global' | 'product' = rawScope === 'product' ? 'product' : 'global';
+        if (scope === 'product' && !validProductIds.has(u.product_id ?? '')) {
+          dropReasons.push(`sentiment: scope=product but unknown product_id=${u.product_id}`);
+          continue;
+        }
         const known = playerById.get(u.player_id)!;
         out.push({
           kind: 'sentiment',
           player_id: u.player_id,
           player_name: known.name,
+          scope,
+          product_id: scope === 'product' ? u.product_id : undefined,
           score: Math.max(-0.5, Math.min(0.5, Number(u.score) || 0)),
           note: String(u.note ?? '').slice(0, 240),
           confidence: Math.max(0, Math.min(1, Number(u.confidence) || 0)),
@@ -301,14 +375,20 @@ CRITICAL:
           dropReasons.push(`asking_price: unknown product_id=${u.product_id}`);
           continue;
         }
-        if (u.scope_type === 'player' && !playerById.has(u.scope_player_id ?? '')) {
+        if ((u.scope_type === 'player' || u.scope_type === 'variant') && !playerById.has(u.scope_player_id ?? '')) {
           dropReasons.push(`asking_price: unknown scope_player_id=${u.scope_player_id}`);
+          continue;
+        }
+        if (!['team', 'player', 'product', 'variant'].includes(u.scope_type)) {
+          dropReasons.push(`asking_price: invalid scope_type=${u.scope_type}`);
           continue;
         }
         if (!['hobby', 'bd', 'jumbo'].includes(u.format)) {
           dropReasons.push(`asking_price: invalid format=${u.format}`);
           continue;
         }
+        const validSources: AskingPriceSource[] = ['ebay_listing', 'stream_ask', 'social_post', 'other'];
+        const source: AskingPriceSource = validSources.includes(u.source) ? u.source : 'other';
         out.push({
           kind: 'asking_price',
           product_id: u.product_id,
@@ -316,9 +396,11 @@ CRITICAL:
           scope_type: u.scope_type,
           scope_team: u.scope_team,
           scope_player_id: u.scope_player_id,
+          variant_name: u.scope_type === 'variant' ? String(u.variant_name ?? '').slice(0, 120) : undefined,
           format: u.format,
           price_low: Math.max(0, Number(u.price_low) || 0),
           price_high: Math.max(0, Number(u.price_high) || 0),
+          source,
           source_note: String(u.source_note ?? '').slice(0, 240),
           confidence: Math.max(0, Math.min(1, Number(u.confidence) || 0)),
         });
@@ -329,8 +411,12 @@ CRITICAL:
           dropReasons.push(`hype_tag: unknown product_id=${u.product_id}`);
           continue;
         }
-        if (u.scope_type === 'player' && !playerById.has(u.scope_player_id ?? '')) {
+        if ((u.scope_type === 'player' || u.scope_type === 'variant') && !playerById.has(u.scope_player_id ?? '')) {
           dropReasons.push(`hype_tag: unknown scope_player_id=${u.scope_player_id}`);
+          continue;
+        }
+        if (!['team', 'player', 'product', 'variant'].includes(u.scope_type)) {
+          dropReasons.push(`hype_tag: invalid scope_type=${u.scope_type}`);
           continue;
         }
         const validTags = ['release_premium', 'cooled', 'overhyped', 'underhyped'] as const;
@@ -345,9 +431,51 @@ CRITICAL:
           scope_type: u.scope_type,
           scope_team: u.scope_team,
           scope_player_id: u.scope_player_id,
+          variant_name: u.scope_type === 'variant' ? String(u.variant_name ?? '').slice(0, 120) : undefined,
           tag: u.tag,
           strength: Math.max(0, Math.min(1, Number(u.strength) || 0)),
           decay_days: Math.max(1, Math.min(60, Number(u.decay_days) || 14)),
+          source_note: String(u.source_note ?? '').slice(0, 240),
+          confidence: Math.max(0, Math.min(1, Number(u.confidence) || 0)),
+        });
+        break;
+      }
+      case 'odds_observation': {
+        if (!validProductIds.has(u.product_id)) {
+          dropReasons.push(`odds_observation: unknown product_id=${u.product_id}`);
+          continue;
+        }
+        if (!playerById.has(u.scope_player_id ?? '')) {
+          dropReasons.push(`odds_observation: unknown scope_player_id=${u.scope_player_id}`);
+          continue;
+        }
+        if (!['variant', 'player'].includes(u.scope_type)) {
+          dropReasons.push(`odds_observation: invalid scope_type=${u.scope_type}`);
+          continue;
+        }
+        if (!['hobby', 'bd', 'jumbo'].includes(u.format)) {
+          dropReasons.push(`odds_observation: invalid format=${u.format}`);
+          continue;
+        }
+        const obs = Number(u.observed_odds_per_case);
+        if (!Number.isFinite(obs) || obs <= 0) {
+          dropReasons.push(`odds_observation: invalid observed_odds_per_case=${u.observed_odds_per_case}`);
+          continue;
+        }
+        const validSources: AskingPriceSource[] = ['ebay_listing', 'stream_ask', 'social_post', 'other'];
+        const source: AskingPriceSource = validSources.includes(u.source) ? u.source : 'other';
+        out.push({
+          kind: 'odds_observation',
+          product_id: u.product_id,
+          product_name: productById.get(u.product_id) ?? u.product_name,
+          scope_type: u.scope_type,
+          scope_player_id: u.scope_player_id,
+          variant_name: u.scope_type === 'variant' ? String(u.variant_name ?? '').slice(0, 120) : undefined,
+          format: u.format,
+          // Cap at 10000 — anything rarer than 1:10000 is almost certainly
+          // a misread of "1/1" or per-set numbering. Smallest is 1 (every case).
+          observed_odds_per_case: Math.max(1, Math.min(10000, Math.round(obs))),
+          source,
           source_note: String(u.source_note ?? '').slice(0, 240),
           confidence: Math.max(0, Math.min(1, Number(u.confidence) || 0)),
         });
@@ -374,19 +502,30 @@ CRITICAL:
 /** Pretty one-line summary used in the bot reply. */
 export function summarizeUpdate(u: ParsedUpdate): string {
   switch (u.kind) {
-    case 'sentiment':
-      return `${u.player_name}: sentiment ${u.score >= 0 ? '+' : ''}${u.score} — ${u.note}`;
+    case 'sentiment': {
+      const scopeLabel = u.scope === 'product' ? ' (this product only)' : '';
+      return `${u.player_name}${scopeLabel}: sentiment ${u.score >= 0 ? '+' : ''}${u.score} — ${u.note}`;
+    }
     case 'risk_flag':
       return `${u.player_name}: ${u.flag_type} — ${u.note}`;
     case 'asking_price': {
       const where =
         u.scope_type === 'team' ? `${u.scope_team} slot`
+        : u.scope_type === 'variant' ? `${u.variant_name ?? 'variant'}`
         : u.scope_type === 'player' ? `player slot`
         : `${u.product_name} bundle`;
       const range = u.price_low === u.price_high ? `$${u.price_low}` : `$${u.price_low}–$${u.price_high}`;
-      return `${where} (${u.format}): asking ${range} — ${u.source_note}`;
+      return `${where} (${u.format}, ${u.source}): asking ${range} — ${u.source_note}`;
     }
-    case 'hype_tag':
-      return `${u.scope_team ?? u.product_name}: ${u.tag} (strength ${u.strength.toFixed(2)}, decay ${u.decay_days}d)`;
+    case 'hype_tag': {
+      const where =
+        u.scope_type === 'team' ? u.scope_team
+        : u.scope_type === 'variant' ? (u.variant_name ?? 'variant')
+        : u.scope_type === 'player' ? 'player'
+        : u.product_name;
+      return `${where}: ${u.tag} (strength ${u.strength.toFixed(2)}, decay ${u.decay_days}d)`;
+    }
+    case 'odds_observation':
+      return `${u.variant_name ?? 'card'} (${u.format}): observed 1:${u.observed_odds_per_case} cases — ${u.source_note}`;
   }
 }
