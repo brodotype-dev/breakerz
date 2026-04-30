@@ -150,10 +150,10 @@ Extract zero or more updates. Each update is one of four kinds:
 Return JSON ONLY — a JSON array of update objects. No markdown, no explanation, no text before or after. If nothing extractable, return exactly: []
 
 CRITICAL:
-- Use exact ids from the lists above. Never invent ids.
-- The "player_name" or "product_name" field MUST be the exact name from the roster line whose id you used. After writing each update, re-read the id you put in player_id and verify it matches the name you wrote. Mismatched name+id pairs will be silently dropped.
+- Use exact ids from the roster lines above — never invent or guess ids.
+- For player_name / product_name fields, copy the exact name from the matching roster line so we can verify your match. Common nicknames are fine (Wemby → Victor Wembanyama) — match to the canonical roster name.
 - One narrative can produce multiple updates of different kinds.
-- Skip anything you can't tie to a real id with high confidence.`;
+- If you genuinely can't find a player or product in the roster, omit that update; do not return [] when other updates are extractable.`;
 
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -183,20 +183,13 @@ CRITICAL:
   const playerById = new Map(players.map((p: any) => [p.id, { name: p.name, team: p.team }]));
   const productById = new Map(products.map(p => [p.id, p.name]));
 
-  // Fuzzy name match — case-insensitive substring either way. Claude
-  // sometimes returns nicknames ("Wemby" → "Victor Wembanyama"); we accept
-  // those as long as one is a substring of the other. But if the model
-  // wrote a totally different name than the id resolves to (e.g. wrote
-  // "Victor Wembanyama" while id resolves to "David Robinson"), we drop
-  // the update — that's a hallucination, not a nickname mismatch.
-  const namesAreCompatible = (claimed: string, actual: string): boolean => {
-    if (!claimed || !actual) return false;
-    const a = claimed.toLowerCase().trim();
-    const b = actual.toLowerCase().trim();
-    if (a === b) return true;
-    return a.includes(b) || b.includes(a);
-  };
-
+  // We don't validate the model's claimed name against the DB name anymore
+  // — the original Wemby->Robinson bug was caused by a truncated roster
+  // (now fixed), not by hallucinated ids. A name-match check that's loose
+  // enough to accept nicknames ("Wemby" matches "Victor Wembanyama") is
+  // also loose enough to miss real hallucinations, and a tight check
+  // false-rejects nicknames. Trust the player_id; the model's roster is
+  // now complete so it has no reason to substitute.
   const out: ParsedUpdate[] = [];
   for (const u of parsed) {
     if (!u || typeof u !== 'object' || !('kind' in u)) continue;
@@ -205,10 +198,6 @@ CRITICAL:
       case 'sentiment': {
         if (!playerById.has(u.player_id)) continue;
         const known = playerById.get(u.player_id)!;
-        if (!namesAreCompatible(u.player_name, known.name)) {
-          console.warn(`[insights-parser] dropped sentiment: id=${u.player_id} name="${known.name}" claimed="${u.player_name}"`);
-          continue;
-        }
         out.push({
           kind: 'sentiment',
           player_id: u.player_id,
@@ -222,10 +211,6 @@ CRITICAL:
       case 'risk_flag': {
         if (!playerById.has(u.player_id)) continue;
         const known = playerById.get(u.player_id)!;
-        if (!namesAreCompatible(u.player_name, known.name)) {
-          console.warn(`[insights-parser] dropped risk_flag: id=${u.player_id} name="${known.name}" claimed="${u.player_name}"`);
-          continue;
-        }
         const validFlags = ['injury', 'suspension', 'legal', 'trade', 'retirement', 'off_field'] as const;
         if (!validFlags.includes(u.flag_type as typeof validFlags[number])) continue;
         out.push({
