@@ -168,15 +168,23 @@ CRITICAL:
   );
 
   const raw = (message.content[0] as { type: string; text: string }).text.trim();
+  console.log(`[insights-parser] roster=${players.length} products=${products.length} narrative_chars=${narrative.length} raw_response_chars=${raw.length}`);
+  console.log(`[insights-parser] raw response (first 800): ${raw.slice(0, 800)}`);
+
   const arrayMatch = raw.match(/\[[\s\S]*\]/);
-  if (!arrayMatch) return [];
+  if (!arrayMatch) {
+    console.warn(`[insights-parser] no JSON array found in response`);
+    return [];
+  }
 
   let parsed: ParsedUpdate[];
   try {
     parsed = JSON.parse(arrayMatch[0]);
-  } catch {
+  } catch (err) {
+    console.warn(`[insights-parser] JSON parse failed: ${err instanceof Error ? err.message : err}`);
     return [];
   }
+  console.log(`[insights-parser] parsed ${parsed.length} raw updates before validation`);
 
   // Validate: drop anything referencing an unknown id and clamp score/strength.
   const validProductIds = new Set(products.map(p => p.id));
@@ -191,12 +199,19 @@ CRITICAL:
   // false-rejects nicknames. Trust the player_id; the model's roster is
   // now complete so it has no reason to substitute.
   const out: ParsedUpdate[] = [];
+  const dropReasons: string[] = [];
   for (const u of parsed) {
-    if (!u || typeof u !== 'object' || !('kind' in u)) continue;
+    if (!u || typeof u !== 'object' || !('kind' in u)) {
+      dropReasons.push(`shape: ${JSON.stringify(u)?.slice(0, 100)}`);
+      continue;
+    }
 
     switch (u.kind) {
       case 'sentiment': {
-        if (!playerById.has(u.player_id)) continue;
+        if (!playerById.has(u.player_id)) {
+          dropReasons.push(`sentiment: unknown player_id=${u.player_id}`);
+          continue;
+        }
         const known = playerById.get(u.player_id)!;
         out.push({
           kind: 'sentiment',
@@ -209,7 +224,10 @@ CRITICAL:
         break;
       }
       case 'risk_flag': {
-        if (!playerById.has(u.player_id)) continue;
+        if (!playerById.has(u.player_id)) {
+          dropReasons.push(`risk_flag: unknown player_id=${u.player_id}`);
+          continue;
+        }
         const known = playerById.get(u.player_id)!;
         const validFlags = ['injury', 'suspension', 'legal', 'trade', 'retirement', 'off_field'] as const;
         if (!validFlags.includes(u.flag_type as typeof validFlags[number])) continue;
@@ -224,9 +242,18 @@ CRITICAL:
         break;
       }
       case 'asking_price': {
-        if (!validProductIds.has(u.product_id)) continue;
-        if (u.scope_type === 'player' && !playerById.has(u.scope_player_id ?? '')) continue;
-        if (!['hobby', 'bd', 'jumbo'].includes(u.format)) continue;
+        if (!validProductIds.has(u.product_id)) {
+          dropReasons.push(`asking_price: unknown product_id=${u.product_id}`);
+          continue;
+        }
+        if (u.scope_type === 'player' && !playerById.has(u.scope_player_id ?? '')) {
+          dropReasons.push(`asking_price: unknown scope_player_id=${u.scope_player_id}`);
+          continue;
+        }
+        if (!['hobby', 'bd', 'jumbo'].includes(u.format)) {
+          dropReasons.push(`asking_price: invalid format=${u.format}`);
+          continue;
+        }
         out.push({
           kind: 'asking_price',
           product_id: u.product_id,
@@ -243,10 +270,19 @@ CRITICAL:
         break;
       }
       case 'hype_tag': {
-        if (!validProductIds.has(u.product_id)) continue;
-        if (u.scope_type === 'player' && !playerById.has(u.scope_player_id ?? '')) continue;
+        if (!validProductIds.has(u.product_id)) {
+          dropReasons.push(`hype_tag: unknown product_id=${u.product_id}`);
+          continue;
+        }
+        if (u.scope_type === 'player' && !playerById.has(u.scope_player_id ?? '')) {
+          dropReasons.push(`hype_tag: unknown scope_player_id=${u.scope_player_id}`);
+          continue;
+        }
         const validTags = ['release_premium', 'cooled', 'overhyped', 'underhyped'] as const;
-        if (!validTags.includes(u.tag as typeof validTags[number])) continue;
+        if (!validTags.includes(u.tag as typeof validTags[number])) {
+          dropReasons.push(`hype_tag: invalid tag=${u.tag}`);
+          continue;
+        }
         out.push({
           kind: 'hype_tag',
           product_id: u.product_id,
@@ -264,6 +300,11 @@ CRITICAL:
       }
     }
   }
+
+  if (dropReasons.length > 0) {
+    console.log(`[insights-parser] dropped ${dropReasons.length} updates: ${dropReasons.slice(0, 8).join(' | ')}`);
+  }
+  console.log(`[insights-parser] returning ${out.length} validated updates`);
 
   return out;
 }
