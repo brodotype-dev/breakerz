@@ -282,8 +282,17 @@ async function applyUpdates(args: {
     try {
       switch (u.kind) {
         case 'sentiment': {
-          // Apply the breakerz_score to ALL player_products for this player —
-          // mirrors the global BreakIQ Bets behavior.
+          // Snapshot the prior score before overwriting so the history
+          // table has the full before-state. Apply to all player_products
+          // for this player — mirrors the global BreakIQ Bets behavior.
+          const { data: priors } = await supabaseAdmin
+            .from('player_products')
+            .select('breakerz_score, breakerz_note')
+            .eq('player_id', u.player_id)
+            .limit(1);
+          const prevScore = priors?.[0]?.breakerz_score ?? null;
+          const prevNote = priors?.[0]?.breakerz_note ?? null;
+
           const { error } = await supabaseAdmin
             .from('player_products')
             .update({
@@ -292,12 +301,30 @@ async function applyUpdates(args: {
             })
             .eq('player_id', u.player_id);
           if (error) throw error;
+
+          // Append-only history row so we can analyze how each contributor's
+          // read on a player evolves over time, even when scores are revised.
+          await supabaseAdmin.from('breakerz_sentiment_history').insert({
+            player_id: u.player_id,
+            prev_score: prevScore,
+            new_score: u.score,
+            prev_note: prevNote,
+            new_note: u.note || null,
+            source: 'discord',
+            source_pending_id: args.pendingId,
+            source_user_id: args.sourceUserId,
+            source_narrative: args.sourceText,
+            confidence: u.confidence,
+          });
+
           applied++;
           break;
         }
         case 'risk_flag': {
           // player_risk_flags rows are scoped to player_product, so we
-          // create one per player_product the player appears in.
+          // create one per player_product the player appears in. Each row
+          // gets full source attribution so the same downstream analytics
+          // queries that work on market_observations work here too.
           const { data: pps } = await supabaseAdmin
             .from('player_products')
             .select('id')
@@ -309,6 +336,10 @@ async function applyUpdates(args: {
             player_product_id: pp.id,
             flag_type: u.flag_type,
             note: u.note,
+            source_pending_id: args.pendingId,
+            source_user_id: args.sourceUserId,
+            source_narrative: args.sourceText,
+            confidence: u.confidence,
           }));
           const { error } = await supabaseAdmin.from('player_risk_flags').insert(rows);
           if (error) throw error;
