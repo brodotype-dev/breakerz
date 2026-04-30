@@ -59,27 +59,44 @@ export type ParsedUpdate =
 
 export interface ParseInput {
   narrative: string;
-  // Cap how many products and players we send to Claude. The full prod
-  // catalog is small (~20 products, ~3000 players) but we keep this
-  // bounded for prompt-size + cost predictability.
+  // Soft cap on roster size sent to Claude. The full prod catalog is ~3k
+  // players which fits easily in Haiku's 200k context (~75k tokens worth).
+  // We cap at 5000 as a guard against future growth, and prefer
+  // slot-eligible players (insert_only=false) — multi-player insert rows
+  // and retired-legend subset cards aren't real targets for sentiment.
   maxPlayers?: number;
 }
 
-export async function parseInsights({ narrative, maxPlayers = 1500 }: ParseInput): Promise<ParsedUpdate[]> {
+export async function parseInsights({ narrative, maxPlayers = 5000 }: ParseInput): Promise<ParsedUpdate[]> {
   if (!narrative.trim()) return [];
 
-  const [{ data: products }, { data: players }] = await Promise.all([
+  // Only include players who appear as slot-eligible in at least one
+  // active product. Combined-name multi-player rows ("Skubal / Blanco")
+  // and retired-legend subset cards have insert_only=true on every
+  // player_product and shouldn't show up for sentiment matching.
+  const [{ data: products }, { data: eligibleRows }] = await Promise.all([
     supabaseAdmin
       .from('products')
       .select('id, name, year, lifecycle_status')
       .eq('is_active', true)
       .in('lifecycle_status', ['live', 'pre_release']),
     supabaseAdmin
-      .from('players')
-      .select('id, name, team, sport:sports(name)')
-      .order('name')
-      .limit(maxPlayers),
+      .from('player_products')
+      .select('player_id, products!inner(is_active, lifecycle_status)')
+      .eq('insert_only', false)
+      .eq('products.is_active', true)
+      .in('products.lifecycle_status', ['live', 'pre_release']),
   ]);
+
+  const eligiblePlayerIds = Array.from(new Set((eligibleRows ?? []).map((r: any) => r.player_id)));
+  const { data: players } = eligiblePlayerIds.length
+    ? await supabaseAdmin
+        .from('players')
+        .select('id, name, team, sport:sports(name)')
+        .in('id', eligiblePlayerIds)
+        .order('name')
+        .limit(maxPlayers)
+    : { data: [] as any[] };
 
   if (!products?.length || !players?.length) return [];
 
@@ -134,6 +151,7 @@ Return JSON ONLY — a JSON array of update objects. No markdown, no explanation
 
 CRITICAL:
 - Use exact ids from the lists above. Never invent ids.
+- The "player_name" or "product_name" field MUST be the exact name from the roster line whose id you used. After writing each update, re-read the id you put in player_id and verify it matches the name you wrote. Mismatched name+id pairs will be silently dropped.
 - One narrative can produce multiple updates of different kinds.
 - Skip anything you can't tie to a real id with high confidence.`;
 
@@ -165,6 +183,20 @@ CRITICAL:
   const playerById = new Map(players.map((p: any) => [p.id, { name: p.name, team: p.team }]));
   const productById = new Map(products.map(p => [p.id, p.name]));
 
+  // Fuzzy name match — case-insensitive substring either way. Claude
+  // sometimes returns nicknames ("Wemby" → "Victor Wembanyama"); we accept
+  // those as long as one is a substring of the other. But if the model
+  // wrote a totally different name than the id resolves to (e.g. wrote
+  // "Victor Wembanyama" while id resolves to "David Robinson"), we drop
+  // the update — that's a hallucination, not a nickname mismatch.
+  const namesAreCompatible = (claimed: string, actual: string): boolean => {
+    if (!claimed || !actual) return false;
+    const a = claimed.toLowerCase().trim();
+    const b = actual.toLowerCase().trim();
+    if (a === b) return true;
+    return a.includes(b) || b.includes(a);
+  };
+
   const out: ParsedUpdate[] = [];
   for (const u of parsed) {
     if (!u || typeof u !== 'object' || !('kind' in u)) continue;
@@ -173,6 +205,10 @@ CRITICAL:
       case 'sentiment': {
         if (!playerById.has(u.player_id)) continue;
         const known = playerById.get(u.player_id)!;
+        if (!namesAreCompatible(u.player_name, known.name)) {
+          console.warn(`[insights-parser] dropped sentiment: id=${u.player_id} name="${known.name}" claimed="${u.player_name}"`);
+          continue;
+        }
         out.push({
           kind: 'sentiment',
           player_id: u.player_id,
@@ -186,6 +222,10 @@ CRITICAL:
       case 'risk_flag': {
         if (!playerById.has(u.player_id)) continue;
         const known = playerById.get(u.player_id)!;
+        if (!namesAreCompatible(u.player_name, known.name)) {
+          console.warn(`[insights-parser] dropped risk_flag: id=${u.player_id} name="${known.name}" claimed="${u.player_name}"`);
+          continue;
+        }
         const validFlags = ['injury', 'suspension', 'legal', 'trade', 'retirement', 'off_field'] as const;
         if (!validFlags.includes(u.flag_type as typeof validFlags[number])) continue;
         out.push({
