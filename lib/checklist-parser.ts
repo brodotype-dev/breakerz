@@ -565,11 +565,48 @@ export function parseChecklistXlsx(buffer: Buffer): ParsedChecklist {
         continue;
       }
 
-      // Data row
-      const cardNumber = c0 != null ? String(c0).trim() : '';
-      const rawName = c1 != null ? String(c1).trim() : '';
-      const team = row[2] != null ? String(row[2]).trim().replace(/,\s*$/, '') || undefined : undefined;
-      const flag = row[3] != null ? String(row[3]).trim() : '';
+      // Data row.
+      //
+      // Bowman autograph subsets ("Under The Radar Autographs", "Power Chords
+      // Autographs", etc.) use a parallel-prefix layout that diverges from the
+      // standard:
+      //
+      //   [parallel_label, card_num, player, team, flag?]
+      //   "Base",                      1, "Aaron Judge,", "USA"
+      //   "Base - Etched In Glass...", 1, "Aaron Judge,", "USA"
+      //   "Refractor /50",             1, "Aaron Judge,", "USA"
+      //
+      // The standard layout has card_num in c0 with parallels carried over from
+      // prior label-only rows. To keep both working we sniff c0: if it looks
+      // like a parallel label (Refractor / Gold /50 / etc.) OR starts with
+      // "Base" — and c1 has content — we shift columns and treat c0 as a
+      // per-row parallel.
+      const c0Str = c0 != null ? String(c0).trim() : '';
+      const c1HasContent = c1 != null && String(c1).trim().length > 0;
+      const c0IsParallelPrefix =
+        c0Str.length > 0 &&
+        c1HasContent &&
+        (isParallelLabel(c0Str) || /^Base($|\s|-)/i.test(c0Str));
+
+      let cardNumber: string;
+      let rawName: string;
+      let team: string | undefined;
+      let flag: string;
+      let rowParallels: string[];
+
+      if (c0IsParallelPrefix) {
+        cardNumber = c1 != null ? String(c1).trim() : '';
+        rawName = row[2] != null ? String(row[2]).trim() : '';
+        team = row[3] != null ? String(row[3]).trim().replace(/,\s*$/, '') || undefined : undefined;
+        flag = row[4] != null ? String(row[4]).trim() : '';
+        rowParallels = [c0Str];
+      } else {
+        cardNumber = c0Str;
+        rawName = c1 != null ? String(c1).trim() : '';
+        team = row[2] != null ? String(row[2]).trim().replace(/,\s*$/, '') || undefined : undefined;
+        flag = row[3] != null ? String(row[3]).trim() : '';
+        rowParallels = parallels.slice();
+      }
 
       if (!rawName) continue;
 
@@ -584,7 +621,7 @@ export function parseChecklistXlsx(buffer: Buffer): ParsedChecklist {
         isSP: false,
         hasBackVariation: false,
         rawLine: row.join('\t'),
-        parallels: parallels.slice(),
+        parallels: rowParallels,
       });
       sawDataInBlock = true;
     }

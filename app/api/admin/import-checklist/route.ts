@@ -47,12 +47,34 @@ export async function POST(req: NextRequest) {
     name: string; team: string; hobbySets: number; bdSets: number; isRookie: boolean;
   }>();
 
-  // Track whether each player appears in any base-set entry. A card is "base"
-  // if its card_number is purely numeric (e.g. "1", "251") — inserts and
-  // autographs use prefixed codes ("SF-13", "TCA-JM"). This drives insert_only
-  // on the player_product so retired-legend insert subjects don't count as
-  // slot-eligible base players.
+  // Track whether each player appears in any base-set entry. Two signals
+  // combine to qualify a card as "base":
+  //
+  //   1. The card_number is base-shaped: purely numeric ("1", "251") OR an
+  //      alpha-prefix-numeric pattern with the digits at the end ("BP-1",
+  //      "BCP-1" — Bowman base prospects). Autograph numbering uses player
+  //      initials at the end ("BPA-EH", "CPA-EH") so we exclude trailing
+  //      letters.
+  //   2. The section name is a base section. Some inserts use base-shaped
+  //      numbers too (e.g. "Anime BA-24"), so we additionally require the
+  //      section name to start with "Base" or "Chrome Prospects" and to NOT
+  //      contain "Autograph" / "Variation". Parallels of base sections (e.g.
+  //      "Base - Etched In Glass Variations") don't independently qualify —
+  //      but the same player will also appear in the canonical "Base" /
+  //      "Base Prospects" section, so they still get flagged correctly.
+  //
+  // Drives insert_only on the player_product, which the pricing engine and
+  // dashboard counts filter on.
   const playerHasBaseAppearance = new Map<string, boolean>();
+  const isBaseShapedCardNumber = (n: string | undefined): boolean => {
+    if (!n) return false;
+    return /^(?:[A-Z]+-)?\d+$/.test(n);
+  };
+  const isBaseSectionName = (name: string): boolean => {
+    if (/autograph/i.test(name)) return false;
+    if (/variation/i.test(name)) return false;
+    return /^(Base($|\s|-)|Chrome\s+Prospects?($|\s|-))/i.test(name);
+  };
 
   // Collect every card_number per player, deduped. Persisted on the player_product
   // so hydrate can scope CH variant attachment to what's actually in this product's
@@ -71,7 +93,7 @@ export async function POST(req: NextRequest) {
         isRookie: card.isRookie || (existing?.isRookie ?? false),
       });
 
-      const isBaseCard = !!card.cardNumber && /^[0-9]+$/.test(card.cardNumber);
+      const isBaseCard = isBaseShapedCardNumber(card.cardNumber) && isBaseSectionName(section.sectionName);
       if (isBaseCard) playerHasBaseAppearance.set(card.playerName, true);
       else if (!playerHasBaseAppearance.has(card.playerName)) {
         playerHasBaseAppearance.set(card.playerName, false);
