@@ -14,7 +14,8 @@ Sports card break slot pricing and analysis tool. Built with Kyle (Town & Line /
 - [docs/manufacturer-rules/bowman.md](./docs/manufacturer-rules/bowman.md) — Bowman/Topps prefix names, CH naming conventions, match rate history
 - [docs/breaker-identity-prd.md](./docs/breaker-identity-prd.md) — Breaker role + crowdsourced case pricing PRD (backlogged, post-public-beta)
 - [docs/product-lifecycle.md](./docs/product-lifecycle.md) — pre_release / live / dormant lifecycle: schema, crons, transitions, consumer rendering
-- [docs/plans/2026-04-29-break-analysis-v2.md](./docs/plans/2026-04-29-break-analysis-v2.md) — Break Analysis v2 plan (multi-format, multi-team, insight capture roadmap)
+- [docs/plans/2026-04-29-break-analysis-v2.md](./docs/plans/2026-04-29-break-analysis-v2.md) — Break Analysis v2 plan (multi-format, multi-team, insight capture roadmap; Phase 2 rewritten 2026-04-29 as Discord-driven)
+- [lib/insights-parser.ts](./lib/insights-parser.ts) — Discord `/insight` Claude parser rules (the prompt). Edit this when you want to add/change extraction rules — sentiment scoring guidance, new hype-tag categories, new risk flags, anti-substitution rules, etc.
 
 Update CHANGELOG.md at the end of every session with what changed and why.
 
@@ -64,7 +65,15 @@ Live at [getbreakiq.com](https://getbreakiq.com). Private beta — consumer rout
 
 **1/1 Filter** ✅ (2026-04-29) `lib/pricing-refresh.ts` and `lib/analysis.ts` exclude variants with `print_run <= 1` from per-player aggregated EV. Eliminates the Austin Reaves bug where a single $2,200 SuperFractor sale pulled his slot to $4,400. Variant-level EV for 1/1s is preserved (still rendered in the player drawer); they just no longer skew the sets-weighted slot math.
 
-**Next up:** Phase 2 of break analysis v2 (asking-price + hype-tag capture extending global BreakIQ Bets), Phase 5 C-score (blocked on Kyle), My Breaks Phase 2 (chase/hit card tracking), Sentry error tracking, rate limiting, 2025-26 Bowman Basketball re-match (CPA cards being added by CH this week)
+**My Breaks v2** ✅ (2026-04-29) Multi-team / multi-player / mixed-format break logging. `user_breaks` schema gets `teams text[]`, `extra_player_product_ids uuid[]`, `formats jsonb`; old single-value columns kept nullable. Form mirrors `/analysis` (TeamChip multi-select, searchable player picker, three-format counters). CSV export/import use `Teams` (semicolon-sep) + per-format case columns.
+
+**Multi-player checklist rows** ✅ (2026-04-29) Combined-name rows (`Skubal / Blanco / Valdez` — League Leaders, dual autos) auto-flag `insert_only=true` at import time and get excluded from team filters. Per Kyle: every individual player has exactly one team; concatenated rows are subset cards, not real entities. 101 legacy rows flipped via backfill.
+
+**Cron Status panel** ✅ (2026-04-29) `cron_run_log` table records every orchestrator invocation. `<CronStatusPanel>` on `/admin/products` shows last-success age + last-attempt result with healthy/stale/failed/never-run badges. Stale threshold 26h daily / 17d biweekly. Caught the silent SSO-fan-out failure that had been killing the pricing cron for 2+ days — fan-out now resolves to `NEXT_PUBLIC_APP_URL` with forced www-prefix and `redirect: 'manual'`, plus a shared AbortController fires at 240s to keep the orchestrator inside Vercel's 300s kill.
+
+**Discord insight capture** ✅ (2026-04-29) Allowlisted contributors run `/insight <narrative>` in `#breakiq-insights`; Claude parses into four update kinds (sentiment, asking_price, hype_tag, risk_flag); bot replies with proposed updates + ✅/❌ buttons. Apply path writes to `player_products.breakerz_score`, `breakerz_sentiment_history`, `market_observations`, `player_risk_flags` — all with full source attribution back to `pending_insights` for longitudinal analysis. Runs entirely on Vercel via Discord HTTP Interactions (no gateway connection). See `lib/insights-parser.ts` for parser rules + prompt and `app/api/discord/interactions/route.ts` for the dispatcher.
+
+**Next up:** Phase 2 follow-ups — consumer surface for `market_observations` on `/break/[slug]` (asking-price chips + hype-tag chips next to player names), feeding asking-price observations back into the model's weighting (still display-only today). Phase 5 C-score (blocked on Kyle), My Breaks Phase 2 (chase/hit card tracking), Sentry error tracking, rate limiting, 2025-26 Bowman Basketball re-match (CPA cards being added by CH this week)
 
 ---
 

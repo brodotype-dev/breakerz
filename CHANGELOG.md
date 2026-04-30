@@ -5,6 +5,81 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-29 — Discord insight capture (Phase 2)
+
+Replaces the original Phase 2 plan for extending BreakIQ Bets / building a dedicated mobile capture route. Kyle (and any allowlisted contributor) types `/insight <narrative>` in `#breakiq-insights` on the BreakIQ Discord server; Claude parses; bot replies with proposed updates and ✅ Apply / ❌ Discard buttons. No long-running gateway connection required — runs entirely on Vercel via Discord's HTTP Interactions API.
+
+What landed:
+
+1. **Schema migration `20260429190000_discord_insights.sql`** — three tables. `discord_contributors` (allowlist of Discord user IDs with `admin` / `contributor` roles). `pending_insights` stages parser output until ✅/❌ resolves it; preserves the raw narrative + parsed_updates JSON + status (`pending` / `applied` / `discarded` / `expired`) for analytics. `market_observations` is the consumer-visible asking-price + hype-tag table, scoped by product/team/player with a default 14-day expiry (overridden by hype-tag `decay_days`).
+
+2. **`lib/discord.ts`** — Ed25519 signature verification using Node native crypto (no extra deps; we wrap Discord's raw 32-byte public key in a SubjectPublicKeyInfo DER prefix so `crypto.createPublicKey` accepts it). REST helpers for editing interaction responses + channel messages. Constants for interaction/component types so call sites stay readable.
+
+3. **`lib/insights-parser.ts`** — shared Claude parser. Emits four update kinds in one call: `sentiment` (player ±0.5 score), `asking_price` (team/player/product slot price range), `hype_tag` (release_premium / cooled / overhyped / underhyped with decay), `risk_flag` (injury/suspension/legal/trade/retirement/off_field). Strict id validation against products + players from the DB. Roster includes every solo player in the DB (excluding multi-player concatenated rows like `Skubal / Blanco`) so Claude has the full population to match against. The prompt explicitly forbids substitution — "wrong attributions are worse than missing ones."
+
+4. **`/api/discord/interactions`** — single endpoint handles PING, slash command, and button click. Both slow paths (Claude parse on the slash command + DB fanout on Apply) defer the response with `next/server`'s `after()` so we never trip Discord's 3-second response budget. Allowlist enforced per interaction, not per session, so a dropped contributor stops resolving immediately.
+
+5. **`scripts/register-discord-commands.mjs`** — one-shot guild-scoped registration of the `/insight` slash command. Re-runnable any time the schema changes.
+
+Several gnarly issues surfaced and got fixed during setup:
+
+- **PostgREST `products!inner` + filter combination silently returned 0 rows** — caused a session where every `/insight` call returned `roster=0` and Claude was never invoked. Replaced with an explicit two-step paginated query (active product ids → page through `player_products` → chunked `.in()` against `players`).
+- **Slot-eligibility filter excluded entities the user wanted to discuss** — C.J. Stroud is in the DB only as `insert_only=true`, so excluding insert-only players let Claude substitute Shedeur Sanders (closest popular young QB) instead of admitting "no match." Fixed by including all solo players regardless of slot-eligibility, plus the anti-substitution prompt.
+- **Apply button hit Discord's 3s timeout** — `applyUpdates` runs sequential DB writes (sentiment fans out across all of a player's product entries; risk_flag inserts one row per `player_product`). Now both buttons defer with `DEFERRED_UPDATE_MESSAGE` and edit the message after work completes.
+- **Diagnostic surface in the bot reply** — when the parser returns 0 updates, the bot now includes roster size, products count, parsed-raw count, drop reasons, and the first 700 chars of Claude's raw response so silent failures don't repeat.
+
+Allowlist seeded with Brody (admin) and Kyle (contributor). Phase 2 of `docs/plans/2026-04-29-break-analysis-v2.md` rewritten to reflect this Discord-driven design; the dedicated-mobile-capture line item is explicitly retired (Discord on phone *is* the mobile surface).
+
+What this doesn't do yet: consumer surface for the captured `market_observations` (still display-only when we wire it up on `/break/[slug]`), feeding asking-price observations back into the model's weighting, image attachments on slash commands, voice-memo transcription pipeline (Discord's mobile keyboard dictation handles voice today).
+
+---
+
+## 2026-04-29 — Insight source tracking (sentiment history + risk-flag attribution)
+
+So we can analyze contributor themes longitudinally — what topics Kyle/Brody flag most often, how each person's read on a player shifts week over week, which kinds of insights tend to convert to applied vs discarded — every applied insight now traces back to who submitted it and what they said.
+
+Two specific gaps closed (migration `20260429210000_insight_source_tracking.sql`):
+
+1. `player_risk_flags` previously had no source attribution. Discord-applied flags now populate `source_pending_id`, `source_user_id`, `source_narrative`, `confidence` — same shape as `market_observations`. Pre-existing rows stay NULL.
+
+2. `breakerz_score` is a single mutable column — when a contributor revises a sentiment, the prior value vanishes. New `breakerz_sentiment_history` table captures every score change with prev/new score + note, source narrative, and contributor. Currently written from the Discord apply path; admin UI edits will write here once that flow is wired.
+
+Followup migration `20260429220000_sentiment_history_allow_null_new_score.sql` made `new_score` nullable — reverts back to "no score" are a legitimate state change (needed when correcting a misattribution from a bad parser run).
+
+Example queries this enables: "what does Kyle most often flag?", "how has Wemby's sentiment evolved?", "which products attract the most market observations?" — all in `pending_insights` joined to the appropriate downstream table by `source_pending_id`.
+
+---
+
+## 2026-04-29 — Cron pipeline fixes (silent fan-out failure + status panel)
+
+Discovered during a QA pass that consumer pricing kept "disappearing" — root cause: the nightly pricing cron had been writing zero rows for at least 2 days. Vercel showed the cron firing on schedule and the orchestrator returning 200, but every fan-out POST to `/api/admin/refresh-product-pricing` failed silently. The orchestrator's response payload showed `processed=16 ok=0 err=16` while the dashboard happily reported success. Three coupled fixes:
+
+1. **Vercel Deployment Protection (SSO) was 401-ing every fan-out** (commits `f552cd7` + `185893a`). The orchestrator built the fan-out URL from `req.url`. When Vercel cron invoked the orchestrator, `req.url` was the protected `*.vercel.app` deployment host. Each POST hit the SSO challenge before reaching the route. Fix: prefer `NEXT_PUBLIC_APP_URL` whenever the orchestrator runs on a `*.vercel.app` host, normalize to www-prefix so the apex→www redirect doesn't strip the bearer header, and `redirect: 'manual'` on the fetch so any future redirect surfaces as a visible failure instead of being followed to a wrong endpoint.
+
+2. **Orchestrator survived past Vercel's 300s kill** (commit `7e3523f`). With CONCURRENCY=3 and PER_FETCH_TIMEOUT=240s, an in-flight fan-out fetch could keep the orchestrator alive past its own 270s budget — well past Vercel's 300s function-invocation cap. The function got killed before it could write `cron_run_log` or return a JSON summary, hiding the failure. Fix: shared `AbortController` fires at `ORCHESTRATOR_BUDGET_MS=240s` and aborts every in-flight fan-out. Workers exit deterministically; the orchestrator returns inside its budget. Per-product workers run on their own Vercel invocations and finish independently — aborting the orchestrator's view of them doesn't lose work.
+
+3. **Cron Status panel** (commit `769ad96`, migration `20260429160000_cron_run_log.sql`). New `cron_run_log` table records every orchestrator invocation: `started_at`, `duration_ms`, `processed`/`ok`/`errors`/`skipped`, plus a `details` JSON payload (failure samples, fan-out host, etc.). All four cron orchestrators (`refresh-pricing`, `refresh-dormant-pricing`, `refresh-ch-catalogs`, `update-scores`) write a row at end of run and on fatal catch. New `<CronStatusPanel>` on `/admin/products` shows last-success age + last-attempt result with healthy/stale/failed/never-run badges. Stale threshold is 26h for daily crons, 17 days for the biweekly dormant refresh.
+
+---
+
+## 2026-04-29 — Multi-player checklist rows are inserts, not slot-eligible players
+
+Combined-name rows (`Skubal / Blanco / Valdez` — League Leaders, dual autos, etc.) were being stored as single `players` rows by the importer with concatenated team strings, then surfaced as bogus team chips in the consumer analyzer. Per Kyle's domain knowledge: every individual player has exactly one team; a combined-name row isn't a real player, it's a subset card. 437 multi-player rows on prod; 101 had `insert_only=false` and were polluting team filters.
+
+- Forward fix: `import-checklist` sets `insert_only=true` on `player_products` whose player name contains `/`, same way it already does for players with no base-card appearance.
+- Backfill migration `20260429140000_multi_player_rows_insert_only.sql` flipped the 101 leftover rows.
+- Effect: team chip filter (queries `insert_only=false`) drops these entries; slot pricing excludes them. CardHedger pricing on these rows is preserved — they're flagged, not deleted.
+
+---
+
+## 2026-04-29 — My Breaks v2: multi-team / multi-player / mixed-format
+
+My Breaks (consumer break log) now matches the same bundle shape as `/analysis`. Schema migration `20260429180000_my_breaks_multi.sql` adds `teams text[]`, `extra_player_product_ids uuid[]`, `formats jsonb`. Old single-value columns (`team`, `break_type`, `num_cases`) made nullable; existing rows backfilled to single-element arrays.
+
+Form rebuilt with the same multi-select team chip picker (logos + tooltips), searchable player slot picker, three-format counters gated by what the product supports. List view shows "Product — Team A, Team B" plus the format mix in the meta line. CSV export + import template updated: `Teams` (semicolon-separated) + separate `Hobby/BD/Jumbo Cases` columns replace the old single-team / single-format shape.
+
+---
+
 ## 2026-04-29 — Break Analysis v2: multi-format, multi-team, multi-player + 1/1 filter
 
 After a working session with Kyle (transcript captured in `docs/plans/2026-04-29-break-analysis-v2.md`), we surfaced that the consumer break analyzer didn't match how breaks are actually sold. Real breaks mix formats (hobby + BD + jumbo), often span multiple teams, and frequently include standalone player slots. Phase 1 of the rethink lands here.
