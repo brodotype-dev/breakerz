@@ -228,47 +228,65 @@ async function handleButton(interaction: ButtonInteraction): Promise<NextRespons
     return ephemeralReply(`That insight was already ${pending.status}.`);
   }
 
-  if (action === 'discard') {
-    await supabaseAdmin
-      .from('pending_insights')
-      .update({ status: 'discarded', resolved_at: new Date().toISOString() })
-      .eq('id', pendingId)
-      .eq('status', 'pending');
+  // Both buttons defer their response — applyUpdates can take more than
+  // Discord's 3s budget when a sentiment update fans out to many
+  // player_products. Discard is fast in practice but still defer for
+  // symmetry; the user-visible behavior is identical.
+  const handle = user.global_name ?? user.username;
+  const baseContent = interaction.message.content;
 
-    return NextResponse.json({
-      type: InteractionResponseType.UPDATE_MESSAGE,
-      data: {
-        content: `${interaction.message.content}\n\n— ❌ **Discarded** by @${user.global_name ?? user.username}`,
+  if (action === 'discard') {
+    after(async () => {
+      await supabaseAdmin
+        .from('pending_insights')
+        .update({ status: 'discarded', resolved_at: new Date().toISOString() })
+        .eq('id', pendingId)
+        .eq('status', 'pending');
+
+      await editInteractionResponse(interaction.application_id, interaction.token, {
+        content: `${baseContent}\n\n— ❌ **Discarded** by @${handle}`,
         components: [],
-      },
+      });
     });
+
+    return NextResponse.json({ type: InteractionResponseType.DEFERRED_UPDATE_MESSAGE });
   }
 
   if (action === 'confirm') {
     const updates = pending.parsed_updates as ParsedUpdate[];
-    const result = await applyUpdates({
-      pendingId: pending.id,
-      sourceUserId: user.id,
-      sourceText: pending.source_text,
-      updates,
+
+    after(async () => {
+      try {
+        const result = await applyUpdates({
+          pendingId: pending.id,
+          sourceUserId: user.id,
+          sourceText: pending.source_text,
+          updates,
+        });
+
+        await supabaseAdmin
+          .from('pending_insights')
+          .update({ status: 'applied', resolved_at: new Date().toISOString() })
+          .eq('id', pendingId)
+          .eq('status', 'pending');
+
+        await editInteractionResponse(interaction.application_id, interaction.token, {
+          content:
+            `${baseContent}\n\n— ✅ **Applied** by @${handle}: ` +
+            `${result.applied} of ${updates.length} updates committed.` +
+            (result.errors.length > 0 ? `\nErrors: ${result.errors.slice(0, 3).join('; ')}` : ''),
+          components: [],
+        });
+      } catch (err) {
+        console.error('[discord/confirm] apply failed', err);
+        await editInteractionResponse(interaction.application_id, interaction.token, {
+          content: `${baseContent}\n\n— ⚠️ **Apply failed** by @${handle}: ${err instanceof Error ? err.message : 'unknown'}`,
+          components: [],
+        }).catch(() => {});
+      }
     });
 
-    await supabaseAdmin
-      .from('pending_insights')
-      .update({ status: 'applied', resolved_at: new Date().toISOString() })
-      .eq('id', pendingId)
-      .eq('status', 'pending');
-
-    return NextResponse.json({
-      type: InteractionResponseType.UPDATE_MESSAGE,
-      data: {
-        content:
-          `${interaction.message.content}\n\n— ✅ **Applied** by @${user.global_name ?? user.username}: ` +
-          `${result.applied} of ${updates.length} updates committed.` +
-          (result.errors.length > 0 ? `\nErrors: ${result.errors.slice(0, 3).join('; ')}` : ''),
-        components: [],
-      },
-    });
+    return NextResponse.json({ type: InteractionResponseType.DEFERRED_UPDATE_MESSAGE });
   }
 
   return ephemeralReply('Unknown button.');
