@@ -1,9 +1,13 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { get90DayPrices } from '@/lib/cardhedger';
+import { getPlayer90DayStats } from '@/lib/cardhedger';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+// Cold-cache fetch for a 250-player roster runs ~250 player batches × 3
+// parallel grade calls each. With concurrency=5 (15 simultaneous CH calls)
+// and ~1s per call, total runtime is ~50s — but we keep the budget at 300s
+// so a slow-CH day doesn't trip the timeout.
+export const maxDuration = 300;
 
 const TTL_MS = 24 * 60 * 60 * 1000; // 24h
 const MIN_RAW_SALES_FOR_HISTORY = 3; // below this, treat as data-light
@@ -120,21 +124,18 @@ export async function POST(req: Request) {
         }
 
         try {
-          const data = await get90DayPrices(playerName, undefined, sportName);
-          const raw = data.prices?.find(p => p.grade === 'Raw');
-          const psa9 = data.prices?.find(p => p.grade === 'PSA 9');
-          const psa10 = data.prices?.find(p => p.grade === 'PSA 10');
-          const rawSales = raw?.sale_count ?? 0;
+          const stats = await getPlayer90DayStats(playerName, sportName);
+          const rawSales = stats.raw.sales;
           const hasHistory = rawSales >= MIN_RAW_SALES_FOR_HISTORY;
           return {
             player_product_id: r.id,
             has_history: hasHistory,
-            raw_avg_90d: hasHistory ? Number(raw?.avg_price ?? null) : null,
-            psa9_avg_90d: psa9?.sale_count ? Number(psa9.avg_price ?? null) : null,
-            psa10_avg_90d: psa10?.sale_count ? Number(psa10.avg_price ?? null) : null,
+            raw_avg_90d: hasHistory && stats.raw.avg != null ? Number(stats.raw.avg.toFixed(2)) : null,
+            psa9_avg_90d: stats.psa9.sales > 0 && stats.psa9.avg != null ? Number(stats.psa9.avg.toFixed(2)) : null,
+            psa10_avg_90d: stats.psa10.sales > 0 && stats.psa10.avg != null ? Number(stats.psa10.avg.toFixed(2)) : null,
             raw_sales_90d: hasHistory ? rawSales : null,
-            psa9_sales_90d: psa9?.sale_count ?? null,
-            psa10_sales_90d: psa10?.sale_count ?? null,
+            psa9_sales_90d: stats.psa9.sales > 0 ? stats.psa9.sales : null,
+            psa10_sales_90d: stats.psa10.sales > 0 ? stats.psa10.sales : null,
           } as SnapshotRow;
         } catch (err) {
           console.error('[pre-release/player-snapshots] CH error for', playerName, err);
