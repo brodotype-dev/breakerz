@@ -1,7 +1,8 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { computeLiveEV, get90DayPrices } from '@/lib/cardhedger';
 import { computeSlotPricing, computeTeamSlotPricing, computeSignal, formatCurrency } from '@/lib/engine';
-import type { PlayerWithPricing, BreakConfig, Signal, BreakFormat } from '@/lib/types';
+import { computeRiskAdjustment, computeHypeAdjustment, type HypeObservation, type HypeTag } from '@/lib/score-modulation';
+import type { PlayerWithPricing, BreakConfig, Signal, BreakFormat, PlayerRiskFlag } from '@/lib/types';
 
 const CACHE_TTL_HOURS = 24;
 
@@ -209,7 +210,73 @@ export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisRe
     jumboCaseCost,
   };
 
-  const pricedPlayers = computeSlotPricing(rawPlayers, config);
+  // Fetch active risk flags (all player_products in this product) + active
+  // hype-tag observations (product-wide) so the engine can fold them into
+  // effectiveScore. The bundle-level riskFlags response below reuses the
+  // same flags fetch — no second round-trip.
+  const nowIso = new Date().toISOString();
+  const [poolFlagsRes, poolObsRes] = await Promise.all([
+    supabaseAdmin
+      .from('player_risk_flags')
+      .select('player_product_id, flag_type, note')
+      .in('player_product_id', ids)
+      .is('cleared_at', null),
+    supabaseAdmin
+      .from('market_observations')
+      .select('scope_type, scope_id, scope_team, payload, observed_at')
+      .eq('product_id', productId)
+      .eq('observation_type', 'hype_tag')
+      .gt('expires_at', nowIso)
+      .is('superseded_at', null),
+  ]);
+
+  const flagsByPp = new Map<string, PlayerRiskFlag['flag_type'][]>();
+  for (const f of poolFlagsRes.data ?? []) {
+    const arr = flagsByPp.get(f.player_product_id) ?? [];
+    arr.push(f.flag_type as PlayerRiskFlag['flag_type']);
+    flagsByPp.set(f.player_product_id, arr);
+  }
+  const riskAdjMap = new Map<string, number>();
+  for (const [ppId, types] of flagsByPp) {
+    riskAdjMap.set(ppId, computeRiskAdjustment(types.map(t => ({ flag_type: t }))));
+  }
+
+  type Obs = { scope_type: string; scope_id: string | null; scope_team: string | null; payload: { tag: HypeTag; strength: number; decay_days: number }; observed_at: string };
+  const obsRows = (poolObsRes.data ?? []) as Obs[];
+  const productScope: HypeObservation[] = [];
+  const teamScope = new Map<string, HypeObservation[]>();
+  const playerScope = new Map<string, HypeObservation[]>();
+  for (const o of obsRows) {
+    const obs: HypeObservation = {
+      tag: o.payload.tag,
+      strength: o.payload.strength,
+      decay_days: o.payload.decay_days,
+      observed_at: o.observed_at,
+    };
+    if (o.scope_type === 'product') productScope.push(obs);
+    else if (o.scope_type === 'team' && o.scope_team) {
+      const arr = teamScope.get(o.scope_team) ?? [];
+      arr.push(obs);
+      teamScope.set(o.scope_team, arr);
+    } else if (o.scope_type === 'player' && o.scope_id) {
+      const arr = playerScope.get(o.scope_id) ?? [];
+      arr.push(obs);
+      playerScope.set(o.scope_id, arr);
+    }
+  }
+
+  const augmentedRawPlayers: PlayerWithPricing[] = rawPlayers.map(p => {
+    const teamObs = teamScope.get(p.player?.team ?? '') ?? [];
+    const playerObs = playerScope.get(p.player_id) ?? [];
+    const all = [...productScope, ...teamObs, ...playerObs];
+    return {
+      ...p,
+      risk_score_adj: riskAdjMap.get(p.id) ?? 0,
+      hype_score_adj: computeHypeAdjustment(all),
+    };
+  });
+
+  const pricedPlayers = computeSlotPricing(augmentedRawPlayers, config);
   const playerById = new Map(pricedPlayers.map(p => [p.id, p]));
   const teamSlots = computeTeamSlotPricing(pricedPlayers, config);
 
@@ -242,20 +309,17 @@ export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisRe
     .sort((a, b) => b.evMid - a.evMid);
   const bundlePlayerProductIds = allBundlePlayers.map(p => p.id);
 
-  const { data: bundleFlags } = bundlePlayerProductIds.length
-    ? await supabaseAdmin
-        .from('player_risk_flags')
-        .select('player_product_id, flag_type, note')
-        .in('player_product_id', bundlePlayerProductIds)
-        .is('cleared_at', null)
-    : { data: [] };
-
+  // Reuse poolFlagsRes from the engine-modulation fetch above — same rows,
+  // just filtered down to the bundle for the response payload.
+  const bundlePpIdSet = new Set(bundlePlayerProductIds);
   const ppNameMap = new Map(allBundlePlayers.map(p => [p.id, p.player.name]));
-  const riskFlags = (bundleFlags ?? []).map(f => ({
-    playerName: ppNameMap.get(f.player_product_id) ?? '',
-    flagType: f.flag_type as string,
-    note: f.note,
-  }));
+  const riskFlags = (poolFlagsRes.data ?? [])
+    .filter(f => bundlePpIdSet.has(f.player_product_id))
+    .map(f => ({
+      playerName: ppNameMap.get(f.player_product_id) ?? '',
+      flagType: f.flag_type as string,
+      note: f.note,
+    }));
 
   const hvPlayers = allBundlePlayers
     .filter(p => p.is_high_volatility)

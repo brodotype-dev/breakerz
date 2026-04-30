@@ -12,7 +12,8 @@ import PlayerDetailDrawer from '@/components/breakiq/PlayerDetailDrawer';
 import PreReleaseLayout from '@/components/breakiq/PreReleaseLayout';
 import { SegmentedControl, CounterInput } from '@/components/breakiq/ds';
 import { computeSlotPricing, computeTeamSlotPricing, formatCurrency } from '@/lib/engine';
-import type { BreakConfig, BreakFormat, ChaseCard, PlayerWithPricing, Product, Sport } from '@/lib/types';
+import { computeRiskAdjustment, computeHypeAdjustment, type HypeObservation, type HypeTag } from '@/lib/score-modulation';
+import type { BreakConfig, BreakFormat, ChaseCard, PlayerWithPricing, PlayerRiskFlag, Product, Sport } from '@/lib/types';
 
 const FORMAT_DEFS: Array<{ key: BreakFormat; label: string; short: string }> = [
   { key: 'hobby', label: 'Hobby',              short: 'Hobby' },
@@ -113,24 +114,87 @@ export default function BreakPage() {
         ]);
         const { players: fetchedPlayers } = await pricingRes.json();
         const playerList: PlayerWithPricing[] = fetchedPlayers ?? [];
-        setRawPlayers(playerList);
         setChaseCards((chaseRes.data ?? []) as ChaseCard[]);
 
-        // Fetch active risk flags for all players in this product
+        // Fetch active risk flags + active hype-tag observations in parallel.
+        // Both feed into per-player score adjustments (lib/score-modulation.ts)
+        // attached to playerList before setRawPlayers so the engine sees them
+        // on first render. riskFlagMap stays as the UI display source.
         if (playerList.length > 0) {
           const ppIds = playerList.map((p: PlayerWithPricing) => p.id);
-          const { data: flags } = await supabase
-            .from('player_risk_flags')
-            .select('player_product_id, flag_type, note')
-            .in('player_product_id', ppIds)
-            .is('cleared_at', null);
+          const nowIso = new Date().toISOString();
+          const [flagsRes, obsRes] = await Promise.all([
+            supabase
+              .from('player_risk_flags')
+              .select('player_product_id, flag_type, note')
+              .in('player_product_id', ppIds)
+              .is('cleared_at', null),
+            supabase
+              .from('market_observations')
+              .select('scope_type, scope_id, scope_team, payload, observed_at')
+              .eq('product_id', prod.id)
+              .eq('observation_type', 'hype_tag')
+              .gt('expires_at', nowIso)
+              .is('superseded_at', null),
+          ]);
+
           const fm = new Map<string, Array<{ flagType: string; note: string }>>();
-          for (const f of flags ?? []) {
+          const riskAdjMap = new Map<string, number>();
+          const flagsByPp = new Map<string, PlayerRiskFlag['flag_type'][]>();
+          for (const f of flagsRes.data ?? []) {
             const arr = fm.get(f.player_product_id) ?? [];
             arr.push({ flagType: f.flag_type, note: f.note });
             fm.set(f.player_product_id, arr);
+            const types = flagsByPp.get(f.player_product_id) ?? [];
+            types.push(f.flag_type as PlayerRiskFlag['flag_type']);
+            flagsByPp.set(f.player_product_id, types);
+          }
+          for (const [ppId, types] of flagsByPp) {
+            riskAdjMap.set(ppId, computeRiskAdjustment(types.map(t => ({ flag_type: t }))));
           }
           setRiskFlagMap(fm);
+
+          // Bucket hype observations by scope so we can map them to each
+          // player_product. scope_id is the players.id (NOT player_product_id)
+          // when scope_type='player'. scope_team is a string. scope_type='product'
+          // applies to every player in the roster.
+          type Obs = { scope_type: string; scope_id: string | null; scope_team: string | null; payload: { tag: HypeTag; strength: number; decay_days: number }; observed_at: string };
+          const obsRows = (obsRes.data ?? []) as Obs[];
+          const productScope: HypeObservation[] = [];
+          const teamScope = new Map<string, HypeObservation[]>();
+          const playerScope = new Map<string, HypeObservation[]>();
+          for (const o of obsRows) {
+            const obs: HypeObservation = {
+              tag: o.payload.tag,
+              strength: o.payload.strength,
+              decay_days: o.payload.decay_days,
+              observed_at: o.observed_at,
+            };
+            if (o.scope_type === 'product') productScope.push(obs);
+            else if (o.scope_type === 'team' && o.scope_team) {
+              const arr = teamScope.get(o.scope_team) ?? [];
+              arr.push(obs);
+              teamScope.set(o.scope_team, arr);
+            } else if (o.scope_type === 'player' && o.scope_id) {
+              const arr = playerScope.get(o.scope_id) ?? [];
+              arr.push(obs);
+              playerScope.set(o.scope_id, arr);
+            }
+          }
+
+          const augmented: PlayerWithPricing[] = playerList.map(p => {
+            const teamObs = teamScope.get(p.player?.team ?? '') ?? [];
+            const playerObs = playerScope.get(p.player_id) ?? [];
+            const all = [...productScope, ...teamObs, ...playerObs];
+            return {
+              ...p,
+              risk_score_adj: riskAdjMap.get(p.id) ?? 0,
+              hype_score_adj: computeHypeAdjustment(all),
+            };
+          });
+          setRawPlayers(augmented);
+        } else {
+          setRawPlayers(playerList);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error');

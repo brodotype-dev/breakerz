@@ -111,6 +111,11 @@ export interface PlayerWithPricing extends PlayerProduct {
   jumboPerCase: number;
   maxPay: number;
   pricingSource: 'live' | 'cached' | 'search-fallback' | 'cross-product' | 'default' | 'none';
+  // Runtime-only score modulators applied before the engine clamps.
+  // Both default to 0 when undefined; not persisted in pricing_cache.
+  // See lib/score-modulation.ts.
+  risk_score_adj?: number;
+  hype_score_adj?: number;
 }
 
 export interface PlayerProductVariant {

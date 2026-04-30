@@ -1,13 +1,23 @@
 import type { PlayerWithPricing, BreakConfig, Signal, TeamSlot } from './types';
 
-// Exported for use in UI components that need to display buzz signals
+// Exported for use in UI components that need to display buzz signals.
+// risk_score_adj and hype_score_adj are runtime modulators (lib/score-modulation.ts)
+// folded in alongside buzz + breakerz before the clamp. Default 0 when omitted.
 export function computeEffectiveScore(
   buzzScore: number | null | undefined,
   breakerzScore: number | null | undefined,
-  isIcon: boolean
+  isIcon: boolean,
+  riskScoreAdj: number | null | undefined = 0,
+  hypeScoreAdj: number | null | undefined = 0,
 ): number {
   if (isIcon) return 0;
-  return Math.max(-0.9, Math.min(1.0, (buzzScore ?? 0) + (breakerzScore ?? 0)));
+  return Math.max(
+    -0.9,
+    Math.min(
+      1.0,
+      (buzzScore ?? 0) + (breakerzScore ?? 0) + (riskScoreAdj ?? 0) + (hypeScoreAdj ?? 0),
+    ),
+  );
 }
 
 export function computeSlotPricing(
@@ -25,7 +35,16 @@ export function computeSlotPricing(
   const effectiveScore = (p: PlayerWithPricing) =>
     p.player?.is_icon
       ? 0
-      : Math.max(-0.9, Math.min(1.0, (p.buzz_score ?? 0) + (p.breakerz_score ?? 0)));
+      : Math.max(
+          -0.9,
+          Math.min(
+            1.0,
+            (p.buzz_score ?? 0) +
+              (p.breakerz_score ?? 0) +
+              (p.risk_score_adj ?? 0) +
+              (p.hype_score_adj ?? 0),
+          ),
+        );
   const hobbyWeightFor = (p: PlayerWithPricing) =>
     p.hobby_sets > 0 ? p.hobbyEVPerBox * (1 + effectiveScore(p)) : 0;
   const jumboWeightFor = (p: PlayerWithPricing) =>

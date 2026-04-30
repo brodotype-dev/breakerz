@@ -5,6 +5,50 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-30 — Insight capture granularity: sentiment scope, variant scope, asking-price source, odds observations
+
+Conversation with Kyle (2026-04-30) surfaced three holes in what Discord `/insight` could actually capture. We're staying in capture-only mode — the engine doesn't read variant scope yet — so contributors can start producing the data while the engine wiring lands later.
+
+What landed:
+
+1. **Sentiment scope `'global' | 'product'`.** Today's parser fanned every `breakerz_score` write across all of a player's product entries. That was wrong for narrative like "Wemby in 2024 Topps Chrome is wild" — should bump only that one entry, not Bowman / Donruss / etc. Parser now emits `scope` on sentiment updates; apply path branches accordingly. `breakerz_sentiment_history.player_product_id` (already nullable) gets the specific product's player_product_id when scope='product'; null preserves the global-fan-out semantics.
+
+2. **Variant scope on hype + asking_price.** Kyle's framing: hype lives at Product → Player → Variant — Ohtani's base might be saturated while his orange ref is wild. Parser learned to emit `scope_type='variant'` with free-text `variant_name` in the payload. variant_id resolution is deferred — see Phase 3c in the plan. `scope_id` rolls variant scope up to the player_id so queries that filter by player still match variant rows.
+
+3. **Asking-price `source` enum.** CardHedger only sees sold comps; the whole point of capturing observations is the leading-indicator signals it can't see. Parser now tags every asking_price with `source: 'ebay_listing' | 'stream_ask' | 'social_post' | 'other'`. eBay listing is the unsold-listing signal that matters most during release week.
+
+4. **New `odds_observation` parser kind.** For "this hit pulls 1:80 cases on hobby, not the 1:48 odds sheet says." Variant-by-default, format-keyed (`hobby` / `jumbo` / `bd`). Stored in `market_observations` via a one-line CHECK extension (`20260430182400_observation_types_extend.sql`). Engine doesn't read these yet — they accumulate as field intel until the variant-aware engine reads land.
+
+5. **Plan file updated** — `docs/plans/2026-04-29-break-analysis-v2.md` Phase 3 split into 3a (✅ engine reads, player-level), 3b (✅ this slice, capture-side granularity), 3c (deferred — variant-aware engine reads, asking-price feedback, consumer chip display).
+
+What this doesn't do: engine is still player-level for hype + sentiment. Variant-scope observations sit unused until Phase 3c. Asking-price still display-only (and there's no display surface yet either — also Phase 3c).
+
+---
+
+## 2026-04-30 — Score modulation: risk_flags + hype_tags into effectiveScore
+
+The Phase 2 Discord pipeline captures four signal types but only `sentiment` (writing `breakerz_score`) actually moved the engine. `risk_flag` rows surfaced to the UI but didn't influence slot pricing; `hype_tag` observations sat unread in `market_observations`. This is the BreakIQ Bets engine half of that gap.
+
+What landed:
+
+1. **`lib/score-modulation.ts`** — new module. `RISK_ADJUSTMENTS` table per `flag_type` (retirement -0.80, suspension -0.50, legal -0.40, injury -0.30, off_field -0.25, trade -0.15). `HYPE_MAX = 0.30` caps any single hype-tag's contribution. `computeRiskAdjustment` returns the **single most-negative** active flag (no stacking). `computeHypeAdjustment` sums per-observation `direction × strength × HYPE_MAX × decayFactor` where decayFactor is linear from `observed_at` to `observed_at + decay_days`. Multiple hype tags **do** stack.
+
+2. **Engine** — `lib/engine.ts:computeEffectiveScore` and the inline `effectiveScore` lambda in `computeSlotPricing` fold `risk_score_adj + hype_score_adj` into the sum before the existing clamp `[-0.9, 1.0]`. Icon override (force 0) stays.
+
+3. **`PlayerWithPricing`** — extended with optional runtime-only `risk_score_adj?` / `hype_score_adj?` (default 0, not persisted).
+
+4. **`/break/[slug]` consumer page** — already loaded `player_risk_flags`. Now also fetches `market_observations` (hype_tag, product-scoped, non-expired, non-superseded) in parallel, buckets by `scope_type` (product / team / player), computes adj per player_product, and merges into `rawPlayers` before `setRawPlayers`.
+
+5. **`runBreakAnalysis` (`/analysis` BreakIQ Sayz)** — same pattern: pool-wide flags + observations fetch upfront, attach adj before `computeSlotPricing`. The pool-wide flags fetch is reused for the bundle-level `riskFlags` response — no second round-trip.
+
+What this doesn't do: no UI changes. Consumers feel the change as movement in slot costs only. The display slice (asking-price chips, hype/risk chips next to player names) is a separate Phase-3 follow-up. Asking-price stays display-only. No DB migration; no admin UI; no `pricing_cache` change.
+
+Math note on product-scope hype: a uniform bump on every player **collapses out of slot redistribution** (slot cost is a normalized share of the pool). That's correct behavior — product-wide hype shouldn't redistribute slots within the product. It will matter once cross-product comparisons or fair-value-vs-ask weighting land.
+
+See `docs/score-modulation.md` for math + verification.
+
+---
+
 ## 2026-04-29 — Discord insight capture (Phase 2)
 
 Replaces the original Phase 2 plan for extending BreakIQ Bets / building a dedicated mobile capture route. Kyle (and any allowlisted contributor) types `/insight <narrative>` in `#breakiq-insights` on the BreakIQ Discord server; Claude parses; bot replies with proposed updates and ✅ Apply / ❌ Discard buttons. No long-running gateway connection required — runs entirely on Vercel via Discord's HTTP Interactions API.

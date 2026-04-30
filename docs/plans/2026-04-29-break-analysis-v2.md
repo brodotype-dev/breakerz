@@ -206,9 +206,42 @@ Same as the original Phase 2 plan: `/break/[slug]` shows asking-price chips next
 - Webhook with bad signature → returns 401.
 - Pending row left for >24h auto-expires; the cron status panel surfaces stale pending counts.
 
-### Why no Phase 3 anymore
+### Why no dedicated mobile surface
 
 The dedicated mobile capture surface from the prior plan is obsolete. Discord on phone is the mobile capture surface. If voice-memo transcription accuracy on Discord's side ever turns out to be a problem, we add a Whisper transcription step in `parse-and-stage` — small change, no new UI.
+
+---
+
+## Phase 3a: Score modulation (engine reads — player-level only)
+
+**Status:** ✅ shipped 2026-04-30 — see CHANGELOG and `docs/score-modulation.md`.
+
+`risk_flag` rows + `hype_tag` market_observations now fold into `effectiveScore` alongside `buzz_score + breakerz_score`. Constants in `lib/score-modulation.ts`. Wired into `/break/[slug]` and `runBreakAnalysis`. Player-scope hype redistributes slot shares; product-scope is mathematically a no-op for shares (correct behavior). **Variant-scope hype is captured but not yet read by the engine — see Phase 3b.**
+
+## Phase 3b: Capture-side granularity (parser + Discord)
+
+**Status:** ✅ shipped 2026-04-30.
+
+Conversation with Kyle and Brody (2026-04-30) surfaced three capture gaps:
+
+1. **Sentiment scope.** Today's parser fans `breakerz_score` to every player_product the player appears in. "Wemby in 2024 Topps Chrome is wild" should bump only that one entry, not his Bowman / Donruss / etc. Parser now emits `scope: 'global' | 'product'` on sentiment; apply path branches accordingly. `breakerz_sentiment_history.player_product_id` is set when product-scoped (was always null before).
+2. **Variant-level hype.** Hype really lives at variant-in-product level — Ohtani's base might be saturated while his orange ref is wild. Parser now emits `scope_type='variant'` on hype_tag with free-text `variant_name` in the payload (variant_id resolution deferred — see Phase 3c).
+3. **Asking-price source + variant scope.** Kyle's point: CardHedger only sees sold comps. eBay listing prices (unsold) and stream asks during release week are leading indicators we can't get from CH. Parser now emits `source: 'ebay_listing' | 'stream_ask' | 'social_post' | 'other'` and supports `scope_type='variant'`.
+4. **Odds observations.** New parser kind `odds_observation` for "this hit pulls 1:80 cases on hobby, not the 1:48 odds sheet says." Variant-by-default, format-keyed (hobby/jumbo/bd). Stored in `market_observations` with `observation_type='odds_observation'` (one-line CHECK migration `20260430182400_observation_types_extend.sql`).
+
+Storage shape unchanged — `market_observations.payload` is JSONB so the new fields (`source`, `variant_name`, `observed_odds_per_case`) live there. `scope_id` rolls variant scope up to the player_id for now (queries that filter by player still match variant rows).
+
+## Phase 3c: Variant-aware engine reads (NOT YET BUILT)
+
+The parser captures variant-scope hype + odds observations but the engine still ignores them. Next time we touch this thread, we wire the engine reads:
+
+1. **Resolve variant_name → variant_id at engine-load time.** Free-text matching against `player_product_variants.variant_name` for the relevant product. Likely fuzzy match (`ILIKE %name%` first, fall back to a small Claude pass for ambiguous cases). Could also bolt onto `lib/card-knowledge/match.ts`.
+2. **Variant-level hype as an EV multiplier.** Today's `hobbyEVPerBox = Σ(variantEV × 1/hobby_odds)`. Variant hype becomes `(variantEV × hypeMult) × 1/hobby_odds`. The change happens in `lib/pricing-refresh.ts` and `lib/cardhedger.ts:computeLiveEV` callers, and only when we hydrate variants on the engine path. Slot shares then redistribute correctly.
+3. **Odds observation overrides.** When an active `odds_observation` exists for a variant + format, prefer the observed value over the catalog `hobby_odds` / `jumbo_odds` when computing `hobbyEVPerBox`. Time-decay rules same as hype (linear, expires_at).
+4. **Asking-price-vs-fair-value display + (later) feedback.** Currently display-only. Once we have volume of observations, decide whether and how to feed asking-price into fair-value weighting.
+5. **Consumer chip rendering** for asking-price / hype-tag / risk on `/break/[slug]` — also still pending.
+
+Reminder: when this lands, the player-level hype path in `lib/score-modulation.ts` stays as the fallback for narratives without a specific variant ("Wemby's whole catalog is hot"). Variant-scope is the default for variant-specific narratives.
 
 ---
 
