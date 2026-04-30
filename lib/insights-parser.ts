@@ -92,29 +92,69 @@ export async function parseInsights({ narrative, maxPlayers = 5000 }: ParseInput
   // active product. Combined-name multi-player rows ("Skubal / Blanco")
   // and retired-legend subset cards have insert_only=true on every
   // player_product and shouldn't show up for sentiment matching.
-  const [{ data: products }, { data: eligibleRows }] = await Promise.all([
-    supabaseAdmin
-      .from('products')
-      .select('id, name, year, lifecycle_status')
-      .eq('is_active', true)
-      .in('lifecycle_status', ['live', 'pre_release']),
-    supabaseAdmin
-      .from('player_products')
-      .select('player_id, products!inner(is_active, lifecycle_status)')
-      .eq('insert_only', false)
-      .eq('products.is_active', true)
-      .in('products.lifecycle_status', ['live', 'pre_release']),
-  ]);
+  //
+  // Two-step approach (don't try to join via products!inner — the
+  // PostgREST resource-embedding syntax for that filter combination
+  // returned empty in production, source of an outage where Claude
+  // never got the roster). Fetch active product ids first, then
+  // distinct slot-eligible player_ids in those products with explicit
+  // pagination so we don't get cut by PostgREST's 1000-row default.
+  const { data: products, error: prodErr } = await supabaseAdmin
+    .from('products')
+    .select('id, name, year, lifecycle_status')
+    .eq('is_active', true)
+    .in('lifecycle_status', ['live', 'pre_release']);
 
-  const eligiblePlayerIds = Array.from(new Set((eligibleRows ?? []).map((r: any) => r.player_id)));
-  const { data: players } = eligiblePlayerIds.length
-    ? await supabaseAdmin
+  if (prodErr) {
+    console.error('[insights-parser] products query failed:', prodErr);
+    return {
+      updates: [],
+      debug: { rosterSize: 0, productsCount: 0, rawResponseExcerpt: `products query: ${prodErr.message}`, parsedRawCount: 0, droppedReasons: [] },
+    };
+  }
+
+  const activeProductIds = (products ?? []).map(p => p.id);
+  const eligiblePlayerIds = new Set<string>();
+
+  if (activeProductIds.length > 0) {
+    const PAGE = 1000;
+    for (let from = 0; ; from += PAGE) {
+      const { data, error: ppErr } = await supabaseAdmin
+        .from('player_products')
+        .select('player_id')
+        .eq('insert_only', false)
+        .in('product_id', activeProductIds)
+        .range(from, from + PAGE - 1);
+      if (ppErr) {
+        console.error('[insights-parser] player_products query failed:', ppErr);
+        break;
+      }
+      if (!data || data.length === 0) break;
+      for (const row of data) eligiblePlayerIds.add(row.player_id);
+      if (data.length < PAGE) break;
+    }
+  }
+
+  let players: Array<{ id: string; name: string; team: string; sport: { name: string } | null }> = [];
+  if (eligiblePlayerIds.size > 0) {
+    // Chunk the .in() — Supabase rejects very long IN lists. 500 ids per
+    // chunk is conservative.
+    const ids = Array.from(eligiblePlayerIds).slice(0, maxPlayers);
+    const CHUNK = 500;
+    for (let i = 0; i < ids.length; i += CHUNK) {
+      const slice = ids.slice(i, i + CHUNK);
+      const { data, error: plErr } = await supabaseAdmin
         .from('players')
         .select('id, name, team, sport:sports(name)')
-        .in('id', eligiblePlayerIds)
-        .order('name')
-        .limit(maxPlayers)
-    : { data: [] as any[] };
+        .in('id', slice);
+      if (plErr) {
+        console.error('[insights-parser] players query failed:', plErr);
+        break;
+      }
+      if (data) players.push(...(data as any));
+    }
+    players.sort((a, b) => a.name.localeCompare(b.name));
+  }
 
   if (!products?.length || !players?.length) {
     return {
