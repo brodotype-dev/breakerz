@@ -1,6 +1,6 @@
 # Product Lifecycle
 
-**Last updated:** 2026-04-27
+**Last updated:** 2026-04-30
 
 Three first-class lifecycle states on `products`: `pre_release`, `live`, `dormant`. Drives admin UX, cron behavior, and consumer rendering. Orthogonal to `is_active` (which remains the publish/Draft gate).
 
@@ -133,15 +133,26 @@ const isDormant = lifecycle === 'dormant';
 
 ### Pre-release
 
-Component: `components/breakiq/PreReleaseLayout.tsx`
+Component: `components/breakiq/PreReleaseLayout.tsx` (refreshed 2026-04-30 — see `docs/plans/2026-04-30-pre-release-polish.md`)
 
-- Countdown hero (computed from `release_date` if present)
+- **Countdown hero**: D · HH · MM when ≥1 day out; ticks to HH:MM:SS on launch day; pulses "🔴 Live now" if `release_date` has passed but admin hasn't flipped to `live` yet. Sport gradient passed in from the parent break page.
+- **Sub-hero ribbon**: launch date + hobby case price + BD case price; rows drop out when data isn't set. Asking-price chip rides here when product-scope `asking_price` observations exist.
+- **Product-scope hype banner**: rendered above chase cards when product-scope `hype_tag` observations are active. Shows tag label, source narrative excerpt, relative time.
 - `<ChaseCardsPanel>` reused — primary signal during pre-release
-- Player checklist with live-fetched 90-day comps:
-  - Player name + RC tag (if rookie) + active risk flags
-  - Raw avg 90d, PSA 10 avg 90d, sales 90d count, team
+- **Watching widget**: top 3 players by `raw_avg_90d` from snapshots. Hidden if no roster has history.
+- **Player checklist** with live-fetched 90-day comps:
+  - Player name + RC tag (if rookie) + active risk flags + player-scope hype chips
+  - Raw avg 90d, **PSA 9 avg 90d**, PSA 10 avg 90d, sales 90d count, team
+  - Sort selector (`Raw avg` / `PSA 10` / `A→Z` / `Rookies`), filter chips (`All / Rookies / Has history / Risk flag`), group-by-team toggle
+  - Risk-flag pills more prominent (10px filled background, pulse on `injury` / `suspension`); tooltip shows the full note
+  - Top-3 by current value-based sort get `▲1 / ▲2 / ▲3` rank flair
   - Rookies show "No data" (data-light per spec)
 - Live engine completely hidden: cases counter, tab bar, slot tables, BreakIQ Sayz CTA all gone
+
+### Pre-release data sources
+
+- `pre_release_player_snapshots` (24h cache) for raw / PSA 9 / PSA 10 90-day comps. PSA 9 columns added 2026-04-30 via `20260430210000_pre_release_psa9.sql`.
+- `market_observations` filtered to `observation_type IN ('hype_tag', 'asking_price')` and `product_id = <this product>`. The `asking_price` query runs **only when** `lifecycle_status = 'pre_release'` so the live-page fetch path is unchanged. Engine reads stay deferred (Phase 3c).
 
 ### Live (default)
 

@@ -10,6 +10,37 @@ export type ProductLifecycle = 'pre_release' | 'live' | 'dormant';
 
 export type BreakFormat = 'hobby' | 'bd' | 'jumbo';
 
+// Raw market_observations rows surfaced to the consumer pre-release page for
+// chip rendering. The hype tag union mirrors lib/score-modulation.ts.
+export type HypeObsRow = {
+  scope_type: 'product' | 'team' | 'player' | 'variant';
+  scope_id: string | null;
+  scope_team: string | null;
+  payload: {
+    tag: 'release_premium' | 'cooled' | 'overhyped' | 'underhyped';
+    strength: number;
+    decay_days: number;
+    variant_name?: string;
+  };
+  observed_at: string;
+  source_narrative: string | null;
+};
+
+export type AskingPriceObsRow = {
+  scope_type: 'product' | 'team' | 'player' | 'variant';
+  scope_id: string | null;
+  scope_team: string | null;
+  payload: {
+    format: BreakFormat;
+    price_low: number;
+    price_high: number;
+    source: 'ebay_listing' | 'stream_ask' | 'social_post' | 'other';
+    variant_name?: string;
+  };
+  observed_at: string;
+  source_narrative: string | null;
+};
+
 export interface Product {
   id: string;
   sport_id: string;
