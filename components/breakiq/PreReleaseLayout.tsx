@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import ChaseCardsPanel from './ChaseCardsPanel';
-import { SegmentedControl } from './ds';
 import type {
   AskingPriceObsRow,
   ChaseCard,
@@ -267,80 +266,83 @@ export default function PreReleaseLayout({
   }, [visiblePlayers, sort]);
 
   return (
-    <div className="space-y-5">
-      {/* Countdown + sub-hero */}
+    <div className="space-y-4">
+      {/* Compact countdown banner — single horizontal row that combines the
+          time-until-launch numbers with launch-window context (date, case
+          costs, asking-price). Replaces the old vertical-tower card. */}
       {countdown && (
         <div
-          className="rounded-xl border overflow-hidden"
-          style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
+          className="rounded-xl border px-4 py-3 flex items-center flex-wrap gap-x-5 gap-y-2"
+          style={{
+            borderColor: sportPrimary + '40',
+            backgroundColor: 'var(--terminal-surface)',
+            backgroundImage: `linear-gradient(90deg, ${sportPrimary}10 0%, transparent 60%)`,
+          }}
         >
-          <div
-            className="h-1"
-            style={{ background: sportGradient }}
-          />
-          <div className="px-5 py-5 text-center">
-            <p
-              className="text-[10px] uppercase tracking-[0.22em] mb-2"
-              style={{ color: 'var(--text-tertiary)' }}
-            >
-              {countdown.kind === 'past' ? 'Released' : 'Release Countdown'}
-            </p>
-            {countdown.kind === 'days' && (
-              <div className="flex items-end justify-center gap-3 font-mono">
-                <CountdownCell value={countdown.days} label={countdown.days === 1 ? 'day' : 'days'} primary={sportPrimary} large />
-                <span className="text-3xl font-black opacity-30 mb-2" style={{ color: 'var(--text-tertiary)' }}>·</span>
-                <CountdownCell value={countdown.hours} label="hrs" primary={sportPrimary} />
-                <span className="text-3xl font-black opacity-30 mb-2" style={{ color: 'var(--text-tertiary)' }}>·</span>
-                <CountdownCell value={countdown.mins} label="min" primary={sportPrimary} />
-              </div>
-            )}
-            {countdown.kind === 'sameday' && (
-              <div className="flex items-end justify-center gap-3 font-mono">
-                <CountdownCell value={countdown.hours} label="hrs" primary={sportPrimary} large />
-                <span className="text-3xl font-black opacity-30 mb-2" style={{ color: 'var(--text-tertiary)' }}>:</span>
-                <CountdownCell value={countdown.mins} label="min" primary={sportPrimary} />
-                <span className="text-3xl font-black opacity-30 mb-2" style={{ color: 'var(--text-tertiary)' }}>:</span>
-                <CountdownCell value={countdown.secs} label="sec" primary={sportPrimary} />
-              </div>
-            )}
-            {countdown.kind === 'past' && (
-              <div className="flex items-center justify-center gap-2">
-                <span
-                  className="inline-block w-2.5 h-2.5 rounded-full animate-pulse"
-                  style={{ backgroundColor: '#ef4444' }}
-                />
-                <p className="text-2xl font-black" style={{ color: '#ef4444' }}>
-                  Live now
-                </p>
-              </div>
-            )}
-          </div>
-          {subHeroBits.length > 0 && (
-            <div
-              className="border-t px-5 py-2.5 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs"
-              style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface-hover)' }}
-            >
-              {subHeroBits.map((bit, i) => (
-                <span key={i} style={{ color: 'var(--text-secondary)' }}>{bit}</span>
-              ))}
-              {productAsk[0] && (
-                <span
-                  className="font-mono px-2 py-0.5 rounded"
-                  style={{
-                    backgroundColor: 'rgba(168,85,247,0.14)',
-                    color: '#c4b5fd',
-                    border: '1px solid rgba(168,85,247,0.35)',
-                  }}
-                  title={productAsk[0].source_narrative ?? ''}
-                >
-                  Streams asking{' '}
-                  {productAsk[0].payload.price_low === productAsk[0].payload.price_high
-                    ? formatPrice(productAsk[0].payload.price_low)
-                    : `${formatPrice(productAsk[0].payload.price_low)}–${formatPrice(productAsk[0].payload.price_high)}`}
-                  {productAsk.length > 1 && ` · ${productAsk.length} obs`}
-                </span>
-              )}
+          {countdown.kind === 'past' ? (
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-block w-2 h-2 rounded-full animate-pulse"
+                style={{ backgroundColor: '#ef4444' }}
+              />
+              <span className="text-sm font-bold" style={{ color: '#ef4444' }}>Live now</span>
             </div>
+          ) : (
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-[10px] uppercase tracking-[0.18em] font-semibold" style={{ color: 'var(--text-tertiary)' }}>
+                Launches in
+              </span>
+              <span className="font-mono font-black tabular-nums text-lg leading-none" style={{ color: sportPrimary }}>
+                {countdown.kind === 'days' ? (
+                  <>
+                    {countdown.days}<span className="text-xs font-bold opacity-70 ml-0.5">d</span>
+                    <span className="opacity-30 mx-1.5">·</span>
+                    {String(countdown.hours).padStart(2, '0')}<span className="text-xs font-bold opacity-70 ml-0.5">h</span>
+                    <span className="opacity-30 mx-1.5">·</span>
+                    {String(countdown.mins).padStart(2, '0')}<span className="text-xs font-bold opacity-70 ml-0.5">m</span>
+                  </>
+                ) : (
+                  <>
+                    {String(countdown.hours).padStart(2, '0')}<span className="text-xs font-bold opacity-70 ml-0.5">h</span>
+                    <span className="opacity-30 mx-1.5">:</span>
+                    {String(countdown.mins).padStart(2, '0')}<span className="text-xs font-bold opacity-70 ml-0.5">m</span>
+                    <span className="opacity-30 mx-1.5">:</span>
+                    {String(countdown.secs).padStart(2, '0')}<span className="text-xs font-bold opacity-70 ml-0.5">s</span>
+                  </>
+                )}
+              </span>
+            </div>
+          )}
+
+          {/* Inline context: date + case costs */}
+          {subHeroBits.length > 0 && (
+            <div className="flex items-center flex-wrap gap-x-3 gap-y-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
+              {subHeroBits.map((bit, i) => (
+                <span key={i}>
+                  {i > 0 && <span className="mr-3 opacity-30">·</span>}
+                  {bit}
+                </span>
+              ))}
+            </div>
+          )}
+
+          {/* Asking-price chip — sits at the right when present */}
+          {productAsk[0] && (
+            <span
+              className="ml-auto font-mono text-xs px-2 py-0.5 rounded"
+              style={{
+                backgroundColor: 'rgba(168,85,247,0.14)',
+                color: '#c4b5fd',
+                border: '1px solid rgba(168,85,247,0.35)',
+              }}
+              title={productAsk[0].source_narrative ?? ''}
+            >
+              Streams asking{' '}
+              {productAsk[0].payload.price_low === productAsk[0].payload.price_high
+                ? formatPrice(productAsk[0].payload.price_low)
+                : `${formatPrice(productAsk[0].payload.price_low)}–${formatPrice(productAsk[0].payload.price_high)}`}
+              {productAsk.length > 1 && ` · ${productAsk.length} obs`}
+            </span>
           )}
         </div>
       )}
@@ -399,55 +401,83 @@ export default function PreReleaseLayout({
           className="rounded-xl border overflow-hidden"
           style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
         >
-          <div className="px-5 py-3.5 border-b flex flex-wrap items-center justify-between gap-3" style={{ borderColor: 'var(--terminal-border)' }}>
-            <div>
-              <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--text-primary)' }}>
-                Checklist · {visiblePlayers.length}{visiblePlayers.length !== players.length && ` of ${players.length}`} {players.length === 1 ? 'player' : 'players'}
+          {/* Header: title + description (with inline group-by-team toggle as
+              a secondary affordance, not a competing button) */}
+          <div className="px-5 pt-4 pb-2.5">
+            <div className="flex items-baseline justify-between gap-3 flex-wrap">
+              <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                Checklist
+                <span className="ml-1.5 font-mono text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                  {visiblePlayers.length}
+                  {visiblePlayers.length !== players.length && ` / ${players.length}`}
+                </span>
               </h2>
-              <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-                90-day comps from each player&apos;s existing cards. Rookies show data-light.
-                {snapshotsLoading && <span className="ml-1.5 italic">Loading…</span>}
-              </p>
+              {snapshotsLoading && (
+                <span className="text-[11px] italic" style={{ color: 'var(--text-tertiary)' }}>
+                  Loading 90-day comps…
+                </span>
+              )}
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <SegmentedControl
-                value={sort}
-                onChange={v => setSort(v as SortKey)}
-                options={SORT_OPTIONS}
-              />
+            <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+              90-day comps from each player&apos;s existing cards. Rookies show data-light.{' '}
               <button
                 onClick={() => setGroupByTeam(g => !g)}
-                className="text-[11px] font-semibold uppercase tracking-wider px-3 py-2 rounded-lg border transition-colors"
+                className="underline-offset-2 transition-colors"
                 style={{
-                  backgroundColor: groupByTeam ? 'var(--accent-blue)' : 'transparent',
-                  borderColor: groupByTeam ? 'var(--accent-blue)' : 'var(--terminal-border)',
-                  color: groupByTeam ? 'white' : 'var(--text-secondary)',
+                  color: groupByTeam ? 'var(--accent-blue)' : 'var(--text-tertiary)',
+                  textDecoration: 'underline',
                 }}
               >
-                Group by team
+                {groupByTeam ? 'Ungroup' : 'Group by team'}
               </button>
-            </div>
+            </p>
           </div>
 
-          {/* Filter chips */}
-          <div className="px-5 py-2 border-b flex flex-wrap items-center gap-1.5" style={{ borderColor: 'var(--terminal-border)' }}>
-            {FILTER_OPTIONS.map(opt => {
-              const active = filter === opt.value;
-              return (
-                <button
-                  key={opt.value}
-                  onClick={() => setFilter(opt.value)}
-                  className="text-[10px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full border transition-colors"
-                  style={{
-                    backgroundColor: active ? 'rgba(59,130,246,0.15)' : 'transparent',
-                    borderColor: active ? 'var(--accent-blue)' : 'var(--terminal-border)',
-                    color: active ? 'var(--accent-blue)' : 'var(--text-tertiary)',
-                  }}
-                >
-                  {opt.label}
-                </button>
-              );
-            })}
+          {/* Single-row toolbar: filters left, sort right */}
+          <div className="px-5 pb-3 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-1">
+              {FILTER_OPTIONS.map(opt => {
+                const active = filter === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    onClick={() => setFilter(opt.value)}
+                    className="text-[11px] font-medium px-2.5 py-1 rounded-full border transition-colors"
+                    style={{
+                      backgroundColor: active ? 'rgba(59,130,246,0.15)' : 'transparent',
+                      borderColor: active ? 'var(--accent-blue)' : 'var(--terminal-border)',
+                      color: active ? 'var(--accent-blue)' : 'var(--text-secondary)',
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] uppercase tracking-wider mr-1" style={{ color: 'var(--text-tertiary)' }}>Sort</span>
+              <div
+                className="flex items-center rounded-full border overflow-hidden"
+                style={{ borderColor: 'var(--terminal-border)' }}
+              >
+                {SORT_OPTIONS.map(opt => {
+                  const active = sort === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => setSort(opt.value)}
+                      className="text-[11px] font-medium px-2.5 py-1 transition-colors"
+                      style={{
+                        backgroundColor: active ? 'rgba(59,130,246,0.15)' : 'transparent',
+                        color: active ? 'var(--accent-blue)' : 'var(--text-secondary)',
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
           <div className="hidden md:grid grid-cols-[1fr_80px_80px_80px_70px_60px] gap-3 px-5 py-2 border-b text-[10px] uppercase tracking-wider font-bold"
@@ -522,22 +552,6 @@ export default function PreReleaseLayout({
           </p>
         </div>
       )}
-    </div>
-  );
-}
-
-function CountdownCell({ value, label, primary, large }: { value: number; label: string; primary: string; large?: boolean }) {
-  return (
-    <div className="flex flex-col items-center min-w-[3.5rem]">
-      <span
-        className={`font-black tabular-nums ${large ? 'text-5xl md:text-6xl' : 'text-3xl md:text-4xl'}`}
-        style={{ color: primary }}
-      >
-        {String(value).padStart(2, '0')}
-      </span>
-      <span className="text-[10px] uppercase tracking-widest mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-        {label}
-      </span>
     </div>
   );
 }
