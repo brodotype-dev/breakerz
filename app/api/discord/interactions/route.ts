@@ -107,11 +107,23 @@ async function handleSlashCommand(interaction: SlashCommandInteraction): Promise
   // to follow up via the interaction token.
   after(async () => {
     try {
-      const updates = await parseInsights({ narrative });
+      const { updates, debug } = await parseInsights({ narrative });
 
       if (updates.length === 0) {
+        // Surface why we got 0 updates so we don't have to read Vercel
+        // logs to debug. The excerpt + drop reasons usually make the
+        // root cause obvious (no JSON, wrong shape, unknown ids, etc).
+        const excerpt = debug.rawResponseExcerpt
+          .replace(/```/g, "'''")
+          .slice(0, 700);
         await editInteractionResponse(interaction.application_id, interaction.token, {
-          content: `❓ I couldn't extract any structured updates from:\n> ${narrative.slice(0, 200)}\n\nTry naming specific players or products.`,
+          content:
+            `❓ I couldn't extract any structured updates from:\n> ${narrative.slice(0, 200)}\n\n` +
+            `**Debug:** roster=${debug.rosterSize}, products=${debug.productsCount}, parsedRaw=${debug.parsedRawCount}, drops=${debug.droppedReasons.length}\n` +
+            (debug.droppedReasons.length > 0
+              ? `**Dropped reasons:** ${debug.droppedReasons.slice(0, 5).join(' | ')}\n\n`
+              : '\n') +
+            `**Claude raw (first 700):**\n\`\`\`${excerpt}\`\`\``,
         });
         return;
       }
@@ -123,7 +135,7 @@ async function handleSlashCommand(interaction: SlashCommandInteraction): Promise
           discord_channel_id: interaction.channel_id,
           source_user_id: user.id,
           source_text: narrative,
-          parsed_updates: updates,
+          parsed_updates: updates as unknown as object,
         })
         .select('id')
         .single();

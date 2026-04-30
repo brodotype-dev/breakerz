@@ -67,8 +67,26 @@ export interface ParseInput {
   maxPlayers?: number;
 }
 
-export async function parseInsights({ narrative, maxPlayers = 5000 }: ParseInput): Promise<ParsedUpdate[]> {
-  if (!narrative.trim()) return [];
+export interface ParseResult {
+  updates: ParsedUpdate[];
+  /** Diagnostic info attached to every result so we can debug 0-update returns
+   * without log spelunking. The bot reply surfaces this when updates is empty. */
+  debug: {
+    rosterSize: number;
+    productsCount: number;
+    rawResponseExcerpt: string;
+    parsedRawCount: number;
+    droppedReasons: string[];
+  };
+}
+
+export async function parseInsights({ narrative, maxPlayers = 5000 }: ParseInput): Promise<ParseResult> {
+  if (!narrative.trim()) {
+    return {
+      updates: [],
+      debug: { rosterSize: 0, productsCount: 0, rawResponseExcerpt: 'empty narrative', parsedRawCount: 0, droppedReasons: [] },
+    };
+  }
 
   // Only include players who appear as slot-eligible in at least one
   // active product. Combined-name multi-player rows ("Skubal / Blanco")
@@ -98,7 +116,18 @@ export async function parseInsights({ narrative, maxPlayers = 5000 }: ParseInput
         .limit(maxPlayers)
     : { data: [] as any[] };
 
-  if (!products?.length || !players?.length) return [];
+  if (!products?.length || !players?.length) {
+    return {
+      updates: [],
+      debug: {
+        rosterSize: players?.length ?? 0,
+        productsCount: products?.length ?? 0,
+        rawResponseExcerpt: 'no roster fetched',
+        parsedRawCount: 0,
+        droppedReasons: [],
+      },
+    };
+  }
 
   const productLines = products
     .map(p => `- ${p.year} ${p.name} [id: ${p.id}]`)
@@ -171,10 +200,16 @@ CRITICAL:
   console.log(`[insights-parser] roster=${players.length} products=${products.length} narrative_chars=${narrative.length} raw_response_chars=${raw.length}`);
   console.log(`[insights-parser] raw response (first 800): ${raw.slice(0, 800)}`);
 
+  const debugBase = {
+    rosterSize: players.length,
+    productsCount: products.length,
+    rawResponseExcerpt: raw.slice(0, 600),
+  };
+
   const arrayMatch = raw.match(/\[[\s\S]*\]/);
   if (!arrayMatch) {
     console.warn(`[insights-parser] no JSON array found in response`);
-    return [];
+    return { updates: [], debug: { ...debugBase, parsedRawCount: 0, droppedReasons: ['no JSON array in response'] } };
   }
 
   let parsed: ParsedUpdate[];
@@ -182,7 +217,7 @@ CRITICAL:
     parsed = JSON.parse(arrayMatch[0]);
   } catch (err) {
     console.warn(`[insights-parser] JSON parse failed: ${err instanceof Error ? err.message : err}`);
-    return [];
+    return { updates: [], debug: { ...debugBase, parsedRawCount: 0, droppedReasons: [`json parse: ${err instanceof Error ? err.message : err}`] } };
   }
   console.log(`[insights-parser] parsed ${parsed.length} raw updates before validation`);
 
@@ -306,7 +341,14 @@ CRITICAL:
   }
   console.log(`[insights-parser] returning ${out.length} validated updates`);
 
-  return out;
+  return {
+    updates: out,
+    debug: {
+      ...debugBase,
+      parsedRawCount: parsed.length,
+      droppedReasons: dropReasons,
+    },
+  };
 }
 
 /** Pretty one-line summary used in the bot reply. */
