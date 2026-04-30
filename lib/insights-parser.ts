@@ -88,17 +88,18 @@ export async function parseInsights({ narrative, maxPlayers = 5000 }: ParseInput
     };
   }
 
-  // Only include players who appear as slot-eligible in at least one
-  // active product. Combined-name multi-player rows ("Skubal / Blanco")
-  // and retired-legend subset cards have insert_only=true on every
-  // player_product and shouldn't show up for sentiment matching.
+  // Roster is "every solo player in our DB" — including players who only
+  // appear on insert subsets in active products (C.J. Stroud, Wemby on
+  // SP-only sets, etc.). Earlier we restricted to slot-eligible players
+  // only, but that excluded entities the user actually wanted to talk
+  // about, and Claude responded by substituting "the closest match it
+  // could find" (CJ Stroud → Shedeur Sanders). Including everyone keeps
+  // matches honest; the prompt below tells Claude to OMIT rather than
+  // substitute when no match exists.
   //
-  // Two-step approach (don't try to join via products!inner — the
-  // PostgREST resource-embedding syntax for that filter combination
-  // returned empty in production, source of an outage where Claude
-  // never got the roster). Fetch active product ids first, then
-  // distinct slot-eligible player_ids in those products with explicit
-  // pagination so we don't get cut by PostgREST's 1000-row default.
+  // We do exclude multi-player concatenated rows ("Skubal / Blanco")
+  // since those aren't real entities and would let Claude attach
+  // sentiment to a meaningless aggregate.
   const { data: products, error: prodErr } = await supabaseAdmin
     .from('products')
     .select('id, name, year, lifecycle_status')
@@ -113,47 +114,25 @@ export async function parseInsights({ narrative, maxPlayers = 5000 }: ParseInput
     };
   }
 
-  const activeProductIds = (products ?? []).map(p => p.id);
-  const eligiblePlayerIds = new Set<string>();
-
-  if (activeProductIds.length > 0) {
+  let players: Array<{ id: string; name: string; team: string; sport: { name: string } | null }> = [];
+  {
     const PAGE = 1000;
     for (let from = 0; ; from += PAGE) {
-      const { data, error: ppErr } = await supabaseAdmin
-        .from('player_products')
-        .select('player_id')
-        .eq('insert_only', false)
-        .in('product_id', activeProductIds)
-        .range(from, from + PAGE - 1);
-      if (ppErr) {
-        console.error('[insights-parser] player_products query failed:', ppErr);
-        break;
-      }
-      if (!data || data.length === 0) break;
-      for (const row of data) eligiblePlayerIds.add(row.player_id);
-      if (data.length < PAGE) break;
-    }
-  }
-
-  let players: Array<{ id: string; name: string; team: string; sport: { name: string } | null }> = [];
-  if (eligiblePlayerIds.size > 0) {
-    // Chunk the .in() — Supabase rejects very long IN lists. 500 ids per
-    // chunk is conservative.
-    const ids = Array.from(eligiblePlayerIds).slice(0, maxPlayers);
-    const CHUNK = 500;
-    for (let i = 0; i < ids.length; i += CHUNK) {
-      const slice = ids.slice(i, i + CHUNK);
       const { data, error: plErr } = await supabaseAdmin
         .from('players')
         .select('id, name, team, sport:sports(name)')
-        .in('id', slice);
+        .not('name', 'like', '%/%')
+        .order('name')
+        .range(from, from + PAGE - 1);
       if (plErr) {
         console.error('[insights-parser] players query failed:', plErr);
         break;
       }
-      if (data) players.push(...(data as any));
+      if (!data || data.length === 0) break;
+      players.push(...(data as any));
+      if (data.length < PAGE || players.length >= maxPlayers) break;
     }
-    players.sort((a, b) => a.name.localeCompare(b.name));
+    players = players.slice(0, maxPlayers);
   }
 
   if (!products?.length || !players?.length) {
@@ -222,7 +201,8 @@ CRITICAL:
 - Use exact ids from the roster lines above — never invent or guess ids.
 - For player_name / product_name fields, copy the exact name from the matching roster line so we can verify your match. Common nicknames are fine (Wemby → Victor Wembanyama) — match to the canonical roster name.
 - One narrative can produce multiple updates of different kinds.
-- If you genuinely can't find a player or product in the roster, omit that update; do not return [] when other updates are extractable.`;
+- DO NOT SUBSTITUTE. If a named player or product isn't in the roster, OMIT that update entirely. Do not pick "the closest match" — wrong attributions are worse than missing ones. Example: if the narrative mentions "Joe Smith" and Joe Smith is not in the roster, drop that update — do not pick John Smith or any other Joe.
+- It is fine to return fewer updates than the narrative implies, or even an empty array, if you can't make confident matches.`;
 
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
