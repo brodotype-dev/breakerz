@@ -12,14 +12,15 @@ import PlayerDetailDrawer from '@/components/breakiq/PlayerDetailDrawer';
 import PreReleaseLayout from '@/components/breakiq/PreReleaseLayout';
 import { SegmentedControl, CounterInput } from '@/components/breakiq/ds';
 import { computeSlotPricing, computeTeamSlotPricing, formatCurrency } from '@/lib/engine';
-import { computeRiskAdjustment, computeHypeAdjustment, type HypeObservation, type HypeTag } from '@/lib/score-modulation';
-import type { BreakConfig, BreakFormat, ChaseCard, PlayerWithPricing, PlayerRiskFlag, Product, Sport } from '@/lib/types';
+import { computeRiskAdjustment, computeHypeAdjustment, type HypeObservation } from '@/lib/score-modulation';
+import type { AskingPriceObsRow, BreakConfig, BreakFormat, ChaseCard, HypeObsRow, PlayerWithPricing, PlayerRiskFlag, Product, Sport } from '@/lib/types';
 
 const FORMAT_DEFS: Array<{ key: BreakFormat; label: string; short: string }> = [
   { key: 'hobby', label: 'Hobby',              short: 'Hobby' },
   { key: 'jumbo', label: 'Jumbo',              short: 'Jumbo' },
   { key: 'bd',    label: "Breaker's Delight",  short: 'BD' },
 ];
+
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -54,6 +55,13 @@ export default function BreakPage() {
 
   // player_product_id → active risk flags
   const [riskFlagMap, setRiskFlagMap] = useState<Map<string, Array<{ flagType: string; note: string }>>>(new Map());
+
+  // Raw market_observations rows for chip rendering on the pre-release layout.
+  // The live-page engine reads its own subset of this data via score-modulation;
+  // here we keep the rows themselves so the pre-release UI can render chips
+  // without re-fetching.
+  const [hypeObsRows, setHypeObsRows] = useState<HypeObsRow[]>([]);
+  const [askingPriceObsRows, setAskingPriceObsRows] = useState<AskingPriceObsRow[]>([]);
 
   const [chaseCards, setChaseCards] = useState<ChaseCard[]>([]);
   const [activePlayerProductId, setActivePlayerProductId] = useState<string | null>(null);
@@ -120,10 +128,16 @@ export default function BreakPage() {
         // Both feed into per-player score adjustments (lib/score-modulation.ts)
         // attached to playerList before setRawPlayers so the engine sees them
         // on first render. riskFlagMap stays as the UI display source.
+        // Pre-release page renders asking-price chips alongside hype-tag chips,
+        // so we fetch both observation types when in pre-release. Live/dormant
+        // only need hype_tag (asking-price chips on /break stay deferred per
+        // Phase 3c plan).
+        const isPreReleaseProduct = prod.lifecycle_status === 'pre_release';
+
         if (playerList.length > 0) {
           const ppIds = playerList.map((p: PlayerWithPricing) => p.id);
           const nowIso = new Date().toISOString();
-          const [flagsRes, obsRes] = await Promise.all([
+          const fetches: Array<PromiseLike<unknown>> = [
             supabase
               .from('player_risk_flags')
               .select('player_product_id, flag_type, note')
@@ -131,12 +145,29 @@ export default function BreakPage() {
               .is('cleared_at', null),
             supabase
               .from('market_observations')
-              .select('scope_type, scope_id, scope_team, payload, observed_at')
+              .select('scope_type, scope_id, scope_team, payload, observed_at, source_narrative')
               .eq('product_id', prod.id)
               .eq('observation_type', 'hype_tag')
               .gt('expires_at', nowIso)
               .is('superseded_at', null),
-          ]);
+          ];
+          if (isPreReleaseProduct) {
+            fetches.push(
+              supabase
+                .from('market_observations')
+                .select('scope_type, scope_id, scope_team, payload, observed_at, source_narrative')
+                .eq('product_id', prod.id)
+                .eq('observation_type', 'asking_price')
+                .gt('expires_at', nowIso)
+                .is('superseded_at', null),
+            );
+          }
+          const settled = (await Promise.all(fetches)) as [
+            { data: Array<{ player_product_id: string; flag_type: string; note: string }> | null },
+            { data: HypeObsRow[] | null },
+            { data: AskingPriceObsRow[] | null } | undefined,
+          ];
+          const [flagsRes, obsRes, askRes] = settled;
 
           const fm = new Map<string, Array<{ flagType: string; note: string }>>();
           const riskAdjMap = new Map<string, number>();
@@ -158,8 +189,9 @@ export default function BreakPage() {
           // player_product. scope_id is the players.id (NOT player_product_id)
           // when scope_type='player'. scope_team is a string. scope_type='product'
           // applies to every player in the roster.
-          type Obs = { scope_type: string; scope_id: string | null; scope_team: string | null; payload: { tag: HypeTag; strength: number; decay_days: number }; observed_at: string };
-          const obsRows = (obsRes.data ?? []) as Obs[];
+          const obsRows = obsRes.data ?? [];
+          setHypeObsRows(obsRows);
+          setAskingPriceObsRows(askRes?.data ?? []);
           const productScope: HypeObservation[] = [];
           const teamScope = new Map<string, HypeObservation[]>();
           const playerScope = new Map<string, HypeObservation[]>();
@@ -403,6 +435,10 @@ export default function BreakPage() {
             chaseCards={chaseCards}
             players={rawPlayers}
             riskFlagMap={riskFlagMap}
+            hypeObs={hypeObsRows}
+            askingPriceObs={askingPriceObsRows}
+            sportPrimary={primary}
+            sportGradient={gradient}
           />
         ) : (
           <>

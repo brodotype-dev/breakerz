@@ -5,6 +5,26 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-04-30 — Pre-release product page polish
+
+The pre-release lifecycle infrastructure shipped 2026-04-27 but the consumer surface read as a stripped-down live page. This pass turns it into a hype-rich pre-launch surface in three buckets, all rendered in `components/breakiq/PreReleaseLayout.tsx`.
+
+What landed:
+
+1. **Countdown hero with sub-hero context.** Days/hours/minutes when ≥1 day out; ticks to HH:MM:SS on launch day; pulses "Live now" in red if `release_date` has passed but admin hasn't flipped to live yet. Sport gradient passed in from the parent break page (no more hardcoded purple). Sub-hero ribbon below the countdown reads launch date + hobby case price + BD case price (each row drops out cleanly when the data isn't set). Asking-price chip ("Streams asking $1,400–$1,600 · 3 obs") rides on the same ribbon when product-scope `asking_price` observations are present.
+
+2. **Player intel — sort, filter, group, PSA 9.** New `<SegmentedControl>` above the roster: `Raw avg` / `PSA 10` / `A→Z` / `Rookies` (default `Raw avg desc`). Filter chips: `All / Rookies / Has history / Risk flag`. Group-by-team toggle that sticky-headers each team. PSA 9 column split out from PSA 10 (snapshot route now pulls all three grades from `get90DayPrices`; new `psa9_avg_90d` / `psa9_sales_90d` columns on `pre_release_player_snapshots` via `20260430210000_pre_release_psa9.sql`). Risk-flag pills bumped from 9px to 10px with a filled background and a subtle pulse on `injury` / `suspension`. Top-3 by current sort get a `▲1 / ▲2 / ▲3` rank flair.
+
+3. **Phase 3 chip rendering (display-only).** Pre-release version of the Phase 3c chip slice. `app/(consumer)/break/[slug]/page.tsx` already fetched `hype_tag` rows for engine math; now the rows themselves are lifted to state and a parallel `asking_price` query runs only when `lifecycle_status === 'pre_release'` (live/dormant pages skip the second fetch — no latency regression). Product-scope hype tags render as a banner above the chase cards with the source narrative excerpt + relative time. Player-scope hype tags render as chips next to player names (tooltip shows the source narrative). No engine reads, no scoring change — the engine slice stays Phase 3c.
+
+What this doesn't do: variant-aware engine reads (Phase 3c), asking-price chips on the live page, admin readiness checklist before flipping a product to live, pre-order/notify capture. All explicitly out of scope per the plan.
+
+Files: `components/breakiq/PreReleaseLayout.tsx` rewritten, `app/(consumer)/break/[slug]/page.tsx` adds the `asking_price` fetch + new props, `app/api/pre-release/player-snapshots/route.ts` adds PSA 9, `lib/types.ts` adds `HypeObsRow` / `AskingPriceObsRow`, migration `20260430210000_pre_release_psa9.sql`.
+
+Plan: `docs/plans/2026-04-30-pre-release-polish.md` (saved this session). Architecture doc: `docs/product-lifecycle.md` (updated).
+
+---
+
 ## 2026-04-30 — Insight capture granularity: sentiment scope, variant scope, asking-price source, odds observations
 
 Conversation with Kyle (2026-04-30) surfaced three holes in what Discord `/insight` could actually capture. We're staying in capture-only mode — the engine doesn't read variant scope yet — so contributors can start producing the data while the engine wiring lands later.

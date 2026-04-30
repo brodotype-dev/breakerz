@@ -13,8 +13,10 @@ interface SnapshotRow {
   player_product_id: string;
   has_history: boolean;
   raw_avg_90d: number | null;
+  psa9_avg_90d: number | null;
   psa10_avg_90d: number | null;
   raw_sales_90d: number | null;
+  psa9_sales_90d: number | null;
   psa10_sales_90d: number | null;
 }
 
@@ -84,8 +86,10 @@ export async function POST(req: Request) {
           player_product_id: r.id,
           has_history: c.has_history,
           raw_avg_90d: c.raw_avg_90d,
+          psa9_avg_90d: c.psa9_avg_90d,
           psa10_avg_90d: c.psa10_avg_90d,
           raw_sales_90d: c.raw_sales_90d,
+          psa9_sales_90d: c.psa9_sales_90d,
           psa10_sales_90d: c.psa10_sales_90d,
         });
         continue;
@@ -107,8 +111,10 @@ export async function POST(req: Request) {
             player_product_id: r.id,
             has_history: false,
             raw_avg_90d: null,
+            psa9_avg_90d: null,
             psa10_avg_90d: null,
             raw_sales_90d: null,
+            psa9_sales_90d: null,
             psa10_sales_90d: null,
           } as SnapshotRow;
         }
@@ -116,6 +122,7 @@ export async function POST(req: Request) {
         try {
           const data = await get90DayPrices(playerName, undefined, sportName);
           const raw = data.prices?.find(p => p.grade === 'Raw');
+          const psa9 = data.prices?.find(p => p.grade === 'PSA 9');
           const psa10 = data.prices?.find(p => p.grade === 'PSA 10');
           const rawSales = raw?.sale_count ?? 0;
           const hasHistory = rawSales >= MIN_RAW_SALES_FOR_HISTORY;
@@ -123,8 +130,10 @@ export async function POST(req: Request) {
             player_product_id: r.id,
             has_history: hasHistory,
             raw_avg_90d: hasHistory ? Number(raw?.avg_price ?? null) : null,
+            psa9_avg_90d: psa9?.sale_count ? Number(psa9.avg_price ?? null) : null,
             psa10_avg_90d: psa10?.sale_count ? Number(psa10.avg_price ?? null) : null,
             raw_sales_90d: hasHistory ? rawSales : null,
+            psa9_sales_90d: psa9?.sale_count ?? null,
             psa10_sales_90d: psa10?.sale_count ?? null,
           } as SnapshotRow;
         } catch (err) {
@@ -133,8 +142,10 @@ export async function POST(req: Request) {
             player_product_id: r.id,
             has_history: false,
             raw_avg_90d: null,
+            psa9_avg_90d: null,
             psa10_avg_90d: null,
             raw_sales_90d: null,
+            psa9_sales_90d: null,
             psa10_sales_90d: null,
           } as SnapshotRow;
         }
@@ -145,8 +156,10 @@ export async function POST(req: Request) {
         player_product_id: s.player_product_id,
         has_history: s.has_history,
         raw_avg_90d: s.raw_avg_90d,
+        psa9_avg_90d: s.psa9_avg_90d,
         psa10_avg_90d: s.psa10_avg_90d,
         raw_sales_90d: s.raw_sales_90d,
+        psa9_sales_90d: s.psa9_sales_90d,
         psa10_sales_90d: s.psa10_sales_90d,
         fetched_at: new Date().toISOString(),
       }));
