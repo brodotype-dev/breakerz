@@ -2,7 +2,7 @@
 
 Consolidated list of known work, organized by priority. Items pulled from the Social Currency PRD, CLAUDE.md known gaps, and open questions surfaced during development.
 
-**Last updated:** 2026-04-23
+**Last updated:** 2026-05-02
 
 ---
 
@@ -33,6 +33,23 @@ ALTER TABLE player_product_variants
 - Backfill script (optional — next nightly cron will populate)
 
 Combine with **C** and the pricing pipeline becomes boring.
+
+---
+
+### Jumbo case-cost fields in admin product form
+**Effort:** ~30 min
+**Why:** Break Analysis v2 (Phase 1, shipped 2026-04-29) added `products.jumbo_case_cost` / `jumbo_am_case_cost` columns plus full engine + consumer support for jumbo as a third format. The admin product form was supposed to expose those fields too — listed as a critical file in the plan — but never shipped. Today admins have to set jumbo case costs via SQL, which is why no live product has jumbo populated.
+
+Surfaced 2026-05-02 while creating 2025 Topps Cosmic Chrome Basketball — the create form has Hobby / BD / Hobby AM / BD AM but no Jumbo / Jumbo AM fields.
+
+**Files to touch:**
+- `app/admin/products/NewProductForm.tsx` — add Jumbo / Case ($) and Jumbo AM / Case ($) inputs to the Case Costs block, mirroring the BD pattern (both optional)
+- `components/admin/ProductForm.tsx` — same two fields on the edit form
+- `app/admin/products/actions.ts` — pass `jumbo_case_cost` / `jumbo_am_case_cost` through create/update server actions (verify they're not already being silently dropped)
+
+No schema change — columns already exist. No engine change — already wired. Pure form-field add.
+
+**Verification:** create a product with a jumbo case cost set, confirm it persists, confirm the consumer break page's three-format mix counter shows the Jumbo row instead of hiding it.
 
 ---
 
