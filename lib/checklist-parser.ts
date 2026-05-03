@@ -84,18 +84,45 @@ function isSectionHeader(line: string): boolean {
 const NUMBERED_LINE_RE =
   /^\s{2,}(\d+)\s{1,6}([A-Z][A-Za-z\s'.\-]+?)(\*)?\s{2,}([^®™\n]+?)[®™](?:\s+(Rookie))?(?:\s+(\*Back Variation))?[\s]*$/;
 
+// Newer Topps PDFs (2025-26 Cosmic Chrome onward) dropped the ®/™ team markers
+// that the old regex required. extractPdfText in app/api/admin/parse-checklist
+// joins each cell-positioned text item with 3 spaces, so \s{2,} between fields
+// is reliable regardless of how the visual layout looks. Card numbers can carry
+// a trailing asterisk for footnoted entries (e.g. "101*" for Nikola Jović in
+// Cosmic Chrome — see footnote on page 3 of that checklist). Unicode flag for
+// accented player/team names (Jović, Dončić, Niederhäuser).
+const NUMBERED_LINE_NO_TM_RE =
+  /^\s{2,}(\d+)\*?\s{2,}(\S(?:.*?\S)?)\s{2,}(\S(?:.*?\S)?)(?:\s{2,}(Rookie))?\s*$/u;
+
 function parseNumberedLine(line: string): ParsedCard | null {
+  // Try strict (old Topps with ®/™ + *SP markers) first so existing imports
+  // don't change behavior.
   const m = line.match(NUMBERED_LINE_RE);
-  if (!m) return null;
-
-  const cardNumber = m[1].trim();
-  const playerName = m[2].trim();
-  const isSP = m[3] === '*';
-  const team = stripTrademarkSymbols(m[4].trim());
-  const isRookie = !!m[5];
-  const hasBackVariation = !!m[6];
-
-  return { playerName, team, cardNumber, isRookie, isSP, hasBackVariation, rawLine: line };
+  if (m) {
+    return {
+      cardNumber: m[1].trim(),
+      playerName: m[2].trim(),
+      isSP: m[3] === '*',
+      team: stripTrademarkSymbols(m[4].trim()),
+      isRookie: !!m[5],
+      hasBackVariation: !!m[6],
+      rawLine: line,
+    };
+  }
+  // Fallback for newer Topps PDFs without ®/™.
+  const lenient = line.match(NUMBERED_LINE_NO_TM_RE);
+  if (lenient) {
+    return {
+      cardNumber: lenient[1].trim(),
+      playerName: stripTrademarkSymbols(lenient[2].trim()),
+      isSP: false,
+      team: stripTrademarkSymbols(lenient[3].trim()),
+      isRookie: !!lenient[4],
+      hasBackVariation: false,
+      rawLine: line,
+    };
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -114,23 +141,38 @@ const CODE_LINE_RE =
 const CODE_LINE_LOOSE_RE =
   /^\s*([A-Z]+-[A-Z0-9]+)\s+([A-Z][A-Za-z\s'.\-]+?)\s{2,}([^®™\n]+?)[®™]\s*$/;
 
+// Newer Topps PDFs (Cosmic Chrome 2025-26+) drop the ®/™ markers — same
+// rationale as NUMBERED_LINE_NO_TM_RE. Captures optional trailing Rookie flag,
+// which the older regex variants don't expose for code-format rows.
+const CODE_LINE_NO_TM_RE =
+  /^\s*([A-Z]+-[A-Z0-9]+)\s{2,}(\S(?:.*?\S)?)\s{2,}(\S(?:.*?\S)?)(?:\s{2,}(Rookie))?\s*$/u;
+
 function parseCodeLine(line: string): ParsedCard | null {
   const m = line.match(CODE_LINE_RE) ?? line.match(CODE_LINE_LOOSE_RE);
-  if (!m) return null;
-
-  const cardNumber = m[1].trim();
-  const playerName = m[2].trim();
-  const team = stripTrademarkSymbols(m[3].trim());
-
-  return {
-    playerName,
-    team,
-    cardNumber,
-    isRookie: false,   // code-based sets don't typically mark rookie in-line
-    isSP: false,
-    hasBackVariation: false,
-    rawLine: line,
-  };
+  if (m) {
+    return {
+      cardNumber: m[1].trim(),
+      playerName: m[2].trim(),
+      team: stripTrademarkSymbols(m[3].trim()),
+      isRookie: false,   // older code-based sets don't mark rookie in-line
+      isSP: false,
+      hasBackVariation: false,
+      rawLine: line,
+    };
+  }
+  const lenient = line.match(CODE_LINE_NO_TM_RE);
+  if (lenient) {
+    return {
+      cardNumber: lenient[1].trim(),
+      playerName: stripTrademarkSymbols(lenient[2].trim()),
+      team: stripTrademarkSymbols(lenient[3].trim()),
+      isRookie: !!lenient[4],
+      isSP: false,
+      hasBackVariation: false,
+      rawLine: line,
+    };
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -179,8 +221,12 @@ export function parseChecklistPdf(text: string): ParsedChecklist {
   const sections: ParsedSection[] = [];
   let currentSection: ParsedSection = { sectionName: 'BASE', cards: [], flagged: [] };
 
-  const parseLine = format === 'topps-pdf-numbered' ? parseNumberedLine : parseCodeLine;
-
+  // Try BOTH parsers on every line. Cosmic Chrome 2025-26 (and presumably newer
+  // Topps releases) interleaves numbered base sections with code-prefixed
+  // insert sections (GG-1 / ET-5 / PRP-3 etc.) in the same PDF — picking one
+  // parser based on `format` would miss half the cards. The detected `format`
+  // is now informational only, kept on the return value so callers know which
+  // pattern dominates.
   for (const line of lines) {
     if (!line.trim()) continue;
     if (/SUBJECT TO CHANGE/i.test(line)) continue;
@@ -199,7 +245,7 @@ export function parseChecklistPdf(text: string): ParsedChecklist {
     }
 
     if (looksCardLike(line)) {
-      const card = parseLine(line);
+      const card = parseNumberedLine(line) ?? parseCodeLine(line);
       if (card) {
         currentSection.cards.push(card);
       } else {
@@ -418,8 +464,21 @@ export function parseChecklistCsv(text: string): ParsedChecklist {
 //   - First 1:\d+ = hobby odds
 //   - Second 1:\d+ (if present) = breaker odds
 // ---------------------------------------------------------------------------
-// Matches "1:24", "1: 10,243", "1:10,243" — captures just the number part
-const ODDS_TOKEN_RE = /1:\s*([\d,]+)/g;
+// Matches an N:M ratio with optional space + thousands separators.
+// Captures both numerator and denominator so we can detect both
+// `1:N` (1 in N — most odds) and `N:1` (N per 1 — Base in Cosmic Chrome 2025-26
+// is "3:1", meaning 3 base cards per box). We normalize both into a hobby_odds
+// number that the engine consumes as `1/hobby_odds = pull rate per box`.
+const ODDS_RATIO_RE = /(\d+):\s*([\d,]+)/g;
+
+function normalizeOddsRatio(num: string, den: string): string | null {
+  const n = parseInt(num.replace(/,/g, ''), 10);
+  const d = parseInt(den.replace(/,/g, ''), 10);
+  if (!Number.isFinite(n) || !Number.isFinite(d) || n <= 0 || d <= 0) return null;
+  if (n === 1) return String(d); // standard 1:N form — store the denominator
+  if (d === 1) return (1 / n).toFixed(4); // N:1 form (multiple per box) — store as fractional
+  return null; // some other ratio we don't know how to interpret
+}
 
 export function parseOddsPdf(text: string): ParsedOdds {
   const lines = text.split('\n');
@@ -429,7 +488,7 @@ export function parseOddsPdf(text: string): ParsedOdds {
     const trimmed = line.trim();
     if (!trimmed) continue;
 
-    const matches = [...trimmed.matchAll(ODDS_TOKEN_RE)];
+    const matches = [...trimmed.matchAll(ODDS_RATIO_RE)];
     if (matches.length === 0) continue;
 
     const firstMatchIdx = matches[0].index!;
@@ -437,9 +496,11 @@ export function parseOddsPdf(text: string): ParsedOdds {
 
     if (!subsetName) continue; // odds with no label — skip
 
-    // Store just the denominator ("24" not "1:24") to match the coordinate-aware parser
-    const hobbyOdds = matches[0][1].replace(/,/g, '');
-    const breakerOdds = matches.length >= 2 ? matches[1][1].replace(/,/g, '') : null;
+    const hobbyOdds = normalizeOddsRatio(matches[0][1], matches[0][2]);
+    if (!hobbyOdds) continue; // unparseable ratio
+    const breakerOdds = matches.length >= 2
+      ? normalizeOddsRatio(matches[1][1], matches[1][2])
+      : null;
 
     rows.push({ subsetName, hobbyOdds, breakerOdds });
   }
