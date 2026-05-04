@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
+import { Logo } from '@/components/Logo';
 
 const supabaseUrl =
   process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -66,13 +67,8 @@ export default function SignupForm({
 
   return (
     <div className="w-full max-w-sm space-y-6">
-      <div className="space-y-1">
-        <p
-          className="text-xs font-black uppercase tracking-[0.15em]"
-          style={{ color: 'var(--accent-blue)' }}
-        >
-          BreakIQ
-        </p>
+      <div className="space-y-2">
+        <Logo variant="wordmark" height={20} width={96} className="h-5 w-auto" />
         <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
           Hey {firstName}, you're in.
         </h1>

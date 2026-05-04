@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { TrendingUp, Zap, Target, Sparkles, ChevronRight, Search, ClipboardList } from 'lucide-react';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { Product, Sport } from '@/lib/types';
+import { Logo } from '@/components/Logo';
 
 async function getProducts(): Promise<(Product & { sport: Sport })[]> {
   const { data } = await supabaseAdmin
@@ -101,24 +102,8 @@ export default async function HomePage() {
             </div>
 
             {/* Brand */}
-            <div className="flex items-center justify-center gap-3 mb-4">
-              <div
-                className="w-12 h-12 rounded-xl flex items-center justify-center"
-                style={{ background: 'var(--gradient-blue)', boxShadow: 'var(--glow-blue)' }}
-              >
-                <Sparkles className="w-6 h-6 text-white" />
-              </div>
-              <h1
-                className="text-5xl md:text-6xl font-bold"
-                style={{
-                  background: 'linear-gradient(135deg, var(--text-primary) 0%, var(--accent-blue) 100%)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                  backgroundClip: 'text',
-                }}
-              >
-                BreakIQ
-              </h1>
+            <div className="flex items-center justify-center mb-4">
+              <Logo variant="wordmark" height={80} width={400} className="h-14 md:h-20 w-auto" priority />
             </div>
 
             <p className="text-xl md:text-2xl font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>
@@ -149,7 +134,7 @@ export default async function HomePage() {
                     backgroundColor: 'rgba(59, 130, 246, 0.1)',
                   }}
                 >
-                  <Search className="w-5 h-5" />
+                  <Logo variant="slab" height={32} width={25} className="h-8 w-auto -my-1" />
                   Slab Analysis
                   <ChevronRight className="w-5 h-5" />
                 </button>

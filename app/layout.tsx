@@ -16,6 +16,7 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: "BreakIQ",
   description: "Break analysis engine",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "https://www.getbreakiq.com"),
 };
 
 export default function RootLayout({

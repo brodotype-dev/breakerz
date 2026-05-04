@@ -4,6 +4,7 @@ import { useRef, useState } from 'react';
 import { ScanLine, Search, Upload, RotateCcw, ShieldCheck, Hash } from 'lucide-react';
 import { formatCurrency } from '@/lib/engine';
 import posthog from 'posthog-js';
+import { Logo } from '@/components/Logo';
 
 type InputMethod = 'image' | 'cert';
 type Grader = 'PSA' | 'BGS' | 'SGC';
@@ -241,7 +242,7 @@ export default function CardLookupPage() {
               className="w-12 h-12 rounded-xl flex items-center justify-center"
               style={{ background: 'var(--gradient-blue)', boxShadow: 'var(--glow-blue)' }}
             >
-              <ScanLine className="w-6 h-6 text-white" />
+              <Logo variant="slab" height={28} width={22} className="h-7 w-auto" />
             </div>
             <div>
               <h1 className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>

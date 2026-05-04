@@ -1,6 +1,6 @@
-import { Sparkles } from 'lucide-react';
 import { logout } from './login/actions';
 import AdminNav from './AdminNav';
+import { Logo } from '@/components/Logo';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -24,20 +24,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
         {/* Brand Header */}
         <div className="relative p-6 border-b" style={{ borderColor: 'var(--terminal-border)' }}>
-          <div className="flex items-center gap-3">
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-              style={{ background: 'var(--gradient-blue)', boxShadow: 'var(--glow-blue)' }}
-            >
-              <Sparkles className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
-                BreakIQ
-              </h1>
-              <div className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--accent-blue)' }}>
-                Admin Portal
-              </div>
+          <div className="flex flex-col gap-2">
+            <Logo variant="lockup" height={36} width={180} className="h-9 w-auto" priority />
+            <div className="text-[10px] font-bold uppercase tracking-wider pl-1" style={{ color: 'var(--accent-blue)' }}>
+              Admin Portal
             </div>
           </div>
         </div>

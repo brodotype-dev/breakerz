@@ -3,6 +3,7 @@
 import { useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { login } from './actions';
+import { Logo } from '@/components/Logo';
 
 const ERROR_MESSAGES: Record<string, string> = {
   missing: 'Email and password are required.',
@@ -32,8 +33,8 @@ function LoginForm() {
         <div className="bg-card border rounded overflow-hidden">
           <div className="h-1 bg-[oklch(0.28_0.08_250)]" />
           <div className="p-8 space-y-5">
-            <div>
-              <p className="text-xs font-black uppercase tracking-[0.15em] text-muted-foreground mb-1">BreakIQ</p>
+            <div className="space-y-2">
+              <Logo variant="wordmark" height={20} width={96} className="h-5 w-auto" />
               <h1 className="text-xl font-bold">Admin</h1>
             </div>
 

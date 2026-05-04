@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import Link from 'next/link';
 import SignupForm from './SignupForm';
+import { Logo } from '@/components/Logo';
 
 export default async function SignupPage({
   searchParams,
@@ -48,9 +49,9 @@ function ErrorState({ message, showSignIn }: { message: string; showSignIn?: boo
   return (
     <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: 'var(--terminal-bg)' }}>
       <div className="w-full max-w-sm text-center space-y-4">
-        <p className="text-xs font-black uppercase tracking-[0.15em]" style={{ color: 'var(--accent-blue)' }}>
-          BreakIQ
-        </p>
+        <div className="flex justify-center">
+          <Logo variant="wordmark" height={20} width={96} className="h-5 w-auto" />
+        </div>
         <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
           Can't continue
         </h1>

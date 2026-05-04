@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Sparkles, Zap, Check, Crown } from 'lucide-react';
+import { Zap, Check, Crown } from 'lucide-react';
 import posthog from 'posthog-js';
+import { Logo } from '@/components/Logo';
 
 export default function SubscribePage() {
   const router = useRouter();
@@ -56,14 +57,8 @@ export default function SubscribePage() {
       <div className="w-full max-w-3xl">
         {/* Header */}
         <div className="text-center mb-10">
-          <div className="flex items-center justify-center gap-2 mb-4">
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center"
-              style={{ background: 'var(--gradient-blue)', boxShadow: 'var(--glow-blue)' }}
-            >
-              <Sparkles className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>BreakIQ</span>
+          <div className="flex items-center justify-center mb-4">
+            <Logo variant="lockup" height={36} width={180} className="h-9 w-auto" priority />
           </div>
           <h1 className="text-3xl font-bold mb-2" style={{ color: 'var(--text-primary)' }}>
             Choose Your Plan

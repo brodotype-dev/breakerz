@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Sparkles, ShieldCheck, XCircle } from 'lucide-react';
+import { Logo } from '@/components/Logo';
 import posthog from 'posthog-js';
 
 type Step = 1 | 2 | 3;
@@ -129,14 +130,8 @@ export default function OnboardingPage() {
       <div className="w-full max-w-lg">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-2 mb-3">
-            <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center"
-              style={{ background: 'var(--gradient-blue)', boxShadow: 'var(--glow-blue)' }}
-            >
-              <Sparkles className="w-5 h-5 text-white" />
-            </div>
-            <span className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>BreakIQ</span>
+          <div className="flex items-center justify-center mb-3">
+            <Logo variant="lockup" height={36} width={180} className="h-9 w-auto" priority />
           </div>
           <h1 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
             {step === 1 ? 'Welcome' : step === 2 ? 'About You' : 'Almost Done'}
