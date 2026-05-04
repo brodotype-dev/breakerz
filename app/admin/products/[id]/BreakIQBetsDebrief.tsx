@@ -140,7 +140,7 @@ export default function BreakIQBetsDebrief({ productId }: Props) {
             className="w-full text-sm px-3 py-2.5 rounded border bg-background focus:outline-none focus:ring-1 focus:ring-[oklch(0.28_0.08_250)] resize-none placeholder:text-muted-foreground/60 leading-relaxed"
           />
           {error && (
-            <p className="text-sm text-red-500">{error}</p>
+            <p className="text-sm text-[color:var(--signal-pass)]">{error}</p>
           )}
           <button
             onClick={handleParse}

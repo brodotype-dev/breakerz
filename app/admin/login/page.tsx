@@ -66,7 +66,7 @@ function LoginForm() {
               </div>
 
               {errorCode && (
-                <p className="text-sm text-red-500">
+                <p className="text-sm text-[color:var(--signal-pass)]">
                   {ERROR_MESSAGES[errorCode] ?? 'Something went wrong. Try again.'}
                 </p>
               )}

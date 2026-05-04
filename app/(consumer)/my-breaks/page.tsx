@@ -832,7 +832,7 @@ function BreakForm({
 
           {/* Product */}
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Product</label>
+            <label className="block terminal-label mb-1.5">Product</label>
             <select
               value={productId}
               onChange={e => setProductId(e.target.value)}
@@ -846,7 +846,7 @@ function BreakForm({
 
           {/* Team */}
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Team</label>
+            <label className="block terminal-label mb-1.5">Team</label>
             <select
               value={team}
               onChange={e => setTeam(e.target.value)}
@@ -862,7 +862,7 @@ function BreakForm({
           {/* Break type + cases */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Break Type</label>
+              <label className="block terminal-label mb-1.5">Break Type</label>
               <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--terminal-border)' }}>
                 {['hobby', ...(hasBD ? ['bd'] : [])].map(bt => (
                   <button
@@ -880,7 +880,7 @@ function BreakForm({
               </div>
             </div>
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Cases</label>
+              <label className="block terminal-label mb-1.5">Cases</label>
               <input
                 type="number"
                 value={numCases}
@@ -894,7 +894,7 @@ function BreakForm({
 
           {/* Asking price */}
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
+            <label className="block terminal-label mb-1.5">
               {mode === 'new' ? 'What are you about to pay?' : 'What did you pay?'}
             </label>
             <div className="relative">
@@ -912,7 +912,7 @@ function BreakForm({
 
           {/* Platform */}
           <div>
-            <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Where?</label>
+            <label className="block terminal-label mb-1.5">Where?</label>
             <select
               value={platform}
               onChange={e => setPlatform(e.target.value as Platform)}
@@ -938,7 +938,7 @@ function BreakForm({
           {mode === 'log' && (
             <>
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>How did it go?</label>
+                <label className="block terminal-label mb-2">How did it go?</label>
                 <div className="flex gap-2">
                   {OUTCOME_OPTIONS.map(o => {
                     const Icon = o.icon;

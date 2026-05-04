@@ -74,7 +74,7 @@ export default function OddsUpload({ productId }: { productId: string }) {
               }}
             />
           </label>
-          {error && <p className="mt-2 text-xs text-red-500">{error}</p>}
+          {error && <p className="mt-2 text-xs text-[color:var(--signal-pass)]">{error}</p>}
         </div>
       ) : status === 'parsing' ? (
         <p className="text-sm text-muted-foreground">Parsing PDF…</p>
@@ -83,9 +83,9 @@ export default function OddsUpload({ productId }: { productId: string }) {
       ) : result ? (
         <div className="space-y-3">
           <div className="flex items-center gap-4 text-sm">
-            <span className="text-green-600 font-medium">{result.matched.length} matched</span>
+            <span className="text-[color:var(--signal-buy)] font-medium">{result.matched.length} matched</span>
             {result.unmatched.length > 0 && (
-              <span className="text-amber-500 font-medium">{result.unmatched.length} unmatched</span>
+              <span className="text-[color:var(--signal-watch)] font-medium">{result.unmatched.length} unmatched</span>
             )}
             <button onClick={reset} className="ml-auto text-xs text-muted-foreground hover:text-foreground">
               Upload another

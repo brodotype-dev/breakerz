@@ -180,7 +180,7 @@ export default function PlayersManager({ productId, players }: Props) {
           Icon · skips buzz multiplier
         </span>
         <span className="inline-flex items-center gap-1">
-          <Zap className="w-3 h-3" style={{ color: '#f59e0b' }} />
+          <Zap className="w-3 h-3" style={{ color: 'var(--signal-watch)' }} />
           High Volatility
         </span>
         <span className="inline-flex items-center gap-1">

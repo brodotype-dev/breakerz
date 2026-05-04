@@ -197,7 +197,7 @@ export default function PlayerDetailDrawer({ playerProductId, onClose, topOffset
                         <th className="text-right px-3 py-2 font-bold uppercase tracking-wider" style={{ color: 'var(--accent-blue)' }}>
                           PSA 9
                         </th>
-                        <th className="text-right px-3 py-2 font-bold uppercase tracking-wider" style={{ color: '#22c55e' }}>
+                        <th className="text-right px-3 py-2 font-bold uppercase tracking-wider" style={{ color: 'var(--signal-buy)' }}>
                           PSA 10
                         </th>
                       </tr>
@@ -237,7 +237,7 @@ export default function PlayerDetailDrawer({ playerProductId, onClose, topOffset
                             <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--accent-blue)' }}>
                               {getPrice('PSA 9')}
                             </td>
-                            <td className="px-3 py-2 text-right font-mono font-bold" style={{ color: '#22c55e' }}>
+                            <td className="px-3 py-2 text-right font-mono font-bold" style={{ color: 'var(--signal-buy)' }}>
                               {getPrice('PSA 10')}
                             </td>
                           </tr>

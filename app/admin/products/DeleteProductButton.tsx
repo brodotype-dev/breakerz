@@ -17,7 +17,7 @@ export default function DeleteProductButton({ productId, productName }: { produc
             await deleteProduct(productId);
           }}
           disabled={loading}
-          className="text-red-500 hover:text-red-700 font-medium disabled:opacity-50"
+          className="text-[color:var(--signal-pass)] hover:text-[color:var(--signal-pass)] font-medium disabled:opacity-50"
         >
           {loading ? 'Deleting…' : 'Yes'}
         </button>
@@ -34,7 +34,7 @@ export default function DeleteProductButton({ productId, productName }: { produc
   return (
     <button
       onClick={() => setConfirming(true)}
-      className="text-xs text-muted-foreground hover:text-red-500 transition-colors"
+      className="text-xs text-muted-foreground hover:text-[color:var(--signal-pass)] transition-colors"
     >
       Delete
     </button>

@@ -130,7 +130,7 @@ export default function PlayerBulkForm({ productId, sportId }: Props) {
                 <td className="px-3 py-1.5">
                   <button
                     onClick={() => removeRow(i)}
-                    className="text-muted-foreground hover:text-red-500 text-xs"
+                    className="text-muted-foreground hover:text-[color:var(--signal-pass)] text-xs"
                   >
                     ✕
                   </button>
@@ -157,9 +157,9 @@ export default function PlayerBulkForm({ productId, sportId }: Props) {
         </button>
       </div>
 
-      {error && <p className="text-sm text-red-500">{error}</p>}
+      {error && <p className="text-sm text-[color:var(--signal-pass)]">{error}</p>}
       {result && (
-        <p className="text-sm text-green-600">
+        <p className="text-sm text-[color:var(--signal-buy)]">
           {result.added} player{result.added !== 1 ? 's' : ''} saved.
         </p>
       )}

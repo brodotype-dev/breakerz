@@ -194,7 +194,7 @@ export default function BreakPage() {
   if (error || !product) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-4" style={{ backgroundColor: 'var(--terminal-bg)' }}>
-        <p className="text-sm" style={{ color: '#dc2626' }}>{error ?? 'Product not found.'}</p>
+        <p className="text-sm" style={{ color: 'var(--signal-pass)' }}>{error ?? 'Product not found.'}</p>
         <Link href="/" className="text-sm underline" style={{ color: 'var(--accent-blue)' }}>← Back to Products</Link>
       </div>
     );
@@ -304,7 +304,7 @@ export default function BreakPage() {
       )}
       {!isPreRelease && !isDormant && estimatedCount > 0 && (
         <div className="border-b px-6 py-2.5 flex items-center gap-2" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'rgba(245,158,11,0.06)' }}>
-          <span className="text-[10px]" style={{ color: '#f59e0b' }}>▲</span>
+          <span className="text-[10px]" style={{ color: 'var(--signal-watch)' }}>▲</span>
           <p className="text-xs" style={{ color: 'var(--text-t-secondary)' }}>
             {estimatedCount} player{estimatedCount !== 1 ? 's' : ''} using estimated pricing — approximations based on historical comps.
           </p>

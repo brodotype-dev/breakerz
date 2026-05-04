@@ -66,13 +66,13 @@ export default function ProductCard({ product }: Props) {
             {!preRelease && (
               <div
                 className="flex items-center gap-1.5 px-2 py-1 rounded-full shrink-0 ml-2"
-                style={{ backgroundColor: 'rgba(34,197,94,0.1)' }}
+                style={{ backgroundColor: 'var(--signal-buy-bg)' }}
               >
                 <div
                   className="w-1.5 h-1.5 rounded-full animate-pulse"
-                  style={{ backgroundColor: '#22c55e', boxShadow: '0 0 6px rgba(34,197,94,0.6)' }}
+                  style={{ backgroundColor: 'var(--signal-buy)', boxShadow: '0 0 6px rgba(34,197,94,0.6)' }}
                 />
-                <span className="text-[9px] font-bold uppercase" style={{ color: '#22c55e', letterSpacing: '0.06em' }}>
+                <span className="text-[9px] font-bold uppercase" style={{ color: 'var(--signal-buy)', letterSpacing: '0.06em' }}>
                   LIVE
                 </span>
               </div>
@@ -88,8 +88,8 @@ export default function ProductCard({ product }: Props) {
               </span>
               {product.bd_case_cost && (
                 <>
-                  <span style={{ color: '#6b7280' }}>·</span>
-                  <span className="font-mono text-sm" style={{ color: '#a8adb8' }}>
+                  <span style={{ color: 'var(--text-tertiary)' }}>·</span>
+                  <span className="font-mono text-sm" style={{ color: 'var(--text-secondary)' }}>
                     BD ${product.bd_case_cost.toLocaleString()}
                   </span>
                 </>
@@ -102,9 +102,9 @@ export default function ProductCard({ product }: Props) {
             <div
               className="text-center py-2 px-3 rounded-lg text-xs font-bold"
               style={{
-                backgroundColor: 'rgba(245,158,11,0.1)',
-                color: '#f59e0b',
-                border: '1px solid rgba(245,158,11,0.3)',
+                backgroundColor: 'var(--signal-watch-bg)',
+                color: 'var(--signal-watch)',
+                border: '1px solid var(--signal-watch-border)',
               }}
             >
               PRE-RELEASE · Coming Soon

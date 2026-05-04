@@ -11,9 +11,9 @@ interface Props {
 }
 
 const STYLES: Record<Signal, { color: string; bg: string; border: string }> = {
-  BUY:   { color: '#22c55e', bg: 'rgba(34,197,94,0.1)',   border: 'rgba(34,197,94,0.3)' },
-  WATCH: { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)',  border: 'rgba(245,158,11,0.3)' },
-  PASS:  { color: '#dc2626', bg: 'rgba(220,38,38,0.1)',   border: 'rgba(220,38,38,0.3)' },
+  BUY:   { color: 'var(--signal-buy)',   bg: 'var(--signal-buy-bg)',   border: 'var(--signal-buy-border)' },
+  WATCH: { color: 'var(--signal-watch)', bg: 'var(--signal-watch-bg)', border: 'var(--signal-watch-border)' },
+  PASS:  { color: 'var(--signal-pass)',  bg: 'var(--signal-pass-bg)',  border: 'var(--signal-pass-border)' },
 };
 
 const SIZES = {

@@ -94,7 +94,7 @@ export default function RefreshPricingButton({ productId }: { productId: string 
           {(status.totalDurationMs / 1000).toFixed(1)}s
         </span>
       )}
-      {status.kind === 'error' && <span className="text-xs text-red-500">{status.msg}</span>}
+      {status.kind === 'error' && <span className="text-xs text-[color:var(--signal-pass)]">{status.msg}</span>}
     </div>
   );
 }

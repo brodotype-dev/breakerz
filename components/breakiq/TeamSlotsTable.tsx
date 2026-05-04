@@ -159,7 +159,7 @@ export default function TeamSlotsTable({ teams, breakType, riskFlagMap = new Map
 
                   {/* Max pay */}
                   <div className="flex items-center">
-                    <span className="font-mono text-sm" style={{ color: '#22c55e' }}>
+                    <span className="font-mono text-sm" style={{ color: 'var(--signal-buy)' }}>
                       {formatCurrency(row.maxPay)}
                     </span>
                   </div>

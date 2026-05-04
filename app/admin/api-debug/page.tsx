@@ -123,7 +123,7 @@ export default function ApiDebugPage() {
             {loading.search ? 'Searching…' : 'Search'}
           </button>
         </div>
-        {errors.search && <p className="text-sm text-red-500">{errors.search}</p>}
+        {errors.search && <p className="text-sm text-[color:var(--signal-pass)]">{errors.search}</p>}
 
         {searchResults && (
           <div className="border rounded overflow-hidden text-sm">
@@ -227,7 +227,7 @@ export default function ApiDebugPage() {
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
             all-prices-by-card — {allPrices?.length ?? 0} grades
           </h2>
-          {errors.allPrices && <p className="text-sm text-red-500">{errors.allPrices}</p>}
+          {errors.allPrices && <p className="text-sm text-[color:var(--signal-pass)]">{errors.allPrices}</p>}
           {allPrices && allPrices.length > 0 && (
             <div className="border rounded overflow-hidden text-sm">
               <table className="w-full text-xs">
@@ -268,7 +268,7 @@ export default function ApiDebugPage() {
           <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
             comps ({days}d) — {comps?.length ?? 0} sales
           </h2>
-          {errors.comps && <p className="text-sm text-red-500">{errors.comps}</p>}
+          {errors.comps && <p className="text-sm text-[color:var(--signal-pass)]">{errors.comps}</p>}
           {comps && comps.length > 0 && (
             <div className="border rounded overflow-hidden text-sm">
               <table className="w-full text-xs">

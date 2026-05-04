@@ -103,7 +103,7 @@ export default function RunMatchingButton({ productId }: { productId: string }) 
         <button onClick={run} className="rounded border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors">
           Re-run Matching →
         </button>
-        {errorMsg && <span className="text-xs text-red-500">{errorMsg}</span>}
+        {errorMsg && <span className="text-xs text-[color:var(--signal-pass)]">{errorMsg}</span>}
       </div>
 
       {lastRun && (

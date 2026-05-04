@@ -19,11 +19,11 @@ interface ReviewRow extends ParsedResult {
 }
 
 const SCORE_PILLS = [
-  { value: -0.5, label: '−0.5', color: 'bg-red-600 text-white' },
+  { value: -0.5, label: '−0.5', color: 'bg-[var(--signal-pass)] text-white' },
   { value: -0.25, label: '−0.25', color: 'bg-red-400 text-white' },
   { value: 0, label: '0', color: 'bg-secondary text-foreground' },
   { value: 0.25, label: '+0.25', color: 'bg-green-400 text-white' },
-  { value: 0.5, label: '+0.5', color: 'bg-green-600 text-white' },
+  { value: 0.5, label: '+0.5', color: 'bg-[var(--signal-buy)] text-white' },
 ];
 
 function snapScore(raw: number): number {
@@ -113,7 +113,7 @@ export default function GlobalBreakIQBetsDebrief() {
         <button
           onClick={() => { setStatus('idle'); setNarrative(''); setRows([]); setSavedCount(0); }}
           className="px-4 py-2 rounded-lg text-sm font-bold transition-all"
-          style={{ backgroundColor: 'rgba(34, 197, 94, 0.1)', color: 'var(--signal-buy)', border: '1px solid rgba(34, 197, 94, 0.3)' }}
+          style={{ backgroundColor: 'var(--signal-buy-bg)', color: 'var(--signal-buy)', border: '1px solid var(--signal-buy-border)' }}
         >
           Run another debrief
         </button>

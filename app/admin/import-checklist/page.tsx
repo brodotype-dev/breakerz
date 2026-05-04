@@ -42,9 +42,9 @@ type Step = 'upload' | 'review' | 'result';
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function confidenceColor(status: MatchRow['status']) {
-  if (status === 'auto') return 'text-green-600';
-  if (status === 'review') return 'text-yellow-600';
-  return 'text-red-500';
+  if (status === 'auto') return 'text-[color:var(--signal-buy)]';
+  if (status === 'review') return 'text-[color:var(--signal-watch)]';
+  return 'text-[color:var(--signal-pass)]';
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -326,7 +326,7 @@ function ImportChecklistInner() {
                 />
               </div>
 
-              {parseError && <p className="text-sm text-red-500">{parseError}</p>}
+              {parseError && <p className="text-sm text-[color:var(--signal-pass)]">{parseError}</p>}
 
               <button
                 onClick={handleParse}
@@ -403,7 +403,7 @@ function ImportChecklistInner() {
                             <td className="px-3 py-2 text-center text-muted-foreground">{s.cardCount}</td>
                             <td className="px-3 py-2 text-center">
                               {s.flaggedCount > 0 ? (
-                                <span className="text-yellow-600 font-medium">{s.flaggedCount}</span>
+                                <span className="text-[color:var(--signal-watch)] font-medium">{s.flaggedCount}</span>
                               ) : (
                                 <span className="text-muted-foreground">—</span>
                               )}
@@ -471,7 +471,7 @@ function ImportChecklistInner() {
 
                                 {s.flagged.length > 0 && (
                                   <div className="mt-2 space-y-0.5">
-                                    <p className="text-xs font-medium text-yellow-600">
+                                    <p className="text-xs font-medium text-[color:var(--signal-watch)]">
                                       {s.flagged.length} flagged line{s.flagged.length !== 1 ? 's' : ''} (couldn't fully parse):
                                     </p>
                                     {s.flagged.map((fl, fi) => (
@@ -490,7 +490,7 @@ function ImportChecklistInner() {
                   </table>
                 </div>
 
-                {importError && <p className="text-sm text-red-500">{importError}</p>}
+                {importError && <p className="text-sm text-[color:var(--signal-pass)]">{importError}</p>}
 
                 <button
                   onClick={handleImport}
@@ -509,7 +509,7 @@ function ImportChecklistInner() {
           <>
             {/* Summary */}
             <div className="bg-card border rounded overflow-hidden">
-              <div className="h-1 bg-green-500" />
+              <div className="h-1 bg-[var(--signal-buy)]" />
               <div className="p-6 space-y-4">
                 <div className="flex items-start justify-between gap-4">
                   <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
@@ -561,7 +561,7 @@ function ImportChecklistInner() {
                   </button>
                 </div>
 
-                {matchError && <p className="text-sm text-red-500">{matchError}</p>}
+                {matchError && <p className="text-sm text-[color:var(--signal-pass)]">{matchError}</p>}
 
                 {matchResults && (
                   <div className="rounded border overflow-hidden">
@@ -592,9 +592,9 @@ function ImportChecklistInner() {
                       </tbody>
                     </table>
                     <div className="px-3 py-2 bg-muted/30 text-xs text-muted-foreground flex gap-4">
-                      <span className="text-green-600">{matchResults.filter(r => r.status === 'auto').length} auto-matched</span>
-                      <span className="text-yellow-600">{matchResults.filter(r => r.status === 'review').length} needs review</span>
-                      <span className="text-red-500">{matchResults.filter(r => r.status === 'no-match').length} no match</span>
+                      <span className="text-[color:var(--signal-buy)]">{matchResults.filter(r => r.status === 'auto').length} auto-matched</span>
+                      <span className="text-[color:var(--signal-watch)]">{matchResults.filter(r => r.status === 'review').length} needs review</span>
+                      <span className="text-[color:var(--signal-pass)]">{matchResults.filter(r => r.status === 'no-match').length} no match</span>
                     </div>
                   </div>
                 )}
@@ -629,10 +629,10 @@ function ImportChecklistInner() {
                   </button>
                 </div>
 
-                {oddsError && <p className="text-sm text-red-500">{oddsError}</p>}
+                {oddsError && <p className="text-sm text-[color:var(--signal-pass)]">{oddsError}</p>}
                 {oddsResult && (
                   <div className="space-y-3">
-                    <p className="text-sm text-green-600 font-medium">
+                    <p className="text-sm text-[color:var(--signal-buy)] font-medium">
                       Odds applied to {oddsResult.updatedCount} variant{oddsResult.updatedCount !== 1 ? 's' : ''}.
                     </p>
                     {oddsResult.matched.length > 0 && (
@@ -650,7 +650,7 @@ function ImportChecklistInner() {
                             {oddsResult.matched.map((m, i) => (
                               <tr key={i} className="hover:bg-muted/20">
                                 <td className="px-3 py-1.5 text-muted-foreground">{m.subsetName}</td>
-                                <td className="px-3 py-1.5 text-green-600">{m.variantName}</td>
+                                <td className="px-3 py-1.5 text-[color:var(--signal-buy)]">{m.variantName}</td>
                                 <td className="px-3 py-1.5 text-center">{m.hobbyOdds != null ? `1:${m.hobbyOdds}` : '—'}</td>
                                 <td className="px-3 py-1.5 text-center">{m.breakerOdds != null ? `1:${m.breakerOdds}` : '—'}</td>
                               </tr>
@@ -661,7 +661,7 @@ function ImportChecklistInner() {
                     )}
                     {oddsResult.unmatched.length > 0 && (
                       <div>
-                        <p className="text-xs font-medium text-yellow-600 mb-1">
+                        <p className="text-xs font-medium text-[color:var(--signal-watch)] mb-1">
                           {oddsResult.unmatched.length} odds row{oddsResult.unmatched.length !== 1 ? 's' : ''} had no matching variant:
                         </p>
                         {oddsResult.unmatched.map((u, i) => (

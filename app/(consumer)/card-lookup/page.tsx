@@ -295,7 +295,7 @@ export default function CardLookupPage() {
         >
           <div className="flex gap-3 items-end">
             <div className="flex-shrink-0">
-              <label className="block text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>
+              <label className="block terminal-label mb-2">
                 Grader
               </label>
               <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--terminal-border)' }}>
@@ -315,7 +315,7 @@ export default function CardLookupPage() {
               </div>
             </div>
             <div className="flex-1">
-              <label className="block text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>
+              <label className="block terminal-label mb-2">
                 Cert Number
               </label>
               <input
@@ -404,7 +404,7 @@ export default function CardLookupPage() {
                     </div>
 
                     {!extracted.certNumber && (
-                      <p className="text-xs text-amber-500">No cert number found — will fall back to name search</p>
+                      <p className="text-xs text-[color:var(--signal-watch)]">No cert number found — will fall back to name search</p>
                     )}
 
                     <button
@@ -496,14 +496,14 @@ function ResultsPanel({
         <div className="space-y-4">
           {/* Cert fallback notice */}
           {result.source === 'search' && result.certFallback && (
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-400">
+            <div className="rounded-lg border border-[var(--signal-watch-border)] bg-[var(--signal-watch-bg)] px-4 py-2 text-xs text-[color:var(--signal-watch)]">
               PSA cert confirmed — showing market comps by card (no cert-specific sale history)
             </div>
           )}
 
           {/* PSA debug — temporary */}
           {result.source === 'cert' && !result.psaVerified && result.psaError && (
-            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-400">
+            <div className="rounded-lg border border-[var(--signal-watch-border)] bg-[var(--signal-watch-bg)] px-4 py-2 text-xs text-[color:var(--signal-watch)]">
               PSA: {result.psaError}
             </div>
           )}

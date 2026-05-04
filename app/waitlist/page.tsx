@@ -211,7 +211,7 @@ export default function WaitlistPage() {
                   </div>
 
                   {state === 'error' && (
-                    <p className="text-sm text-red-500">Something went wrong. Try again.</p>
+                    <p className="text-sm text-[color:var(--signal-pass)]">Something went wrong. Try again.</p>
                   )}
 
                   <button

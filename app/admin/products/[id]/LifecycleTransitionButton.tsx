@@ -75,7 +75,7 @@ export default function LifecycleTransitionButton({
 
   const colors = {
     positive: { bg: 'rgba(16, 185, 129, 0.12)', text: '#10b981', border: 'rgba(16, 185, 129, 0.3)' },
-    caution: { bg: 'rgba(245, 158, 11, 0.12)', text: '#f59e0b', border: 'rgba(245, 158, 11, 0.3)' },
+    caution: { bg: 'rgba(245, 158, 11, 0.12)', text: 'var(--signal-watch)', border: 'rgba(245, 158, 11, 0.3)' },
     neutral: { bg: 'rgba(148, 163, 184, 0.15)', text: '#cbd5e1', border: 'rgba(148, 163, 184, 0.3)' },
   }[v.tone];
 

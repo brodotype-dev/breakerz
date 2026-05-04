@@ -184,7 +184,7 @@ export default function ProductsTableView({
                       </Link>
                       {p.needsRefresh && (
                         <span title="CH catalog refreshed after last pricing run — re-hydrate and refresh pricing">
-                          <AlertTriangle className="size-3.5 shrink-0" style={{ color: '#f59e0b' }} />
+                          <AlertTriangle className="size-3.5 shrink-0" style={{ color: 'var(--signal-watch)' }} />
                         </span>
                       )}
                     </div>
