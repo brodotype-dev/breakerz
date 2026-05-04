@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { Sparkles, ChevronDown, LogOut, Settings, Monitor, User, ClipboardList } from 'lucide-react';
+import { ChevronDown, LogOut, Settings, Monitor, User, ClipboardList } from 'lucide-react';
+import { Logo } from '@/components/Logo';
 import { logout } from './actions';
 
 interface ConsumerNavProps {
@@ -34,14 +35,8 @@ export default function ConsumerNav({ isAdmin }: ConsumerNavProps) {
       }}
     >
       {/* Brand */}
-      <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
-        <div
-          className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
-          style={{ background: 'var(--gradient-blue)' }}
-        >
-          <Sparkles className="w-3.5 h-3.5 text-white" />
-        </div>
-        <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>BreakIQ</span>
+      <Link href="/" className="flex items-center hover:opacity-80 transition-opacity">
+        <Logo variant="lockup" height={28} width={140} className="h-7 w-auto" />
       </Link>
 
       {/* Right side */}

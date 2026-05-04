@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Sparkles, Zap, TrendingUp, Search, ChevronRight } from 'lucide-react';
+import { Zap, TrendingUp, Search, ChevronRight } from 'lucide-react';
 import posthog from 'posthog-js';
+import { Logo } from '@/components/Logo';
 
 type State = 'idle' | 'loading' | 'success' | 'already' | 'error';
 
@@ -89,13 +90,7 @@ export default function WaitlistPage() {
             {/* Brand */}
             <div>
               <div className="flex items-center gap-3 mb-4">
-                <div
-                  className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
-                  style={{ background: 'var(--gradient-blue)', boxShadow: 'var(--glow-blue)' }}
-                >
-                  <Sparkles className="w-5 h-5 text-white" />
-                </div>
-                <span className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>BreakIQ</span>
+                <Logo variant="lockup" height={40} width={200} className="h-10 w-auto" priority />
                 <span
                   className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full"
                   style={{ backgroundColor: 'rgba(59,130,246,0.15)', color: 'var(--accent-blue)', border: '1px solid rgba(59,130,246,0.3)' }}
@@ -114,7 +109,7 @@ export default function WaitlistPage() {
 
             {/* Feature list */}
             <div className="space-y-3">
-              {[
+              {([
                 {
                   icon: Zap,
                   gradient: 'var(--gradient-blue)',
@@ -128,18 +123,25 @@ export default function WaitlistPage() {
                   body: 'Odds-weighted EV per player, adjusted for buzz and market signals.',
                 },
                 {
-                  icon: Search,
+                  icon: 'slab',
                   gradient: 'var(--gradient-orange)',
                   title: 'Slab Analysis',
                   body: 'Upload a cert image and get instant market value and comp sales for graded cards.',
                 },
-              ].map(({ icon: Icon, gradient, title, body }) => (
+              ] as Array<{ icon: React.ElementType | 'slab'; gradient: string; title: string; body: string }>).map(({ icon, gradient, title, body }) => (
                 <div key={title} className="flex items-start gap-4">
                   <div
                     className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 mt-0.5"
                     style={{ background: gradient }}
                   >
-                    <Icon className="w-4 h-4 text-white" />
+                    {icon === 'slab' ? (
+                      <Logo variant="slab" height={28} width={22} className="h-7 w-auto -my-2" />
+                    ) : (
+                      (() => {
+                        const Icon = icon;
+                        return <Icon className="w-4 h-4 text-white" />;
+                      })()
+                    )}
                   </div>
                   <div>
                     <p className="text-sm font-semibold mb-0.5" style={{ color: 'var(--text-primary)' }}>{title}</p>
