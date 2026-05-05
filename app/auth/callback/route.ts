@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
 import { getPostHogClient } from '@/lib/posthog-server';
+import { TERMS_VERSION, PRIVACY_VERSION } from '@/lib/legal';
 
 const supabaseUrl =
   process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL!;
@@ -15,6 +16,15 @@ export async function GET(request: NextRequest) {
   const tokenHash = searchParams.get('token_hash');
   const type = searchParams.get('type');
   const inviteCode = searchParams.get('invite_code');
+  // Legal acceptance round-trips through the redirect URL so OAuth state
+  // doesn't need a separate cookie. Only honor versions that match what
+  // we currently publish — protects against a stale link pre-accepting
+  // an outdated doc, which would otherwise let a user signal acceptance
+  // of language they never saw.
+  const acceptTermsParam = searchParams.get('accept_terms');
+  const acceptPrivacyParam = searchParams.get('accept_privacy');
+  const acceptedTerms = acceptTermsParam === TERMS_VERSION ? TERMS_VERSION : null;
+  const acceptedPrivacy = acceptPrivacyParam === PRIVACY_VERSION ? PRIVACY_VERSION : null;
 
   if (!code && !tokenHash) {
     return NextResponse.redirect(`${origin}/auth/signup?error=missing_code`);
@@ -85,11 +95,24 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Upsert profile (only reached if invite is valid OR user is returning OR has a role)
+  // Upsert profile (only reached if invite is valid OR user is returning OR has a role).
+  // For new profiles, persist the legal acceptance round-tripped through the
+  // redirect URL. Returning users keep their existing acceptance — we don't
+  // overwrite it on every sign-in, since they may have accepted an earlier
+  // version that we still want to honor as their original timestamp.
+  const nowIso = new Date().toISOString();
+  const legalFields = isNewProfile && acceptedTerms && acceptedPrivacy ? {
+    terms_accepted_at: nowIso,
+    terms_version: acceptedTerms,
+    privacy_accepted_at: nowIso,
+    privacy_version: acceptedPrivacy,
+  } : {};
+
   await supabaseAdmin.from('profiles').upsert({
     id: user.id,
     full_name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
     avatar_url: user.user_metadata?.avatar_url ?? null,
+    ...legalFields,
   }, { onConflict: 'id' });
 
   // Identify user server-side

@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { User, Calendar, Heart, Save, CheckCircle } from 'lucide-react';
+import Link from 'next/link';
+import { User, Calendar, Heart, Save, CheckCircle, FileText, AlertTriangle } from 'lucide-react';
+import { TERMS_VERSION, PRIVACY_VERSION, TERMS_PATH, PRIVACY_PATH, isCurrent } from '@/lib/legal';
 
 interface ProfileData {
   first_name: string;
@@ -10,6 +12,10 @@ interface ProfileData {
   favorite_sports: string[];
   chasing_teams: string[];
   chasing_players: string[];
+  terms_accepted_at: string | null;
+  terms_version: string | null;
+  privacy_accepted_at: string | null;
+  privacy_version: string | null;
 }
 
 const EMPTY: ProfileData = {
@@ -19,6 +25,10 @@ const EMPTY: ProfileData = {
   favorite_sports: [],
   chasing_teams: [],
   chasing_players: [],
+  terms_accepted_at: null,
+  terms_version: null,
+  privacy_accepted_at: null,
+  privacy_version: null,
 };
 
 function toCSV(arr: string[]) {
@@ -306,6 +316,39 @@ export default function ProfilePage() {
           </div>
         </section>
 
+        {/* Legal Acceptance — read-only audit trail */}
+        <section
+          className="rounded-xl border p-6"
+          style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <FileText className="w-4 h-4" style={{ color: 'var(--accent-blue)' }} />
+            <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
+              Legal
+            </h2>
+          </div>
+          <p className="text-xs mb-5" style={{ color: 'var(--text-tertiary)' }}>
+            Record of when you accepted our policies. Read the latest versions any time.
+          </p>
+
+          <div className="space-y-3">
+            <LegalAcceptanceRow
+              label="Terms & Conditions"
+              href={TERMS_PATH}
+              acceptedAt={profile.terms_accepted_at}
+              acceptedVersion={profile.terms_version}
+              currentVersion={TERMS_VERSION}
+            />
+            <LegalAcceptanceRow
+              label="Privacy Policy"
+              href={PRIVACY_PATH}
+              acceptedAt={profile.privacy_accepted_at}
+              acceptedVersion={profile.privacy_version}
+              currentVersion={PRIVACY_VERSION}
+            />
+          </div>
+        </section>
+
         {/* Save */}
         {error && (
           <p className="text-sm" style={{ color: 'var(--signal-pass)' }}>{error}</p>
@@ -331,6 +374,77 @@ export default function ProfilePage() {
             </>
           )}
         </button>
+      </div>
+    </div>
+  );
+}
+
+function LegalAcceptanceRow({
+  label,
+  href,
+  acceptedAt,
+  acceptedVersion,
+  currentVersion,
+}: {
+  label: string;
+  href: string;
+  acceptedAt: string | null;
+  acceptedVersion: string | null;
+  currentVersion: string;
+}) {
+  const accepted = !!acceptedAt;
+  const upToDate = isCurrent(acceptedVersion, currentVersion);
+  const formatted = acceptedAt
+    ? new Date(acceptedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+    : null;
+
+  return (
+    <div
+      className="flex items-center justify-between gap-3 rounded-lg border px-4 py-3"
+      style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-bg)' }}
+    >
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <Link
+            href={href}
+            target="_blank"
+            rel="noopener"
+            className="text-sm font-semibold hover:underline"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            {label}
+          </Link>
+          {accepted && upToDate && (
+            <span
+              className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
+              style={{ backgroundColor: 'var(--signal-buy-bg)', color: 'var(--signal-buy)' }}
+            >
+              Accepted
+            </span>
+          )}
+          {accepted && !upToDate && (
+            <span
+              className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded inline-flex items-center gap-1"
+              style={{ backgroundColor: 'rgba(234,179,8,0.12)', color: 'var(--signal-watch)' }}
+            >
+              <AlertTriangle className="w-3 h-3" />
+              Update available
+            </span>
+          )}
+          {!accepted && (
+            <span
+              className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
+              style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: 'var(--signal-pass)' }}
+            >
+              Not accepted
+            </span>
+          )}
+        </div>
+        <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
+          {accepted
+            ? <>Accepted {formatted} · version {acceptedVersion}{upToDate ? '' : ` · current ${currentVersion}`}</>
+            : <>You haven&apos;t accepted this version yet.</>}
+        </p>
       </div>
     </div>
   );
