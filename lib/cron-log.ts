@@ -15,14 +15,19 @@ export interface CronRunSummary {
  * insert failures are swallowed and logged so a logging hiccup doesn't tank
  * the actual cron work.
  *
- * `success` is computed: errors=0 always counts as success, including
- * processed=0 ("nothing to do" is a valid healthy outcome).
+ * `success` is computed: errors=0 always counts (including processed=0 —
+ * "nothing to do" is healthy), AND a partial run with at least one ok worker
+ * also counts. The fan-out orchestrator dispatches workers on their own Vercel
+ * invocations; a worker the orchestrator marks as errored (e.g. aborted at the
+ * orchestrator's deadline) often still completes and writes pricing_cache. So
+ * `errors > 0 && ok > 0` is partial-success, not a hard failure — flagging it
+ * as failure made "Last Priced" and the cron panel diverge for days at a time.
  */
 export async function recordCronRun(summary: CronRunSummary): Promise<void> {
   const finishedAt = new Date();
   const startedAtIso = new Date(summary.startedAt).toISOString();
   const durationMs = finishedAt.getTime() - summary.startedAt;
-  const success = summary.errors === 0;
+  const success = summary.errors === 0 || summary.ok > 0;
 
   const { error } = await supabaseAdmin.from('cron_run_log').insert({
     cron_path: summary.cronPath,

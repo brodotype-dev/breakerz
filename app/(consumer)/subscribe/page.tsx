@@ -182,6 +182,13 @@ export default function SubscribePage() {
             Continue with free trial (3 analyses) →
           </button>
         </div>
+
+        <p className="text-center text-[11px] mt-6 px-4" style={{ color: 'var(--text-disabled)' }}>
+          Subscriptions auto-renew until canceled. Cancel anytime in the Stripe customer portal — access continues through the end of your billing period. By subscribing you agree to our{' '}
+          <a href="/terms" target="_blank" rel="noopener" style={{ color: 'var(--text-secondary)' }}>Terms</a>
+          {' '}and{' '}
+          <a href="/privacy" target="_blank" rel="noopener" style={{ color: 'var(--text-secondary)' }}>Privacy Policy</a>.
+        </p>
       </div>
     </div>
   );

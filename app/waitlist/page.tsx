@@ -237,6 +237,13 @@ export default function WaitlistPage() {
               </Link>
             </p>
 
+            <p className="text-center text-[11px] mt-4 px-4" style={{ color: 'var(--text-disabled)' }}>
+              By requesting access you agree to our{' '}
+              <Link href="/terms" style={{ color: 'var(--text-secondary)' }}>Terms</Link>
+              {' '}and{' '}
+              <Link href="/privacy" style={{ color: 'var(--text-secondary)' }}>Privacy Policy</Link>.
+            </p>
+
             <p className="text-center text-xs mt-3" style={{ color: 'var(--text-disabled)' }}>
               <Link href="/admin/login" style={{ color: 'var(--text-disabled)' }}>
                 Admin login

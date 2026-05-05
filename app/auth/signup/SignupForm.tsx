@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { Logo } from '@/components/Logo';
+import { TERMS_VERSION, PRIVACY_VERSION, TERMS_PATH, PRIVACY_PATH } from '@/lib/legal';
 
 const supabaseUrl =
   process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -13,6 +14,21 @@ function getSupabase() {
   return createBrowserClient(supabaseUrl, supabaseAnonKey);
 }
 
+/**
+ * Build the auth callback URL with the legal-acceptance version params
+ * appended. The callback parses these back out and persists them on the
+ * user's profile, completing the round-trip through OAuth or email confirm
+ * without needing a cookie or server-side state.
+ */
+function buildRedirectTo(inviteCode: string): string {
+  const params = new URLSearchParams({
+    invite_code: inviteCode,
+    accept_terms: TERMS_VERSION,
+    accept_privacy: PRIVACY_VERSION,
+  });
+  return `${window.location.origin}/auth/callback?${params.toString()}`;
+}
+
 export default function SignupForm({
   inviteCode,
   firstName,
@@ -20,7 +36,8 @@ export default function SignupForm({
   inviteCode: string;
   firstName: string;
 }) {
-  const redirectTo = `${window.location.origin}/auth/callback?invite_code=${inviteCode}`;
+  const [accepted, setAccepted] = useState(false);
+  const [showAcceptError, setShowAcceptError] = useState(false);
 
   const [showEmail, setShowEmail] = useState(false);
   const [email, setEmail] = useState('');
@@ -29,33 +46,40 @@ export default function SignupForm({
   const [emailError, setEmailError] = useState<string | null>(null);
   const [emailSent, setEmailSent] = useState(false);
 
+  function guardAccepted(): boolean {
+    if (accepted) return true;
+    setShowAcceptError(true);
+    return false;
+  }
+
   async function signInWithGoogle() {
+    if (!guardAccepted()) return;
     const supabase = getSupabase();
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo },
+      options: { redirectTo: buildRedirectTo(inviteCode) },
     });
   }
 
   async function signInWithDiscord() {
+    if (!guardAccepted()) return;
     const supabase = getSupabase();
     await supabase.auth.signInWithOAuth({
       provider: 'discord',
-      options: { redirectTo },
+      options: { redirectTo: buildRedirectTo(inviteCode) },
     });
   }
 
   async function signUpWithEmail() {
     if (!email || !password) return;
+    if (!guardAccepted()) return;
     setEmailLoading(true);
     setEmailError(null);
     const supabase = getSupabase();
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        emailRedirectTo: redirectTo,
-      },
+      options: { emailRedirectTo: buildRedirectTo(inviteCode) },
     });
     if (error) {
       setEmailError(error.message);
@@ -91,10 +115,57 @@ export default function SignupForm({
         </div>
       ) : (
         <>
+          {/* Legal acceptance — gates every signup path below */}
+          <label
+            htmlFor="legal-accept"
+            className="flex items-start gap-2.5 cursor-pointer select-none"
+          >
+            <input
+              id="legal-accept"
+              type="checkbox"
+              checked={accepted}
+              onChange={e => {
+                setAccepted(e.target.checked);
+                if (e.target.checked) setShowAcceptError(false);
+              }}
+              className="mt-0.5 h-4 w-4 cursor-pointer"
+              style={{ accentColor: 'var(--accent-blue)' }}
+            />
+            <span className="text-xs leading-snug" style={{ color: 'var(--text-secondary)' }}>
+              I&apos;m 18 or older and I agree to the{' '}
+              <a
+                href={TERMS_PATH}
+                target="_blank"
+                rel="noopener"
+                className="underline"
+                style={{ color: 'var(--accent-blue)' }}
+              >
+                Terms &amp; Conditions
+              </a>
+              {' '}and{' '}
+              <a
+                href={PRIVACY_PATH}
+                target="_blank"
+                rel="noopener"
+                className="underline"
+                style={{ color: 'var(--accent-blue)' }}
+              >
+                Privacy Policy
+              </a>
+              .
+            </span>
+          </label>
+          {showAcceptError && !accepted && (
+            <p className="text-xs -mt-3" style={{ color: 'var(--signal-pass)' }}>
+              You need to accept the Terms and Privacy Policy to continue.
+            </p>
+          )}
+
           <div className="space-y-3">
             <button
               onClick={signInWithGoogle}
-              className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all"
+              disabled={!accepted}
+              className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               style={{
                 backgroundColor: '#fff',
                 color: '#111',
@@ -107,7 +178,8 @@ export default function SignupForm({
 
             <button
               onClick={signInWithDiscord}
-              className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all"
+              disabled={!accepted}
+              className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               style={{
                 backgroundColor: '#5865F2',
                 color: '#fff',
@@ -162,8 +234,8 @@ export default function SignupForm({
               )}
               <button
                 onClick={signUpWithEmail}
-                disabled={emailLoading || !email || password.length < 6}
-                className="w-full px-4 py-3 rounded-lg text-sm font-bold text-white transition-all hover:opacity-90 disabled:opacity-40"
+                disabled={emailLoading || !email || password.length < 6 || !accepted}
+                className="w-full px-4 py-3 rounded-lg text-sm font-bold text-white transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ background: 'var(--gradient-blue)' }}
               >
                 {emailLoading ? 'Creating account…' : 'Create account'}
@@ -174,7 +246,7 @@ export default function SignupForm({
       )}
 
       <p className="text-xs text-center" style={{ color: 'var(--text-disabled)' }}>
-        By signing up you agree to our terms. Your invite code is pre-validated.
+        Your invite code is pre-validated.
       </p>
     </div>
   );

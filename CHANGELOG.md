@@ -5,6 +5,54 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-05 — Privacy / Terms pages live, acceptance gated at signup, audit trail on profile
+
+Yesterday the Privacy Policy and Terms drafts landed in `docs/legal/`. Today they're wired into the app: public pages, required acceptance at signup, persisted record on the user's profile.
+
+What landed:
+
+1. **Public pages.** `app/(legal)/privacy/page.tsx` and `app/(legal)/terms/page.tsx` are server components that read `docs/legal/*.md` at request time and render via `react-markdown` + `remark-gfm`. Both are statically prerendered (`○ /privacy`, `○ /terms` in the build output) and sit outside the middleware matcher so unauthenticated visitors can read them straight from the waitlist or a marketing email. `next.config.ts` adds `outputFileTracingIncludes` so Vercel ships the markdown files alongside the page bundles. Shared layout in `app/(legal)/layout.tsx` provides the `legal-prose` typography for the markdown output.
+
+2. **Acceptance gate at signup.** `SignupForm.tsx` adds a single required checkbox (`I'm 18 or older and I agree to the Terms & Privacy Policy`) above all sign-in buttons. The Google/Discord/email-signup buttons are disabled until the box is checked; submitting via Enter without acceptance shows an inline error. The version strings are appended to the OAuth `redirectTo` and email-confirm `emailRedirectTo` URLs, so acceptance round-trips through Supabase's auth flow without needing a separate cookie. Versions live in `lib/legal.ts` (`TERMS_VERSION` / `PRIVACY_VERSION`, both `'2026-05-05'` to start).
+
+3. **Persistence in `auth/callback`.** The callback parses `accept_terms` + `accept_privacy` from the URL, validates them against the current published constants (rejects stale/spoofed versions), and writes `terms_accepted_at` / `terms_version` / `privacy_accepted_at` / `privacy_version` to `profiles` only on first signup. Returning sign-ins don't overwrite — the original timestamp is the audit record.
+
+4. **Profile UI.** `/profile` now has a Legal section with one row per doc: status pill (Accepted / Update available / Not accepted), accepted date, version stored vs. current, and a click-through link to the live page. Drives the future re-acceptance prompt by simply bumping `TERMS_VERSION` or `PRIVACY_VERSION` — existing profiles flip to the yellow "Update available" state automatically.
+
+5. **Migration.** `20260505120000_legal_acceptance.sql` adds the four columns and grandfathers all pre-rollout profiles by setting `terms_accepted_at = privacy_accepted_at = created_at` with version sentinel `'pre-2026-05-05'`. Beta users keep their account without a forced re-accept on first login; they'll see the yellow update banner the next time we bump versions, which is the right behavior.
+
+6. **Footer links.** Waitlist form and `/subscribe` page both got footer-style links to `/terms` + `/privacy`. Subscribe page also gained an explicit "subscriptions auto-renew until canceled" line above the legal links — matches the no-refunds posture in the T&C.
+
+What this doesn't do: re-acceptance flow (just surfaces "Update available" — when versions bump we'll need to decide whether to nag, gate, or just log); cookie banner (we have no third-party advertising cookies, so likely don't need one, but EU users may eventually warrant one); admin login page legal links; data-export self-serve. All deferred.
+
+Files: `lib/legal.ts`, `app/(legal)/layout.tsx`, `app/(legal)/privacy/page.tsx`, `app/(legal)/terms/page.tsx`, `app/auth/signup/SignupForm.tsx`, `app/auth/callback/route.ts`, `app/api/profile/route.ts`, `app/(consumer)/profile/page.tsx`, `app/waitlist/page.tsx`, `app/(consumer)/subscribe/page.tsx`, `next.config.ts`. Migration: `20260505120000_legal_acceptance.sql`. Deps added: `react-markdown@10`, `remark-gfm@4`.
+
+---
+
+## 2026-05-05 — Cron success rule: partial runs count as success
+
+The Cron Status panel was flagging Pricing Refresh as `STALE` ("Last success: 3d ago") while the products table showed every product as `Last Priced: Today`. Two things measured two different events: `Last Priced` reads `pricing_cache.fetched_at` (any writer counts — cron, admin button, even orchestrator-aborted-but-still-running workers); `cron_run_log.success` was strictly `errors === 0`. Combined with the 22h staleness filter that shrinks the queue to a handful of products per firing, one aborted worker tipped the run from clean to "failed" even though the cache writes landed.
+
+Loosened `recordCronRun` in `lib/cron-log.ts` so `success = errors === 0 || ok > 0`. Partial runs now log green; the existing detail line on `<CronStatusPanel>` already prints `{ok} ok / {errors} err`, so the panel keeps the nuance without needing a third visual state. Existing rows aren't reclassified — the next 4–6:30 AM UTC firing will write the first success row under the new rule and clear the stale badge.
+
+What this doesn't do: distinguish "aborted but completing" from "hard error" in the orchestrator's tally, or verify success by reading `pricing_cache` writes during the run window. Those are larger structural changes if we ever want a stricter signal.
+
+Files: `lib/cron-log.ts`.
+
+---
+
+## 2026-05-04 — Privacy Policy and Terms & Conditions drafts
+
+Pre-public-launch gap: the app had no Privacy Policy or T&C routes anywhere. Drafted both as markdown working drafts in `docs/legal/` for attorney review before publication.
+
+Drafts are written from real code substrate, not generic boilerplate, so the lawyer review focuses on language not product comprehension. Privacy Policy enumerates every data field collected (with the explicit "DOB never stored, only `is_over_18`" callout matching `app/(consumer)/onboarding/page.tsx`), all 10 subprocessors (Supabase, Stripe, Anthropic, CardHedger, PSA, Resend, PostHog, Discord, Google, Vercel), and the Discord contributor public-attribution model. T&C names Mervin LLC as operator, sets governing law to Pennsylvania, encodes the actual Free / Hobby ($9.99) / Pro ($24.99) tiers and Stripe cancel-at-period-end behavior, and includes a load-bearing Section 8 ("not financial, investment, gambling, or purchasing advice") covering EV / fair value / BUY-WATCH-PASS / BreakIQ Bets language.
+
+Items intentionally bracketed for counsel: effective date, mailing address, optional arbitration clause (Section 18.4), state-of-formation confirmation, log retention period, Terms-change notice window. Both docs are cross-linked and reference `support@getbreakiq.com` for all privacy/legal/deletion contacts. No app routes wired up yet — that's a separate task once the legal copy is finalized.
+
+Files: `docs/legal/privacy-policy.md`, `docs/legal/terms-and-conditions.md`.
+
+---
+
 ## 2026-04-30 — Pre-release product page polish
 
 The pre-release lifecycle infrastructure shipped 2026-04-27 but the consumer surface read as a stripped-down live page. This pass turns it into a hype-rich pre-launch surface in three buckets, all rendered in `components/breakiq/PreReleaseLayout.tsx`.
