@@ -1,4 +1,20 @@
 import type { NextConfig } from "next";
+import withSerwistInit from "@serwist/next";
+
+// Only wrap with Serwist in production. The withSerwist wrapper always adds
+// a `webpack` config function even when `disable` is true, which makes Next
+// 16 Turbopack bail in `next dev`. By skipping the wrapper entirely in dev,
+// Turbopack stays clean and Serwist (which we want disabled in dev anyway)
+// has no effect.
+const isProd = process.env.NODE_ENV === "production";
+const withSerwist = isProd
+  ? withSerwistInit({
+      swSrc: "app/sw.ts",
+      swDest: "public/sw.js",
+      cacheOnNavigation: true,
+      reloadOnOnline: true,
+    })
+  : (config: NextConfig) => config;
 
 const nextConfig: NextConfig = {
   skipTrailingSlashRedirect: true,
@@ -33,8 +49,17 @@ const nextConfig: NextConfig = {
           { key: 'Permissions-Policy', value: 'camera=(), microphone=(), geolocation=()' },
         ],
       },
+      {
+        // The service worker file must be served with a permissive scope and
+        // never cached at the CDN — otherwise SW updates won't propagate.
+        source: '/sw.js',
+        headers: [
+          { key: 'Service-Worker-Allowed', value: '/' },
+          { key: 'Cache-Control', value: 'no-cache, no-store, must-revalidate' },
+        ],
+      },
     ];
   },
 };
 
-export default nextConfig;
+export default withSerwist(nextConfig);

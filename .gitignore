@@ -36,6 +36,14 @@ yarn-error.log*
 # vercel
 .vercel
 
+# serwist (service worker output — built per-deploy)
+/public/sw.js
+/public/sw.js.map
+/public/swe-worker-*.js
+/public/swe-worker-*.js.map
+/public/workbox-*.js
+/public/workbox-*.js.map
+
 # local checklists / source files (not committed — binary assets)
 /checklists
 

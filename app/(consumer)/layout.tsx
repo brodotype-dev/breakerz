@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getCurrentUser, getUserRoles } from '@/lib/auth';
 import ConsumerNav from './ConsumerNav';
+import InstallPrompt from './InstallPrompt';
 
 export default async function ConsumerLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -15,6 +16,7 @@ export default async function ConsumerLayout({ children }: { children: React.Rea
     <>
       {showNav && <ConsumerNav isAdmin={isAdmin} />}
       {children}
+      {showNav && <InstallPrompt />}
     </>
   );
 }

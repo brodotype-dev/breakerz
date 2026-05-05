@@ -5,6 +5,30 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-05 — PWA: consumer app installable on mobile + desktop
+
+Consumer surface is now a Progressive Web App. Admin stays a desktop-only web app — explicitly out of scope and never cached.
+
+What landed:
+
+1. **Manifest + icons.** `app/manifest.ts` (Next native manifest route) describes the app as `display: standalone`, `start_url: /`, `scope: /`, theme/background `#0a0e1a` (matches `--background`). Icons live in `public/icons/` — `icon-192.png`, `icon-512.png`, `icon-512-maskable.png`, `apple-touch-icon.png` (180×180) — generated from `public/brand/icon-gradient.svg` via `scripts/generate-pwa-icons.mjs` (uses sharp, already a devDep).
+
+2. **Service worker via `@serwist/next`.** `app/sw.ts` is the SW entry; Serwist compiles it to `public/sw.js` at build time. SW is **disabled in dev** to avoid stale-cache pain. Runtime caching: bypass (`NetworkOnly`) on `/admin/*`, `/api/*`, `/auth/*` so live pricing and auth never serve stale; `NetworkFirst` for consumer HTML/RSC with `/offline` as the navigation fallback; standard `CacheFirst` / `StaleWhileRevalidate` for fonts, images, and `_next/static`. `next.config.ts` adds `Service-Worker-Allowed: /` and `Cache-Control: no-cache` headers on `/sw.js` so updates ship cleanly.
+
+3. **Logout cache wipe.** Sign-out path now goes through `app/(consumer)/SignOutButton.tsx`, which posts `{type:'BREAKIQ_LOGOUT'}` to the SW (which deletes every Cache Storage bucket) before invoking the existing `logout` server action. Stops the next user on a shared device from seeing the previous user's cached HTML/RSC.
+
+4. **Install prompt UX.** `app/(consumer)/InstallPrompt.tsx` captures `beforeinstallprompt` on Android Chrome / desktop Chrome / Edge and renders a dismissible chip. iOS Safari (no `beforeinstallprompt`) gets a one-time "Tap Share → Add to Home Screen" hint. Dismissal persists in localStorage. Mounted in `app/(consumer)/layout.tsx` only when a user is signed in.
+
+5. **Root layout metadata.** `app/layout.tsx` adds `applicationName`, `appleWebApp` (capable + black-translucent status bar), explicit icons, and a `viewport` export with `themeColor: '#0a0e1a'` and `viewportFit: 'cover'` so iOS notches don't truncate the shell.
+
+6. **Offline fallback.** `app/offline/page.tsx` — minimal `force-static` page returned by the SW for navigation requests when both network and cache miss. Uses an `<a href="/">` retry link (no JS dependency).
+
+What this doesn't do: push notifications, background sync of My Breaks logs, share targets, file handlers, mobile-layout audit of consumer pages (likely needed but separate plan), admin PWA. All deferred.
+
+Files: `app/manifest.ts`, `app/sw.ts`, `app/offline/page.tsx`, `app/(consumer)/InstallPrompt.tsx`, `app/(consumer)/SignOutButton.tsx`, `app/(consumer)/layout.tsx`, `app/(consumer)/ConsumerNav.tsx`, `app/layout.tsx`, `next.config.ts`, `scripts/generate-pwa-icons.mjs`, `public/icons/*`, `docs/pwa.md`. Deps added: `@serwist/next`, `serwist` (devDeps).
+
+---
+
 ## 2026-05-05 — Privacy / Terms pages live, acceptance gated at signup, audit trail on profile
 
 Yesterday the Privacy Policy and Terms drafts landed in `docs/legal/`. Today they're wired into the app: public pages, required acceptance at signup, persisted record on the user's profile.

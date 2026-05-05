@@ -2,9 +2,9 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { ChevronDown, LogOut, Settings, Monitor, User, ClipboardList } from 'lucide-react';
+import { ChevronDown, Settings, Monitor, User, ClipboardList } from 'lucide-react';
 import { Logo } from '@/components/Logo';
-import { logout } from './actions';
+import SignOutButton from './SignOutButton';
 
 interface ConsumerNavProps {
   isAdmin: boolean;
@@ -106,16 +106,7 @@ export default function ConsumerNav({ isAdmin }: ConsumerNavProps) {
           </div>
         )}
 
-        <form action={logout}>
-          <button
-            type="submit"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors hover:bg-[var(--terminal-surface)]"
-            style={{ color: 'var(--text-secondary)' }}
-          >
-            <LogOut className="w-3 h-3" />
-            Sign Out
-          </button>
-        </form>
+        <SignOutButton />
       </div>
     </header>
   );
