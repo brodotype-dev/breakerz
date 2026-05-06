@@ -21,7 +21,7 @@ interface Props {
 // fixed columns + gaps exceed the viewport (was happening on iPhone 16 Pro,
 // leaving only the chevron visible). The outer overflow-x-auto wrapper then
 // scrolls the full grid horizontally instead.
-const COL = 'grid-cols-[36px_minmax(140px,1fr)_160px_72px_56px_104px_88px_88px]';
+const COL = 'grid-cols-[36px_minmax(140px,1fr)_160px_72px_56px_104px_88px_88px_64px]';
 
 function pickSlot(t: TeamSlot, fmt: BreakFormat) {
   return fmt === 'hobby' ? { slot: t.hobbySlotCost, perCase: t.hobbyPerCase }
@@ -57,8 +57,8 @@ export default function TeamSlotsTable({ teams, viewFormat, riskFlagMap = new Ma
           className={`grid ${COL} gap-3 px-4 py-2.5 border-b`}
           style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
         >
-          {['#', 'Team', 'Break Price / Signal', 'Players', 'RC', 'Slot Cost', '/Case', 'Max Pay'].map(h => (
-            <div key={h} className="terminal-label">{h}</div>
+          {['#', 'Team', 'Break Price / Signal', 'Players', 'RC', 'Slot Cost', '/Case', 'Max Pay', ''].map((h, hi) => (
+            <div key={hi} className="terminal-label">{h}</div>
           ))}
         </div>
 
@@ -113,14 +113,6 @@ export default function TeamSlotsTable({ teams, viewFormat, riskFlagMap = new Ma
                       {hasHV      && <HighVolatilityBadge />}
                       {teamFlags.length > 0 && <RiskFlagBadge type={teamFlags[0].flagType} note={teamFlags.map(f => f.note).join(' · ')} />}
                     </div>
-                    <span className="ml-auto pl-1 shrink-0">
-                      <PricingFeedback
-                        surface="team_row"
-                        entityType="team"
-                        entityId={row.team}
-                        productId={productId}
-                      />
-                    </span>
                   </div>
 
                   {/* Price input + signal */}
@@ -180,6 +172,16 @@ export default function TeamSlotsTable({ teams, viewFormat, riskFlagMap = new Ma
                       {formatCurrency(row.maxPay)}
                     </span>
                   </div>
+
+                  {/* Pricing feedback */}
+                  <div className="flex items-center justify-end" onClick={e => e.stopPropagation()}>
+                    <PricingFeedback
+                      surface="team_row"
+                      entityType="team"
+                      entityId={row.team}
+                      productId={productId}
+                    />
+                  </div>
                 </div>
 
                 {/* Expanded player rows */}
@@ -215,6 +217,7 @@ export default function TeamSlotsTable({ teams, viewFormat, riskFlagMap = new Ma
                           {formatCurrency(viewFormat === 'hobby' ? p.hobbySlotCost : viewFormat === 'bd' ? p.bdSlotCost : p.jumboSlotCost)}
                         </span>
                       </div>
+                      <div />
                       <div />
                       <div />
                     </div>
