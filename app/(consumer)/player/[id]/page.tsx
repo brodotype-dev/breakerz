@@ -207,59 +207,7 @@ export default function PlayerProfilePage() {
       </div>
 
       <div className="px-4 sm:px-6 py-4 sm:py-6 max-w-5xl mx-auto space-y-5">
-        {/* ── Section: Products ─────────────────────────────────────────── */}
-        <Section
-          title="Products"
-          count={data.products.length}
-          empty={data.products.length === 0}
-          emptyText="This player isn't in any tracked products yet."
-        >
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            {data.products.map(p => (
-              <ProductCard key={p.player_product_id} entry={p} />
-            ))}
-          </div>
-        </Section>
-
-        {/* ── Section: Recent Sales ─────────────────────────────────────── */}
-        <Section
-          title="Recent Sales (PSA 9 / 10)"
-          subtitle="Aggregated across this player's products · last 180 days"
-          count={data.recent_comps.length}
-          empty={data.recent_comps.length === 0}
-          emptyText="No recent graded sales found in the last 180 days."
-        >
-          <div className="rounded-lg overflow-hidden border" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
-            <ul className="divide-y" style={{ borderColor: 'var(--terminal-border)' }}>
-              {data.recent_comps.slice(0, 15).map((c, i) => (
-                <li key={i} className="flex items-center justify-between px-3 py-2 gap-3">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span
-                      className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0"
-                      style={{
-                        backgroundColor: c.grade?.includes('10') ? 'rgba(34,197,94,0.12)' : 'rgba(59,130,246,0.12)',
-                        color: c.grade?.includes('10') ? '#22c55e' : 'var(--accent-blue)',
-                      }}
-                    >
-                      {c.grade}
-                    </span>
-                    <span className="text-[11px] truncate" style={{ color: 'var(--text-tertiary)' }}>
-                      {(c.platform ?? '').replace(/_/g, ' ')}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>{formatShortDate(c.sale_date)}</span>
-                    <span className="text-sm font-mono font-bold" style={{ color: 'var(--text-primary)' }}>
-                      {formatCurrency(c.sale_price)}
-                    </span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </Section>
-
-        {/* ── Section: BreakIQ Insights ─────────────────────────────────── */}
+        {/* ── Section: BreakIQ Insights — top of page, prominent ────────── */}
         <Section
           title="BreakIQ Insights"
           subtitle="Risk flags, sentiment shifts, and market observations"
@@ -346,6 +294,70 @@ export default function PlayerProfilePage() {
             ))}
           </div>
         </Section>
+
+        {/* ── Two-column: Products (wider, left) + Recent Sales (right) ── */}
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+          {/* Products — primary column */}
+          <div className="lg:col-span-3">
+            <Section
+              title="Products"
+              count={data.products.length}
+              empty={data.products.length === 0}
+              emptyText="This player isn't in any tracked products yet."
+            >
+              <div className="grid grid-cols-1 gap-2">
+                {data.products.map(p => (
+                  <ProductCard key={p.player_product_id} entry={p} />
+                ))}
+              </div>
+            </Section>
+          </div>
+
+          {/* Recent Sales — narrower side column */}
+          <div className="lg:col-span-2">
+            <Section
+              title="Recent Sales"
+              subtitle="Last 180 days · Raw, PSA 9, PSA 10"
+              count={data.recent_comps.length}
+              empty={data.recent_comps.length === 0}
+              emptyText="No recent sales found in the last 180 days."
+            >
+              <div className="rounded-lg overflow-hidden border" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
+                <ul className="divide-y" style={{ borderColor: 'var(--terminal-border)' }}>
+                  {data.recent_comps.slice(0, 15).map((c, i) => {
+                    const isPsa10 = c.grade?.includes('10');
+                    const isPsa9 = c.grade?.includes('9');
+                    const isRaw = c.grade === 'Raw' || c.grade === 'Ungraded';
+                    return (
+                      <li key={i} className="flex items-center justify-between px-3 py-2 gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0"
+                            style={{
+                              backgroundColor: isPsa10 ? 'rgba(34,197,94,0.12)' : isPsa9 ? 'rgba(59,130,246,0.12)' : 'rgba(148,163,184,0.12)',
+                              color: isPsa10 ? '#22c55e' : isPsa9 ? 'var(--accent-blue)' : '#94a3b8',
+                            }}
+                          >
+                            {isRaw ? 'Raw' : c.grade}
+                          </span>
+                          <span className="text-[10px] truncate" style={{ color: 'var(--text-tertiary)' }}>
+                            {(c.platform ?? '').replace(/_/g, ' ')}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{formatShortDate(c.sale_date)}</span>
+                          <span className="text-xs font-mono font-bold" style={{ color: 'var(--text-primary)' }}>
+                            {formatCurrency(c.sale_price)}
+                          </span>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            </Section>
+          </div>
+        </div>
       </div>
     </div>
   );
