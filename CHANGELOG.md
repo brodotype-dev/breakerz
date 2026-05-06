@@ -5,6 +5,33 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-05 — My Chase / Players Hub Phase 1
+
+Personal player watchlist. Save players from anywhere they appear in the app, see them in one place at `/chase` with current market value + buzz indicators. Naming collision with the existing admin "Chase Cards" feature is intentional — both are watchlists; data models are separate.
+
+What landed:
+
+1. **Schema.** `user_chase_list` table with composite PK `(user_id, player_id)` so "is saved?" is a primary-key lookup, no UNIQUE needed. RLS scoped to `auth.uid() = user_id`. Index on `(user_id, added_at desc)` for the list view.
+2. **API.** `GET /api/chase` (full list with computed market data per player), `GET /api/chase?ids=p1,p2,...` (set lookup for hydrating heart-button state across a visible list), `POST /api/chase {player_id}` (idempotent — `ON CONFLICT DO NOTHING`), `DELETE /api/chase/[playerId]`. All auth-gated.
+3. **`<ChaseHeartButton playerId>`.** Client component, optimistic toggle, reverts on failure. Reads initial state from a `<ChaseSetProvider>` context that batch-hydrates the visible set with one fetch — no per-row API call. Falls back to its own fetch when used outside a provider (e.g. in `PlayerDetailDrawer`).
+4. **`/chase` page.** One card per saved player: heart, name, team, RC/icon badges, B-score / risk-flag chips, latest EV Mid from the most-recently-priced `player_product`, link through to that break page. Empty state explains how to add players.
+5. **Heart placements.** `PlayerTable` (live break pages), `PreReleaseLayout` `PlayerRow` (pre-release product pages), `PlayerDetailDrawer` header. `ChaseSetProvider` wraps the player list in the first two so all hearts share one hydration fetch.
+6. **Nav.** "Chase" link added to `ConsumerNav` desktop bar (between brand and My Breaks) and mobile drawer top.
+
+`lib/chase.ts` houses the SQL → DTO logic for the list endpoint: three round-trips (chase rows, pricing across all of those players' products, active risk flags), stitched in JS. Lightweight; sub-100ms with realistic chase-list sizes.
+
+What this doesn't do (Phase 2+ in BACKLOG Vision 5):
+
+- Cross-product slot EV per saved player (which active products a player is in + slot cost in each)
+- Live break links to Fanatics Collect / Whatnot / eBay
+- Push notifications when a saved player's break goes live
+- Sort / filter beyond `added_at desc`
+- Bulk save / share lists
+
+Files: `supabase/migrations/20260506030000_user_chase_list.sql` (also applied to prod via Supabase MCP), `lib/chase.ts`, `app/api/chase/route.ts`, `app/api/chase/[playerId]/route.ts`, `components/breakiq/ChaseHeartButton.tsx`, `app/(consumer)/chase/page.tsx`, `components/breakiq/PlayerTable.tsx`, `components/breakiq/PlayerDetailDrawer.tsx`, `components/breakiq/PreReleaseLayout.tsx`, `app/(consumer)/ConsumerNav.tsx`, `middleware.ts`, `app/api/player-comps/route.ts` (added `player_id` to the response), `lib/types.ts` (ChaseListEntry DTO). See `docs/plans/2026-05-05-my-chase-phase1.md` and `docs/my-chase.md`.
+
+---
+
 ## 2026-05-05 — PWA: consumer app installable on mobile + desktop
 
 Consumer surface is now a Progressive Web App. Admin stays a desktop-only web app — explicitly out of scope and never cached.

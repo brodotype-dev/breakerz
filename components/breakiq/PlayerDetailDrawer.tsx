@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import ChaseHeartButton from '@/components/breakiq/ChaseHeartButton';
 import type { VariantWithPrices } from '@/lib/types';
 
 interface PlayerCompsData {
+  player_id: string | null;
   player_name: string;
   team: string;
   is_rookie: boolean;
@@ -120,6 +122,7 @@ export default function PlayerDetailDrawer({ playerProductId, onClose, topOffset
             ) : data ? (
               <div>
                 <div className="flex items-center gap-2">
+                  {data.player_id && <ChaseHeartButton playerId={data.player_id} size="md" />}
                   <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
                     {data.player_name}
                   </h2>
