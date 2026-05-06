@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 
 export const metadata = {
   title: 'Privacy Policy — BreakIQ',
@@ -13,5 +14,9 @@ export const dynamic = 'force-static';
 export default async function PrivacyPolicyPage() {
   const filePath = path.join(process.cwd(), 'docs/legal/privacy-policy.md');
   const content = await fs.readFile(filePath, 'utf-8');
-  return <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>;
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+      {content}
+    </ReactMarkdown>
+  );
 }
