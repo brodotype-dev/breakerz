@@ -43,8 +43,11 @@ export default async function HomePage() {
           fetchPriority="low"
           className="absolute inset-0 w-full h-full object-cover opacity-20"
         />
-        {/* Dark overlay — pushes the photo back so foreground content pops */}
-        <div className="absolute inset-0 bg-black/20" />
+        {/* Dark overlay — pushes the photo and gradient back so foreground
+            content pops. Layered as a top-down vignette (transparent at top,
+            heavier at bottom) instead of a flat 20% so the eye reads it as
+            depth rather than mud. */}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/35 to-black/55" />
         {/* Background dot pattern */}
         <div
           className="absolute inset-0 opacity-5"
