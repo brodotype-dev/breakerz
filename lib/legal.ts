@@ -6,12 +6,13 @@
  * profile page compares the stored version against these constants to
  * decide whether to surface a re-acceptance banner.
  *
- * Use ISO date strings for versions — easy to read, sorts correctly, and
- * matches the docs' "Last updated" header.
+ * Versioning scheme: counsel-issued semantic version (e.g. v5.1) so the
+ * code matches the version number on the lawyer's working copy. The
+ * "Last updated" date inside each doc is the effective date.
  */
 
-export const TERMS_VERSION = '2026-05-05';
-export const PRIVACY_VERSION = '2026-05-05';
+export const TERMS_VERSION = 'v5.1';
+export const PRIVACY_VERSION = 'v5.1';
 
 export const TERMS_PATH = '/terms';
 export const PRIVACY_PATH = '/privacy';
