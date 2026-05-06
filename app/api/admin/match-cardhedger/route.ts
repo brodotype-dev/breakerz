@@ -16,7 +16,12 @@ import {
 import { checkRole } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+// First call against a never-matched product triggers a full ch_set_cache
+// refresh (paginated CH pull, can be minutes for large sets). 60s left a
+// catalog-cold request returning Vercel's HTML timeout page, which the
+// client then fed to JSON.parse and got "An error occurred…". Vercel Pro
+// gives us 300s — same budget pricing-refresh uses.
+export const maxDuration = 300;
 
 const CONCURRENCY = 8;
 const DEFAULT_CHUNK = 40;

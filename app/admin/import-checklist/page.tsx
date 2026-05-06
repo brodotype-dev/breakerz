@@ -289,6 +289,10 @@ function ImportChecklistInner() {
   }
 
   // ── Step 3: Match CardHedger ───────────────────────────────────────────────
+  //
+  // The match endpoint chunks server-side (default 40 variants per call) and
+  // returns `hasMore + nextOffset`. Loop client-side until we've drained the
+  // queue. Mirrors the pattern in app/admin/products/[id]/RunMatchingButton.tsx.
 
   async function handleMatch() {
     setMatching(true);
@@ -296,16 +300,39 @@ function ImportChecklistInner() {
     setMatchResults(null);
 
     try {
-      const res = await fetch('/api/admin/match-cardhedger', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId }),
-      });
-      const json = await res.json();
-      if (!res.ok || json.error) {
-        setMatchError(json.error ?? 'Match failed');
-      } else {
-        setMatchResults(json.results);
+      let offset = 0;
+      const accumulated: MatchRow[] = [];
+      while (true) {
+        const res = await fetch('/api/admin/match-cardhedger', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ productId, offset }),
+        });
+
+        // res.text() + manual parse so the (rare) HTML timeout page doesn't
+        // surface as "Unexpected token 'A', 'An error o'..." anymore.
+        const text = await res.text();
+        let json: { results?: MatchRow[]; error?: string; processed?: number; hasMore?: boolean };
+        try { json = JSON.parse(text); }
+        catch {
+          setMatchError(`Match failed at offset ${offset}: server returned non-JSON (${res.status}). ${text.slice(0, 120)}`);
+          setMatching(false);
+          return;
+        }
+
+        if (!res.ok || json.error) {
+          setMatchError(json.error ?? `Match failed (${res.status})`);
+          setMatching(false);
+          return;
+        }
+
+        const batch = json.results ?? [];
+        accumulated.push(...batch);
+        setMatchResults([...accumulated]);
+
+        offset += json.processed ?? batch.length;
+        if (!json.hasMore) break;
+        await new Promise(r => setTimeout(r, 300));
       }
     } catch (err) {
       setMatchError(err instanceof Error ? err.message : 'Network error');
