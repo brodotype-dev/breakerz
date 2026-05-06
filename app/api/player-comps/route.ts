@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
   // Fetch player info + variants
   const { data: playerProduct } = await supabaseAdmin
     .from('player_products')
-    .select('id, player:players(id, name, team, is_rookie, is_icon), player_product_variants(id, variant_name, cardhedger_card_id, hobby_odds, breaker_odds, match_tier)')
+    .select('id, player:players(id, name, team, is_rookie, is_icon), player_product_variants(id, variant_name, card_number, cardhedger_card_id, hobby_odds, breaker_odds, match_tier)')
     .eq('id', playerProductId)
     .single();
 
@@ -35,6 +35,7 @@ export async function GET(req: NextRequest) {
   const variants = (playerProduct.player_product_variants ?? []) as Array<{
     id: string;
     variant_name: string;
+    card_number: string | null;
     cardhedger_card_id: string | null;
     hobby_odds: number | null;
     breaker_odds: number | null;
@@ -78,11 +79,23 @@ export async function GET(req: NextRequest) {
     prices: v.cardhedger_card_id ? (priceMap.get(v.cardhedger_card_id) ?? []) : [],
   }));
 
-  // Recent comps: get PSA 8, 9, 10 comps for the first matched card (base card)
-  // Find variant most likely to be the base card (shortest variant_name or first matched)
+  // Recent comps: get PSA 8/9/10 comps for the most likely real base card.
+  // Same picker as /api/player-profile — score by numeric card_number first
+  // (real bases: 1, 143, 221) over alphanumeric (insert subsets: IP-6, GT-11),
+  // then shortest variant_name as the tiebreaker. Without the numeric bonus,
+  // multiple inserts whose variant_name is also "Base" tied at length 4 and
+  // PostgREST returned them in arbitrary order, so the drawer was showing
+  // comps for an insert subset instead of the real base.
+  const numericNumber = /^\d+$/;
   const baseVariant = variants
     .filter(v => v.cardhedger_card_id)
-    .sort((a, b) => (a.variant_name?.length ?? 999) - (b.variant_name?.length ?? 999))[0];
+    .sort((a, b) => {
+      const aBonus = a.card_number && numericNumber.test(a.card_number) ? 0 : 1000;
+      const bBonus = b.card_number && numericNumber.test(b.card_number) ? 0 : 1000;
+      const aLen = a.variant_name?.length ?? 999;
+      const bLen = b.variant_name?.length ?? 999;
+      return (aBonus + aLen) - (bBonus + bLen);
+    })[0];
 
   let recentComps: Array<{ sale_price: number; sale_date: string; grade: string; platform: string }> = [];
   if (baseVariant?.cardhedger_card_id) {
