@@ -213,28 +213,28 @@ export default function MyBreaksPage() {
         style={{ background: 'var(--gradient-hero)', borderColor: 'var(--terminal-border)' }}
       >
         <div className="absolute inset-0 opacity-5" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, var(--accent-blue) 1px, transparent 0)', backgroundSize: '40px 40px' }} />
-        <div className="relative px-6 py-6 max-w-5xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl flex items-center justify-center" style={{ background: 'var(--gradient-blue)', boxShadow: 'var(--glow-blue)' }}>
+        <div className="relative px-4 sm:px-6 py-4 sm:py-6 max-w-5xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'var(--gradient-blue)', boxShadow: 'var(--glow-blue)' }}>
               <ClipboardList className="w-5 h-5 text-white" />
             </div>
-            <div>
-              <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>My Breaks</h1>
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Track your breaks, see how you did</p>
+            <div className="min-w-0">
+              <h1 className="text-xl sm:text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>My Breaks</h1>
+              <p className="text-xs sm:text-sm" style={{ color: 'var(--text-secondary)' }}>Track your breaks, see how you did</p>
             </div>
           </div>
           {view === 'list' && (
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => setView('new')}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-bold text-white transition-all hover:opacity-90"
+                className="flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg text-sm font-bold text-white transition-all hover:opacity-90"
                 style={{ background: 'var(--gradient-blue)' }}
               >
                 <Plus className="w-4 h-4" /> New Break
               </button>
               <button
                 onClick={() => setView('log')}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all hover:opacity-80"
+                className="flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg text-sm font-semibold transition-all hover:opacity-80"
                 style={{ backgroundColor: 'var(--terminal-surface)', color: 'var(--text-secondary)', border: '1px solid var(--terminal-border)' }}
               >
                 <Clock className="w-4 h-4" /> Log Previous
@@ -254,7 +254,7 @@ export default function MyBreaksPage() {
           {view !== 'list' && (
             <button
               onClick={() => setView('list')}
-              className="flex items-center gap-1.5 text-sm font-medium"
+              className="flex items-center gap-1.5 text-sm font-medium self-start"
               style={{ color: 'var(--text-secondary)' }}
             >
               <ArrowLeft className="w-4 h-4" /> Back
@@ -263,7 +263,7 @@ export default function MyBreaksPage() {
         </div>
       </div>
 
-      <div className="px-6 py-6 max-w-5xl mx-auto">
+      <div className="px-4 sm:px-6 py-4 sm:py-6 max-w-5xl mx-auto">
         {view === 'list' && (
           <BreakList
             breaks={breaks}
@@ -345,36 +345,36 @@ function BreakList({ breaks, products, onRefresh }: { breaks: BreakRecord[]; pro
   return (
     <div className="space-y-6">
       {/* Stats row */}
-      <div className="grid grid-cols-3 gap-4">
-        <div className="rounded-lg p-4 text-center" style={{ border: '1px solid var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
-          <p className="text-2xl font-bold font-mono" style={{ color: 'var(--text-primary)' }}>{stats.totalBreaks}</p>
-          <p className="text-xs font-semibold uppercase tracking-wider mt-1" style={{ color: 'var(--text-tertiary)' }}>Breaks</p>
+      <div className="grid grid-cols-3 gap-2 sm:gap-4">
+        <div className="rounded-lg p-3 sm:p-4 text-center" style={{ border: '1px solid var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
+          <p className="text-xl sm:text-2xl font-bold font-mono" style={{ color: 'var(--text-primary)' }}>{stats.totalBreaks}</p>
+          <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider mt-1" style={{ color: 'var(--text-tertiary)' }}>Breaks</p>
         </div>
-        <div className="rounded-lg p-4 text-center" style={{ border: '1px solid var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
-          <p className="text-2xl font-bold font-mono" style={{ color: 'var(--text-primary)' }}>{formatCurrency(stats.totalSpent)}</p>
-          <p className="text-xs font-semibold uppercase tracking-wider mt-1" style={{ color: 'var(--text-tertiary)' }}>Total Spent</p>
+        <div className="rounded-lg p-3 sm:p-4 text-center" style={{ border: '1px solid var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
+          <p className="text-xl sm:text-2xl font-bold font-mono" style={{ color: 'var(--text-primary)' }}>{formatCurrency(stats.totalSpent)}</p>
+          <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider mt-1" style={{ color: 'var(--text-tertiary)' }}>Total Spent</p>
         </div>
-        <div className="rounded-lg p-4 text-center" style={{ border: '1px solid var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
-          <div className="flex items-center justify-center gap-2 text-lg font-bold font-mono">
+        <div className="rounded-lg p-3 sm:p-4 text-center" style={{ border: '1px solid var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
+          <div className="flex items-center justify-center gap-1 sm:gap-2 text-base sm:text-lg font-bold font-mono whitespace-nowrap">
             <span style={{ color: 'var(--signal-buy)' }}>{stats.wins}W</span>
             <span style={{ color: 'var(--text-disabled)' }}>/</span>
             <span style={{ color: 'var(--signal-watch)' }}>{stats.mediocres}M</span>
             <span style={{ color: 'var(--text-disabled)' }}>/</span>
             <span style={{ color: 'var(--signal-pass)' }}>{stats.busts}B</span>
           </div>
-          <p className="text-xs font-semibold uppercase tracking-wider mt-1" style={{ color: 'var(--text-tertiary)' }}>Record</p>
+          <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider mt-1" style={{ color: 'var(--text-tertiary)' }}>Record</p>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-3">
-        {/* Time */}
-        <div className="flex rounded-lg overflow-hidden" style={{ border: '1px solid var(--terminal-border)' }}>
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+        {/* Time — horizontally scrollable on mobile so all six options stay reachable */}
+        <div className="flex rounded-lg overflow-x-auto max-w-full" style={{ border: '1px solid var(--terminal-border)' }}>
           {TIME_OPTIONS.map(t => (
             <button
               key={t.value}
               onClick={() => setTimeFilter(t.value)}
-              className="px-3 py-1.5 text-xs font-semibold transition-all"
+              className="px-2.5 sm:px-3 py-1.5 text-xs font-semibold transition-all whitespace-nowrap shrink-0"
               style={{
                 backgroundColor: timeFilter === t.value ? 'var(--accent-blue)' : 'transparent',
                 color: timeFilter === t.value ? 'white' : 'var(--text-tertiary)',

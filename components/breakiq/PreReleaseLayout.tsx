@@ -403,7 +403,7 @@ export default function PreReleaseLayout({
         >
           {/* Header: title + description (with inline group-by-team toggle as
               a secondary affordance, not a competing button) */}
-          <div className="px-5 pt-4 pb-2.5">
+          <div className="px-4 sm:px-5 pt-4 pb-2.5">
             <div className="flex items-baseline justify-between gap-3 flex-wrap">
               <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                 Checklist
@@ -434,7 +434,7 @@ export default function PreReleaseLayout({
           </div>
 
           {/* Single-row toolbar: filters left, sort right */}
-          <div className="px-5 pb-3 flex items-center justify-between gap-3 flex-wrap">
+          <div className="px-4 sm:px-5 pb-3 flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-1">
               {FILTER_OPTIONS.map(opt => {
                 const active = filter === opt.value;
@@ -616,26 +616,32 @@ function PlayerRow({
   rank?: number;
 }) {
   const isRookie = !!p.player?.is_rookie;
+  const rawText = snap?.has_history ? formatPrice(snap.raw_avg_90d) : isRookie ? 'No data' : '—';
+
+  // Mobile (default flex layout): two-line card — name + chips on row 1,
+  // team + raw-avg on row 2. PSA 9 / PSA 10 / sales count are dropped to
+  // keep iPhone 16 Pro readable; full grid returns at md.
   return (
     <div
-      className="md:grid md:grid-cols-[1fr_80px_80px_80px_70px_60px] md:gap-3 px-5 py-2.5 flex items-center gap-3 flex-wrap"
+      className="px-4 sm:px-5 py-2.5 flex flex-col gap-1 md:grid md:grid-cols-[1fr_80px_80px_80px_70px_60px] md:gap-3 md:items-center"
       style={{ borderColor: 'var(--terminal-border)' }}
     >
-      <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
+      {/* Row 1 — player name + chips */}
+      <div className="flex items-center gap-2 min-w-0 flex-wrap">
         {rank && (
           <span
-            className="text-[10px] font-mono font-bold w-5 h-5 rounded inline-flex items-center justify-center"
+            className="text-[10px] font-mono font-bold w-5 h-5 rounded inline-flex items-center justify-center shrink-0"
             style={{ backgroundColor: 'rgba(168,85,247,0.15)', color: '#a855f7' }}
           >
             ▲{rank}
           </span>
         )}
-        <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+        <span className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>
           {p.player?.name}
         </span>
         {isRookie && (
           <span
-            className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide"
+            className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide shrink-0"
             style={{ backgroundColor: 'rgba(16, 185, 129, 0.12)', color: '#10b981' }}
           >
             RC
@@ -647,7 +653,7 @@ function PlayerRow({
             <span
               key={i}
               title={f.note}
-              className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide ${pulse ? 'animate-pulse' : ''}`}
+              className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide shrink-0 ${pulse ? 'animate-pulse' : ''}`}
               style={{
                 backgroundColor: 'rgba(239, 68, 68, 0.18)',
                 color: '#fecaca',
@@ -661,23 +667,32 @@ function PlayerRow({
         {hype.slice(0, 2).map((h, i) => <HypeChip key={i} obs={h} />)}
       </div>
 
-      <span className="md:text-right text-xs font-mono" style={{ color: snap?.has_history ? 'var(--text-primary)' : 'var(--text-disabled)' }}>
-        {snap?.has_history ? formatPrice(snap.raw_avg_90d) : isRookie ? 'No data' : '—'}
+      {/* Row 2 (mobile only) — team + raw avg in a compact strip */}
+      <div className="flex items-center justify-between gap-3 md:hidden text-[11px] font-mono" style={{ color: 'var(--text-tertiary)' }}>
+        <span className="truncate">{p.player?.team || '—'}</span>
+        <span className="shrink-0" style={{ color: snap?.has_history ? 'var(--text-secondary)' : 'var(--text-disabled)' }}>
+          Raw {rawText}
+        </span>
+      </div>
+
+      {/* md+ columns — hidden by `md:hidden` siblings above */}
+      <span className="hidden md:inline md:text-right text-xs font-mono" style={{ color: snap?.has_history ? 'var(--text-primary)' : 'var(--text-disabled)' }}>
+        {rawText}
       </span>
 
-      <span className="md:text-right text-xs font-mono" style={{ color: snap?.psa9_avg_90d != null ? 'var(--text-primary)' : 'var(--text-disabled)' }}>
+      <span className="hidden md:inline md:text-right text-xs font-mono" style={{ color: snap?.psa9_avg_90d != null ? 'var(--text-primary)' : 'var(--text-disabled)' }}>
         {snap?.psa9_avg_90d != null ? formatPrice(snap.psa9_avg_90d) : '—'}
       </span>
 
-      <span className="md:text-right text-xs font-mono" style={{ color: snap?.psa10_avg_90d != null ? 'var(--text-primary)' : 'var(--text-disabled)' }}>
+      <span className="hidden md:inline md:text-right text-xs font-mono" style={{ color: snap?.psa10_avg_90d != null ? 'var(--text-primary)' : 'var(--text-disabled)' }}>
         {snap?.psa10_avg_90d != null ? formatPrice(snap.psa10_avg_90d) : '—'}
       </span>
 
-      <span className="md:text-right text-xs font-mono" style={{ color: snap?.has_history ? 'var(--text-secondary)' : 'var(--text-disabled)' }}>
+      <span className="hidden md:inline md:text-right text-xs font-mono" style={{ color: snap?.has_history ? 'var(--text-secondary)' : 'var(--text-disabled)' }}>
         {snap?.has_history && snap.raw_sales_90d != null ? snap.raw_sales_90d.toLocaleString() : '—'}
       </span>
 
-      <span className="md:text-right text-xs font-mono" style={{ color: 'var(--text-tertiary)' }}>
+      <span className="hidden md:inline md:text-right text-xs font-mono" style={{ color: 'var(--text-tertiary)' }}>
         {p.player?.team || '—'}
       </span>
     </div>
