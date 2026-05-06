@@ -140,36 +140,59 @@ export async function GET(req: NextRequest) {
   // header EV reads consistently between the two pages.
   const featured = products.find(x => x.ev_mid != null) ?? null;
 
-  // 3. Recent sales — aggregate CardHedger comps from the BASE variant of
-  //    each of the player's products. The per-product `cardhedger_card_id`
-  //    on player_products is often null (rolled-up convenience field); the
-  //    real matched CH IDs live on player_product_variants. We pick the
-  //    variant with the shortest variant_name per pp (the base/unparalleled
-  //    card) since obscure parallels like "Padparadscha /5" rarely have
-  //    enough sale volume for getComps to return anything. This mirrors
-  //    the heuristic the working PlayerDetailDrawer already uses.
+  // 3. Recent sales — pull a candidate pool of "base-ish" CH cards per
+  //    product, then fetch comps for them in parallel.
+  //
+  //    The picker logic deserves the comment: a player_product can have
+  //    many variants whose variant_name is literally "Base" (the real base
+  //    card, plus every insert subset's base-of-subset row). Tied on length,
+  //    PostgreSQL returns them in arbitrary order, which used to make us
+  //    pick e.g. the Topps Chrome "Inspirational #IP-6" subset for Wemby
+  //    instead of his actual #221 base. Score variants by:
+  //      1. Card number is purely numeric (real bases: 1, 143, 221) wins
+  //         over alphanumeric (inserts: IP-6, GT-11, SY-1).
+  //      2. Then shortest variant_name as before.
+  //    Take top 3 per pp to keep a safety net if the heuristic is wrong.
+  //    Capped at 15 unique IDs total.
   const playerProductIds = ((ppRows ?? []) as unknown as PpRow[]).map(r => r.id);
   let candidateCardIds: string[] = [];
   if (playerProductIds.length > 0) {
     const { data: variantRows } = await supabaseAdmin
       .from('player_product_variants')
-      .select('player_product_id, variant_name, cardhedger_card_id')
+      .select('player_product_id, variant_name, card_number, cardhedger_card_id')
       .in('player_product_id', playerProductIds)
       .not('cardhedger_card_id', 'is', null);
 
-    // Group by pp and keep only the shortest-named variant per pp.
-    type VRow = { player_product_id: string; variant_name: string | null; cardhedger_card_id: string };
-    const baseByPp = new Map<string, VRow>();
+    type VRow = {
+      player_product_id: string;
+      variant_name: string | null;
+      card_number: string | null;
+      cardhedger_card_id: string;
+    };
+
+    const numericNumber = /^\d+$/;
+    const score = (v: VRow): number => {
+      const numericBonus = v.card_number && numericNumber.test(v.card_number) ? 0 : 1000;
+      const nameLen = v.variant_name?.length ?? 999;
+      return numericBonus + nameLen;
+    };
+
+    // Bucket by pp; keep the 3 best-scoring variants per pp.
+    const byPp = new Map<string, VRow[]>();
     for (const v of ((variantRows ?? []) as VRow[])) {
-      const existing = baseByPp.get(v.player_product_id);
-      const len = v.variant_name?.length ?? 999;
-      const existingLen = existing?.variant_name?.length ?? 9999;
-      if (!existing || len < existingLen) baseByPp.set(v.player_product_id, v);
+      const list = byPp.get(v.player_product_id) ?? [];
+      list.push(v);
+      byPp.set(v.player_product_id, list);
     }
+
     const seen = new Set<string>();
-    for (const v of baseByPp.values()) {
-      if (!seen.has(v.cardhedger_card_id)) seen.add(v.cardhedger_card_id);
-      if (seen.size >= 10) break;
+    for (const list of byPp.values()) {
+      list.sort((a, b) => score(a) - score(b));
+      for (const v of list.slice(0, 3)) {
+        if (!seen.has(v.cardhedger_card_id)) seen.add(v.cardhedger_card_id);
+        if (seen.size >= 15) break;
+      }
+      if (seen.size >= 15) break;
     }
     candidateCardIds = Array.from(seen);
   }
