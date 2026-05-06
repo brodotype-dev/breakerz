@@ -219,6 +219,15 @@ body {
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Guard against rogue children pushing the page wider than the viewport
+     on mobile. Tables that need to scroll horizontally still work because
+     they wrap themselves in `overflow-x: auto` containers. */
+  overflow-x: hidden;
+}
+
+html {
+  /* Pair with body — some browsers honor this on html instead. */
+  overflow-x: clip;
 }
 
 /* ── Utility classes ──────────────────────────────────────────── */

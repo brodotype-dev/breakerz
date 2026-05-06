@@ -20,6 +20,28 @@ function pickSlot(row: PlayerWithPricing, fmt: BreakFormat): number {
     :                      row.jumboSlotCost;
 }
 
+// Tailwind classes used to hide a column below a breakpoint. Kept consistent
+// between <th> and <td> so the table stays well-formed when columns drop.
+const HIDE_BELOW_SM = 'hidden sm:table-cell';
+const HIDE_BELOW_MD = 'hidden md:table-cell';
+
+const COLUMNS: Array<{
+  key: string;
+  label: string;
+  align: 'left' | 'center' | 'right';
+  hide?: string;
+}> = [
+  { key: 'rank',     label: '#',         align: 'left',  hide: HIDE_BELOW_SM },
+  { key: 'player',   label: 'Player',    align: 'left'  },
+  { key: 'team',     label: 'Team',      align: 'left',  hide: HIDE_BELOW_MD },
+  { key: 'sets',     label: 'Sets',      align: 'center',hide: HIDE_BELOW_MD },
+  { key: 'evLow',    label: 'EV Low',    align: 'right', hide: HIDE_BELOW_MD },
+  { key: 'evMid',    label: 'EV Mid',    align: 'right', hide: HIDE_BELOW_SM },
+  { key: 'evHigh',   label: 'EV High',   align: 'right', hide: HIDE_BELOW_MD },
+  { key: 'slotCost', label: 'Slot Cost', align: 'right' },
+  { key: 'maxPay',   label: 'Max Pay',   align: 'right', hide: HIDE_BELOW_SM },
+];
+
 export default function PlayerTable({ players, fetching = false, viewFormat, riskFlagMap = new Map(), onPlayerClick }: Props) {
   if (players.length === 0) {
     return (
@@ -38,12 +60,12 @@ export default function PlayerTable({ players, fetching = false, viewFormat, ris
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
-              {['#', 'Player', 'Team', 'Sets', 'EV Low', 'EV Mid', 'EV High', 'Slot Cost', 'Max Pay'].map((h, i) => (
+              {COLUMNS.map(col => (
                 <th
-                  key={h}
-                  className={`px-4 py-2.5 terminal-label whitespace-nowrap ${i <= 2 ? 'text-left' : i === 3 ? 'text-center' : 'text-right'}`}
+                  key={col.key}
+                  className={`px-2 sm:px-4 py-2.5 terminal-label whitespace-nowrap text-${col.align} ${col.hide ?? ''}`}
                 >
-                  {h}
+                  {col.label}
                 </th>
               ))}
             </tr>
@@ -68,10 +90,11 @@ export default function PlayerTable({ players, fetching = false, viewFormat, ris
                   onMouseLeave={e => (e.currentTarget.style.backgroundColor = i % 2 === 0 ? 'var(--terminal-surface)' : 'var(--terminal-bg)')}
                 >
                   {/* Rank */}
-                  <td className="px-4 py-2.5 font-mono text-xs" style={{ color: 'var(--text-tertiary)' }}>{i + 1}</td>
+                  <td className={`px-2 sm:px-4 py-2.5 font-mono text-xs ${HIDE_BELOW_SM}`} style={{ color: 'var(--text-tertiary)' }}>{i + 1}</td>
 
-                  {/* Player */}
-                  <td className="px-4 py-2.5">
+                  {/* Player — always visible. Includes the team name on mobile
+                      since the dedicated Team column is hidden below md. */}
+                  <td className="px-2 sm:px-4 py-2.5">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       {onPlayerClick ? (
                         <button
@@ -100,24 +123,40 @@ export default function PlayerTable({ players, fetching = false, viewFormat, ris
                         <RiskFlagBadge key={fi} type={f.flagType} note={f.note} />
                       ))}
                     </div>
+                    {/* Team line shown only on mobile (where the team column is hidden) */}
+                    <div className="md:hidden mt-0.5 text-[11px] truncate" style={{ color: 'var(--text-tertiary)' }}>
+                      {row.player.team}
+                    </div>
                   </td>
 
                   {/* Team */}
-                  <td className="px-4 py-2.5 text-xs whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>{row.player.team}</td>
+                  <td className={`px-2 sm:px-4 py-2.5 text-xs whitespace-nowrap ${HIDE_BELOW_MD}`} style={{ color: 'var(--text-secondary)' }}>{row.player.team}</td>
 
                   {/* Sets */}
-                  <td className="px-4 py-2.5 text-center font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>{row.total_sets}</td>
+                  <td className={`px-2 sm:px-4 py-2.5 text-center font-mono text-xs ${HIDE_BELOW_MD}`} style={{ color: 'var(--text-secondary)' }}>{row.total_sets}</td>
 
                   {unpriced ? (
-                    Array.from({ length: 5 }).map((_, j) => (
-                      <td key={j} className="px-4 py-2.5 text-right">
+                    <>
+                      <td className={`px-2 sm:px-4 py-2.5 text-right ${HIDE_BELOW_MD}`}>
                         <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>—</span>
                       </td>
-                    ))
+                      <td className={`px-2 sm:px-4 py-2.5 text-right ${HIDE_BELOW_SM}`}>
+                        <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>—</span>
+                      </td>
+                      <td className={`px-2 sm:px-4 py-2.5 text-right ${HIDE_BELOW_MD}`}>
+                        <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>—</span>
+                      </td>
+                      <td className="px-2 sm:px-4 py-2.5 text-right">
+                        <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>—</span>
+                      </td>
+                      <td className={`px-2 sm:px-4 py-2.5 text-right ${HIDE_BELOW_SM}`}>
+                        <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>—</span>
+                      </td>
+                    </>
                   ) : (
                     <>
-                      <td className="px-4 py-2.5 text-right font-mono text-xs" style={{ color: 'var(--text-tertiary)' }}>{formatCurrency(row.evLow)}</td>
-                      <td className="px-4 py-2.5 text-right">
+                      <td className={`px-2 sm:px-4 py-2.5 text-right font-mono text-xs ${HIDE_BELOW_MD}`} style={{ color: 'var(--text-tertiary)' }}>{formatCurrency(row.evLow)}</td>
+                      <td className={`px-2 sm:px-4 py-2.5 text-right ${HIDE_BELOW_SM}`}>
                         <div className="flex items-center justify-end gap-1.5">
                           <span className="font-mono text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{formatCurrency(row.evMid)}</span>
                           {isEstimated && (
@@ -135,11 +174,11 @@ export default function PlayerTable({ players, fetching = false, viewFormat, ris
                           )}
                         </div>
                       </td>
-                      <td className="px-4 py-2.5 text-right font-mono text-xs" style={{ color: 'var(--text-tertiary)' }}>{formatCurrency(row.evHigh)}</td>
-                      <td className="px-4 py-2.5 text-right font-mono text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                      <td className={`px-2 sm:px-4 py-2.5 text-right font-mono text-xs ${HIDE_BELOW_MD}`} style={{ color: 'var(--text-tertiary)' }}>{formatCurrency(row.evHigh)}</td>
+                      <td className="px-2 sm:px-4 py-2.5 text-right font-mono text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
                         {formatCurrency(pickSlot(row, viewFormat))}
                       </td>
-                      <td className="px-4 py-2.5 text-right font-mono text-xs" style={{ color: 'var(--signal-buy)' }}>{formatCurrency(row.maxPay)}</td>
+                      <td className={`px-2 sm:px-4 py-2.5 text-right font-mono text-xs ${HIDE_BELOW_SM}`} style={{ color: 'var(--signal-buy)' }}>{formatCurrency(row.maxPay)}</td>
                     </>
                   )}
                 </tr>
