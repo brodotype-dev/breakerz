@@ -5,6 +5,24 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-06 — CardHedger data audit + all three P0 fixes
+
+Investigated CH API usage end-to-end against [the live MCP probe](https://api.cardhedger.com/mcp) to map gaps between what CH offers and what BreakIQ actually pulls. Findings + prioritized punch list saved to [docs/plans/2026-05-06-cardhedger-data-audit.md](docs/plans/2026-05-06-cardhedger-data-audit.md). All three P0 fixes shipped.
+
+**P0.1 — PSA 9 + PSA 10 alongside Raw in the primary pricing engine.** [lib/pricing-refresh.ts](lib/pricing-refresh.ts) was calling `batchPriceEstimate` with `grade: 'Raw'` only, then synthesizing `evMid` (PSA 9) and `evHigh` (PSA 10) from `Raw × 0.35` and `Raw × 2.5` heuristics. For graded-heavy parallels (Refractors, Gold /50, autos) those multipliers were materially wrong. Each chunk now fires three parallel `batchPriceEstimate` calls — one per grade — and assembles `{ evLow, evMid, evHigh }` using the canonical mapping (Raw→evLow, PSA 9→evMid, PSA 10→evHigh) with the heuristics demoted to last-resort fallbacks for missing grades. Per-grade results are joined by `card_id` so we don't depend on CH echoing the `grade` field in the batch response.
+
+Concurrency knobs bumped to absorb the 3× CH call count: `PRICE_FETCH_CONCURRENCY` 6 → 12; `BATCH_DEADLINE_MS` 270s → 280s; `HARD_DEADLINE_MS` 290s → 295s. Peak in-flight is now 12 chunks × 3 grades = 36 concurrent CH requests; the existing retry-with-backoff in [lib/cardhedger.ts](lib/cardhedger.ts) absorbs intermittent rate-limit hits, and the cron orchestrator's stale-first selection means anything that goes partial is picked up on the next firing.
+
+Confidence aggregation extended: per-card confidence is the average across the grades that returned real prices, so the chip's signal stays meaningful when only one or two grades have data.
+
+**P0.3 — `get90DayPrices` shape fix.**  The endpoint actually returns `{ cards: [{ price, '90_day_sales', grade, ... }] }`, not `{ prices: [...] }` as the wrapper assumed. Two callers — [lib/pricing-refresh.ts](lib/pricing-refresh.ts) (search-priced rung) and [lib/analysis.ts](lib/analysis.ts) (live non-hydrated path) — were throwing on `result.prices.find(...)`, getting swallowed by their try/catch, and silently falling through to the default `$8 / $15-rookie` rung. Rewrote `get90DayPrices` to compute a sales-weighted aggregate (`avg_price`, `min_price`, `max_price`, `sale_count`) per requested grade and return it as a single object. Both callers updated. The intended fallback rung is finally live.
+
+**P0.2 — pricing confidence captured + surfaced.** `batch-price-estimate` returns a per-card `confidence` (0..1) on every response — we were dropping it at the cache upsert. Migration [20260506180000_pricing_cache_confidence.sql](supabase/migrations/20260506180000_pricing_cache_confidence.sql) adds a nullable `confidence` numeric to `pricing_cache`. [lib/pricing-refresh.ts](lib/pricing-refresh.ts) now persists a sales-weighted average across each player's priced variants; fallback rungs (sibling/search/default) write `null` since they aren't CH-modeled. [app/api/pricing/route.ts](app/api/pricing/route.ts) projects the column through `PlayerWithPricing.confidence`. [components/breakiq/PlayerTable.tsx](components/breakiq/PlayerTable.tsx) renders a `low conf` chip next to the EV Mid value when confidence < 0.5, with the actual percentage in the tooltip. Threshold is a starting cut — tune once we see the distribution across products.
+
+Schema rollout: migration is additive (`ALTER TABLE … ADD COLUMN`) and nullable, so it can be applied without backfill. Run `supabase db push` before merging this branch; staging gets the column on the next staging push. Existing cache rows return `null` until their next refresh writes a value.
+
+---
+
 ## 2026-05-06 — Pricing feedback placement fix
 
 Same-day follow-up to the inline pricing feedback drop. The 👍/👎 buttons were rendered inside the player/team name cell with `ml-auto`, which visually attached them to the entity name — read like a vote on the player or team rather than the row's pricing data. Moved into a dedicated rightmost column on both row tables.

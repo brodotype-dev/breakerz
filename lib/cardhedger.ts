@@ -301,22 +301,48 @@ export async function getComps(cardId: string, _days = 180, grade = 'Raw', count
   return { comps };
 }
 
-// Get 90-day prices for a search — no card ID required
+// Sales-weighted 90-day aggregate for a player+grade. Wraps
+// `/v1/cards/90day-prices-by-grade`, which actually returns a paginated card
+// list (`{ cards: [{ price, '90_day_sales', grade, ... }] }`) — NOT the
+// `{ prices: [...] }` shape the previous version assumed. The old shape made
+// every caller throw on `result.prices.find(...)`, which got swallowed by their
+// try/catch and silently fell through to the default-priced rung. Returning a
+// single aggregate object collapses the rollup into one place so callers don't
+// repeat it.
 //
-// **Response-shape note (2026-04-30):** the actual CH endpoint returns
-// `{ page, pages, cards: [{ price, 90_day_sales, grade, ... }] }` — NOT
-// `{ prices: [...] }` as the typing here suggests. The endpoint also REQUIRES
-// `grade` and ignores `sport` (it accepts `category`). Existing callers in
-// `lib/pricing-refresh.ts` and `lib/analysis.ts` pass `result.prices.find(...)`
-// which throws on undefined and gets swallowed by their try/catch fallback —
-// so this function has effectively been a no-op for those callers. Left as-is
-// to avoid behavior changes; new callers should use `getPlayer90DayStats`
-// below, which uses the correct shape.
-export async function get90DayPrices(search: string, grade?: string, sportParam?: string) {
-  return post<{ prices: Array<{ grade: string; avg_price: number; min_price: number; max_price: number; sale_count: number }> }>(
+// `category` is the CH parameter name (the endpoint ignores `sport`).
+export async function get90DayPrices(
+  search: string,
+  grade: string,
+  category?: string,
+): Promise<{ avg_price: number; min_price: number; max_price: number; sale_count: number } | null> {
+  type Card = { price?: string | number; '90_day_sales'?: number };
+  const data = await post<{ cards?: Card[] }>(
     '/v1/cards/90day-prices-by-grade',
-    { search, grade, sport: sportParam }
+    { search, grade, category, page_size: 100 },
   );
+  const cards = data.cards ?? [];
+  let totalSales = 0;
+  let weightedSum = 0;
+  let minPrice = Infinity;
+  let maxPrice = 0;
+  for (const c of cards) {
+    const sales = Number(c['90_day_sales'] ?? 0);
+    const price = parseFloat(String(c.price ?? '0'));
+    if (sales > 0 && price > 0) {
+      totalSales += sales;
+      weightedSum += sales * price;
+      if (price < minPrice) minPrice = price;
+      if (price > maxPrice) maxPrice = price;
+    }
+  }
+  if (totalSales === 0) return null;
+  return {
+    avg_price: weightedSum / totalSales,
+    min_price: minPrice === Infinity ? 0 : minPrice,
+    max_price: maxPrice,
+    sale_count: totalSales,
+  };
 }
 
 // Per-player 90-day rollups across all of a player's existing cards in CH's

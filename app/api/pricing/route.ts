@@ -35,12 +35,12 @@ async function loadCached(productId: string) {
 
   // Chunked .in() — 278+ UUIDs exceeds PostgREST's ~8KB URL limit.
   const IN_CHUNK = 200;
-  const cached: { player_product_id: string; ev_low: number; ev_mid: number; ev_high: number }[] = [];
+  const cached: { player_product_id: string; ev_low: number; ev_mid: number; ev_high: number; confidence: number | null }[] = [];
   for (let i = 0; i < ids.length; i += IN_CHUNK) {
     const slice = ids.slice(i, i + IN_CHUNK);
     const { data, error: cErr } = await supabaseAdmin
       .from('pricing_cache')
-      .select('player_product_id, ev_low, ev_mid, ev_high')
+      .select('player_product_id, ev_low, ev_mid, ev_high, confidence')
       .in('player_product_id', slice)
       .gt('expires_at', new Date().toISOString());
     if (cErr) throw cErr;
@@ -61,6 +61,7 @@ async function loadCached(productId: string) {
       hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
       totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
       pricingSource: c ? 'cached' as const : 'none' as const,
+      confidence: c?.confidence ?? null,
     };
   });
 

@@ -20,11 +20,13 @@ import { computeLiveEV, searchAndComputeEV, get90DayPrices, batchPriceEstimate }
 const CACHE_TTL_HOURS = 24;
 
 // Vercel Pro kills the function at 300s. Stop the batch phase early so we
-// have time to run per-pp fallbacks + upsert cache rows. Jumbo products
-// (Bowman Chrome 6,481 variants) typically finish batch in ~160s. These
-// deadlines are the safety net for unusually slow CH responses.
-const BATCH_DEADLINE_MS = 270_000; // stop enqueueing new chunks after 4:30
-const HARD_DEADLINE_MS = 290_000;  // last moment to bail from per-pp phase
+// have time to run per-pp fallbacks + upsert cache rows. Bowman Chrome
+// (~6,481 variants) historically finished Raw-only batch in ~160s; with
+// PSA 9 + PSA 10 added in parallel per chunk that climbs to ~240s under
+// concurrency=12, so the deadlines were bumped accordingly. The next cron
+// firing's stale-first selection picks up anything that goes partial.
+const BATCH_DEADLINE_MS = 280_000; // stop enqueueing new chunks after 4:40
+const HARD_DEADLINE_MS = 295_000;  // last moment to bail from per-pp phase
 
 export interface RefreshSummary {
   productId: string;
@@ -117,31 +119,74 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
   expiresAt.setHours(expiresAt.getHours() + CACHE_TTL_HOURS);
 
   // --- Batch-price every unique variant card ---
-  const pricesOnly = new Map<string, { evLow: number; evMid: number; evHigh: number }>();
+  // confidence is what CH's batch-price-estimate returns per card (0..1);
+  // we aggregate it sales-weighted alongside EV so consumers can see when
+  // a row's price is built on thin comps.
+  const pricesOnly = new Map<string, { evLow: number; evMid: number; evHigh: number; confidence: number }>();
   const allVariantCardIds = Array.from(
     new Set(allVariants.map(v => v.cardhedger_card_id).filter((x): x is string => !!x)),
   );
 
   const PRICE_CHUNK = 100; // CH endpoint hard cap
-  const PRICE_FETCH_CONCURRENCY = 6;
+  // Bumped from 6 → 12 alongside the multi-grade fan-out (Raw + PSA 9 + PSA 10)
+  // so total wall time stays inside BATCH_DEADLINE_MS for jumbo products.
+  // Each chunk now fires 3 CH calls in parallel, so peak in-flight is
+  // 12 chunks × 3 grades = 36 concurrent CH requests. The retry-with-backoff
+  // in lib/cardhedger.ts absorbs intermittent rate-limit hits.
+  const PRICE_FETCH_CONCURRENCY = 12;
   const priceChunks: string[][] = [];
   for (let i = 0; i < allVariantCardIds.length; i += PRICE_CHUNK) {
     priceChunks.push(allVariantCardIds.slice(i, i + PRICE_CHUNK));
   }
 
+  // Per-grade fan-out. Three parallel batchPriceEstimate calls per chunk
+  // (Raw, PSA 9, PSA 10) keeps grade context implicit per call so we don't
+  // depend on CH echoing `grade` in the batch response. EV mapping mirrors
+  // evFromPrices in lib/cardhedger.ts: PSA 9 drives evMid (preferred),
+  // Raw drives evLow, PSA 10 drives evHigh. Heuristic 0.35× / 2.5× multipliers
+  // remain only as last-resort fallbacks when a grade is missing.
   async function runChunk(idx: number, chunk: string[], attempt = 0): Promise<void> {
-    const items = chunk.map(card_id => ({ card_id, grade: 'Raw' }));
     const start = Date.now();
     try {
-      const results = await batchPriceEstimate(items);
-      for (const r of results) {
-        if (r.success && r.price > 0) {
-          pricesOnly.set(r.card_id, {
-            evLow: Math.round(r.price_low > 0 ? r.price_low : r.price * 0.35),
-            evMid: Math.round(r.price),
-            evHigh: Math.round(r.price_high > r.price ? r.price_high : r.price * 2.5),
-          });
-        }
+      const [rawResults, psa9Results, psa10Results] = await Promise.all([
+        batchPriceEstimate(chunk.map(card_id => ({ card_id, grade: 'Raw' }))),
+        batchPriceEstimate(chunk.map(card_id => ({ card_id, grade: 'PSA 9' }))),
+        batchPriceEstimate(chunk.map(card_id => ({ card_id, grade: 'PSA 10' }))),
+      ]);
+      const rawMap = new Map(rawResults.map(r => [r.card_id, r]));
+      const psa9Map = new Map(psa9Results.map(r => [r.card_id, r]));
+      const psa10Map = new Map(psa10Results.map(r => [r.card_id, r]));
+
+      for (const cardId of chunk) {
+        const raw   = rawMap.get(cardId);
+        const psa9  = psa9Map.get(cardId);
+        const psa10 = psa10Map.get(cardId);
+        const validRaw   = raw?.success   && raw.price   > 0 ? raw   : null;
+        const validPsa9  = psa9?.success  && psa9.price  > 0 ? psa9  : null;
+        const validPsa10 = psa10?.success && psa10.price > 0 ? psa10 : null;
+        if (!validRaw && !validPsa9 && !validPsa10) continue;
+
+        const rawPrice  = validRaw?.price  ?? null;
+        const midPrice  = validPsa9?.price ?? rawPrice ?? null;
+        const highPrice = validPsa10?.price ?? null;
+        const evMid  = midPrice ?? 0;
+        const evLow  = rawPrice ?? Math.round(evMid * 0.35);
+        const evHigh = highPrice ?? Math.round(evMid * 2.5);
+
+        // Confidence: average across the grades that contributed real prices.
+        // Falls to 0 only when all three were synthesized — but the early
+        // continue above guarantees at least one is real.
+        const contribs = [validRaw, validPsa9, validPsa10].filter((x): x is NonNullable<typeof x> => !!x);
+        const confidence = contribs.length > 0
+          ? contribs.reduce((sum, r) => sum + (r.confidence ?? 0), 0) / contribs.length
+          : 0;
+
+        pricesOnly.set(cardId, {
+          evLow: Math.round(evLow),
+          evMid: Math.round(evMid),
+          evHigh: Math.round(evHigh),
+          confidence,
+        });
       }
     } catch (e) {
       const ms = Date.now() - start;
@@ -208,6 +253,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     ev_low: number;
     ev_mid: number;
     ev_high: number;
+    confidence: number | null;
     raw_comps: Record<string, unknown>;
     fetched_at: string;
     expires_at: string;
@@ -294,6 +340,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
           evLow: price?.evLow ?? 0,
           evMid: price?.evMid ?? 0,
           evHigh: price?.evHigh ?? 0,
+          confidence: price?.confidence ?? 0,
           sets: Math.max(sets, 1),
           hobby_odds: v.hobby_odds,
         };
@@ -307,10 +354,12 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
           evMid: pricedVariants.reduce((sum, v) => sum + v.evMid * v.sets, 0) / totalSets,
           evHigh: pricedVariants.reduce((sum, v) => sum + v.evHigh * v.sets, 0) / totalSets,
         };
+        const confidence = pricedVariants.reduce((sum, v) => sum + v.confidence * v.sets, 0) / totalSets;
         cacheRows.push({
           player_product_id: pp.id,
           cardhedger_card_id: pp.cardhedger_card_id ?? null,
           ev_low: ev.evLow, ev_mid: ev.evMid, ev_high: ev.evHigh,
+          confidence,
           raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
         });
         livePriced++;
@@ -325,6 +374,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
           player_product_id: pp.id,
           cardhedger_card_id: pp.cardhedger_card_id ?? null,
           ev_low: sibling.ev_low, ev_mid: sibling.ev_mid, ev_high: sibling.ev_high,
+          confidence: null,
           raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
         });
         crossPriced++;
@@ -336,6 +386,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
         player_product_id: pp.id,
         cardhedger_card_id: pp.cardhedger_card_id ?? null,
         ev_low: Math.round(evMid * 0.35), ev_mid: evMid, ev_high: Math.round(evMid * 2.5),
+        confidence: null,
         raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
       });
       defaultPriced++;
@@ -360,6 +411,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
         player_product_id: pp.id,
         cardhedger_card_id: pp.cardhedger_card_id ?? null,
         ev_low: ev.evLow, ev_mid: ev.evMid, ev_high: ev.evHigh,
+        confidence: null,
         raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
       });
       livePriced++;
@@ -368,8 +420,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
 
     try {
       const cardType = playerIsRookie ? 'Auto RC' : 'Base';
-      const result = await get90DayPrices(`${playerName} ${cardType}`, 'Raw');
-      const raw = result.prices.find(p => p.grade.toLowerCase().includes('raw'));
+      const raw = await get90DayPrices(`${playerName} ${cardType}`, 'Raw');
       if (raw && raw.avg_price > 0) {
         const evMid = Math.round(raw.avg_price);
         cacheRows.push({
@@ -378,6 +429,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
           ev_low: raw.min_price > 0 ? Math.round(raw.min_price) : Math.round(evMid * 0.35),
           ev_mid: evMid,
           ev_high: raw.max_price > evMid ? Math.round(raw.max_price) : Math.round(evMid * 2.5),
+          confidence: null,
           raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
         });
         searchPriced++;
@@ -392,6 +444,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
         player_product_id: pp.id,
         cardhedger_card_id: pp.cardhedger_card_id ?? null,
         ev_low: sibling.ev_low, ev_mid: sibling.ev_mid, ev_high: sibling.ev_high,
+        confidence: null,
         raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
       });
       crossPriced++;
@@ -403,6 +456,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
       player_product_id: pp.id,
       cardhedger_card_id: pp.cardhedger_card_id ?? null,
       ev_low: Math.round(evMid * 0.35), ev_mid: evMid, ev_high: Math.round(evMid * 2.5),
+      confidence: null,
       raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
     });
     defaultPriced++;
