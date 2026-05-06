@@ -69,6 +69,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/chase') ||
     pathname.startsWith('/my-breaks') ||
     pathname.startsWith('/onboarding') ||
+    pathname.startsWith('/player') ||
     pathname.startsWith('/subscribe');
 
   if (isConsumerRoute && !user && process.env.NODE_ENV !== 'development') {
@@ -93,6 +94,7 @@ export const config = {
     '/chase',
     '/my-breaks/:path*',
     '/my-breaks',
+    '/player/:path*',
     '/onboarding',
     '/subscribe',
   ],
