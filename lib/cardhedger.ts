@@ -268,13 +268,37 @@ export async function getAllPrices(cardId: string) {
   );
 }
 
-// Get recent comps for a card
-// API requires count (number of results) and grade in addition to card_id and days
-export async function getComps(cardId: string, days = 180, grade = 'Raw', count = 10) {
-  return post<{ comps: Array<{ sale_price: number; sale_date: string; grade: string; platform: string }> }>(
+// Get recent comps for a card.
+// CardHedger's /v1/cards/comps actually returns
+// `{ comp_price, high, low, count_used, raw_prices: [...] }` when
+// `include_raw_prices: true` (and nothing list-shaped without it). The
+// helper has historically been typed as `{ comps: [...] }`, which made
+// every caller silently get an empty list. We translate the real shape
+// back into the `{ comps: [...] }` API our callers expect, mapping
+// `price → sale_price` and `price_source → platform`.
+//
+// The `days` param is documented but not honored by the endpoint; left
+// here for forward compat.
+export async function getComps(cardId: string, _days = 180, grade = 'Raw', count = 10) {
+  type Raw = {
+    raw_prices?: Array<{
+      price: number;
+      sale_date: string;
+      price_source?: string | null;
+      grade?: string | null;
+    }> | null;
+  };
+  const res = await post<Raw>(
     '/v1/cards/comps',
-    { card_id: cardId, days, grade, count }
+    { card_id: cardId, grade, count, include_raw_prices: true }
   );
+  const comps = (res.raw_prices ?? []).map(r => ({
+    sale_price: Number(r.price),
+    sale_date: r.sale_date,
+    grade: r.grade ?? grade,
+    platform: r.price_source ?? '',
+  }));
+  return { comps };
 }
 
 // Get 90-day prices for a search — no card ID required

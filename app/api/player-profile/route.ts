@@ -73,6 +73,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Failed to load products' }, { status: 500 });
   }
 
+  type PriceCacheShape = { ev_low: number | null; ev_mid: number | null; ev_high: number | null; fetched_at: string | null };
   type PpRow = {
     id: string;
     cardhedger_card_id: string | null;
@@ -89,15 +90,23 @@ export async function GET(req: NextRequest) {
       is_active: boolean | null;
       sports: { name: string } | null;
     } | null;
-    pricing_cache: { ev_low: number | null; ev_mid: number | null; ev_high: number | null; fetched_at: string | null }[] | null;
+    // PostgREST returns a unique-constrained one-to-one as a single object,
+    // but a non-unique join as an array. Handle both shapes defensively.
+    pricing_cache: PriceCacheShape | PriceCacheShape[] | null;
   };
+
+  function pickCache(raw: PpRow['pricing_cache']): PriceCacheShape | null {
+    if (!raw) return null;
+    if (Array.isArray(raw)) return raw[0] ?? null;
+    return raw;
+  }
 
   const lifecycleRank = { live: 0, pre_release: 1, dormant: 2 } as const;
 
   const products = ((ppRows ?? []) as unknown as PpRow[])
     .filter(r => r.products != null)
     .map(r => {
-      const cache = r.pricing_cache?.[0];
+      const cache = pickCache(r.pricing_cache);
       return {
         player_product_id: r.id,
         product_id: r.products!.id,
@@ -131,26 +140,36 @@ export async function GET(req: NextRequest) {
   // header EV reads consistently between the two pages.
   const featured = products.find(x => x.ev_mid != null) ?? null;
 
-  // 3. Recent sales — aggregate CardHedger comps across this player's
-  //    matched variants. The per-product `cardhedger_card_id` on
-  //    player_products is often null (it's a rolled-up convenience field);
-  //    the real matched CH IDs live on player_product_variants. We pull
-  //    unique card IDs across all variants for this player and fetch comps
-  //    in parallel. Cap at 12 unique card IDs to keep latency bounded.
+  // 3. Recent sales — aggregate CardHedger comps from the BASE variant of
+  //    each of the player's products. The per-product `cardhedger_card_id`
+  //    on player_products is often null (rolled-up convenience field); the
+  //    real matched CH IDs live on player_product_variants. We pick the
+  //    variant with the shortest variant_name per pp (the base/unparalleled
+  //    card) since obscure parallels like "Padparadscha /5" rarely have
+  //    enough sale volume for getComps to return anything. This mirrors
+  //    the heuristic the working PlayerDetailDrawer already uses.
   const playerProductIds = ((ppRows ?? []) as unknown as PpRow[]).map(r => r.id);
   let candidateCardIds: string[] = [];
   if (playerProductIds.length > 0) {
     const { data: variantRows } = await supabaseAdmin
       .from('player_product_variants')
-      .select('cardhedger_card_id')
+      .select('player_product_id, variant_name, cardhedger_card_id')
       .in('player_product_id', playerProductIds)
       .not('cardhedger_card_id', 'is', null);
+
+    // Group by pp and keep only the shortest-named variant per pp.
+    type VRow = { player_product_id: string; variant_name: string | null; cardhedger_card_id: string };
+    const baseByPp = new Map<string, VRow>();
+    for (const v of ((variantRows ?? []) as VRow[])) {
+      const existing = baseByPp.get(v.player_product_id);
+      const len = v.variant_name?.length ?? 999;
+      const existingLen = existing?.variant_name?.length ?? 9999;
+      if (!existing || len < existingLen) baseByPp.set(v.player_product_id, v);
+    }
     const seen = new Set<string>();
-    for (const v of (variantRows ?? []) as Array<{ cardhedger_card_id: string | null }>) {
-      if (v.cardhedger_card_id && !seen.has(v.cardhedger_card_id)) {
-        seen.add(v.cardhedger_card_id);
-        if (seen.size >= 10) break;
-      }
+    for (const v of baseByPp.values()) {
+      if (!seen.has(v.cardhedger_card_id)) seen.add(v.cardhedger_card_id);
+      if (seen.size >= 10) break;
     }
     candidateCardIds = Array.from(seen);
   }
