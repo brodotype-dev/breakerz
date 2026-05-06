@@ -15,7 +15,11 @@ interface Props {
   riskFlagMap?: Map<string, RiskFlagEntry[]>;
 }
 
-const COL = 'grid-cols-[36px_1fr_160px_72px_56px_104px_88px_88px]';
+// `minmax(140px, 1fr)` keeps the Team column from collapsing to 0 when the
+// fixed columns + gaps exceed the viewport (was happening on iPhone 16 Pro,
+// leaving only the chevron visible). The outer overflow-x-auto wrapper then
+// scrolls the full grid horizontally instead.
+const COL = 'grid-cols-[36px_minmax(140px,1fr)_160px_72px_56px_104px_88px_88px]';
 
 function pickSlot(t: TeamSlot, fmt: BreakFormat) {
   return fmt === 'hobby' ? { slot: t.hobbySlotCost, perCase: t.hobbyPerCase }

@@ -176,28 +176,28 @@ export default function PlayerDetailDrawer({ playerProductId, onClose, topOffset
                   Card Variants · {data.variants.length}
                 </p>
                 <div
-                  className="rounded-lg overflow-hidden"
+                  className="rounded-lg overflow-x-auto"
                   style={{ border: '1px solid var(--terminal-border)' }}
                 >
-                  <table className="w-full text-xs">
+                  <table className="w-full min-w-[460px] text-xs">
                     <thead>
                       <tr style={{ backgroundColor: 'var(--terminal-surface)', borderBottom: '1px solid var(--terminal-border)' }}>
-                        <th className="text-left px-3 py-2 font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                        <th className="text-left px-2 sm:px-3 py-2 font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
                           Variant
                         </th>
-                        <th className="text-right px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
+                        <th className="text-right px-2 sm:px-3 py-2 font-bold uppercase tracking-wider whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
                           Odds
                         </th>
-                        <th className="text-right px-3 py-2 font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                        <th className="text-right px-2 sm:px-3 py-2 font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
                           Raw
                         </th>
-                        <th className="text-right px-3 py-2 font-bold uppercase tracking-wider" style={{ color: '#ef4444' }}>
+                        <th className="text-right px-2 sm:px-3 py-2 font-bold uppercase tracking-wider" style={{ color: '#ef4444' }}>
                           PSA 8
                         </th>
-                        <th className="text-right px-3 py-2 font-bold uppercase tracking-wider" style={{ color: 'var(--accent-blue)' }}>
+                        <th className="text-right px-2 sm:px-3 py-2 font-bold uppercase tracking-wider" style={{ color: 'var(--accent-blue)' }}>
                           PSA 9
                         </th>
-                        <th className="text-right px-3 py-2 font-bold uppercase tracking-wider" style={{ color: '#22c55e' }}>
+                        <th className="text-right px-2 sm:px-3 py-2 font-bold uppercase tracking-wider" style={{ color: '#22c55e' }}>
                           PSA 10
                         </th>
                       </tr>
@@ -217,7 +217,7 @@ export default function PlayerDetailDrawer({ playerProductId, onClose, topOffset
                               backgroundColor: i % 2 === 0 ? 'var(--terminal-surface)' : 'var(--terminal-bg)',
                             }}
                           >
-                            <td className="px-3 py-2" style={{ color: 'var(--text-primary)' }}>
+                            <td className="px-2 sm:px-3 py-2" style={{ color: 'var(--text-primary)' }}>
                               <div>
                                 <span className="font-medium">{v.variant_name}</span>
                                 {!v.cardhedger_card_id && (
@@ -225,19 +225,19 @@ export default function PlayerDetailDrawer({ playerProductId, onClose, topOffset
                                 )}
                               </div>
                             </td>
-                            <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--text-tertiary)' }}>
+                            <td className="px-2 sm:px-3 py-2 text-right font-mono" style={{ color: 'var(--text-tertiary)' }}>
                               {v.hobby_odds ? `1:${v.hobby_odds}` : '—'}
                             </td>
-                            <td className="px-3 py-2 text-right font-mono text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                            <td className="px-2 sm:px-3 py-2 text-right font-mono text-xs" style={{ color: 'var(--text-tertiary)' }}>
                               {getPrice('Raw')}
                             </td>
-                            <td className="px-3 py-2 text-right font-mono" style={{ color: 'var(--text-secondary)' }}>
+                            <td className="px-2 sm:px-3 py-2 text-right font-mono" style={{ color: 'var(--text-secondary)' }}>
                               {getPrice('PSA 8')}
                             </td>
-                            <td className="px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--accent-blue)' }}>
+                            <td className="px-2 sm:px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--accent-blue)' }}>
                               {getPrice('PSA 9')}
                             </td>
-                            <td className="px-3 py-2 text-right font-mono font-bold" style={{ color: '#22c55e' }}>
+                            <td className="px-2 sm:px-3 py-2 text-right font-mono font-bold" style={{ color: '#22c55e' }}>
                               {getPrice('PSA 10')}
                             </td>
                           </tr>
@@ -261,7 +261,7 @@ export default function PlayerDetailDrawer({ playerProductId, onClose, topOffset
                     {data.recentComps.map((comp, i) => (
                       <div
                         key={i}
-                        className="flex items-center justify-between px-3 py-2 rounded-lg"
+                        className="flex items-center justify-between px-2 sm:px-3 py-2 rounded-lg"
                         style={{ backgroundColor: 'var(--terminal-surface)', border: '1px solid var(--terminal-border)' }}
                       >
                         <div className="flex items-center gap-2">
