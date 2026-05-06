@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { ArrowLeft, ExternalLink, AlertCircle, MessageSquare, TrendingUp, TrendingDown } from 'lucide-react';
@@ -315,47 +315,7 @@ export default function PlayerProfilePage() {
 
           {/* Recent Sales — narrower side column */}
           <div className="lg:col-span-2">
-            <Section
-              title="Recent Sales"
-              subtitle="Last 180 days · Raw, PSA 9, PSA 10"
-              count={data.recent_comps.length}
-              empty={data.recent_comps.length === 0}
-              emptyText="No recent sales found in the last 180 days."
-            >
-              <div className="rounded-lg overflow-hidden border" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
-                <ul className="divide-y" style={{ borderColor: 'var(--terminal-border)' }}>
-                  {data.recent_comps.slice(0, 15).map((c, i) => {
-                    const isPsa10 = c.grade?.includes('10');
-                    const isPsa9 = c.grade?.includes('9');
-                    const isRaw = c.grade === 'Raw' || c.grade === 'Ungraded';
-                    return (
-                      <li key={i} className="flex items-center justify-between px-3 py-2 gap-2">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span
-                            className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0"
-                            style={{
-                              backgroundColor: isPsa10 ? 'rgba(34,197,94,0.12)' : isPsa9 ? 'rgba(59,130,246,0.12)' : 'rgba(148,163,184,0.12)',
-                              color: isPsa10 ? '#22c55e' : isPsa9 ? 'var(--accent-blue)' : '#94a3b8',
-                            }}
-                          >
-                            {isRaw ? 'Raw' : c.grade}
-                          </span>
-                          <span className="text-[10px] truncate" style={{ color: 'var(--text-tertiary)' }}>
-                            {(c.platform ?? '').replace(/_/g, ' ')}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{formatShortDate(c.sale_date)}</span>
-                          <span className="text-xs font-mono font-bold" style={{ color: 'var(--text-primary)' }}>
-                            {formatCurrency(c.sale_price)}
-                          </span>
-                        </div>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            </Section>
+            <RecentSalesPanel comps={data.recent_comps} />
           </div>
         </div>
       </div>
@@ -404,6 +364,111 @@ function Section({
         </div>
       ) : (
         children
+      )}
+    </section>
+  );
+}
+
+function isRawGrade(g: string | null | undefined) {
+  if (!g) return false;
+  return g === 'Raw' || g === 'Ungraded';
+}
+
+function RecentSalesPanel({ comps }: { comps: Comp[] }) {
+  // Split incoming comps by grade so we can offer a Raw / Graded toggle.
+  // Sorted newest-first by the API; we keep that order and slice 10 at the end.
+  const { raw, graded } = useMemo(() => {
+    const r: Comp[] = [];
+    const g: Comp[] = [];
+    for (const c of comps) {
+      if (isRawGrade(c.grade)) r.push(c);
+      else g.push(c);
+    }
+    return { raw: r, graded: g };
+  }, [comps]);
+
+  // Default tab: whichever has more sales for this player. Falls back to Raw
+  // when both are zero so the empty state matches what most users will hit.
+  const [tab, setTab] = useState<'raw' | 'graded'>(() => (graded.length > raw.length ? 'graded' : 'raw'));
+  const list = tab === 'raw' ? raw : graded;
+  const visible = list.slice(0, 10);
+  const totalForTab = list.length;
+
+  return (
+    <section>
+      <div className="flex items-center justify-between gap-3 mb-2.5">
+        <h2 className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
+          Recent Sales{' '}
+          <span className="ml-1 font-mono text-xs" style={{ color: 'var(--text-tertiary)' }}>
+            {totalForTab > 0 ? Math.min(10, totalForTab) : 0}
+          </span>
+        </h2>
+        {/* Raw / Graded segmented toggle */}
+        <div className="inline-flex items-center rounded-md border overflow-hidden text-[10px] font-bold uppercase tracking-wider" style={{ borderColor: 'var(--terminal-border)' }}>
+          {([
+            { key: 'raw', label: 'Raw', count: raw.length },
+            { key: 'graded', label: 'Graded', count: graded.length },
+          ] as const).map(opt => {
+            const active = tab === opt.key;
+            return (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => setTab(opt.key)}
+                className="px-2.5 py-1 transition-colors"
+                style={{
+                  backgroundColor: active ? 'rgba(59,130,246,0.15)' : 'transparent',
+                  color: active ? 'var(--accent-blue)' : 'var(--text-tertiary)',
+                }}
+              >
+                {opt.label}
+                <span className="ml-1 font-mono opacity-70">{opt.count}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {visible.length === 0 ? (
+        <div
+          className="rounded-lg border-2 border-dashed px-4 py-6 text-center text-xs"
+          style={{ borderColor: 'var(--terminal-border)', color: 'var(--text-disabled)', backgroundColor: 'rgba(255,255,255,0.01)' }}
+        >
+          No {tab === 'raw' ? 'raw' : 'graded'} sales found in the last 180 days.
+        </div>
+      ) : (
+        <div className="rounded-lg overflow-hidden border" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
+          <ul className="divide-y" style={{ borderColor: 'var(--terminal-border)' }}>
+            {visible.map((c, i) => {
+              const psa10 = c.grade?.includes('10');
+              const psa9 = c.grade?.includes('9');
+              return (
+                <li key={i} className="flex items-center justify-between px-3 py-2 gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span
+                      className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0"
+                      style={{
+                        backgroundColor: psa10 ? 'rgba(34,197,94,0.12)' : psa9 ? 'rgba(59,130,246,0.12)' : 'rgba(148,163,184,0.12)',
+                        color: psa10 ? '#22c55e' : psa9 ? 'var(--accent-blue)' : '#94a3b8',
+                      }}
+                    >
+                      {isRawGrade(c.grade) ? 'Raw' : c.grade}
+                    </span>
+                    <span className="text-[10px] truncate" style={{ color: 'var(--text-tertiary)' }}>
+                      {(c.platform ?? '').replace(/_/g, ' ')}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{formatShortDate(c.sale_date)}</span>
+                    <span className="text-xs font-mono font-bold" style={{ color: 'var(--text-primary)' }}>
+                      {formatCurrency(c.sale_price)}
+                    </span>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
     </section>
   );
