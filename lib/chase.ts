@@ -10,10 +10,11 @@ import type { ChaseListEntry } from '@/lib/types';
 // counts are small (a few dozen players per user). Three round-trips total —
 // fine for a list view that loads once.
 export async function listChaseForUser(userId: string): Promise<ChaseListEntry[]> {
-  // 1. Saved players
+  // 1. Saved players. buzz/breakerz live on player_products (per product),
+  //    not on players, so this query only pulls the immutable identity bits.
   const { data: rows, error: chaseErr } = await supabaseAdmin
     .from('user_chase_list')
-    .select('player_id, added_at, players ( id, name, team, is_rookie, is_icon, buzz_score, breakerz_score )')
+    .select('player_id, added_at, players ( id, name, team, is_rookie, is_icon )')
     .eq('user_id', userId)
     .order('added_at', { ascending: false });
 
@@ -24,12 +25,16 @@ export async function listChaseForUser(userId: string): Promise<ChaseListEntry[]
 
   // 2. Per-player most-recent pricing_cache row across all of that player's
   //    player_products. We pull pp + pc + product in one shot, then pick the
-  //    freshest per player_id in JS.
+  //    freshest per player_id in JS. Also captures buzz_score/breakerz_score
+  //    from that same winning player_product row so the chase entry shows
+  //    the signals from the freshest market data we have.
   const { data: pricedRows, error: priceErr } = await supabaseAdmin
     .from('player_products')
     .select(`
       id,
       player_id,
+      buzz_score,
+      breakerz_score,
       products ( id, name, slug ),
       pricing_cache ( ev_mid, fetched_at )
     `)
@@ -38,41 +43,78 @@ export async function listChaseForUser(userId: string): Promise<ChaseListEntry[]
   if (priceErr) throw priceErr;
 
   type PricedRow = {
+    id: string;
     player_id: string;
+    buzz_score: number | null;
+    breakerz_score: number | null;
     products: { id: string; name: string; slug: string } | null;
     pricing_cache: { ev_mid: number | null; fetched_at: string | null }[] | null;
   };
 
-  const bestByPlayer = new Map<string, ChaseListEntry['market']>();
+  // Track best (most-recent) market data per player. Also remember the
+  // winning row's buzz/breakerz so the entry's signals come from the same
+  // player_product as the price.
+  const bestByPlayer = new Map<string, {
+    market: NonNullable<ChaseListEntry['market']>;
+    buzz_score: number;
+    breakerz_score: number;
+  }>();
+  // Fallback signals if no priced player_product exists for this player —
+  // use whatever buzz/breakerz the highest-buzz player_product has.
+  const fallbackSignalsByPlayer = new Map<string, { buzz_score: number; breakerz_score: number }>();
+  // player_product_id → player_id, used to map risk_flags (which are keyed
+  // by player_product_id) back to a player.
+  const ppToPlayer = new Map<string, string>();
+
   for (const raw of (pricedRows ?? []) as unknown as PricedRow[]) {
+    ppToPlayer.set(raw.id, raw.player_id);
+
+    // Always update the fallback to track the highest-buzz player_product.
+    const buzz = raw.buzz_score ?? 0;
+    const brkrz = raw.breakerz_score ?? 0;
+    const fb = fallbackSignalsByPlayer.get(raw.player_id);
+    if (!fb || buzz > fb.buzz_score) {
+      fallbackSignalsByPlayer.set(raw.player_id, { buzz_score: buzz, breakerz_score: brkrz });
+    }
+
     const cache = raw.pricing_cache?.[0];
     if (!cache?.fetched_at || cache.ev_mid == null || !raw.products) continue;
     const existing = bestByPlayer.get(raw.player_id);
-    if (!existing || new Date(cache.fetched_at) > new Date(existing.fetched_at)) {
+    if (!existing || new Date(cache.fetched_at) > new Date(existing.market.fetched_at)) {
       bestByPlayer.set(raw.player_id, {
-        ev_mid: cache.ev_mid,
-        product_id: raw.products.id,
-        product_slug: raw.products.slug,
-        product_name: raw.products.name,
-        fetched_at: cache.fetched_at,
+        market: {
+          ev_mid: cache.ev_mid,
+          product_id: raw.products.id,
+          product_slug: raw.products.slug,
+          product_name: raw.products.name,
+          fetched_at: cache.fetched_at,
+        },
+        buzz_score: buzz,
+        breakerz_score: brkrz,
       });
     }
   }
 
-  // 3. Active risk flags for these players
-  const { data: flagRows, error: flagErr } = await supabaseAdmin
-    .from('player_risk_flags')
-    .select('player_id, flag_type, note')
-    .in('player_id', playerIds)
-    .is('cleared_at', null);
+  // 3. Active risk flags. risk_flags reference player_product_id, not
+  //    player_id, so we look them up via the pp→player map above.
+  const playerProductIds = Array.from(ppToPlayer.keys());
+  const flagRowsResp = playerProductIds.length === 0
+    ? { data: [] as Array<{ player_product_id: string; flag_type: string; note: string | null }>, error: null }
+    : await supabaseAdmin
+        .from('player_risk_flags')
+        .select('player_product_id, flag_type, note')
+        .in('player_product_id', playerProductIds)
+        .is('cleared_at', null);
 
-  if (flagErr) throw flagErr;
+  if (flagRowsResp.error) throw flagRowsResp.error;
 
   const flagsByPlayer = new Map<string, Array<{ flag_type: string; note: string }>>();
-  for (const f of flagRows ?? []) {
-    const list = flagsByPlayer.get(f.player_id) ?? [];
+  for (const f of flagRowsResp.data ?? []) {
+    const playerId = ppToPlayer.get(f.player_product_id);
+    if (!playerId) continue;
+    const list = flagsByPlayer.get(playerId) ?? [];
     list.push({ flag_type: f.flag_type, note: f.note ?? '' });
-    flagsByPlayer.set(f.player_id, list);
+    flagsByPlayer.set(playerId, list);
   }
 
   // 4. Stitch
@@ -85,25 +127,27 @@ export async function listChaseForUser(userId: string): Promise<ChaseListEntry[]
       team: string | null;
       is_rookie: boolean | null;
       is_icon: boolean | null;
-      buzz_score: number | null;
-      breakerz_score: number | null;
     } | null;
   };
 
   return (rows as unknown as ChaseRow[])
     .filter(r => r.players != null)
-    .map((r): ChaseListEntry => ({
-      player_id: r.player_id,
-      player_name: r.players!.name,
-      team: r.players!.team,
-      is_rookie: !!r.players!.is_rookie,
-      is_icon: !!r.players!.is_icon,
-      buzz_score: r.players!.buzz_score ?? 0,
-      breakerz_score: r.players!.breakerz_score ?? 0,
-      added_at: r.added_at,
-      market: bestByPlayer.get(r.player_id) ?? null,
-      risk_flags: flagsByPlayer.get(r.player_id) ?? [],
-    }));
+    .map((r): ChaseListEntry => {
+      const best = bestByPlayer.get(r.player_id);
+      const fb = fallbackSignalsByPlayer.get(r.player_id);
+      return {
+        player_id: r.player_id,
+        player_name: r.players!.name,
+        team: r.players!.team,
+        is_rookie: !!r.players!.is_rookie,
+        is_icon: !!r.players!.is_icon,
+        buzz_score: best?.buzz_score ?? fb?.buzz_score ?? 0,
+        breakerz_score: best?.breakerz_score ?? fb?.breakerz_score ?? 0,
+        added_at: r.added_at,
+        market: best?.market ?? null,
+        risk_flags: flagsByPlayer.get(r.player_id) ?? [],
+      };
+    });
 }
 
 // Returns the set of player_ids on the calling user's chase list, scoped to
