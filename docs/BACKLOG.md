@@ -151,6 +151,20 @@ Graded pricing still matters for specific decisions (is this slot worth it if I 
 
 ## Priority 2 — High value, external dependency or more effort
 
+### Chase Cards — Panini-aware fallback when no odds data
+**Effort:** ~1 hour
+**Why:** Surfaced 2026-05-06 alongside the Panini Prizm Football import. Panini products have no published pull rates, so every `player_product_variants.hobby_odds` is null. The pricing math already handles null correctly (excluded from the equation, never treated as zero — confirmed via audit). But [app/api/admin/chase-cards/route.ts:38-46](app/api/admin/chase-cards/route.ts:38) picks the "rarest variant" by lowest `hobby_odds` and filters out anything where rarest is undefined — so the admin Chase Cards Manager is **empty for every Panini product**, with no signal to the admin about why.
+
+**Fix:** when `hobby_odds` is null on every variant, fall back to lowest `print_run` (or first numbered variant when print runs are also null). Surface a small "no odds available, ranked by print run" indicator in the manager UI.
+
+**Files to touch:**
+- `app/api/admin/chase-cards/route.ts` — extend the rarest-variant selector with a print-run fallback when no variant has odds
+- `app/admin/products/[id]/ChaseCardsManager.tsx` — render the indicator chip when the fallback path triggered
+
+**Verification:** open the chase cards manager on a freshly-imported Panini Prizm Football product, confirm rarest variants surface ranked by print run with the indicator chip.
+
+---
+
 ### Pricing Feedback — Admin Triage Queue
 **Effort:** ~1 day
 
