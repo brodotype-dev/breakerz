@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { Zap, TrendingUp, Search, ChevronRight } from 'lucide-react';
 import posthog from 'posthog-js';
+import { PH_EVENTS } from '@/lib/posthog-events';
 import { Logo } from '@/components/Logo';
 
 type State = 'idle' | 'loading' | 'success' | 'already' | 'error';
@@ -27,17 +28,17 @@ export default function WaitlistPage() {
     });
 
     if (res.ok) {
-      posthog.capture('waitlist_signup_submitted', {
+      posthog.capture(PH_EVENTS.waitlist_signup_submitted, {
         has_name: !!formData.get('full_name'),
         has_use_case: !!formData.get('use_case'),
         result: 'success',
       });
       setState('success');
     } else if (res.status === 409) {
-      posthog.capture('waitlist_signup_submitted', { result: 'already_exists' });
+      posthog.capture(PH_EVENTS.waitlist_signup_submitted, { result: 'already_exists' });
       setState('already');
     } else {
-      posthog.capture('waitlist_signup_submitted', { result: 'error' });
+      posthog.capture(PH_EVENTS.waitlist_signup_submitted, { result: 'error' });
       setState('error');
     }
   }

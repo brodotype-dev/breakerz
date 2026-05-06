@@ -3,6 +3,7 @@
 import { formatCurrency, computeEffectiveScore } from '@/lib/engine';
 import { IconPlayerBadge, BullishBadge, BearishBadge, HighVolatilityBadge, RiskFlagBadge } from '@/components/breakiq/SocialBadges';
 import ChaseHeartButton, { ChaseSetProvider } from '@/components/breakiq/ChaseHeartButton';
+import PricingFeedback from '@/components/breakiq/PricingFeedback';
 import type { BreakFormat, PlayerWithPricing } from '@/lib/types';
 
 type RiskFlagEntry = { flagType: string; note: string };
@@ -13,6 +14,7 @@ interface Props {
   viewFormat: BreakFormat;
   riskFlagMap?: Map<string, RiskFlagEntry[]>;
   onPlayerClick?: (playerProductId: string) => void;
+  productId?: string | null;
 }
 
 function pickSlot(row: PlayerWithPricing, fmt: BreakFormat): number {
@@ -43,7 +45,7 @@ const COLUMNS: Array<{
   { key: 'maxPay',   label: 'Max Pay',   align: 'right', hide: HIDE_BELOW_SM },
 ];
 
-export default function PlayerTable({ players, fetching = false, viewFormat, riskFlagMap = new Map(), onPlayerClick }: Props) {
+export default function PlayerTable({ players, fetching = false, viewFormat, riskFlagMap = new Map(), onPlayerClick, productId = null }: Props) {
   if (players.length === 0) {
     return (
       <div
@@ -125,6 +127,14 @@ export default function PlayerTable({ players, fetching = false, viewFormat, ris
                       {playerFlags.map((f, fi) => (
                         <RiskFlagBadge key={fi} type={f.flagType} note={f.note} />
                       ))}
+                      <span className="ml-auto pl-2">
+                        <PricingFeedback
+                          surface="player_row"
+                          entityType="player_product"
+                          entityId={row.id}
+                          productId={productId}
+                        />
+                      </span>
                     </div>
                     {/* Team line shown only on mobile (where the team column is hidden) */}
                     <div className="md:hidden mt-0.5 text-[11px] truncate" style={{ color: 'var(--text-tertiary)' }}>

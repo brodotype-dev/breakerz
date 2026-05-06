@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { constructWebhookEvent } from '@/lib/stripe';
-import { getPostHogClient } from '@/lib/posthog-server';
+import { captureServer, identifyServer } from '@/lib/posthog-server';
+import { PH_EVENTS, PH_PERSON_PROPS } from '@/lib/posthog-events';
 
 export const dynamic = 'force-dynamic';
 
@@ -61,11 +62,14 @@ export async function POST(req: Request) {
           analyses_reset_at: new Date().toISOString(),
         }).eq('id', userId);
 
-        const posthog = getPostHogClient();
-        posthog.capture({
+        await captureServer({
           distinctId: userId,
-          event: 'subscription_activated',
+          event: PH_EVENTS.subscription_activated,
           properties: { plan, source: 'stripe_webhook' },
+          setProperties: {
+            [PH_PERSON_PROPS.subscription_plan]: plan,
+            [PH_PERSON_PROPS.subscription_status]: 'active',
+          },
         });
         break;
       }
@@ -111,6 +115,14 @@ export async function POST(req: Request) {
             ? new Date(subscription.current_period_end * 1000).toISOString()
             : null,
         }).eq('id', userId);
+
+        await identifyServer({
+          distinctId: userId,
+          set: {
+            [PH_PERSON_PROPS.subscription_plan]: plan,
+            [PH_PERSON_PROPS.subscription_status]: status,
+          },
+        });
         break;
       }
 
@@ -126,11 +138,14 @@ export async function POST(req: Request) {
           current_period_end: null,
         }).eq('id', userId);
 
-        const posthog = getPostHogClient();
-        posthog.capture({
+        await captureServer({
           distinctId: userId,
-          event: 'subscription_canceled',
+          event: PH_EVENTS.subscription_canceled,
           properties: { source: 'stripe_webhook' },
+          setProperties: {
+            [PH_PERSON_PROPS.subscription_plan]: 'free',
+            [PH_PERSON_PROPS.subscription_status]: 'canceled',
+          },
         });
         break;
       }

@@ -2,7 +2,8 @@ import { createServerClient } from '@supabase/ssr';
 import { supabaseAdmin } from '@/lib/supabase';
 import { cookies } from 'next/headers';
 import { NextRequest, NextResponse } from 'next/server';
-import { getPostHogClient } from '@/lib/posthog-server';
+import { captureServer, identifyServer } from '@/lib/posthog-server';
+import { PH_EVENTS, PH_PERSON_PROPS } from '@/lib/posthog-events';
 import { TERMS_VERSION, PRIVACY_VERSION } from '@/lib/legal';
 
 const supabaseUrl =
@@ -116,18 +117,18 @@ export async function GET(request: NextRequest) {
   }, { onConflict: 'id' });
 
   // Identify user server-side
-  const posthog = getPostHogClient();
-  posthog.identify({
+  await identifyServer({
     distinctId: user.id,
-    properties: {
-      email: user.email,
-      name: user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
+    set: {
+      [PH_PERSON_PROPS.email]: user.email,
+      [PH_PERSON_PROPS.name]:
+        user.user_metadata?.full_name ?? user.user_metadata?.name ?? null,
     },
   });
   if (isNewProfile) {
-    posthog.capture({
+    await captureServer({
       distinctId: user.id,
-      event: 'user_signed_up',
+      event: PH_EVENTS.user_signed_up,
       properties: {
         provider: user.app_metadata?.provider ?? 'email',
         email: user.email,

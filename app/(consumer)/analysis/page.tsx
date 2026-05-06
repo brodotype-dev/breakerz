@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
 import { TrendingUp, Sparkles, Zap, ArrowLeft, X, Plus, Search } from 'lucide-react';
 import posthog from 'posthog-js';
+import { PH_EVENTS } from '@/lib/posthog-events';
+import PricingFeedback from '@/components/breakiq/PricingFeedback';
 import { formatCurrency } from '@/lib/engine';
 import type { Signal, BreakFormat } from '@/lib/types';
 import {
@@ -189,7 +191,7 @@ export default function AnalysisPage() {
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      posthog.capture('break_analysis_run', {
+      posthog.capture(PH_EVENTS.break_analysis_run, {
         product_id: productId,
         teams: selectedTeams,
         extra_player_count: selectedPlayerIds.length,
@@ -494,10 +496,19 @@ function AnalysisResultPanel({
       <div className="rounded-lg p-6 border-2" style={{ backgroundColor: cfg.bgColor, borderColor: cfg.borderColor }}>
         <div className="flex items-center justify-between mb-4">
           <span className="text-3xl font-black" style={{ color: cfg.textColor }}>{cfg.label}</span>
-          <div className="text-right">
-            <p className="text-sm font-semibold font-mono" style={{ color: cfg.textColor }}>
-              {Math.abs(result.valuePct).toFixed(1)}% {aboveBelow}
-            </p>
+          <div className="flex items-center gap-3">
+            <div className="text-right">
+              <p className="text-sm font-semibold font-mono" style={{ color: cfg.textColor }}>
+                {Math.abs(result.valuePct).toFixed(1)}% {aboveBelow}
+              </p>
+            </div>
+            <PricingFeedback
+              surface="break_analysis"
+              entityType="analysis"
+              entityId={productId}
+              productId={productId}
+              size="md"
+            />
           </div>
         </div>
 

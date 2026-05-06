@@ -3,7 +3,8 @@ import { createClient } from '@/lib/supabase-server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { runBreakAnalysis } from '@/lib/analysis';
 import { checkAndIncrementUsage } from '@/lib/usage';
-import { getPostHogClient } from '@/lib/posthog-server';
+import { captureServer } from '@/lib/posthog-server';
+import { PH_EVENTS } from '@/lib/posthog-events';
 import type { Platform, BreakOutcome } from '@/lib/types';
 
 export const maxDuration = 60;
@@ -146,10 +147,9 @@ export async function POST(req: NextRequest) {
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    const posthog = getPostHogClient();
-    posthog.capture({
+    await captureServer({
       distinctId: userId,
-      event: 'break_logged',
+      event: PH_EVENTS.break_logged,
       properties: {
         mode,
         product_id: productId,

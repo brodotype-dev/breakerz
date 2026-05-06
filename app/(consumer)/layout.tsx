@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { getCurrentUser, getUserRoles } from '@/lib/auth';
 import ConsumerNav from './ConsumerNav';
 import InstallPrompt from './InstallPrompt';
+import PostHogIdentify from './PostHogIdentify';
 
 export default async function ConsumerLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
@@ -14,6 +15,7 @@ export default async function ConsumerLayout({ children }: { children: React.Rea
 
   return (
     <>
+      {user && <PostHogIdentify userId={user.id} email={user.email ?? null} />}
       {showNav && <ConsumerNav isAdmin={isAdmin} />}
       {children}
       {showNav && <InstallPrompt />}

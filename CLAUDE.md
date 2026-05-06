@@ -86,6 +86,10 @@ Live at [getbreakiq.com](https://getbreakiq.com). Private beta — consumer rout
 
 **PWA (consumer)** ✅ (2026-05-05) Consumer surface installable on iOS / Android / desktop. `app/manifest.ts` (display: standalone, theme `#0a0e1a`, icons in `public/icons/` generated from `public/brand/icon-gradient.svg` via `scripts/generate-pwa-icons.mjs`). Service worker via `@serwist/next` — `app/sw.ts` compiled to `public/sw.js`, disabled in dev. Runtime caching bypasses `/admin/*`, `/api/*`, `/auth/*` (NetworkOnly so live pricing + auth never serve stale); NetworkFirst for consumer HTML/RSC with `/offline` fallback; standard cache rules for fonts/images/`_next/static`. `app/(consumer)/SignOutButton.tsx` posts `BREAKIQ_LOGOUT` to the SW before logout — deletes every Cache Storage bucket so shared devices don't leak the previous user's RSC payloads. Install prompt chip in `app/(consumer)/InstallPrompt.tsx` — `beforeinstallprompt` capture for Android/Chrome, manual hint for iOS Safari. Admin stays a desktop-only web app, never cached. Mobile-layout audit deferred. See `docs/pwa.md`.
 
+**Pricing feedback (consumer)** ✅ (2026-05-06) Inline 👍 / 👎 on player rows, team rows, break-analysis result, and slab-analysis result. 👍 fires `pricing_feedback_submitted` silently. 👎 opens an inline popover (category select: pricing too high / too low / wrong player / missing data / risk flag wrong / other + optional notes) — submit writes to `pricing_feedback` table and fires the same PostHog event. Component is `<PricingFeedback surface entityType entityId productId />` in `components/breakiq/`. API at `POST /api/feedback/pricing`. Migration: `20260506160000_pricing_feedback.sql`. Admin triage queue intentionally deferred — see BACKLOG.
+
+**PostHog hardening** ✅ (2026-05-06) Centralized event taxonomy in `lib/posthog-events.ts` (PH_EVENTS + PH_PERSON_PROPS); `captureServer()` + `identifyServer()` helpers in `lib/posthog-server.ts` with awaited flushes (Vercel was dropping events on cold-exit); `<PostHogIdentify />` in consumer layout ties browser SDK identity to the user (was anonymous for the whole session); `posthog.reset()` on sign out; subscription person-property sync from Stripe webhook. Removed duplicate `checkout_initiated` event.
+
 **Pre-release page polish** ✅ (2026-04-30) `components/breakiq/PreReleaseLayout.tsx` rewritten for hype-rich consumer surface. Countdown hero (D · HH · MM, ticks to HH:MM:SS on launch day, "Live now" pulse if past `release_date` and admin hasn't flipped to live), sub-hero ribbon (launch date + case costs + asking-price chip), product-scope hype banner above chase cards, Watching widget (top 3 by raw_avg_90d), sort/filter/group-by-team controls on the roster, PSA 9 column split out from PSA 10 (`pre_release_player_snapshots.psa9_avg_90d` / `psa9_sales_90d` added via `20260430210000_pre_release_psa9.sql`), risk-flag pills enlarged with pulse on injury/suspension, hype chips on player rows. Display-only — engine reads stay deferred (Phase 3c). `app/(consumer)/break/[slug]/page.tsx` adds parallel `asking_price` query gated on `lifecycle_status='pre_release'` so live/dormant pages skip the second fetch. See `docs/plans/2026-04-30-pre-release-polish.md` and `docs/product-lifecycle.md`.
 
 **Next up:** Phase 3c — variant-aware engine reads (resolve variant_name → variant_id, apply variant hype as EV multiplier, override `*_odds` from active odds_observations) + display slice (asking-price chips + hype-tag chips on `/break/[slug]`) + asking-price feedback into fair-value weighting. Phase 5 C-score (blocked on Kyle), My Breaks Phase 2 (chase/hit card tracking), Sentry error tracking, rate limiting, 2025-26 Bowman Basketball re-match (CPA cards being added by CH this week)
@@ -118,7 +122,7 @@ Production: `breakerz.vercel.app` | Staging branch: `staging` | Repo: `github.co
 | URL | `breakerz.vercel.app` | staging preview URLs |
 
 **Env vars** (set in Vercel, use `.env.local` for local dev):
-`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `CARDHEDGER_API_KEY`, `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `FROM_EMAIL`, `NEXT_PUBLIC_APP_URL`, `PSA_API_KEY`, `CRON_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_HOBBY`, `STRIPE_PRICE_PRO`, `NEXT_PUBLIC_POSTHOG_KEY`, `NEXT_PUBLIC_POSTHOG_HOST`
+`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`, `CARDHEDGER_API_KEY`, `ANTHROPIC_API_KEY`, `RESEND_API_KEY`, `FROM_EMAIL`, `NEXT_PUBLIC_APP_URL`, `PSA_API_KEY`, `CRON_SECRET`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_HOBBY`, `STRIPE_PRICE_PRO`, `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN`, `NEXT_PUBLIC_POSTHOG_HOST`
 
 Supabase Vercel integration injects both `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_URL` — `lib/supabase.ts` uses `??` fallbacks for both. Don't remove them.
 
@@ -185,6 +189,11 @@ app/(consumer)/onboarding/       — 3-step onboarding wizard (age, preferences,
 app/(consumer)/subscribe/        — plan selection page (Hobby/Pro + free trial)
 app/api/profile/                 — GET + PUT consumer profile (RLS-scoped)
 scripts/copy-prod-to-staging.mjs — copy product data from prod to staging Supabase
+lib/posthog-events.ts            — PH_EVENTS + PH_PERSON_PROPS constants (single source of truth for event names)
+lib/posthog-server.ts            — server SDK singleton + captureServer() / identifyServer() with awaited flush
+app/(consumer)/PostHogIdentify.tsx — ties browser posthog-js identity to the auth user
+components/breakiq/PricingFeedback.tsx — inline 👍/👎 + popover; reusable across player/team/analysis surfaces
+app/api/feedback/pricing/route.ts — POST endpoint that writes pricing_feedback rows + fires pricing_feedback_submitted event
 ```
 
 ---
@@ -204,6 +213,7 @@ player_product_variants.match_tier — which tier matched (exact-variant | synon
 profiles              — mirrors auth.users + onboarding fields + subscription (stripe_customer_id, subscription_plan, analyses_used)
 user_roles            — (user_id, role): admin | contributor
 waitlist              — status: pending → approved → converted | rejected
+pricing_feedback      — consumer 👍/👎 + category + notes per (surface, entity_type, entity_id); RLS owner-only select; admin triage via service role
 ```
 
 ---
