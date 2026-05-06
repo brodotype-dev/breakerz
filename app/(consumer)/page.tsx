@@ -43,6 +43,8 @@ export default async function HomePage() {
           fetchPriority="low"
           className="absolute inset-0 w-full h-full object-cover opacity-20"
         />
+        {/* Dark overlay — pushes the photo back so foreground content pops */}
+        <div className="absolute inset-0 bg-black/20" />
         {/* Background dot pattern */}
         <div
           className="absolute inset-0 opacity-5"

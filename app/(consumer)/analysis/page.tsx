@@ -234,7 +234,7 @@ export default function AnalysisPage() {
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <h1 className="text-4xl font-bold" style={{ background: 'linear-gradient(135deg, var(--text-primary) 0%, var(--accent-blue) 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                  BreakIQ Sayz
+                  BreakIQ Bets
                 </h1>
                 <Sparkles className="w-6 h-6 animate-pulse" style={{ color: 'var(--badge-icon)' }} />
               </div>

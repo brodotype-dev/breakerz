@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Logo } from '@/components/Logo';
 import { TERMS_PATH, PRIVACY_PATH } from '@/lib/legal';
+import BackButton from './BackButton';
 
 /**
  * Public layout for /privacy and /terms. Routes are publicly accessible —
@@ -11,14 +12,22 @@ export default function LegalLayout({ children }: { children: React.ReactNode })
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--terminal-bg)' }}>
       <header
-        className="border-b"
-        style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
+        className="border-b sticky top-0 z-20"
+        style={{
+          borderColor: 'var(--terminal-border)',
+          backgroundColor: 'rgba(19, 24, 32, 0.97)',
+          backdropFilter: 'blur(8px)',
+          paddingTop: 'env(safe-area-inset-top)',
+        }}
       >
-        <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
-          <Link href="/" className="flex items-center">
-            <Logo variant="lockup" height={28} width={140} className="h-7 w-auto" />
-          </Link>
-          <nav className="flex items-center gap-5 text-xs">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <BackButton />
+            <Link href="/" className="flex items-center shrink-0" aria-label="BreakIQ home">
+              <Logo variant="lockup" height={28} className="h-7 w-auto" />
+            </Link>
+          </div>
+          <nav className="flex items-center gap-4 sm:gap-5 text-xs shrink-0">
             <Link
               href={PRIVACY_PATH}
               className="hover:underline"
@@ -36,7 +45,7 @@ export default function LegalLayout({ children }: { children: React.ReactNode })
           </nav>
         </div>
       </header>
-      <main className="max-w-3xl mx-auto px-6 py-10">
+      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-10">
         <article className="legal-prose">{children}</article>
       </main>
       <style>{`
@@ -46,18 +55,21 @@ export default function LegalLayout({ children }: { children: React.ReactNode })
           line-height: 1.65;
         }
         .legal-prose h1 {
-          font-size: 28px;
+          font-size: clamp(22px, 6vw, 28px);
           font-weight: 800;
           color: var(--text-primary);
           margin-top: 0;
           margin-bottom: 8px;
+          line-height: 1.2;
+          word-wrap: break-word;
         }
         .legal-prose h2 {
-          font-size: 20px;
+          font-size: clamp(17px, 4.5vw, 20px);
           font-weight: 700;
           color: var(--text-primary);
-          margin-top: 36px;
+          margin-top: 32px;
           margin-bottom: 12px;
+          line-height: 1.3;
         }
         .legal-prose h3 {
           font-size: 16px;

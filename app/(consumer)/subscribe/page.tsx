@@ -98,7 +98,7 @@ export default function SubscribePage() {
 
             <ul className="space-y-2.5 mb-6 flex-1">
               {[
-                '10 BreakIQ Sayz analyses/mo',
+                '10 BreakIQ Bets analyses/mo',
                 '10 Slab Analysis lookups/mo',
                 'Unlimited My Breaks logging',
                 'All products & slot pricing',
@@ -147,7 +147,7 @@ export default function SubscribePage() {
 
             <ul className="space-y-2.5 mb-6 flex-1">
               {[
-                'Unlimited BreakIQ Sayz analyses',
+                'Unlimited BreakIQ Bets analyses',
                 'Unlimited Slab Analysis lookups',
                 'Unlimited My Breaks logging',
                 'All products & slot pricing',

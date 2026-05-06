@@ -113,7 +113,7 @@ export default function WaitlistPage() {
                 {
                   icon: Zap,
                   gradient: 'var(--gradient-blue)',
-                  title: 'BreakIQ Sayz',
+                  title: 'BreakIQ Bets',
                   body: 'Enter any break price and get instant BUY / WATCH / PASS signals with analyst-grade narratives.',
                 },
                 {
