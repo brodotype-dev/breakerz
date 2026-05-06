@@ -562,13 +562,14 @@ export default function BreakPage() {
 
         {/* Tab content */}
         <div className="mt-4">
-          {activeTab === 'teams' && <TeamSlotsTable teams={teamSlots} viewFormat={viewFormat} riskFlagMap={riskFlagMap} />}
+          {activeTab === 'teams' && <TeamSlotsTable teams={teamSlots} viewFormat={viewFormat} riskFlagMap={riskFlagMap} productId={product?.id ?? null} />}
           {activeTab === 'players' && (
             <PlayerTable
               players={players}
               viewFormat={viewFormat}
               riskFlagMap={riskFlagMap}
               onPlayerClick={id => setActivePlayerProductId(id)}
+              productId={product?.id ?? null}
             />
           )}
         </div>

@@ -1,6 +1,7 @@
 'use client';
 
 import { LogOut } from 'lucide-react';
+import posthog from 'posthog-js';
 import { logout } from './actions';
 
 // Wraps the logout server action so we can wipe service-worker caches before
@@ -28,6 +29,9 @@ export default function SignOutButton() {
         onClick={() => {
           // Fire-and-forget; the server action redirect will follow.
           void clearServiceWorkerCaches();
+          // Reset PostHog identity so the next user on a shared device gets a
+          // fresh anonymous distinct_id instead of inheriting this session's.
+          try { posthog.reset(); } catch { /* swallow */ }
         }}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors hover:bg-[var(--terminal-surface)]"
         style={{ color: 'var(--text-secondary)' }}

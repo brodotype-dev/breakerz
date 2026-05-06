@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Sparkles, ShieldCheck, XCircle } from 'lucide-react';
 import { Logo } from '@/components/Logo';
 import posthog from 'posthog-js';
+import { PH_EVENTS } from '@/lib/posthog-events';
 
 type Step = 1 | 2 | 3;
 
@@ -110,7 +111,7 @@ export default function OnboardingPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Failed to save');
-      posthog.capture('onboarding_completed', {
+      posthog.capture(PH_EVENTS.onboarding_completed, {
         experience_level: experience,
         favorite_sports: sports,
         primary_platform: platform,

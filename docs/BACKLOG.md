@@ -2,7 +2,7 @@
 
 Consolidated list of known work, organized by priority. Items pulled from the Social Currency PRD, CLAUDE.md known gaps, and open questions surfaced during development.
 
-**Last updated:** 2026-05-02
+**Last updated:** 2026-05-05
 
 ---
 
@@ -125,6 +125,68 @@ Graded pricing still matters for specific decisions (is this slot worth it if I 
 ---
 
 ## Priority 2 — High value, external dependency or more effort
+
+### Pricing Feedback — Admin Triage Queue
+**Effort:** ~1 day
+
+**Why:** The `<PricingFeedback />` component (shipped 2026-05-06) captures row-level thumbs-up / thumbs-down on player rows, team rows, break analysis bundles, and slab analysis results. Each thumbs-down records a category (`pricing_too_high` / `pricing_too_low` / `wrong_player` / `missing_data` / `risk_flag_wrong` / `other`) and optional notes into `pricing_feedback`. Today there's nowhere for an admin to actually see this stream — rows pile up unreviewed.
+
+**Build a `/admin/feedback` panel:**
+- Group unreviewed rows by `product_id` then `entity_id`, sorted by count desc (squeaky-wheel surfacing)
+- Per-entity drill-down: list of feedback events with rating, category, notes, user_id, created_at, page_url
+- Quick actions per row: mark reviewed (writes `reviewed_at` + `reviewed_by`), add `resolution_note`, jump to the relevant `/admin/products/[id]` for fix
+- Filter chips: all / unreviewed only / by category / by surface
+- Optional cross-link from the Pricing Audit Panel: "3 thumbs-down on Wemby in last 7d"
+
+**Files:**
+- `app/admin/feedback/page.tsx` (new)
+- `app/admin/feedback/actions.ts` (new) — `markReviewed`, `addResolutionNote` server actions
+- Extend `app/admin/products/[id]/PricingAuditPanel.tsx` to surface unreviewed feedback count per player
+
+**Cross-references:**
+- Composes with the Discord `/insight` review flow — same admin pattern (capture qualitative signal, attribute to source, manually review). Eventually both could live behind one `/admin/intel` tab.
+- Feeds the BreakIQ Bets debrief — clusters of thumbs-down on a player are signal for a manual `breakerz_score` adjustment.
+
+---
+
+### Rethink consumer product card layout (`/break` index)
+**Effort:** ~1–2 days
+
+**Why:** The current grid is admin-shaped (Case Cost forward). A consumer landing on `/break` doesn't care that the case wholesales for $4,632 — they care whether this product is worth buying *into*: who's trending, how active is the community on it, and is anyone breaking it right now. Cards are also visually heavy — they take a full row's worth of vertical space to communicate two numbers (sport/year + case cost) that don't drive a buy decision.
+
+**Layout rework — replace Case Cost as the headline metric with consumer-shaped signal:**
+- **Top Mover chip** — "↑ Wemby +14%" (cross-references top-movers data; reuses the same pipeline planned for Phase 5 C-score and the Top Movers widget below)
+- **Activity counter** — "23 breaks logged this week" aggregated from `user_breaks.product_id` over a 7-day window; doubles as a social-proof signal
+- **Hype tag pill** — surface when the product has a positive product-scope hype observation in the last N days (already captured via Discord `/insight` parser as `market_observations`)
+- **Compact density** — shrink card height ~40% so 6+ products fit above the fold; keep sport/year/manufacturer chips, drop the big case-cost block to a smaller footer line ("$4,632 hobby · $11,500 BD")
+
+**Files (rough):**
+- `app/(consumer)/break/page.tsx` — grid query joins `user_breaks` count + top-mover lookup + active hype tags
+- `components/breakiq/ProductCard.tsx` (likely new — extract from inline) — compact card layout
+- New API helper for "products with consumer signal" if the join gets heavy
+
+**Verification:** load `/break` as a consumer, confirm top-mover chip resolves to a real player from that product, confirm break count matches a SQL spot-check, confirm pre-release / dormant cards still render their lifecycle states correctly.
+
+---
+
+### Breaker Channel Placement on product cards (paid surface)
+**Effort:** Phase 1 ~1 day (data model + admin UI); Phase 2 ~1–2 days (consumer surface); Phase 3 monetization is product strategy, not engineering effort
+
+**Why:** If consumers are on the product card to decide whether to buy in, the natural next click is "where can I actually buy a slot in this break right now." Surfacing breaker channel logos with deep links into live breaks turns the product index into a marketplace funnel — and creates an obvious paid-placement surface (sponsored slot per product, similar to the affiliate model in **Vision 3**).
+
+**Phasing:**
+1. **Schema + admin** — `breaker_channels` table (name, logo URL, platform, channel URL, contact); `product_channel_placements` join table with `priority`, `is_paid`, `active_from/active_to`. Admin CRUD in `/admin/channels`.
+2. **Consumer surface** — small logo strip on the product card ("Live now: [Logo] [Logo] [Logo]"), click opens the channel URL with affiliate tag where available.
+3. **Monetization** — Stripe-billed monthly placement subscription per channel. Build after public beta proves traffic.
+
+**Blocker:** Low value pre-public-launch — paid placement requires meaningful consumer traffic on `/break` before it's a sellable surface to channels. Capture intent now, revisit after public beta retention/traffic metrics are real.
+
+**Cross-references:**
+- Composes with **Vision 3 — Affiliate Commerce Layer** (channel links can carry affiliate tags)
+- Composes with **Vision 5 — My Chase** Phase 3 (live break links) — same data model could power both surfaces
+- Top Mover chip on the redesigned card reuses the same pipeline as the Phase 5 C-score Top Movers widget
+
+---
 
 ### Breaker Identity + Crowdsourced Case Pricing
 **Effort:** ~3–4 days (phased — see PRD)

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Zap, Check, Crown } from 'lucide-react';
 import posthog from 'posthog-js';
+import { PH_EVENTS } from '@/lib/posthog-events';
 import { Logo } from '@/components/Logo';
 
 export default function SubscribePage() {
@@ -27,7 +28,7 @@ export default function SubscribePage() {
   async function handleSubscribe(selectedPlan: 'hobby' | 'pro') {
     setLoading(selectedPlan);
     setError(null);
-    posthog.capture('subscription_checkout_started', { plan: selectedPlan });
+    posthog.capture(PH_EVENTS.subscription_checkout_started, { plan: selectedPlan });
     try {
       const res = await fetch('/api/checkout', {
         method: 'POST',

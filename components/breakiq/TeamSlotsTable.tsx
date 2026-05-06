@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react';
 import { formatCurrency, computeSignal, formatPct, computeEffectiveScore } from '@/lib/engine';
 import SignalBadge from '@/components/breakiq/SignalBadge';
 import { IconPlayerBadge, BullishBadge, BearishBadge, HighVolatilityBadge, RiskFlagBadge } from '@/components/breakiq/SocialBadges';
+import PricingFeedback from '@/components/breakiq/PricingFeedback';
 import type { BreakFormat, TeamSlot } from '@/lib/types';
 
 type RiskFlagEntry = { flagType: string; note: string };
@@ -13,6 +14,7 @@ interface Props {
   teams: TeamSlot[];
   viewFormat: BreakFormat;
   riskFlagMap?: Map<string, RiskFlagEntry[]>;
+  productId?: string | null;
 }
 
 // `minmax(140px, 1fr)` keeps the Team column from collapsing to 0 when the
@@ -27,7 +29,7 @@ function pickSlot(t: TeamSlot, fmt: BreakFormat) {
     :                      { slot: t.jumboSlotCost, perCase: t.jumboPerCase };
 }
 
-export default function TeamSlotsTable({ teams, viewFormat, riskFlagMap = new Map() }: Props) {
+export default function TeamSlotsTable({ teams, viewFormat, riskFlagMap = new Map(), productId = null }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [askPrices, setAskPrices] = useState<Record<string, string>>({});
 
@@ -111,6 +113,14 @@ export default function TeamSlotsTable({ teams, viewFormat, riskFlagMap = new Ma
                       {hasHV      && <HighVolatilityBadge />}
                       {teamFlags.length > 0 && <RiskFlagBadge type={teamFlags[0].flagType} note={teamFlags.map(f => f.note).join(' · ')} />}
                     </div>
+                    <span className="ml-auto pl-1 shrink-0">
+                      <PricingFeedback
+                        surface="team_row"
+                        entityType="team"
+                        entityId={row.team}
+                        productId={productId}
+                      />
+                    </span>
                   </div>
 
                   {/* Price input + signal */}

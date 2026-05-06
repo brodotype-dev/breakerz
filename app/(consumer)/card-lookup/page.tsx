@@ -4,6 +4,8 @@ import { useRef, useState } from 'react';
 import { ScanLine, Search, Upload, RotateCcw, ShieldCheck, Hash } from 'lucide-react';
 import { formatCurrency } from '@/lib/engine';
 import posthog from 'posthog-js';
+import { PH_EVENTS } from '@/lib/posthog-events';
+import PricingFeedback from '@/components/breakiq/PricingFeedback';
 import { Logo } from '@/components/Logo';
 
 type InputMethod = 'image' | 'cert';
@@ -149,7 +151,7 @@ export default function CardLookupPage() {
         });
         const data = await res.json();
         if (data.error) throw new Error(data.error);
-        posthog.capture('slab_analysis_lookup_completed', {
+        posthog.capture(PH_EVENTS.slab_analysis_lookup_completed, {
           method: 'image_name_search',
           has_price: !!data.matchedPrice,
         });
@@ -184,7 +186,7 @@ export default function CardLookupPage() {
     });
     const certData = await res.json();
     if (certData.error) throw new Error(certData.error);
-    posthog.capture('slab_analysis_lookup_completed', {
+    posthog.capture(PH_EVENTS.slab_analysis_lookup_completed, {
       method: 'cert',
       grader,
       psa_verified: certData.psaVerified ?? false,
@@ -551,9 +553,20 @@ function ResultsPanel({
                 />
               )}
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-0.5">
-                  {result.source === 'cert' && result.psaVerified ? 'PSA Cert Match' : result.source === 'cert' ? 'Cert Match' : 'CardHedger Match'}
-                </p>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-0.5">
+                    {result.source === 'cert' && result.psaVerified ? 'PSA Cert Match' : result.source === 'cert' ? 'Cert Match' : 'CardHedger Match'}
+                  </p>
+                  <PricingFeedback
+                    surface="slab_analysis"
+                    entityType={result.source === 'cert' ? 'cert' : 'variant'}
+                    entityId={
+                      result.source === 'cert'
+                        ? result.certInfo.cert
+                        : (result.card.card_id ?? result.card.player_name)
+                    }
+                  />
+                </div>
                 <p className="font-bold text-foreground">
                   {result.source === 'cert'
                     ? (result.psaCert?.Subject ?? result.card?.player ?? result.certInfo.description)

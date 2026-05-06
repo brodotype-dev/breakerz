@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createCheckoutSession, createPortalSession } from '@/lib/stripe';
-import { getPostHogClient } from '@/lib/posthog-server';
 import type { SubscriptionPlan } from '@/lib/stripe';
 
 const VALID_PLANS: SubscriptionPlan[] = ['hobby', 'pro'];
@@ -20,12 +19,8 @@ export async function POST(req: NextRequest) {
 
   try {
     const url = await createCheckoutSession(user.id, user.email!, plan);
-    const posthog = getPostHogClient();
-    posthog.capture({
-      distinctId: user.id,
-      event: 'checkout_initiated',
-      properties: { plan, email: user.email },
-    });
+    // PostHog event captured client-side as `subscription_checkout_started`
+    // before this call. No server capture needed — would just dupe the funnel.
     return NextResponse.json({ url });
   } catch (err) {
     console.error('[checkout] Error:', err);

@@ -5,6 +5,36 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-06 — PostHog hardening + inline pricing feedback
+
+Two-part pass on the analytics layer: clean up the existing PostHog wiring and ship a row-level feedback capture surface that complements the Discord `/insight` flow.
+
+**PostHog hardening:**
+
+1. **Centralized event taxonomy.** New [lib/posthog-events.ts](lib/posthog-events.ts) exports `PH_EVENTS` (event names) and `PH_PERSON_PROPS` (person-property keys). Every call site — server and client — now imports from this constant map instead of bare strings. Renaming an event is a one-line change.
+2. **Awaited server captures.** New `captureServer({ distinctId, event, properties, setProperties })` helper in [lib/posthog-server.ts](lib/posthog-server.ts) wraps capture + an awaited `flush()`. PostHog Node's `flushAt: 1` queues async, so on Vercel Functions the process can exit before the network call completes — events were silently dropping. All server captures (auth callback, my-breaks, Stripe webhook, new feedback API) routed through the helper.
+3. **Browser identity tied to the user.** New [`<PostHogIdentify />`](app/(consumer)/PostHogIdentify.tsx) in the consumer layout calls `posthog.identify(userId, { email })` once on mount. Server identifies in `auth/callback`, but `posthog-js` in the browser kept an anonymous distinct_id for the rest of the session — pageviews, autocaptures, web-vitals, rageclicks all landed on a stranger. Now they tie to the real user.
+4. **`posthog.reset()` on sign out.** `SignOutButton` resets the browser SDK identity before the redirect runs. Without this, the next user on a shared device inherits the previous distinct_id (same problem the SW cache wipe already solves for HTML).
+5. **Subscription person-property sync.** Stripe webhook (`checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`) now writes `subscription_plan` + `subscription_status` to the PostHog person profile via `$set`. Filtering "Pro users who logged a break" is now a one-cohort query.
+6. **Removed duplicate `checkout_initiated` event.** Was firing alongside the client-side `subscription_checkout_started` for the same action. Kept the client-side one (already has plan context).
+7. **`identifyServer()` helper** for awaited server-side identify with person-property updates.
+8. **CLAUDE.md env-var name fixed** — was listing `NEXT_PUBLIC_POSTHOG_KEY`, code reads `NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN`. Code wins; doc updated.
+
+**Inline pricing feedback (the thumbs):**
+
+9. **`pricing_feedback` table.** [supabase/migrations/20260506160000_pricing_feedback.sql](supabase/migrations/20260506160000_pricing_feedback.sql) — `rating` (`up`/`down`), `surface`, `entity_type`, `entity_id`, `product_id`, `category`, `notes`, `page_url`, plus admin-triage fields (`reviewed_at`, `reviewed_by`, `resolution_note`). RLS owner-only `SELECT`; writes go through service role.
+10. **`POST /api/feedback/pricing`.** [app/api/feedback/pricing/route.ts](app/api/feedback/pricing/route.ts) — validates rating + surface + entity_type + category against allowed sets, inserts the row, fires `pricing_feedback_submitted` PostHog event with the same payload.
+11. **`<PricingFeedback />` component.** [components/breakiq/PricingFeedback.tsx](components/breakiq/PricingFeedback.tsx) — small thumbs-up / thumbs-down pair. 👍 captures silently. 👎 opens an inline popover with category select (Pricing too high / too low / Wrong player / Missing data / Risk flag wrong / Other) + optional notes textarea. Submits to the feedback API + the PostHog event lands. Click-outside dismisses; thanks-state replaces the buttons after submit. Designed lighter than the PostHog Survey UI (no full-screen modal — just an inline popover).
+12. **Wired into four surfaces:** player rows in `PlayerTable`, team rows in `TeamSlotsTable`, break-analysis result panel on `/analysis`, slab-analysis result on `/card-lookup`. Each passes `surface` + `entity_type` + `entity_id` + `product_id` so triage can route to the right product.
+
+**Admin triage queue is intentionally not part of this drop** — see BACKLOG. The capture surface is shippable on its own; admin queue is a follow-on once feedback volume justifies the UI.
+
+**Migration history reconciliation.** `supabase db push` initially failed because the remote tracked `20260506025100` (user_chase_list — applied via Supabase Studio yesterday, not the CLI) while the local tree carried the same DDL under `20260506030000`. Aligned by renaming `supabase/migrations/20260506030000_user_chase_list.sql` → `20260506025100_user_chase_list.sql` so local matches the canonical remote timestamp. SQL content unchanged. After alignment, only the new pricing-feedback migration was actually applied. Heads-up for anyone rebasing onto this commit: pull will move that file under its earlier timestamp, no action needed locally.
+
+`pricing_feedback` table verified live in production: 14 columns, three secondary indexes (partial on unreviewed, composite on product+created_at, composite on entity_type+entity_id), `pricing_feedback_owner_select` RLS policy active.
+
+---
+
 ## 2026-05-05 — My Chase / Players Hub Phase 1
 
 Personal player watchlist. Save players from anywhere they appear in the app, see them in one place at `/chase` with current market value + buzz indicators. Naming collision with the existing admin "Chase Cards" feature is intentional — both are watchlists; data models are separate.
