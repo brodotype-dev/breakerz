@@ -66,6 +66,7 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/break') ||
     pathname.startsWith('/analysis') ||
     pathname.startsWith('/card-lookup') ||
+    pathname.startsWith('/chase') ||
     pathname.startsWith('/my-breaks') ||
     pathname.startsWith('/onboarding') ||
     pathname.startsWith('/subscribe');
@@ -88,6 +89,8 @@ export const config = {
     '/analysis/:path*',
     '/card-lookup/:path*',
     '/card-lookup',
+    '/chase/:path*',
+    '/chase',
     '/my-breaks/:path*',
     '/my-breaks',
     '/onboarding',

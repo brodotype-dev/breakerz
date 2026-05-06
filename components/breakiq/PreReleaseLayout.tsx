@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import ChaseCardsPanel from './ChaseCardsPanel';
+import ChaseHeartButton, { ChaseSetProvider } from '@/components/breakiq/ChaseHeartButton';
 import type {
   AskingPriceObsRow,
   ChaseCard,
@@ -265,7 +266,13 @@ export default function PreReleaseLayout({
     return m;
   }, [visiblePlayers, sort]);
 
+  const visiblePlayerIds = useMemo(
+    () => visiblePlayers.map(p => p.player?.id).filter(Boolean) as string[],
+    [visiblePlayers],
+  );
+
   return (
+    <ChaseSetProvider playerIds={visiblePlayerIds}>
     <div className="space-y-4">
       {/* Compact countdown banner — single horizontal row that combines the
           time-until-launch numbers with launch-window context (date, case
@@ -553,6 +560,7 @@ export default function PreReleaseLayout({
         </div>
       )}
     </div>
+    </ChaseSetProvider>
   );
 }
 
@@ -628,6 +636,7 @@ function PlayerRow({
     >
       {/* Row 1 — player name + chips */}
       <div className="flex items-center gap-2 min-w-0 flex-wrap">
+        {p.player?.id && <ChaseHeartButton playerId={p.player.id} />}
         {rank && (
           <span
             className="text-[10px] font-mono font-bold w-5 h-5 rounded inline-flex items-center justify-center shrink-0"

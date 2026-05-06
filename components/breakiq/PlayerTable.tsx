@@ -2,6 +2,7 @@
 
 import { formatCurrency, computeEffectiveScore } from '@/lib/engine';
 import { IconPlayerBadge, BullishBadge, BearishBadge, HighVolatilityBadge, RiskFlagBadge } from '@/components/breakiq/SocialBadges';
+import ChaseHeartButton, { ChaseSetProvider } from '@/components/breakiq/ChaseHeartButton';
 import type { BreakFormat, PlayerWithPricing } from '@/lib/types';
 
 type RiskFlagEntry = { flagType: string; note: string };
@@ -55,6 +56,7 @@ export default function PlayerTable({ players, fetching = false, viewFormat, ris
   }
 
   return (
+    <ChaseSetProvider playerIds={players.map(p => p.player.id).filter(Boolean) as string[]}>
     <div className="rounded-lg overflow-hidden border" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -96,6 +98,7 @@ export default function PlayerTable({ players, fetching = false, viewFormat, ris
                       since the dedicated Team column is hidden below md. */}
                   <td className="px-2 sm:px-4 py-2.5">
                     <div className="flex items-center gap-1.5 flex-wrap">
+                      {row.player?.id && <ChaseHeartButton playerId={row.player.id} />}
                       {onPlayerClick ? (
                         <button
                           onClick={() => onPlayerClick(row.id)}
@@ -188,5 +191,6 @@ export default function PlayerTable({ players, fetching = false, viewFormat, ris
         </table>
       </div>
     </div>
+    </ChaseSetProvider>
   );
 }

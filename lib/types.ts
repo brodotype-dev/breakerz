@@ -291,3 +291,25 @@ export interface PlayerCompsResponse {
   variants: VariantWithPrices[];
   recentComps: Array<{ sale_price: number; sale_date: string; grade: string; platform: string }>;
 }
+
+// My Chase / Players Hub — see docs/my-chase.md
+export interface ChaseListEntry {
+  player_id: string;
+  player_name: string;
+  team: string | null;
+  is_rookie: boolean;
+  is_icon: boolean;
+  buzz_score: number;
+  breakerz_score: number;
+  added_at: string;
+  // Most recent EV signal across all of this player's player_products.
+  // null when no pricing has landed yet for any of them.
+  market: {
+    ev_mid: number;
+    product_id: string;
+    product_slug: string;
+    product_name: string;
+    fetched_at: string;
+  } | null;
+  risk_flags: Array<{ flag_type: string; note: string }>;
+}

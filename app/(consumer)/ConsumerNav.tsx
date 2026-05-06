@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { ChevronDown, Settings, Monitor, User, ClipboardList, Menu, X, LogOut } from 'lucide-react';
+import { ChevronDown, Settings, Monitor, User, ClipboardList, Menu, X, LogOut, Heart } from 'lucide-react';
 import { Logo } from '@/components/Logo';
 import SignOutButton from './SignOutButton';
 import { logout } from './actions';
@@ -53,6 +53,14 @@ export default function ConsumerNav({ isAdmin }: ConsumerNavProps) {
 
         {/* Desktop nav (≥ sm) */}
         <div className="hidden sm:flex items-center gap-2">
+          <Link
+            href="/chase"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors hover:bg-[var(--terminal-surface)]"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            <Heart className="w-3 h-3" />
+            Chase
+          </Link>
           <Link
             href="/my-breaks"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors hover:bg-[var(--terminal-surface)]"
@@ -164,6 +172,15 @@ export default function ConsumerNav({ isAdmin }: ConsumerNavProps) {
             </div>
 
             <nav className="flex flex-col p-2 gap-1 flex-1">
+              <Link
+                href="/chase"
+                onClick={() => setMobileOpen(false)}
+                className="flex items-center gap-3 px-3 py-3 rounded-md text-sm font-medium transition-colors hover:bg-[var(--terminal-surface)]"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                <Heart className="w-4 h-4" />
+                Chase
+              </Link>
               <Link
                 href="/my-breaks"
                 onClick={() => setMobileOpen(false)}

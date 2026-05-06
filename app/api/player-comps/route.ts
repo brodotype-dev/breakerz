@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
   // Fetch player info + variants
   const { data: playerProduct } = await supabaseAdmin
     .from('player_products')
-    .select('id, player:players(name, team, is_rookie, is_icon), player_product_variants(id, variant_name, cardhedger_card_id, hobby_odds, breaker_odds, match_tier)')
+    .select('id, player:players(id, name, team, is_rookie, is_icon), player_product_variants(id, variant_name, cardhedger_card_id, hobby_odds, breaker_odds, match_tier)')
     .eq('id', playerProductId)
     .single();
 
@@ -104,6 +104,7 @@ export async function GET(req: NextRequest) {
   const player = playerProduct.player as any;
 
   return NextResponse.json({
+    player_id: player?.id ?? null,
     player_name: player?.name ?? '',
     team: player?.team ?? '',
     is_rookie: player?.is_rookie ?? false,
