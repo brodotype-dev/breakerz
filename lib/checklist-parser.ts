@@ -26,7 +26,7 @@ export type ParsedSection = {
 
 export type ParsedChecklist = {
   productName: string;
-  detectedFormat: 'topps-pdf-numbered' | 'topps-pdf-code' | 'panini-csv' | 'generic';
+  detectedFormat: 'topps-pdf-numbered' | 'topps-pdf-code' | 'panini-csv' | 'panini-xlsx' | 'generic';
   sections: ParsedSection[];
 };
 
@@ -565,6 +565,17 @@ export function parseChecklistXlsx(buffer: Buffer): ParsedChecklist {
   const XLSX = require('xlsx');
   const wb = XLSX.read(buffer, { type: 'buffer' });
 
+  // Panini detection: Panini Prizm / Donruss / Optic / etc. ship a fully
+  // denormalized "Master Checklist" sheet that is the canonical source for
+  // every (parallel × athlete) row. The metadata sheets (Base / Inserts /
+  // Autographs / Memorabilia) only describe SOME parallels — for 2025 Prizm
+  // Football the metadata sheets cover ~24 of the actual 316 parallels. So
+  // when the canonical sheet is present, we route to it and skip the
+  // Bowman/Topps logic entirely.
+  if (isPaniniMasterChecklistWorkbook(wb, XLSX)) {
+    return parsePaniniXlsx(wb, XLSX);
+  }
+
   // Each base-section header starts its own ParsedSection. Cards inside carry
   // their own `parallels` list; the importer turns those into variant rows.
   const sectionMap = new Map<string, ParsedSection>();
@@ -690,4 +701,125 @@ export function parseChecklistXlsx(buffer: Buffer): ParsedChecklist {
 
   const sections = sectionOrder.map(n => sectionMap.get(n)!);
   return { productName: '', detectedFormat: 'generic', sections };
+}
+
+// ---------------------------------------------------------------------------
+// parsePaniniXlsx  (Panini Prizm / Donruss / Optic / etc. — Master Checklist)
+// ---------------------------------------------------------------------------
+// Panini ships a single fully-denormalized "Master Checklist" sheet that is
+// the canonical record of every (parallel × athlete) row in the product.
+// Header is `CARD SET / CARD NUMBER / ATHLETE / TEAM / SEQUENCE`.
+//
+//   ('Base Prizm Pink Wave',     1, 'Saquon Barkley,', 'Philadelphia Eagles', 99)
+//   ('Base Prizm Black Finite',  1, 'Saquon Barkley,', 'Philadelphia Eagles',  1)
+//   ('All Purpose Prizms No Huddle', 1, 'Saquon Barkley,', 'Philadelphia Eagles', None)
+//
+// Each unique CARD SET becomes a ParsedSection. Each row in that CARD SET is
+// one ParsedCard. We do NOT attach a `parallels` list — the parallel IS the
+// section name, so the importer's variantNames-fallback creates exactly one
+// variant per card with variant_name = sectionName. That mirrors what
+// CardHedger calls these cards in its catalog, so the matcher's exact-variant
+// tier should land most of them on the first try.
+//
+// Known limits we accept for now (see docs/manufacturer-rules/panini.md):
+//   - SEQUENCE column → printRun (null = unnumbered).
+//   - No rookie flag in Master Checklist; every player imports as is_rookie=false.
+//     The metadata sheets ("Base — Rookie") have rookie info but we don't
+//     consume them here. Backfill rookie status admin-side until / if we add
+//     a rookies overlay.
+//   - hobby_odds stays null on every variant (Panini doesn't publish odds);
+//     the engine already excludes nulls from the slot-pricing formula
+//     (lib/analysis.ts:137), so this is not a math bug.
+// ---------------------------------------------------------------------------
+
+const PANINI_MASTER_SHEET_NAME = 'Master Checklist';
+const PANINI_HEADER_REQUIRED = ['CARD SET', 'CARD NUMBER', 'ATHLETE'];
+
+// XLSX type omitted on purpose — the workbook object comes from a require()'d
+// module and we only touch a tiny stable surface. Locally typed `any` keeps
+// the noise out of the rest of the file.
+function isPaniniMasterChecklistWorkbook(
+  wb: { Sheets: Record<string, unknown>; SheetNames: string[] },
+  XLSX: { utils: { sheet_to_json: (ws: unknown, opts?: Record<string, unknown>) => unknown[][] } },
+): boolean {
+  const ws = wb.Sheets[PANINI_MASTER_SHEET_NAME];
+  if (!ws) return false;
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, range: 0, defval: null });
+  const header = rows[0];
+  if (!Array.isArray(header)) return false;
+  return PANINI_HEADER_REQUIRED.every((expected, i) => {
+    const actual = header[i];
+    return typeof actual === 'string' && actual.trim().toUpperCase() === expected;
+  });
+}
+
+function parsePaniniXlsx(
+  wb: { Sheets: Record<string, unknown> },
+  XLSX: { utils: { sheet_to_json: (ws: unknown, opts?: Record<string, unknown>) => unknown[][] } },
+): ParsedChecklist {
+  const ws = wb.Sheets[PANINI_MASTER_SHEET_NAME];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+
+  const sectionMap = new Map<string, ParsedSection>();
+  const sectionOrder: string[] = [];
+
+  const getSection = (name: string): ParsedSection => {
+    let s = sectionMap.get(name);
+    if (!s) {
+      s = { sectionName: name, cards: [], flagged: [] };
+      sectionMap.set(name, s);
+      sectionOrder.push(name);
+    }
+    return s;
+  };
+
+  // Skip header row (i=0). Iterate everything else.
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!Array.isArray(row)) continue;
+
+    const cardSet = row[0] != null ? String(row[0]).trim() : '';
+    const cardNumberRaw = row[1];
+    const rawAthlete = row[2] != null ? String(row[2]).trim() : '';
+    const teamRaw = row[3] != null ? String(row[3]).trim() : '';
+    const sequenceRaw = row[4];
+
+    if (!cardSet || !rawAthlete) continue;
+
+    // CARD NUMBER comes through as a number for plain integers, string for
+    // alphanumeric codes ("CB-1", "AU-PM"). Stringify either way.
+    const cardNumber =
+      cardNumberRaw == null
+        ? undefined
+        : String(cardNumberRaw).trim() || undefined;
+
+    // SEQUENCE is the print run when present. xlsx parses ints as numbers,
+    // but tolerate string-coerced ints too. null/undefined/non-numeric → no
+    // print run.
+    let printRun: number | undefined;
+    if (typeof sequenceRaw === 'number' && Number.isFinite(sequenceRaw) && sequenceRaw > 0) {
+      printRun = sequenceRaw;
+    } else if (typeof sequenceRaw === 'string' && /^\d+$/.test(sequenceRaw.trim())) {
+      printRun = parseInt(sequenceRaw.trim(), 10);
+    }
+
+    const playerName = stripTrademarkSymbols(rawAthlete.replace(/,\s*$/, ''));
+    const team = teamRaw ? teamRaw.replace(/,\s*$/, '') : undefined;
+
+    getSection(cardSet).cards.push({
+      playerName,
+      team,
+      cardNumber,
+      isRookie: false, // Master Checklist doesn't carry RC; backfill admin-side
+      isSP: false,
+      hasBackVariation: false,
+      printRun,
+      rawLine: row.map(c => (c == null ? '' : String(c))).join('\t'),
+      // No `parallels` — each section IS a parallel; the importer creates
+      // exactly one variant per card with variant_name = section name.
+    });
+  }
+
+  const sections = sectionOrder.map(n => sectionMap.get(n)!);
+  return { productName: '', detectedFormat: 'panini-xlsx', sections };
 }

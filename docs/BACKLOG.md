@@ -9,6 +9,10 @@ Consolidated list of known work, organized by priority. Items pulled from the So
 ## Priority 1 — High value, no external blockers
 
 ### Panini-aware checklist parser (Master Checklist as canonical source)
+**Status: ✅ Complete (2026-05-06)** — `parsePaniniXlsx` shipped in [lib/checklist-parser.ts](../lib/checklist-parser.ts) with auto-detection on the `Master Checklist` sheet header. 2025 Panini Prizm Football now parses to 316 sections / 34,723 cards / 163 variants for Travis Hunter (top star). Variant names match CardHedger's catalog directly. Full rules + verification doc at [docs/manufacturer-rules/panini.md](manufacturer-rules/panini.md). Sanity-check script at [scripts/verify-panini-parser.mjs](../scripts/verify-panini-parser.mjs).
+
+**Original entry below for context.**
+
 **Effort:** ~½ day
 **Why:** Surfaced 2026-05-06 trying to import 2025 Panini Prizm Football. Panini XLSX has a fundamentally different shape from the Topps/Bowman files the parser was built for:
 

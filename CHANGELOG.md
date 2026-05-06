@@ -5,6 +5,24 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-06 — Panini Master Checklist parser
+
+Resolves the P1 Panini parser backlog item filed earlier today during the 2025 Panini Prizm Football import attempt. Panini ships a fully-denormalized `Master Checklist` sheet that is the canonical record of every (parallel × athlete) row — header `CARD SET / CARD NUMBER / ATHLETE / TEAM / SEQUENCE`, 34,723 rows for 2025 Prizm Football. The Topps/Bowman parser only consumed the metadata sheets (`Base / Inserts / Autographs / Memorabilia`) and missed ~90% of parallels: 24 detected sections out of the actual 316.
+
+**Parser.** New `parsePaniniXlsx` in [lib/checklist-parser.ts](lib/checklist-parser.ts) auto-detects Panini format by checking the `Master Checklist` sheet's header row. When detected, it routes there directly and skips the Bowman/Topps logic entirely. Each unique CARD SET becomes one `ParsedSection`. Each row in that CARD SET becomes one `ParsedCard` — no `parallels` array, because the parallel IS the section. The importer's `parallels.length > 0 ? expand : [section.sectionName]` fallback then creates exactly one variant per card with `variant_name = sectionName`. Mirrors how CardHedger names these cards in its catalog, so the matcher's exact-variant tier should land most rows on the first try without falling through to Claude. SEQUENCE → `printRun`. Player names cleaned (trailing comma + trademark symbols stripped).
+
+**Format detection lives at the top of `parseChecklistXlsx`.** Single workbook read, header sniff, route to either path. No new entry point in the API layer; the existing `/api/admin/parse-checklist` route picks up Panini transparently.
+
+**Verification.** Real-fixture sanity check at [scripts/verify-panini-parser.mjs](scripts/verify-panini-parser.mjs) — parses 2025 Panini Prizm Football to 316 sections / 34,723 cards / Travis Hunter as the most-variants player at 163 distinct parallels. Test pass: every row in the Master Checklist round-trips to a typed `ParsedCard` with team, card_number, print_run intact.
+
+**Known gaps documented but deferred** (see [docs/manufacturer-rules/panini.md](docs/manufacturer-rules/panini.md)):
+- No rookie flag — Master Checklist doesn't carry RC. Every Panini player imports as `is_rookie: false` until we add a rookie-overlay parser that consults the metadata sheets' "Base — Rookie" subsets.
+- No odds — Panini doesn't publish hobby pull rates. Engine math is already null-safe (audit confirmed earlier today). Admin Chase Cards Manager is empty for Panini products until the P2 print-run fallback ships.
+
+**`paniniDescriptor` (lib/card-knowledge/panini.ts) was already in place from a prior session** — kept as-is for now. Will refine `stripPatterns` and `variantSynonyms` once we have CH match-rate data from the first real Panini matching run.
+
+---
+
 ## 2026-05-06 — Chunked checklist imports
 
 Panini Prizm Football (32,851 cards across 100+ parallel-heavy sections) hit Vercel's 4.5 MB Function ingress cap on `POST /api/admin/import-checklist`, returning a 413 before the route handler ran. The client did `await res.json()` on the plain-text response body and surfaced a cryptic `Unexpected token 'R', "Request En"... is not valid JSON`. Fix splits the import into multiple sequential POSTs, each well under the cap.
