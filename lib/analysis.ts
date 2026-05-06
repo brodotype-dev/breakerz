@@ -143,14 +143,13 @@ export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisRe
           hobbyEVPerBox = ev.evMid;
         } else {
           const cardType = pp.player?.is_rookie ? 'Auto RC' : 'Base';
-          const result = await get90DayPrices(`${pp.player?.name} ${cardType}`, 'Raw');
-          const raw = result.prices.find((p: { grade: string }) => p.grade.toLowerCase().includes('raw'));
-          if (raw && (raw as any).avg_price > 0) {
-            const evMid = Math.round((raw as any).avg_price);
+          const raw = await get90DayPrices(`${pp.player?.name} ${cardType}`, 'Raw');
+          if (raw && raw.avg_price > 0) {
+            const evMid = Math.round(raw.avg_price);
             ev = {
-              evLow: (raw as any).min_price > 0 ? Math.round((raw as any).min_price) : Math.round(evMid * 0.35),
+              evLow: raw.min_price > 0 ? Math.round(raw.min_price) : Math.round(evMid * 0.35),
               evMid,
-              evHigh: (raw as any).max_price > evMid ? Math.round((raw as any).max_price) : Math.round(evMid * 2.5),
+              evHigh: raw.max_price > evMid ? Math.round(raw.max_price) : Math.round(evMid * 2.5),
             };
           } else {
             const evMid = pp.player?.is_rookie ? 15 : 8;

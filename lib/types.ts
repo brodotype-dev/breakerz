@@ -142,6 +142,11 @@ export interface PlayerWithPricing extends PlayerProduct {
   jumboPerCase: number;
   maxPay: number;
   pricingSource: 'live' | 'cached' | 'search-fallback' | 'cross-product' | 'default' | 'none';
+  // CH batch-price-estimate confidence (0..1), sales-weighted across the
+  // priced variants for this player_product. null when the row was built from
+  // a fallback rung (search/sibling/default) — those don't have a modeled
+  // confidence to report.
+  confidence?: number | null;
   // Runtime-only score modulators applied before the engine clamps.
   // Both default to 0 when undefined; not persisted in pricing_cache.
   // See lib/score-modulation.ts.
