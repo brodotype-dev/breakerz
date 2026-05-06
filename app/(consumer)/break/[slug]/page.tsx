@@ -327,11 +327,11 @@ export default function BreakPage() {
           style={{ background: `radial-gradient(circle, ${primary} 0%, transparent 70%)` }}
         />
 
-        <div className="relative px-6 py-6">
+        <div className="relative px-4 sm:px-6 py-4 sm:py-6">
           {/* Back nav */}
           <Link href="/">
             <button
-              className="flex items-center gap-2 text-xs font-semibold mb-5 px-3 py-1.5 rounded-lg transition-opacity hover:opacity-70"
+              className="flex items-center gap-2 text-xs font-semibold mb-3 sm:mb-5 px-3 py-1.5 rounded-lg transition-opacity hover:opacity-70"
               style={{ color: 'white', backgroundColor: 'rgba(255,255,255,0.15)' }}
             >
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -341,29 +341,29 @@ export default function BreakPage() {
             </button>
           </Link>
 
-          <div className="flex items-start justify-between flex-wrap gap-5">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-start justify-between flex-wrap gap-4 sm:gap-5">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap mb-1.5 sm:mb-2">
                 <span
-                  className="text-[10px] font-bold uppercase px-2.5 py-1 rounded-lg backdrop-blur-sm"
+                  className="text-[10px] font-bold uppercase px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md sm:rounded-lg backdrop-blur-sm"
                   style={{ backgroundColor: 'rgba(255,255,255,0.2)', color: 'white', letterSpacing: '0.06em' }}
                 >
                   {product.sport?.name}
                 </span>
-                <span className="text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.9)' }}>{product.year}</span>
-                <span className="text-sm" style={{ color: 'rgba(255,255,255,0.65)' }}>{product.manufacturer}</span>
+                <span className="text-xs sm:text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.9)' }}>{product.year}</span>
+                <span className="text-xs sm:text-sm" style={{ color: 'rgba(255,255,255,0.65)' }}>{product.manufacturer}</span>
               </div>
-              <h1 className="text-2xl md:text-3xl font-black text-white mb-3">{product.name}</h1>
-              <div className="flex items-center gap-3 flex-wrap">
+              <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-white mb-2 sm:mb-3 break-words">{product.name}</h1>
+              <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
                 {hasPricing && (
-                  <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg backdrop-blur-sm" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-md sm:rounded-lg backdrop-blur-sm" style={{ backgroundColor: 'rgba(255,255,255,0.15)' }}>
                     <span className="h-1.5 w-1.5 rounded-full bg-white inline-block" />
-                    <span className="text-xs font-semibold text-white">{pricedCount}/{players.length} priced</span>
+                    <span className="text-[11px] sm:text-xs font-semibold text-white">{pricedCount}/{players.length} priced</span>
                   </div>
                 )}
                 {!product.has_odds && (
-                  <div className="flex items-center gap-1.5 px-3 py-1 rounded-lg backdrop-blur-sm" style={{ backgroundColor: 'rgba(245,158,11,0.3)' }}>
-                    <span className="text-xs font-medium" style={{ color: '#fef3c7' }}>No odds · EV-only weighting</span>
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 sm:px-3 rounded-md sm:rounded-lg backdrop-blur-sm" style={{ backgroundColor: 'rgba(245,158,11,0.3)' }}>
+                    <span className="text-[11px] sm:text-xs font-medium" style={{ color: '#fef3c7' }}>No odds · EV-only</span>
                     <OddsTooltip />
                   </div>
                 )}
@@ -372,9 +372,9 @@ export default function BreakPage() {
 
             {/* Controls — pick which format the slot tables display. Cases per
                 format are configured below in the format-mix box. */}
-            <div className="flex items-center gap-4 flex-wrap">
+            <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
               <div>
-                <div className="text-[10px] font-semibold uppercase mb-2" style={{ color: 'rgba(255,255,255,0.7)', letterSpacing: '0.06em' }}>
+                <div className="text-[10px] font-semibold uppercase mb-1.5 sm:mb-2" style={{ color: 'rgba(255,255,255,0.7)', letterSpacing: '0.06em' }}>
                   View Format
                 </div>
                 <SegmentedControl
@@ -392,7 +392,7 @@ export default function BreakPage() {
 
       {/* Info banners */}
       {isPreRelease && (
-        <div className="border-b px-6 py-3" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'rgba(168,85,247,0.08)' }}>
+        <div className="border-b px-4 sm:px-6 py-3" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'rgba(168,85,247,0.08)' }}>
           <p className="text-xs font-semibold" style={{ color: '#c4b5fd' }}>
             Pre-release · {product.release_date ? `${product.name} launches ${formatReleaseDate(product.release_date)}` : `${product.name} hasn't launched yet`}
           </p>
@@ -402,7 +402,7 @@ export default function BreakPage() {
         </div>
       )}
       {isDormant && (
-        <div className="border-b px-6 py-3" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'rgba(148,163,184,0.08)' }}>
+        <div className="border-b px-4 sm:px-6 py-3" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'rgba(148,163,184,0.08)' }}>
           <p className="text-xs font-semibold" style={{ color: '#cbd5e1' }}>
             Dormant · {product.name} is no longer actively tracked
           </p>
@@ -412,7 +412,7 @@ export default function BreakPage() {
         </div>
       )}
       {!isPreRelease && !isDormant && estimatedCount > 0 && (
-        <div className="border-b px-6 py-2.5 flex items-center gap-2" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'rgba(245,158,11,0.06)' }}>
+        <div className="border-b px-4 sm:px-6 py-2.5 flex items-center gap-2" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'rgba(245,158,11,0.06)' }}>
           <span className="text-[10px]" style={{ color: '#f59e0b' }}>▲</span>
           <p className="text-xs" style={{ color: 'var(--text-t-secondary)' }}>
             {estimatedCount} player{estimatedCount !== 1 ? 's' : ''} using estimated pricing — approximations based on historical comps.
@@ -420,7 +420,7 @@ export default function BreakPage() {
         </div>
       )}
       {!isPreRelease && !isDormant && hasPricing && (
-        <div className="border-b px-6 py-2 flex items-center gap-2" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'rgba(148,163,184,0.05)' }}>
+        <div className="border-b px-4 sm:px-6 py-2 flex items-center gap-2" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'rgba(148,163,184,0.05)' }}>
           <span className="text-[10px]" style={{ color: 'var(--text-t-tertiary)' }}>◎</span>
           <p className="text-[11px]" style={{ color: 'var(--text-t-tertiary)' }}>
             EV values reflect <strong>raw</strong> card sale prices. Graded (PSA 9 / PSA 10) comps are not included — per-player graded drilldown coming soon.
@@ -428,7 +428,7 @@ export default function BreakPage() {
         </div>
       )}
 
-      <main ref={mainRef} className="px-4 md:px-6 py-6 space-y-5 max-w-[1400px] mx-auto">
+      <main ref={mainRef} className="px-3 sm:px-4 md:px-6 py-4 sm:py-6 space-y-5 max-w-[1400px] mx-auto">
         {isPreRelease ? (
           <PreReleaseLayout
             product={product}

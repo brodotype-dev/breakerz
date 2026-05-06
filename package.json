@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint"
   },
@@ -34,6 +34,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@serwist/next": "^9.5.11",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/pdf-parse": "^1.1.5",
@@ -41,6 +42,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
+    "serwist": "^9.5.11",
     "sharp": "^0.34.5",
     "tailwindcss": "^4",
     "typescript": "^5"
