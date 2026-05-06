@@ -5,6 +5,17 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-06 — Pricing feedback placement fix
+
+Same-day follow-up to the inline pricing feedback drop. The 👍/👎 buttons were rendered inside the player/team name cell with `ml-auto`, which visually attached them to the entity name — read like a vote on the player or team rather than the row's pricing data. Moved into a dedicated rightmost column on both row tables.
+
+- [components/breakiq/PlayerTable.tsx](components/breakiq/PlayerTable.tsx) — added trailing `feedback` column to `COLUMNS`, removed the inline span from the Player cell, rendered `<PricingFeedback>` in a new trailing `<td>` for both priced and unpriced branches (unpriced rows still get feedback — "missing data" is a valid category).
+- [components/breakiq/TeamSlotsTable.tsx](components/breakiq/TeamSlotsTable.tsx) — extended the grid template from 8 to 9 columns (`+_64px`), removed the inline feedback from the Team cell, added a new trailing cell with `onClick={e => e.stopPropagation()}` so clicking thumbs no longer toggles the team's expand/collapse. Expanded player rows got one more `<div />` to stay grid-aligned.
+
+Out of scope: `/analysis` and `/card-lookup` placements (single result-level widget — placement was already correct).
+
+---
+
 ## 2026-05-06 — PostHog hardening + inline pricing feedback
 
 Two-part pass on the analytics layer: clean up the existing PostHog wiring and ship a row-level feedback capture surface that complements the Discord `/insight` flow.

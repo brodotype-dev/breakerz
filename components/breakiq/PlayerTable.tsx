@@ -43,6 +43,7 @@ const COLUMNS: Array<{
   { key: 'evHigh',   label: 'EV High',   align: 'right', hide: HIDE_BELOW_MD },
   { key: 'slotCost', label: 'Slot Cost', align: 'right' },
   { key: 'maxPay',   label: 'Max Pay',   align: 'right', hide: HIDE_BELOW_SM },
+  { key: 'feedback', label: '',          align: 'right' },
 ];
 
 export default function PlayerTable({ players, fetching = false, viewFormat, riskFlagMap = new Map(), onPlayerClick, productId = null }: Props) {
@@ -127,14 +128,6 @@ export default function PlayerTable({ players, fetching = false, viewFormat, ris
                       {playerFlags.map((f, fi) => (
                         <RiskFlagBadge key={fi} type={f.flagType} note={f.note} />
                       ))}
-                      <span className="ml-auto pl-2">
-                        <PricingFeedback
-                          surface="player_row"
-                          entityType="player_product"
-                          entityId={row.id}
-                          productId={productId}
-                        />
-                      </span>
                     </div>
                     {/* Team line shown only on mobile (where the team column is hidden) */}
                     <div className="md:hidden mt-0.5 text-[11px] truncate" style={{ color: 'var(--text-tertiary)' }}>
@@ -165,6 +158,14 @@ export default function PlayerTable({ players, fetching = false, viewFormat, ris
                       <td className={`px-2 sm:px-4 py-2.5 text-right ${HIDE_BELOW_SM}`}>
                         <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>—</span>
                       </td>
+                      <td className="px-2 sm:px-4 py-2.5 text-right">
+                        <PricingFeedback
+                          surface="player_row"
+                          entityType="player_product"
+                          entityId={row.id}
+                          productId={productId}
+                        />
+                      </td>
                     </>
                   ) : (
                     <>
@@ -192,6 +193,14 @@ export default function PlayerTable({ players, fetching = false, viewFormat, ris
                         {formatCurrency(pickSlot(row, viewFormat))}
                       </td>
                       <td className={`px-2 sm:px-4 py-2.5 text-right font-mono text-xs ${HIDE_BELOW_SM}`} style={{ color: 'var(--signal-buy)' }}>{formatCurrency(row.maxPay)}</td>
+                      <td className="px-2 sm:px-4 py-2.5 text-right">
+                        <PricingFeedback
+                          surface="player_row"
+                          entityType="player_product"
+                          entityId={row.id}
+                          productId={productId}
+                        />
+                      </td>
                     </>
                   )}
                 </tr>
