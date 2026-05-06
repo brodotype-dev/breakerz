@@ -2,11 +2,36 @@
 
 Consolidated list of known work, organized by priority. Items pulled from the Social Currency PRD, CLAUDE.md known gaps, and open questions surfaced during development.
 
-**Last updated:** 2026-05-05
+**Last updated:** 2026-05-06
 
 ---
 
 ## Priority 1 — High value, no external blockers
+
+### Panini-aware checklist parser (Master Checklist as canonical source)
+**Effort:** ~½ day
+**Why:** Surfaced 2026-05-06 trying to import 2025 Panini Prizm Football. Panini XLSX has a fundamentally different shape from the Topps/Bowman files the parser was built for:
+
+- **Topps/Bowman format:** structured per-section sheets where each section lists its base cards once and parallels separately. Parser expands base × parallels at import time. Current behavior is correct.
+- **Panini format:** TWO parallel data sources in the same file:
+  - **`Master Checklist` sheet** (the canonical source) — flat, fully denormalized table with clean columns: `CARD SET / CARD NUMBER / ATHLETE / TEAM / SEQUENCE`. 34,723 rows × 316 distinct CARD SETs for 2025 Prizm Football. Every (parallel × athlete) tuple is its own row.
+  - **`Base / Inserts / Autographs / Memorabilia` sheets** — semi-structured per-section listings using parallel names like "Pink Wave", "Silver" without the "Base Prizm" prefix. The current parser pulls 24 sections from these (~1,595 cards), missing 90%+ of the actual data because Base sheet's "Prizm Black and Blue Checker", "Black Finite", "Blue", "Blue Ice", etc. (all 300-row parallels) aren't getting picked up.
+
+Importing both sources double-imports under different `variant_name` strings (e.g., "Pink Wave" from Inserts vs. "Base Prizm Pink Wave" from Master). The dedupe-on-(pp_id, variant_name, card_number) added in PR #57 won't catch them because the strings differ.
+
+**Today's workaround:** uncheck Master Checklist in the import UI; accept incomplete coverage from the 24 named sections. Not viable long-term — we lose ~90% of the parallel surface.
+
+**Real fix:** detect Panini format at parse time (sheet name "Master Checklist" with `CARD SET / CARD NUMBER / ATHLETE / TEAM / SEQUENCE` header is a strong tell), bypass the metadata sheets, build sections directly from Master Checklist by grouping rows on `CARD SET`. Each unique CARD SET becomes one parser section with its athletes attached as cards. Variant names match Master Checklist verbatim — these are also what shows up in CardHedger search results, so matching gets cleaner too.
+
+**Files to touch:**
+- `lib/checklist-parser.ts` — new `parsePaniniXlsx(workbook)` path, gated on Master Checklist sheet detection
+- `lib/card-knowledge/panini.ts` — new manufacturer descriptor (synonyms for Panini parallel naming, RC year handling)
+- `docs/manufacturer-rules/panini.md` — document the format quirks and matching rules (mirror `docs/manufacturer-rules/bowman.md`)
+- Test fixture: 2025 Panini Prizm Football XLSX is in `~/Downloads/2025-Panini-Prizm-Football.xlsx` (single product is enough to validate)
+
+**Verification:** import 2025 Panini Prizm Football, expect ~316 sections + ~34,700 variant rows after parser run, confirm a sample variant matches in CardHedger via the existing match flow.
+
+---
 
 ### C. Upgrade Vercel Hobby → Pro for jumbo product pricing
 **Status: ✅ Complete (2026-04-22)** — upgraded to Pro, `maxDuration = 300` on both `app/api/admin/refresh-product-pricing/route.ts` and `app/api/cron/refresh-pricing/route.ts`. Graceful-deadline constants in `lib/pricing-refresh.ts` bumped to 270/290s. Bowman Chrome (6,481 variants) now completes a full refresh in a single invocation.
