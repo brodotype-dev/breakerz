@@ -227,18 +227,24 @@ export default function ChasePage() {
 function ChaseRow({ entry, onChanged }: { entry: ChaseListEntry; onChanged: () => void }) {
   const score = computeEffectiveScore(entry.buzz_score, entry.breakerz_score, entry.is_icon);
 
+  // The whole row links to the player profile (cross-product view) instead
+  // of jumping straight to the featured product's break page. The market
+  // strip is rendered as a non-link block so its value stays visible but
+  // the click target is unambiguous.
   return (
-    <div
-      className="rounded-xl border p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center gap-3"
+    <Link
+      href={`/player/${entry.player_id}`}
+      className="rounded-xl border p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center gap-3 transition-colors hover:bg-[var(--terminal-surface-hover)]"
       style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
     >
-      {/* Heart + identity */}
       <div className="flex items-center gap-2.5 min-w-0 flex-1">
-        <ChaseHeartButton
-          playerId={entry.player_id}
-          size="md"
-          onToggled={next => { if (!next) onChanged(); }}
-        />
+        <div onClick={e => { e.stopPropagation(); e.preventDefault(); }}>
+          <ChaseHeartButton
+            playerId={entry.player_id}
+            size="md"
+            onToggled={next => { if (!next) onChanged(); }}
+          />
+        </div>
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="text-sm sm:text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
@@ -260,16 +266,15 @@ function ChaseRow({ entry, onChanged }: { entry: ChaseListEntry; onChanged: () =
         </div>
       </div>
 
-      {/* Market value strip */}
+      {/* Market value strip — visible signal, not a sub-link */}
       {entry.market ? (
-        <Link
-          href={`/break/${entry.market.product_slug}`}
-          className="flex items-center justify-between sm:justify-end gap-3 sm:min-w-[260px] rounded-lg px-3 py-2 transition-colors hover:bg-[var(--terminal-surface-hover)]"
+        <div
+          className="flex items-center justify-between sm:justify-end gap-3 sm:min-w-[260px] rounded-lg px-3 py-2"
           style={{ border: '1px solid var(--terminal-border)' }}
         >
           <div className="min-w-0">
             <div className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-tertiary)' }}>
-              EV Mid
+              Latest EV Mid
             </div>
             <div className="text-sm font-mono font-bold" style={{ color: 'var(--text-primary)' }}>
               {formatCurrency(entry.market.ev_mid)}
@@ -281,12 +286,12 @@ function ChaseRow({ entry, onChanged }: { entry: ChaseListEntry; onChanged: () =
             </span>
             <ExternalLink className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--text-tertiary)' }} />
           </div>
-        </Link>
+        </div>
       ) : (
         <div className="text-[11px] italic px-3 py-2 rounded-lg sm:min-w-[260px] text-center" style={{ color: 'var(--text-tertiary)', border: '1px solid var(--terminal-border)' }}>
           No pricing yet
         </div>
       )}
-    </div>
+    </Link>
   );
 }
