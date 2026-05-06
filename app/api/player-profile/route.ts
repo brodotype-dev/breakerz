@@ -131,42 +131,62 @@ export async function GET(req: NextRequest) {
   // header EV reads consistently between the two pages.
   const featured = products.find(x => x.ev_mid != null) ?? null;
 
-  // 3. Recent sales — aggregate CardHedger comps across the top 5 most-recently-
-  //    priced player_products that have a CH card_id. Capped to 5 to keep
-  //    latency bounded; merge + sort by sale_date desc, take top 25.
-  const candidates = products
-    .filter(x => x.cardhedger_card_id)
-    .slice(0, 5)
-    .map(x => x.cardhedger_card_id!) as string[];
-
-  let recentComps: Array<{ sale_price: number; sale_date: string; grade: string; platform: string }> = [];
-  if (candidates.length > 0) {
-    const compResults = await Promise.allSettled(
-      candidates.map(cardId => getComps(cardId, 180, 'PSA 10', 10).catch(() => ({ comps: [] }))),
-    );
-    for (const r of compResults) {
-      if (r.status === 'fulfilled' && Array.isArray(r.value.comps)) {
-        recentComps.push(...r.value.comps);
+  // 3. Recent sales — aggregate CardHedger comps across this player's
+  //    matched variants. The per-product `cardhedger_card_id` on
+  //    player_products is often null (it's a rolled-up convenience field);
+  //    the real matched CH IDs live on player_product_variants. We pull
+  //    unique card IDs across all variants for this player and fetch comps
+  //    in parallel. Cap at 12 unique card IDs to keep latency bounded.
+  const playerProductIds = ((ppRows ?? []) as unknown as PpRow[]).map(r => r.id);
+  let candidateCardIds: string[] = [];
+  if (playerProductIds.length > 0) {
+    const { data: variantRows } = await supabaseAdmin
+      .from('player_product_variants')
+      .select('cardhedger_card_id')
+      .in('player_product_id', playerProductIds)
+      .not('cardhedger_card_id', 'is', null);
+    const seen = new Set<string>();
+    for (const v of (variantRows ?? []) as Array<{ cardhedger_card_id: string | null }>) {
+      if (v.cardhedger_card_id && !seen.has(v.cardhedger_card_id)) {
+        seen.add(v.cardhedger_card_id);
+        if (seen.size >= 10) break;
       }
     }
-    // Some products' winning grade is PSA 9 not PSA 10 — fetch those too in
-    // a second round for completeness. Cheap because we already filtered to
-    // 5 cards max.
-    const r9 = await Promise.allSettled(
-      candidates.map(cardId => getComps(cardId, 180, 'PSA 9', 10).catch(() => ({ comps: [] }))),
-    );
-    for (const r of r9) {
-      if (r.status === 'fulfilled' && Array.isArray(r.value.comps)) {
-        recentComps.push(...r.value.comps);
-      }
-    }
-    recentComps.sort((a, b) => new Date(b.sale_date).getTime() - new Date(a.sale_date).getTime());
-    recentComps = recentComps.slice(0, 25);
+    candidateCardIds = Array.from(seen);
   }
 
-  // 4. Insights — risk flags + recent sentiment history + active market observations
-  const playerProductIds = ((ppRows ?? []) as unknown as PpRow[]).map(r => r.id);
+  let recentComps: Array<{ sale_price: number; sale_date: string; grade: string; platform: string }> = [];
+  if (candidateCardIds.length > 0) {
+    // Three grades × N cards in parallel. Raw covers the bulk of the volume
+    // for most players; PSA 9/10 surface graded sales. Promise.allSettled so
+    // one bad ID doesn't kill the response.
+    const calls: Promise<{ comps: Array<{ sale_price: number; sale_date: string; grade: string; platform: string }> }>[] = [];
+    for (const cardId of candidateCardIds) {
+      calls.push(getComps(cardId, 180, 'Raw',   10).catch(() => ({ comps: [] })));
+      calls.push(getComps(cardId, 180, 'PSA 9', 10).catch(() => ({ comps: [] })));
+      calls.push(getComps(cardId, 180, 'PSA 10', 10).catch(() => ({ comps: [] })));
+    }
+    const settled = await Promise.allSettled(calls);
+    for (const r of settled) {
+      if (r.status === 'fulfilled' && Array.isArray(r.value.comps)) {
+        recentComps.push(...r.value.comps);
+      }
+    }
+    // Dedupe (same sale can appear if multiple variants point to the same
+    // CH listing), then sort by date desc and cap.
+    const dedup = new Map<string, typeof recentComps[number]>();
+    for (const c of recentComps) {
+      const key = `${c.sale_date}|${c.sale_price}|${c.grade}|${c.platform}`;
+      if (!dedup.has(key)) dedup.set(key, c);
+    }
+    recentComps = Array.from(dedup.values())
+      .sort((a, b) => new Date(b.sale_date).getTime() - new Date(a.sale_date).getTime())
+      .slice(0, 25);
+  }
 
+  // 4. Insights — risk flags + recent sentiment history + active market
+  //    observations. Reuses the playerProductIds list from the comp-fetch
+  //    step above.
   const flagsResp = playerProductIds.length === 0
     ? { data: [] as Array<{ player_product_id: string; flag_type: string; note: string | null; created_at: string }>, error: null }
     : await supabaseAdmin
