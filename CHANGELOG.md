@@ -5,6 +5,20 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-06 — Chunked checklist imports
+
+Panini Prizm Football (32,851 cards across 100+ parallel-heavy sections) hit Vercel's 4.5 MB Function ingress cap on `POST /api/admin/import-checklist`, returning a 413 before the route handler ran. The client did `await res.json()` on the plain-text response body and surfaced a cryptic `Unexpected token 'R', "Request En"... is not valid JSON`. Fix splits the import into multiple sequential POSTs, each well under the cap.
+
+**Shared aggregates helper.** [lib/checklist-aggregates.ts](lib/checklist-aggregates.ts) extracts `computePlayerAggregates(sections)` (player set totals, base-appearance flagging, card-number unioning) plus `isMultiPlayerName`. Both client and server import from here so the rule that drives `insert_only` and `checklist_card_numbers` stays in one place.
+
+**Server.** [app/api/admin/import-checklist/route.ts](app/api/admin/import-checklist/route.ts) now accepts an optional `playersOverride: PlayerAggregate[]`. When present, the server skips its own per-section accumulation and uses the override directly — required for chunked imports where each chunk only sees a slice of the cards but the player + player_product upserts must be invariant (`hobby_sets` are sums over the FULL dataset, not the chunk). Variant insertion is now dedupe-aware: server queries existing `(player_product_id, variant_name, card_number)` tuples for the batch's player_products and skips rows that already exist. Re-imports and chunked imports are idempotent. Response now includes `variantsSkippedAsDuplicates`.
+
+**Client.** [app/admin/import-checklist/page.tsx](app/admin/import-checklist/page.tsx) computes `playersOverride` locally over the full dataset, walks the included sections building batches under `MAX_BATCH_CARDS = 8000` each (a section larger than the cap is split — its `cards` array sliced across multiple batches with metadata replicated), and sequentially POSTs each batch with the same override. Per-batch progress chip ("Batch 2/3 · 16,000/24,000 cards") with progress bar appears for any multi-batch import. `await res.json()` swapped for `await res.text()` + manual JSON parse so a future 413 surfaces as "Batch X exceeded the 4.5 MB request limit" instead of the parser error.
+
+**What this does NOT do.** Existing duplicate variants in production (~9k rows across ~8.8k tuples per a one-off audit) stay untouched — they're a separate cleanup task. The dedupe-on-write only prevents NEW duplicates from being created. No DB constraint added, no migration needed.
+
+---
+
 ## 2026-05-06 — CardHedger data audit + all three P0 fixes
 
 Investigated CH API usage end-to-end against [the live MCP probe](https://api.cardhedger.com/mcp) to map gaps between what CH offers and what BreakIQ actually pulls. Findings + prioritized punch list saved to [docs/plans/2026-05-06-cardhedger-data-audit.md](docs/plans/2026-05-06-cardhedger-data-audit.md). All three P0 fixes shipped.

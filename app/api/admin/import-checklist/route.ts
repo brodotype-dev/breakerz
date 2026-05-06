@@ -2,17 +2,31 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { ParsedCard } from '@/lib/checklist-parser';
 import { checkRole } from '@/lib/auth';
+import {
+  computePlayerAggregates,
+  isMultiPlayerName,
+  type PlayerAggregate,
+  type SectionInput,
+} from '@/lib/checklist-aggregates';
 
-type SectionConfig = {
-  sectionName: string;
-  hobbySets: number;
-  bdSets: number;
-  cards: ParsedCard[];
-};
+// Larger jumbo checklists (Panini Prizm Football: 32k+ cards across all
+// sections + parallels) exceed Vercel's 4.5 MB Function ingress in a single
+// POST. The client chunks those imports and sends each chunk with the same
+// `playersOverride` (computed locally over the full dataset) so the player +
+// player_product aggregates stay invariant across batches. Variants insert
+// is dedupe-aware — we SELECT existing (variant_name, card_number) tuples
+// for this batch's player_products and skip rows that already exist, so
+// re-imports and chunked imports are idempotent.
+
+type SectionConfig = SectionInput;
 
 type ImportRequest = {
   productId: string;
   sections: SectionConfig[];
+  // Pre-computed player aggregates from the client. When present, the server
+  // uses these directly instead of recomputing from the sections — required
+  // for chunked imports where each chunk only sees a slice of the cards.
+  playersOverride?: PlayerAggregate[];
 };
 
 export async function POST(req: NextRequest) {
@@ -26,7 +40,7 @@ export async function POST(req: NextRequest) {
   }
 
   const body: ImportRequest = await req.json();
-  const { productId, sections } = body;
+  const { productId, sections, playersOverride } = body;
 
   if (!productId || !sections?.length) {
     return NextResponse.json({ error: 'productId and sections required' }, { status: 400 });
@@ -41,95 +55,11 @@ export async function POST(req: NextRequest) {
 
   if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
 
-  // --- Step 1: Collect unique players across all sections ---
-  // Key: "playerName||team" — used to accumulate set totals per card type
-  const playerSetTotals = new Map<string, {
-    name: string; team: string; hobbySets: number; bdSets: number; isRookie: boolean;
-  }>();
-
-  // Track whether each player appears in any base-set entry. Two signals
-  // combine to qualify a card as "base":
-  //
-  //   1. The card_number is base-shaped: purely numeric ("1", "251") OR an
-  //      alpha-prefix-numeric pattern with the digits at the end ("BP-1",
-  //      "BCP-1" — Bowman base prospects). Autograph numbering uses player
-  //      initials at the end ("BPA-EH", "CPA-EH") so we exclude trailing
-  //      letters.
-  //   2. The section name is a base section. Some inserts use base-shaped
-  //      numbers too (e.g. "Anime BA-24"), so we additionally require the
-  //      section name to start with "Base" or "Chrome Prospects" and to NOT
-  //      contain "Autograph" / "Variation". Parallels of base sections (e.g.
-  //      "Base - Etched In Glass Variations") don't independently qualify —
-  //      but the same player will also appear in the canonical "Base" /
-  //      "Base Prospects" section, so they still get flagged correctly.
-  //
-  // Drives insert_only on the player_product, which the pricing engine and
-  // dashboard counts filter on.
-  const playerHasBaseAppearance = new Map<string, boolean>();
-  const isBaseShapedCardNumber = (n: string | undefined): boolean => {
-    if (!n) return false;
-    return /^(?:[A-Z]+-)?\d+$/.test(n);
-  };
-  const isBaseSectionName = (name: string): boolean => {
-    if (/autograph/i.test(name)) return false;
-    if (/variation/i.test(name)) return false;
-    return /^(Base($|\s|-)|Chrome\s+Prospects?($|\s|-))/i.test(name);
-  };
-
-  // Collect every card_number per player, deduped. Persisted on the player_product
-  // so hydrate can scope CH variant attachment to what's actually in this product's
-  // checklist (key for products that share a ch_set_name like Topps S1 + S2).
-  const playerCardNumbers = new Map<string, Set<string>>();
-
-  for (const section of sections) {
-    for (const card of section.cards) {
-      const key = `${card.playerName}||${card.team ?? ''}`;
-      const existing = playerSetTotals.get(key);
-      playerSetTotals.set(key, {
-        name: card.playerName,
-        team: card.team ?? existing?.team ?? '',
-        hobbySets: (existing?.hobbySets ?? 0) + section.hobbySets,
-        bdSets: (existing?.bdSets ?? 0) + section.bdSets,
-        isRookie: card.isRookie || (existing?.isRookie ?? false),
-      });
-
-      const isBaseCard = isBaseShapedCardNumber(card.cardNumber) && isBaseSectionName(section.sectionName);
-      if (isBaseCard) playerHasBaseAppearance.set(card.playerName, true);
-      else if (!playerHasBaseAppearance.has(card.playerName)) {
-        playerHasBaseAppearance.set(card.playerName, false);
-      }
-
-      if (card.cardNumber) {
-        const nums = playerCardNumbers.get(card.playerName) ?? new Set<string>();
-        nums.add(card.cardNumber);
-        playerCardNumbers.set(card.playerName, nums);
-      }
-    }
-  }
-
-  // Multi-player cards (League Leaders, dual autographs, etc.) come through
-  // the checklist with concatenated names ("Skubal / Blanco / Valdez") and
-  // matching teams. Per Kyle: every individual player has exactly one team,
-  // so a combined-name row isn't a real player — it's a subset card. We still
-  // record it (CardHedger may price it) but flag it `insert_only=true` below
-  // so it's excluded from team chips and slot pricing.
-  const isMultiPlayerName = (name: string) => name.includes('/');
-
-  // Deduplicate by name for the players upsert — same player can appear
-  // across sections with different/empty teams; keep the most complete record
-  const playersByName = new Map<string, { name: string; team: string; hobbySets: number; bdSets: number; isRookie: boolean }>();
-  for (const p of playerSetTotals.values()) {
-    const existing = playersByName.get(p.name);
-    playersByName.set(p.name, {
-      name: p.name,
-      team: p.team || existing?.team || '',
-      hobbySets: (existing?.hobbySets ?? 0) + p.hobbySets,
-      bdSets: (existing?.bdSets ?? 0) + p.bdSets,
-      isRookie: p.isRookie || (existing?.isRookie ?? false),
-    });
-  }
-
-  const uniquePlayers = Array.from(playersByName.values());
+  // --- Step 1: Player aggregates ---
+  // Use the client-provided override when present (chunked import path); otherwise
+  // compute from this request's sections (single-shot import path). The aggregation
+  // logic itself lives in lib/checklist-aggregates.ts so both paths share it.
+  const uniquePlayers: PlayerAggregate[] = playersOverride ?? computePlayerAggregates(sections);
 
   // --- Step 2: Bulk upsert players ---
   const playerRows = uniquePlayers.map(p => ({
@@ -163,15 +93,13 @@ export async function POST(req: NextRequest) {
   const ppRows = uniquePlayers.map(p => {
     const playerId = playerNameToId.get(p.name);
     if (!playerId) return null;
-    const hasBase = playerHasBaseAppearance.get(p.name) === true;
-    const cardNumbers = Array.from(playerCardNumbers.get(p.name) ?? []);
     return {
       player_id: playerId,
       product_id: productId,
       hobby_sets: p.hobbySets,
       bd_only_sets: p.bdSets,
-      insert_only: !hasBase || isMultiPlayerName(p.name),
-      checklist_card_numbers: cardNumbers.length > 0 ? cardNumbers : null,
+      insert_only: !p.hasBaseAppearance || isMultiPlayerName(p.name),
+      checklist_card_numbers: p.cardNumbers.length > 0 ? p.cardNumbers : null,
     };
   }).filter(Boolean) as object[];
 
@@ -187,7 +115,7 @@ export async function POST(req: NextRequest) {
   );
   const playerProductsCreated = upsertedPPs?.length ?? 0;
 
-  // --- Step 4: Bulk insert variants in chunks ---
+  // --- Step 4: Build variant rows ---
   // If the parser attached a `parallels` list to a card, expand it: one variant
   // row per parallel label (e.g. "Refractor", "Gold /50", "SuperFractor /1"),
   // plus a synthetic "Base" row — Topps checklists don't list Base explicitly
@@ -195,7 +123,17 @@ export async function POST(req: NextRequest) {
   //
   // If no parallels are attached (older parsers / non-XLSX formats), fall back
   // to the legacy behavior of one variant named after the section.
-  const variantRows: object[] = [];
+  type VariantRow = {
+    player_product_id: string;
+    variant_name: string;
+    cardhedger_card_id: null;
+    hobby_sets: number;
+    bd_only_sets: number;
+    card_number: string | null;
+    is_sp: boolean;
+    print_run: number | null;
+  };
+  const variantRows: VariantRow[] = [];
   for (const section of sections) {
     for (const card of section.cards) {
       const playerId = playerNameToId.get(card.playerName);
@@ -224,11 +162,38 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Insert variants in chunks of 500 to stay within Supabase limits
+  // --- Step 5: Dedupe-aware insert ---
+  // Variants have no DB-level unique constraint (legacy schema; existing
+  // production rows include ~9k duplicates that aren't worth touching here).
+  // To make chunked imports + retries idempotent, query existing
+  // (variant_name, card_number) tuples for the player_products this batch
+  // touches, and skip rows that already exist. The lookup is bounded by
+  // the batch's player_product set, so it stays cheap on large products.
+  const ppIdsTouched = Array.from(new Set(variantRows.map(v => v.player_product_id)));
+  const existingKeys = new Set<string>();
+  if (ppIdsTouched.length > 0) {
+    const PP_CHUNK = 200;
+    for (let i = 0; i < ppIdsTouched.length; i += PP_CHUNK) {
+      const slice = ppIdsTouched.slice(i, i + PP_CHUNK);
+      const { data: existing, error: readErr } = await supabaseAdmin
+        .from('player_product_variants')
+        .select('player_product_id, variant_name, card_number')
+        .in('player_product_id', slice);
+      if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 });
+      for (const r of existing ?? []) {
+        existingKeys.add(`${r.player_product_id}|${r.variant_name}|${r.card_number ?? ''}`);
+      }
+    }
+  }
+  const newVariantRows = variantRows.filter(
+    v => !existingKeys.has(`${v.player_product_id}|${v.variant_name}|${v.card_number ?? ''}`),
+  );
+
+  // Insert in chunks of 500 to stay within Supabase limits
   const CHUNK_SIZE = 500;
   let variantsCreated = 0;
-  for (let i = 0; i < variantRows.length; i += CHUNK_SIZE) {
-    const chunk = variantRows.slice(i, i + CHUNK_SIZE);
+  for (let i = 0; i < newVariantRows.length; i += CHUNK_SIZE) {
+    const chunk = newVariantRows.slice(i, i + CHUNK_SIZE);
     const { error: variantErr } = await supabaseAdmin
       .from('player_product_variants')
       .insert(chunk);
@@ -236,5 +201,10 @@ export async function POST(req: NextRequest) {
     variantsCreated += chunk.length;
   }
 
-  return NextResponse.json({ playersCreated, playerProductsCreated, variantsCreated });
+  return NextResponse.json({
+    playersCreated,
+    playerProductsCreated,
+    variantsCreated,
+    variantsSkippedAsDuplicates: variantRows.length - newVariantRows.length,
+  });
 }

@@ -4,6 +4,7 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import type { ParsedChecklist, ParsedSection } from '@/lib/checklist-parser';
+import { computePlayerAggregates } from '@/lib/checklist-aggregates';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -25,6 +26,14 @@ type ImportResult = {
   playersCreated: number;
   playerProductsCreated: number;
   variantsCreated: number;
+  variantsSkippedAsDuplicates?: number;
+};
+
+type ImportProgress = {
+  totalBatches: number;
+  completedBatches: number;
+  totalCards: number;
+  cardsImported: number;
 };
 
 type MatchRow = {
@@ -66,6 +75,7 @@ function ImportChecklistInner() {
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
 
   const [matching, setMatching] = useState(false);
   const [matchResults, setMatchResults] = useState<MatchRow[] | null>(null);
@@ -134,6 +144,24 @@ function ImportChecklistInner() {
   }
 
   // ── Step 2: Import ─────────────────────────────────────────────────────────
+  //
+  // Vercel Function ingress hard-caps request bodies at 4.5 MB. Bowman / Topps
+  // jumbo checklists with parallels expanded (Panini Prizm Football: 32k+
+  // rows) blow past that in a single POST. Strategy:
+  //
+  // 1. Compute player aggregates locally over the FULL set of included
+  //    sections (this is the same logic the server runs; both share
+  //    lib/checklist-aggregates.ts).
+  // 2. Walk the sections building chunks under MAX_BATCH_CARDS each. Sections
+  //    larger than the cap get split — their `cards` array is sliced across
+  //    multiple chunks.
+  // 3. POST each chunk with the same `playersOverride`, so player +
+  //    player_product upserts get the canonical totals every time and don't
+  //    drift as chunks land.
+  // 4. Server's variant insert is dedupe-aware (SELECT-then-filter on
+  //    pp_id + variant_name + card_number), so the chunk that splits a
+  //    section doesn't matter for variant correctness — variants from
+  //    later chunks just append, no duplicates.
 
   async function handleImport() {
     const included = sections.filter(s => s.include);
@@ -141,32 +169,117 @@ function ImportChecklistInner() {
 
     setImporting(true);
     setImportError(null);
+    setImportProgress(null);
+
+    // Cap each batch well below Vercel's 4.5 MB hard limit. Card payload size
+    // varies wildly (parallels list dominates) — 8000 cards usually sits
+    // around 1.5–3 MB; safe headroom even for parallel-heavy sections.
+    const MAX_BATCH_CARDS = 8000;
+
+    type Section = { sectionName: string; hobbySets: number; bdSets: number; cards: ParsedSection['cards'] };
+    const flatSections: Section[] = included.map(s => ({
+      sectionName: s.sectionName,
+      hobbySets: s.hobbySets,
+      bdSets: s.bdSets,
+      cards: s.cards,
+    }));
+
+    // Build batches. Each batch is an array of Section objects whose `cards`
+    // arrays sum to ≤ MAX_BATCH_CARDS. A section larger than the cap is split
+    // across batches with its metadata replicated.
+    const batches: Section[][] = [];
+    let current: Section[] = [];
+    let currentCards = 0;
+    for (const section of flatSections) {
+      let cardCursor = 0;
+      while (cardCursor < section.cards.length) {
+        const remainingInBatch = MAX_BATCH_CARDS - currentCards;
+        const take = Math.min(section.cards.length - cardCursor, Math.max(remainingInBatch, 1));
+        current.push({
+          sectionName: section.sectionName,
+          hobbySets: section.hobbySets,
+          bdSets: section.bdSets,
+          cards: section.cards.slice(cardCursor, cardCursor + take),
+        });
+        currentCards += take;
+        cardCursor += take;
+        if (currentCards >= MAX_BATCH_CARDS) {
+          batches.push(current);
+          current = [];
+          currentCards = 0;
+        }
+      }
+    }
+    if (current.length > 0) batches.push(current);
+
+    const playersOverride = computePlayerAggregates(flatSections);
+    const totalCards = flatSections.reduce((n, s) => n + s.cards.length, 0);
+
+    setImportProgress({
+      totalBatches: batches.length,
+      completedBatches: 0,
+      totalCards,
+      cardsImported: 0,
+    });
+
+    const aggregate: ImportResult = {
+      playersCreated: 0,
+      playerProductsCreated: 0,
+      variantsCreated: 0,
+      variantsSkippedAsDuplicates: 0,
+    };
 
     try {
-      const body = {
-        productId,
-        sections: included.map(s => ({
-          sectionName: s.sectionName,
-          hobbySets: s.hobbySets,
-          bdSets: s.bdSets,
-          cards: s.cards,
-        })),
-      };
+      for (let i = 0; i < batches.length; i++) {
+        const batch = batches[i];
+        const batchCards = batch.reduce((n, s) => n + s.cards.length, 0);
+        const body = {
+          productId,
+          sections: batch,
+          playersOverride,
+        };
 
-      const res = await fetch('/api/admin/import-checklist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const json = await res.json();
+        const res = await fetch('/api/admin/import-checklist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
 
-      if (!res.ok || json.error) {
-        setImportError(json.error ?? 'Import failed');
-        setImporting(false);
-        return;
+        // Don't trust json() — Vercel's 413 response is plain text and would
+        // throw "Unexpected token 'R'..." which masks the real cause.
+        const text = await res.text();
+        let json: ImportResult & { error?: string };
+        try { json = JSON.parse(text) as ImportResult & { error?: string }; }
+        catch {
+          if (res.status === 413) {
+            setImportError(`Batch ${i + 1}/${batches.length} exceeded the 4.5 MB request limit. Try lowering MAX_BATCH_CARDS.`);
+          } else {
+            setImportError(`Server returned non-JSON (${res.status}): ${text.slice(0, 200)}`);
+          }
+          setImporting(false);
+          return;
+        }
+
+        if (!res.ok || json.error) {
+          setImportError(`Batch ${i + 1}/${batches.length}: ${json.error ?? `HTTP ${res.status}`}`);
+          setImporting(false);
+          return;
+        }
+
+        aggregate.playersCreated = Math.max(aggregate.playersCreated, json.playersCreated);
+        aggregate.playerProductsCreated = Math.max(aggregate.playerProductsCreated, json.playerProductsCreated);
+        aggregate.variantsCreated += json.variantsCreated;
+        aggregate.variantsSkippedAsDuplicates =
+          (aggregate.variantsSkippedAsDuplicates ?? 0) + (json.variantsSkippedAsDuplicates ?? 0);
+
+        setImportProgress(prev => prev && {
+          ...prev,
+          completedBatches: i + 1,
+          cardsImported: prev.cardsImported + batchCards,
+        });
       }
 
-      setImportResult(json);
+      setImportResult(aggregate);
       setStep('result');
     } catch (err) {
       setImportError(err instanceof Error ? err.message : 'Network error');
@@ -491,6 +604,24 @@ function ImportChecklistInner() {
                 </div>
 
                 {importError && <p className="text-sm text-red-500">{importError}</p>}
+
+                {importing && importProgress && importProgress.totalBatches > 1 && (
+                  <div className="text-xs text-muted-foreground space-y-1">
+                    <div>
+                      Batch {importProgress.completedBatches}/{importProgress.totalBatches}
+                      {' · '}
+                      {importProgress.cardsImported.toLocaleString()}/{importProgress.totalCards.toLocaleString()} cards
+                    </div>
+                    <div className="h-1 w-64 bg-muted rounded overflow-hidden">
+                      <div
+                        className="h-full bg-primary transition-all"
+                        style={{
+                          width: `${(importProgress.completedBatches / importProgress.totalBatches) * 100}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
 
                 <button
                   onClick={handleImport}
