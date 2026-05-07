@@ -1,36 +1,19 @@
 'use client';
 
-import Link from 'next/link';
 import { useMemo, useState } from 'react';
-import { ChevronRight, Search, ChevronDown } from 'lucide-react';
+import { Search, ChevronDown } from 'lucide-react';
 import type { Product, Sport } from '@/lib/types';
+import ProductCard, { type ProductSignal } from '@/components/breakiq/ProductCard';
 
 type ProductRow = Product & { sport: Sport };
 type LifecycleFilter = 'all' | 'live' | 'pre_release';
+
+export type { ProductSignal };
 
 function isPreRelease(releaseDate: string | null): boolean {
   if (!releaseDate) return false;
   return new Date(releaseDate + 'T00:00:00') > new Date();
 }
-
-function getSportKey(sportName: string): 'baseball' | 'basketball' | 'football' {
-  const s = sportName.toLowerCase();
-  if (s === 'basketball') return 'basketball';
-  if (s === 'football') return 'football';
-  return 'baseball';
-}
-
-const sportGradients = {
-  baseball: 'var(--gradient-blue)',
-  basketball: 'var(--gradient-orange)',
-  football: 'var(--gradient-green)',
-};
-
-const sportColors = {
-  baseball: { primary: 'var(--sport-baseball-primary)', secondary: 'var(--sport-baseball-secondary)' },
-  basketball: { primary: 'var(--sport-basketball-primary)', secondary: 'var(--sport-basketball-secondary)' },
-  football: { primary: 'var(--sport-football-primary)', secondary: 'var(--sport-football-secondary)' },
-};
 
 function FilterSelect({
   value,
@@ -65,7 +48,13 @@ function FilterSelect({
   );
 }
 
-export default function ActiveProductsBrowser({ products }: { products: ProductRow[] }) {
+export default function ActiveProductsBrowser({
+  products,
+  signals,
+}: {
+  products: ProductRow[];
+  signals: Record<string, ProductSignal>;
+}) {
   const [search, setSearch] = useState('');
   const [sport, setSport] = useState<string>('all');
   const [year, setYear] = useState<string>('all');
@@ -182,116 +171,10 @@ export default function ActiveProductsBrowser({ products }: { products: ProductR
           <p className="text-sm">Try clearing the search or switching sport/year.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filtered.map(product => {
-            const sportKey = getSportKey(product.sport?.name ?? '');
-            const gradient = sportGradients[sportKey];
-            const { primary } = sportColors[sportKey];
-            const preRelease = isPreRelease(product.release_date);
-
-            return (
-              <Link key={product.id} href={`/break/${product.slug}`}>
-                <div
-                  className="relative overflow-hidden rounded-xl border transition-all cursor-pointer group hover:scale-[1.02]"
-                  style={{
-                    borderColor: 'var(--terminal-border)',
-                    backgroundColor: 'var(--terminal-surface)',
-                    boxShadow: 'var(--shadow-md)',
-                  }}
-                >
-                  <div className="absolute top-0 left-0 right-0 h-1.5" style={{ background: gradient }} />
-                  <div
-                    className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
-                    style={{ background: `radial-gradient(circle at center, ${primary}15 0%, transparent 70%)` }}
-                  />
-
-                  <div className="relative p-5 pt-6">
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span
-                            className="text-xs font-bold uppercase px-2 py-1 rounded"
-                            style={{
-                              letterSpacing: '0.05em',
-                              backgroundColor: `${primary}20`,
-                              color: primary,
-                            }}
-                          >
-                            {product.sport?.name}
-                          </span>
-                          <span className="text-xs font-semibold" style={{ color: 'var(--text-tertiary)' }}>
-                            {product.year}
-                          </span>
-                        </div>
-                        <h3 className="text-lg font-bold leading-tight mb-1 truncate" style={{ color: 'var(--text-primary)' }}>
-                          {product.name}
-                        </h3>
-                        <div className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
-                          {product.manufacturer}
-                        </div>
-                      </div>
-
-                      {!preRelease && (
-                        <div className="flex items-center gap-1.5 px-2 py-1 rounded-full shrink-0 ml-2" style={{ backgroundColor: 'var(--signal-buy-bg)' }}>
-                          <div
-                            className="w-2 h-2 rounded-full animate-pulse"
-                            style={{ backgroundColor: 'var(--signal-buy)', boxShadow: 'var(--glow-green)' }}
-                          />
-                          <span className="text-[9px] font-bold uppercase" style={{ color: 'var(--signal-buy)', letterSpacing: '0.06em' }}>
-                            LIVE
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="mb-4 p-4 rounded-lg" style={{ backgroundColor: 'rgba(59, 130, 246, 0.05)' }}>
-                      <div className="terminal-label-muted mb-2">CASE COST</div>
-                      <div className="flex items-baseline gap-2">
-                        <span className="font-mono text-2xl font-bold" style={{ color: primary }}>
-                          ${product.hobby_case_cost?.toLocaleString() ?? '—'}
-                        </span>
-                        {product.bd_case_cost && (
-                          <>
-                            <span style={{ color: 'var(--text-tertiary)' }}>·</span>
-                            <span className="font-mono text-sm" style={{ color: 'var(--text-secondary)' }}>
-                              BD ${product.bd_case_cost.toLocaleString()}
-                            </span>
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {preRelease ? (
-                      <div
-                        className="text-center py-2 px-3 rounded-lg text-sm font-bold"
-                        style={{
-                          backgroundColor: 'var(--signal-watch-bg)',
-                          color: 'var(--signal-watch)',
-                          border: '1px solid var(--signal-watch-border)',
-                        }}
-                      >
-                        PRE-RELEASE · Coming Soon
-                      </div>
-                    ) : (
-                      <div
-                        className="flex items-center justify-between py-2 px-3 rounded-lg transition-all"
-                        style={{
-                          backgroundColor: `${primary}15`,
-                          borderLeft: `3px solid ${primary}`,
-                        }}
-                      >
-                        <span className="text-sm font-semibold" style={{ color: primary }}>View Slot Analysis</span>
-                        <ChevronRight
-                          className="w-5 h-5 group-hover:translate-x-1 transition-transform"
-                          style={{ color: primary }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </Link>
-            );
-          })}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {filtered.map(product => (
+            <ProductCard key={product.id} product={product} signal={signals[product.id]} />
+          ))}
         </div>
       )}
     </div>

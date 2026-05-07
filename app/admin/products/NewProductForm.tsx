@@ -114,8 +114,10 @@ export default function NewProductForm({ sports }: Props) {
     year: new Date().getFullYear().toString(),
     hobby_case_cost: '',
     bd_case_cost: '',
+    jumbo_case_cost: '',
     hobby_am_case_cost: '',
     bd_am_case_cost: '',
+    jumbo_am_case_cost: '',
     release_date: '',
     lifecycle_status: 'live' as 'pre_release' | 'live' | 'dormant',
   });
@@ -186,10 +188,13 @@ export default function NewProductForm({ sports }: Props) {
       year: form.year.trim(),
       hobby_case_cost: parseFloat(form.hobby_case_cost) || 0,
       bd_case_cost: form.bd_case_cost ? parseFloat(form.bd_case_cost) : null,
+      jumbo_case_cost: form.jumbo_case_cost ? parseFloat(form.jumbo_case_cost) : null,
       hobby_am_case_cost: form.hobby_am_case_cost ? parseFloat(form.hobby_am_case_cost) : null,
       bd_am_case_cost: form.bd_am_case_cost ? parseFloat(form.bd_am_case_cost) : null,
+      jumbo_am_case_cost: form.jumbo_am_case_cost ? parseFloat(form.jumbo_am_case_cost) : null,
       hobby_autos_per_case: null,
       bd_autos_per_case: null,
+      jumbo_autos_per_case: null,
       release_date: form.release_date || null,
       ch_set_name: chSetName || null,
       lifecycle_status: form.lifecycle_status,
@@ -528,6 +533,21 @@ export default function NewProductForm({ sports }: Props) {
           </div>
           <div>
             <label style={labelStyle}>
+              Jumbo / Case ($){' '}
+              <span style={{ color: 'var(--text-tertiary)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span>
+            </label>
+            <FocusInput
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="0.00"
+              value={form.jumbo_case_cost}
+              onChange={e => set('jumbo_case_cost', e.target.value)}
+              style={{ fontFamily: 'var(--font-mono)' }}
+            />
+          </div>
+          <div>
+            <label style={labelStyle}>
               Hobby AM / Case ($){' '}
               <span style={{ color: 'var(--text-tertiary)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(after-market, optional)</span>
             </label>
@@ -553,6 +573,21 @@ export default function NewProductForm({ sports }: Props) {
               placeholder="0.00"
               value={form.bd_am_case_cost}
               onChange={e => set('bd_am_case_cost', e.target.value)}
+              style={{ fontFamily: 'var(--font-mono)' }}
+            />
+          </div>
+          <div>
+            <label style={labelStyle}>
+              Jumbo AM / Case ($){' '}
+              <span style={{ color: 'var(--text-tertiary)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(after-market, optional)</span>
+            </label>
+            <FocusInput
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="0.00"
+              value={form.jumbo_am_case_cost}
+              onChange={e => set('jumbo_am_case_cost', e.target.value)}
               style={{ fontFamily: 'var(--font-mono)' }}
             />
           </div>
