@@ -319,6 +319,28 @@ When a hit is reported, the relevant player's slot price should reflect the upda
 
 ## Priority 3 — Future pipeline, external dependencies required
 
+### Background CardHedger matching (close-the-tab-and-walk-away)
+**Effort:** ~½ day
+**Why:** Today both the import-checklist `handleMatch` and the product-dashboard `RunMatchingButton` drive matching from a client-side loop — the browser fires `POST /api/admin/match-cardhedger` repeatedly with offset paging until `hasMore: false`. Closing the tab kills the loop; matching is resumable on the next click but not autonomous. For Panini Donruss Optic (~14k variants) or 2025 Panini Prizm Football (~35k variants) that's 5-10+ minutes of foreground time per product.
+
+Real fan-out workflow (mirror the pricing-refresh pipeline):
+
+1. New `match_run_log` table (or extend `cron_run_log`) tracks per-run offset, total, started_at, finished_at, status.
+2. New `/api/admin/start-match` admin endpoint that initializes a run row and kicks off a `/api/cron/process-match-batch` invocation. Worker processes one chunk and either re-invokes itself for the next chunk (HTTP self-fan-out, like the pricing orchestrator does) or returns and a follow-up cron picks up incomplete runs.
+3. Existing `match-cardhedger` route stays the canonical worker — fan-out just wraps it.
+4. Client-side: trigger the run, leave a "Match running…" indicator on the product page, walk away. On return, the most recent `match_run_log` row drives the UI state.
+
+**Files to touch:**
+- New: `app/api/admin/start-match/route.ts`, `app/api/cron/process-match-batch/route.ts`, migration for `match_run_log`
+- `app/admin/products/[id]/RunMatchingButton.tsx` — switch from client loop to "start run + poll status"
+- `app/admin/import-checklist/page.tsx` — same shape on the result page
+
+**Verification:** start a match on a 14k+ variant product, close the browser tab, come back 5 minutes later, see completed status + auto-match counts populated.
+
+**Status: ⏸ Low priority** — current resumable client-loop pattern is acceptable for the volume we're at, especially with the new progress UI. Revisit if matching becomes a regular bottleneck or if we start importing 50k+ variant jumbo products often.
+
+---
+
 ### Phase 6 — P-score: Reddit Sentiment
 **Status: ⏸ Deferred — approval barrier + cost**
 **Effort:** 2–3 days (when unblocked)
