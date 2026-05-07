@@ -566,14 +566,17 @@ export function parseChecklistXlsx(buffer: Buffer): ParsedChecklist {
   const wb = XLSX.read(buffer, { type: 'buffer' });
 
   // Panini detection: Panini Prizm / Donruss / Optic / etc. ship a fully
-  // denormalized "Master Checklist" sheet that is the canonical source for
-  // every (parallel × athlete) row. The metadata sheets (Base / Inserts /
-  // Autographs / Memorabilia) only describe SOME parallels — for 2025 Prizm
-  // Football the metadata sheets cover ~24 of the actual 316 parallels. So
-  // when the canonical sheet is present, we route to it and skip the
-  // Bowman/Topps logic entirely.
-  if (isPaniniMasterChecklistWorkbook(wb, XLSX)) {
-    return parsePaniniXlsx(wb, XLSX);
+  // denormalized canonical sheet whose first three header cells are always
+  // CARD SET / CARD NUMBER / ATHLETE. The sheet name varies — `Master
+  // Checklist` (2025 Panini Prizm Football), `Master` (2024 Donruss Optic
+  // Football). We detect by header signature, not name. The metadata sheets
+  // (Base / Inserts / Autographs / Memorabilia) only describe SOME parallels;
+  // for 2025 Prizm Football they cover ~24 of the actual 316. When the
+  // canonical sheet is present we route there and skip the Bowman/Topps
+  // logic entirely.
+  const paniniSheet = findPaniniMasterSheet(wb, XLSX);
+  if (paniniSheet) {
+    return parsePaniniXlsx(wb, XLSX, paniniSheet);
   }
 
   // Each base-section header starts its own ParsedSection. Cards inside carry
@@ -732,32 +735,42 @@ export function parseChecklistXlsx(buffer: Buffer): ParsedChecklist {
 //     (lib/analysis.ts:137), so this is not a math bug.
 // ---------------------------------------------------------------------------
 
-const PANINI_MASTER_SHEET_NAME = 'Master Checklist';
+// Panini's canonical sheet has been seen under multiple names — `Master
+// Checklist` (2025 Panini Prizm Football) and `Master` (2024 Donruss Optic
+// Football). Don't pin to a sheet name; instead detect by the header
+// signature: the first three columns are always CARD SET / CARD NUMBER /
+// ATHLETE (case-insensitive). Returns the sheet name when matched, null
+// otherwise. The matching sheet's name is then passed into the parser.
 const PANINI_HEADER_REQUIRED = ['CARD SET', 'CARD NUMBER', 'ATHLETE'];
 
 // XLSX type omitted on purpose — the workbook object comes from a require()'d
 // module and we only touch a tiny stable surface. Locally typed `any` keeps
 // the noise out of the rest of the file.
-function isPaniniMasterChecklistWorkbook(
+function findPaniniMasterSheet(
   wb: { Sheets: Record<string, unknown>; SheetNames: string[] },
   XLSX: { utils: { sheet_to_json: (ws: unknown, opts?: Record<string, unknown>) => unknown[][] } },
-): boolean {
-  const ws = wb.Sheets[PANINI_MASTER_SHEET_NAME];
-  if (!ws) return false;
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, range: 0, defval: null });
-  const header = rows[0];
-  if (!Array.isArray(header)) return false;
-  return PANINI_HEADER_REQUIRED.every((expected, i) => {
-    const actual = header[i];
-    return typeof actual === 'string' && actual.trim().toUpperCase() === expected;
-  });
+): string | null {
+  for (const name of wb.SheetNames) {
+    const ws = wb.Sheets[name];
+    if (!ws) continue;
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, range: 0, defval: null });
+    const header = rows[0];
+    if (!Array.isArray(header)) continue;
+    const matches = PANINI_HEADER_REQUIRED.every((expected, i) => {
+      const actual = header[i];
+      return typeof actual === 'string' && actual.trim().toUpperCase() === expected;
+    });
+    if (matches) return name;
+  }
+  return null;
 }
 
 function parsePaniniXlsx(
   wb: { Sheets: Record<string, unknown> },
   XLSX: { utils: { sheet_to_json: (ws: unknown, opts?: Record<string, unknown>) => unknown[][] } },
+  sheetName: string,
 ): ParsedChecklist {
-  const ws = wb.Sheets[PANINI_MASTER_SHEET_NAME];
+  const ws = wb.Sheets[sheetName];
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
 
   const sectionMap = new Map<string, ParsedSection>();
