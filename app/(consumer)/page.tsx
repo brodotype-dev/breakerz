@@ -3,15 +3,64 @@ import { TrendingUp, Zap, Target, Sparkles, ChevronRight, ClipboardList } from '
 import { supabaseAdmin } from '@/lib/supabase';
 import type { Product, Sport } from '@/lib/types';
 import { Logo } from '@/components/Logo';
-import ActiveProductsBrowser from './ActiveProductsBrowser';
+import ActiveProductsBrowser, { type ProductSignal } from './ActiveProductsBrowser';
 
-async function getProducts(): Promise<(Product & { sport: Sport })[]> {
-  const { data } = await supabaseAdmin
-    .from('products')
-    .select('*, sport:sports(*)')
-    .eq('is_active', true)
-    .order('year', { ascending: false });
-  return data ?? [];
+const POSITIVE_HYPE_TAGS = new Set(['release_premium', 'underhyped']);
+
+async function getProducts(): Promise<{ products: (Product & { sport: Sport })[]; signals: Record<string, ProductSignal> }> {
+  const sevenDaysAgoIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const nowIso = new Date().toISOString();
+
+  // Three parallel queries: products, recent-break counts, active hype tags.
+  // user_breaks/observations are scoped to active products in JS — cheaper than a join here.
+  const [productsRes, breaksRes, hypeRes] = await Promise.all([
+    supabaseAdmin
+      .from('products')
+      .select('*, sport:sports(*)')
+      .eq('is_active', true)
+      .order('year', { ascending: false }),
+    supabaseAdmin
+      .from('user_breaks')
+      .select('product_id')
+      .gte('created_at', sevenDaysAgoIso)
+      .neq('status', 'abandoned'),
+    supabaseAdmin
+      .from('market_observations')
+      .select('product_id, payload, observed_at')
+      .eq('observation_type', 'hype_tag')
+      .eq('scope_type', 'product')
+      .gt('expires_at', nowIso)
+      .is('superseded_at', null)
+      .order('observed_at', { ascending: false }),
+  ]);
+
+  const products = productsRes.data ?? [];
+
+  // Count breaks per product (last 7 days, non-abandoned)
+  const breakCounts: Record<string, number> = {};
+  for (const row of breaksRes.data ?? []) {
+    const pid = (row as { product_id: string }).product_id;
+    breakCounts[pid] = (breakCounts[pid] ?? 0) + 1;
+  }
+
+  // Most-recent positive product-scope hype tag per product (already ordered desc)
+  const hypeTags: Record<string, { tag: string; observedAt: string }> = {};
+  for (const row of hypeRes.data ?? []) {
+    const r = row as { product_id: string; payload: { tag?: string }; observed_at: string };
+    if (hypeTags[r.product_id]) continue;
+    if (!r.payload?.tag || !POSITIVE_HYPE_TAGS.has(r.payload.tag)) continue;
+    hypeTags[r.product_id] = { tag: r.payload.tag, observedAt: r.observed_at };
+  }
+
+  const signals: Record<string, ProductSignal> = {};
+  for (const p of products) {
+    signals[p.id] = {
+      breakCount7d: breakCounts[p.id] ?? 0,
+      hypeTag: hypeTags[p.id] ?? null,
+    };
+  }
+
+  return { products, signals };
 }
 
 function isPreRelease(releaseDate: string | null): boolean {
@@ -20,7 +69,7 @@ function isPreRelease(releaseDate: string | null): boolean {
 }
 
 export default async function HomePage() {
-  const products = await getProducts();
+  const { products, signals } = await getProducts();
   const liveCount = products.filter(p => !isPreRelease(p.release_date)).length;
   const preReleaseCount = products.length - liveCount;
 
@@ -237,7 +286,7 @@ export default async function HomePage() {
             </div>
           </>
         ) : (
-          <ActiveProductsBrowser products={products} />
+          <ActiveProductsBrowser products={products} signals={signals} />
         )}
       </div>
 

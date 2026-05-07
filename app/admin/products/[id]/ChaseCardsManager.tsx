@@ -7,7 +7,14 @@ interface RecommendedPlayer {
   id: string;
   buzz_score: number | null;
   player: { id: string; name: string; team: string; is_rookie: boolean };
-  rarestVariant?: { id: string; variant_name: string; hobby_odds: number | null; card_number: string | null };
+  rarestVariant?: {
+    id: string;
+    variant_name: string;
+    hobby_odds: number | null;
+    card_number: string | null;
+    print_run: number | null;
+    rankBy: 'odds' | 'print_run';
+  };
 }
 
 interface Recommendations {
@@ -54,6 +61,7 @@ function HitBadge() {
 export default function ChaseCardsManager({ productId }: Props) {
   const [chaseCards, setChaseCards] = useState<ChaseCard[]>([]);
   const [recommendations, setRecommendations] = useState<Recommendations>({ chaseCards: [], chasePlayers: [] });
+  const [productHasOdds, setProductHasOdds] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
 
@@ -72,6 +80,7 @@ export default function ChaseCardsManager({ productId }: Props) {
       const data = await res.json();
       setChaseCards(data.chaseCards ?? []);
       setRecommendations(data.recommendations ?? { chaseCards: [], chasePlayers: [] });
+      setProductHasOdds(data.productHasOdds ?? true);
     } finally {
       setLoading(false);
     }
@@ -107,9 +116,12 @@ export default function ChaseCardsManager({ productId }: Props) {
   async function addFromRecommendation(pp: RecommendedPlayer, type: ChaseCardType) {
     setSaving('adding-' + pp.id);
     try {
-      const oddsDisplay = pp.rarestVariant?.hobby_odds
-        ? `1:${pp.rarestVariant.hobby_odds}`
-        : '';
+      const v = pp.rarestVariant;
+      const oddsDisplay = v?.rankBy === 'odds' && v.hobby_odds
+        ? `1:${v.hobby_odds}`
+        : v?.rankBy === 'print_run' && v.print_run
+          ? `/${v.print_run}`
+          : '';
       const displayName = type === 'chase_card' && pp.rarestVariant
         ? pp.rarestVariant.variant_name
         : '';
@@ -251,11 +263,28 @@ export default function ChaseCardsManager({ productId }: Props) {
           <div className="space-y-4">
             {recommendations.chaseCards.length > 0 && (
               <div>
-                <p className="text-[10px] mb-1.5" style={{ color: '#a855f7' }}>Chase Cards (rarest variants)</p>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <p className="text-[10px]" style={{ color: '#a855f7' }}>Chase Cards (rarest variants)</p>
+                  {!productHasOdds && (
+                    <span
+                      className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded"
+                      style={{ backgroundColor: 'rgba(234,179,8,0.15)', color: '#eab308' }}
+                      title="No hobby odds on this product — rankings derived from print run"
+                    >
+                      Ranked by print run
+                    </span>
+                  )}
+                </div>
                 <div className="space-y-1">
                   {recommendations.chaseCards.map(pp => {
                     const already = alreadyAddedIds.has(pp.id);
                     const isSaving = saving === 'adding-' + pp.id;
+                    const v = pp.rarestVariant;
+                    const rarityLabel = v?.rankBy === 'odds' && v.hobby_odds
+                      ? `1:${v.hobby_odds}`
+                      : v?.rankBy === 'print_run' && v.print_run
+                        ? `/${v.print_run}`
+                        : null;
                     return (
                       <div
                         key={pp.id}
@@ -266,10 +295,10 @@ export default function ChaseCardsManager({ productId }: Props) {
                           <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
                             {pp.player?.name}
                           </span>
-                          {pp.rarestVariant && (
+                          {v && (
                             <span className="ml-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                              {pp.rarestVariant.variant_name}
-                              {pp.rarestVariant.hobby_odds ? ` · 1:${pp.rarestVariant.hobby_odds}` : ''}
+                              {v.variant_name}
+                              {rarityLabel ? ` · ${rarityLabel}` : ''}
                             </span>
                           )}
                         </div>

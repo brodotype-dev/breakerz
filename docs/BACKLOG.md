@@ -66,6 +66,10 @@ Combine with **C** and the pricing pipeline becomes boring.
 ---
 
 ### Jumbo case-cost fields in admin product form
+**Status: ✅ Complete (2026-05-07)** — `Jumbo / Case ($)` + `Jumbo AM / Case ($)` inputs added to [app/admin/products/NewProductForm.tsx](../app/admin/products/NewProductForm.tsx). Edit form already had them; the gap was on create + a silently-dropped param on the `updateProduct` action signature, both fixed.
+
+**Original entry below for context.**
+
 **Effort:** ~30 min
 **Why:** Break Analysis v2 (Phase 1, shipped 2026-04-29) added `products.jumbo_case_cost` / `jumbo_am_case_cost` columns plus full engine + consumer support for jumbo as a third format. The admin product form was supposed to expose those fields too — listed as a critical file in the plan — but never shipped. Today admins have to set jumbo case costs via SQL, which is why no live product has jumbo populated.
 
@@ -156,6 +160,10 @@ Graded pricing still matters for specific decisions (is this slot worth it if I 
 ## Priority 2 — High value, external dependency or more effort
 
 ### Chase Cards — Panini-aware fallback when no odds data
+**Status: ✅ Complete (2026-05-07)** — print-run fallback shipped in [app/api/admin/chase-cards/route.ts](../app/api/admin/chase-cards/route.ts). Each candidate's rarest variant carries a `rankBy: 'odds' | 'print_run'` discriminator; the response surfaces `productHasOdds`. [app/admin/products/[id]/ChaseCardsManager.tsx](../app/admin/products/[id]/ChaseCardsManager.tsx) renders a yellow "Ranked by print run" chip when fallback triggered.
+
+**Original entry below for context.**
+
 **Effort:** ~1 hour
 **Why:** Surfaced 2026-05-06 alongside the Panini Prizm Football import. Panini products have no published pull rates, so every `player_product_variants.hobby_odds` is null. The pricing math already handles null correctly (excluded from the equation, never treated as zero — confirmed via audit). But [app/api/admin/chase-cards/route.ts:38-46](app/api/admin/chase-cards/route.ts:38) picks the "rarest variant" by lowest `hobby_odds` and filters out anything where rarest is undefined — so the admin Chase Cards Manager is **empty for every Panini product**, with no signal to the admin about why.
 
@@ -193,6 +201,12 @@ Graded pricing still matters for specific decisions (is this slot worth it if I 
 ---
 
 ### Rethink consumer product card layout (`/break` index)
+**Status: ✅ Phase 1 complete (2026-05-07) — Top Mover chip deferred (Kyle blocker)**
+
+Activity counter + hype tag pill + compact density rework shipped via new [components/breakiq/ProductCard.tsx](../components/breakiq/ProductCard.tsx); [app/(consumer)/page.tsx](../app/(consumer)/page.tsx) `getProducts` now fetches break counts + active product-scope hype observations alongside the products list. Inline render in [app/(consumer)/ActiveProductsBrowser.tsx](../app/(consumer)/ActiveProductsBrowser.tsx) replaced; grid bumped to 4-up at xl breakpoint. Top Mover chip deferred until CH's `top-movers` response shape is confirmed (delta vs. rank-only) and Phase 5 C-score lands.
+
+**Original entry below for context.**
+
 **Effort:** ~1–2 days
 
 **Why:** The current grid is admin-shaped (Case Cost forward). A consumer landing on `/break` doesn't care that the case wholesales for $4,632 — they care whether this product is worth buying *into*: who's trending, how active is the community on it, and is anyone breaking it right now. Cards are also visually heavy — they take a full row's worth of vertical space to communicate two numbers (sport/year + case cost) that don't drive a buy decision.
