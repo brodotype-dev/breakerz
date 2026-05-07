@@ -201,9 +201,9 @@ Graded pricing still matters for specific decisions (is this slot worth it if I 
 ---
 
 ### Rethink consumer product card layout (`/break` index)
-**Status: ✅ Phase 1 complete (2026-05-07) — Top Mover chip deferred (Kyle blocker)**
+**Status: ✅ Phase 1 complete (2026-05-07) — Top Mover chip queued for Phase 5**
 
-Activity counter + hype tag pill + compact density rework shipped via new [components/breakiq/ProductCard.tsx](../components/breakiq/ProductCard.tsx); [app/(consumer)/page.tsx](../app/(consumer)/page.tsx) `getProducts` now fetches break counts + active product-scope hype observations alongside the products list. Inline render in [app/(consumer)/ActiveProductsBrowser.tsx](../app/(consumer)/ActiveProductsBrowser.tsx) replaced; grid bumped to 4-up at xl breakpoint. Top Mover chip deferred until CH's `top-movers` response shape is confirmed (delta vs. rank-only) and Phase 5 C-score lands.
+Activity counter + hype tag pill + compact density rework shipped via new [components/breakiq/ProductCard.tsx](../components/breakiq/ProductCard.tsx); [app/(consumer)/page.tsx](../app/(consumer)/page.tsx) `getProducts` now fetches break counts + active product-scope hype observations alongside the products list. Inline render in [app/(consumer)/ActiveProductsBrowser.tsx](../app/(consumer)/ActiveProductsBrowser.tsx) replaced; grid bumped to 4-up at xl breakpoint. Top Mover chip queued for Phase 5 C-score — design locked on price-delta format (`↑ Wemby +14%`); reads CH's `top-movers` if it returns deltas directly, otherwise computes deltas from `price-updates` polling over a 7d window.
 
 **Original entry below for context.**
 
@@ -290,13 +290,14 @@ Remaining known limitation: multi-player autos (DA-/TA-/QA-) and code-only dupli
 
 ### Phase 5 — C-score: CardHedger Top-Movers + Product Page Widget
 **Effort:** 2–3 days
-**Blocker:** Kyle needs to confirm `top-movers` endpoint response structure — specifically whether it includes volume data for normalization, or just relative rank. Normalization strategy changes depending on the answer. If rank-only, we show directional arrows; if price delta is included, we can show % movement.
+**Status:** Unblocked. Display format locked on price-delta (`↑ Wemby +14%`). Implementation reads CH's `top-movers` first; if the response is rank-only (no per-card delta), fall back to computing deltas ourselves from `price-updates` polling over a 7d window. Both endpoints already on the build list below.
 
 - Add `top-movers` and `price-updates` to `lib/cardhedger.ts`
 - **Decision needed first:** store C-score in separate `c_score` column or write composite directly to `buzz_score`? Separate columns are better for auditability and debugging; decide before building.
 - Vercel Cron (daily): fetch top-movers → cross-reference `player_product_variants.cardhedger_card_id` → compute C-score → write to DB
-- `price-updates` delta poll (every 6h): price swing > threshold → create pending High Volatility review record
+- `price-updates` delta poll (every 6h): price swing > threshold → create pending High Volatility review record. Doubles as the source for computed deltas if `top-movers` is rank-only.
 - Admin: pending High Volatility review queue
+- **Top Mover chip on consumer product cards** (`/break` index): the Phase 1 card redesign reserved space for this. Reads the same C-score data pipeline; renders one chip per card for the top-moving player in that product.
 - **Product page Top Movers widget:** on the break page, show a ranked list of players in this product whose cards are trending on the secondary market (e.g. "Trending up: Wemby +18%, Cade +11% · Trending down: KD -8%"). Cross-references `player_product_variants.cardhedger_card_id` against top-movers response — same data pipeline as C-score, surfaced directly to the buyer. This is the consumer-facing output of the C-score computation.
 
 **Files:** `lib/cardhedger.ts`, `app/api/cron/update-scores/route.ts`, `vercel.json`, `app/break/[slug]/` (Top Movers widget)
