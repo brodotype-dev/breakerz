@@ -78,7 +78,15 @@ function ImportChecklistInner() {
   const [importProgress, setImportProgress] = useState<ImportProgress | null>(null);
 
   const [matching, setMatching] = useState(false);
-  const [matchResults, setMatchResults] = useState<MatchRow[] | null>(null);
+  // Progress is surfaced live during the run. Only review/no-match rows
+  // accumulate into matchUnmatched — the auto rows are 95%+ of the volume
+  // and listing them all (17k+ on Panini Prizm) was making the page useless.
+  const [matchProgress, setMatchProgress] = useState<{
+    completed: number; total: number; auto: number; review: number; noMatch: number;
+  } | null>(null);
+  const [matchUnmatched, setMatchUnmatched] = useState<MatchRow[]>([]);
+  const [matchDone, setMatchDone] = useState(false);
+  const [showMatchDebug, setShowMatchDebug] = useState(false);
   const [matchError, setMatchError] = useState<string | null>(null);
 
   const [oddsUploading, setOddsUploading] = useState(false);
@@ -297,11 +305,19 @@ function ImportChecklistInner() {
   async function handleMatch() {
     setMatching(true);
     setMatchError(null);
-    setMatchResults(null);
+    setMatchProgress({ completed: 0, total: 0, auto: 0, review: 0, noMatch: 0 });
+    setMatchUnmatched([]);
+    setMatchDone(false);
+    setShowMatchDebug(false);
+
+    let offset = 0;
+    let totalAuto = 0;
+    let totalReview = 0;
+    let totalNoMatch = 0;
+    let grandTotal = 0;
+    const unmatched: MatchRow[] = [];
 
     try {
-      let offset = 0;
-      const accumulated: MatchRow[] = [];
       while (true) {
         const res = await fetch('/api/admin/match-cardhedger', {
           method: 'POST',
@@ -312,7 +328,7 @@ function ImportChecklistInner() {
         // res.text() + manual parse so the (rare) HTML timeout page doesn't
         // surface as "Unexpected token 'A', 'An error o'..." anymore.
         const text = await res.text();
-        let json: { results?: MatchRow[]; error?: string; processed?: number; hasMore?: boolean };
+        let json: { results?: MatchRow[]; error?: string; processed?: number; hasMore?: boolean; total?: number };
         try { json = JSON.parse(text); }
         catch {
           setMatchError(`Match failed at offset ${offset}: server returned non-JSON (${res.status}). ${text.slice(0, 120)}`);
@@ -327,13 +343,27 @@ function ImportChecklistInner() {
         }
 
         const batch = json.results ?? [];
-        accumulated.push(...batch);
-        setMatchResults([...accumulated]);
-
+        grandTotal = json.total ?? grandTotal;
+        for (const r of batch) {
+          if (r.status === 'auto') totalAuto++;
+          else if (r.status === 'review') { totalReview++; unmatched.push(r); }
+          else { totalNoMatch++; unmatched.push(r); }
+        }
         offset += json.processed ?? batch.length;
+
+        setMatchProgress({
+          completed: offset,
+          total: grandTotal,
+          auto: totalAuto,
+          review: totalReview,
+          noMatch: totalNoMatch,
+        });
+        setMatchUnmatched([...unmatched]);
+
         if (!json.hasMore) break;
         await new Promise(r => setTimeout(r, 300));
       }
+      setMatchDone(true);
     } catch (err) {
       setMatchError(err instanceof Error ? err.message : 'Network error');
     } finally {
@@ -721,39 +751,86 @@ function ImportChecklistInner() {
 
                 {matchError && <p className="text-sm text-red-500">{matchError}</p>}
 
-                {matchResults && (
-                  <div className="rounded border overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead className="bg-muted/50">
-                        <tr>
-                          <th className="px-3 py-2 text-left font-medium text-muted-foreground">Player</th>
-                          <th className="px-3 py-2 text-left font-medium text-muted-foreground">Variant</th>
-                          <th className="px-3 py-2 text-left font-medium text-muted-foreground">#</th>
-                          <th className="px-3 py-2 text-left font-medium text-muted-foreground">Card ID</th>
-                          <th className="px-3 py-2 text-center font-medium text-muted-foreground">Conf.</th>
-                          <th className="px-3 py-2 text-center font-medium text-muted-foreground">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {matchResults.map(r => (
-                          <tr key={r.variantId} className="hover:bg-muted/20">
-                            <td className="px-3 py-1.5">{r.playerName}</td>
-                            <td className="px-3 py-1.5 text-muted-foreground">{r.variantName}</td>
-                            <td className="px-3 py-1.5 text-muted-foreground">{r.cardNumber ?? '—'}</td>
-                            <td className="px-3 py-1.5 font-mono text-xs text-muted-foreground">{r.cardId ?? '—'}</td>
-                            <td className="px-3 py-1.5 text-center">{(r.confidence * 100).toFixed(0)}%</td>
-                            <td className={`px-3 py-1.5 text-center text-xs font-medium ${confidenceColor(r.status)}`}>
-                              {r.status}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    <div className="px-3 py-2 bg-muted/30 text-xs text-muted-foreground flex gap-4">
-                      <span className="text-green-600">{matchResults.filter(r => r.status === 'auto').length} auto-matched</span>
-                      <span className="text-yellow-600">{matchResults.filter(r => r.status === 'review').length} needs review</span>
-                      <span className="text-red-500">{matchResults.filter(r => r.status === 'no-match').length} no match</span>
+                {matchProgress && (matching || matchDone) && (
+                  <div className="space-y-3">
+                    {/* Progress bar — fixed height; doesn't grow with batches */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-xs tabular-nums">
+                        <span className="font-medium">
+                          {matchDone ? 'Matching complete' : 'Matching…'}
+                        </span>
+                        <span className="text-muted-foreground">
+                          {matchProgress.completed.toLocaleString()} / {matchProgress.total ? matchProgress.total.toLocaleString() : '…'}
+                        </span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                        <div
+                          className="h-full bg-primary transition-all duration-300"
+                          style={{
+                            width: matchProgress.total > 0
+                              ? `${Math.min(100, (matchProgress.completed / matchProgress.total) * 100)}%`
+                              : '0%',
+                          }}
+                        />
+                      </div>
                     </div>
+
+                    {/* Live counts — always visible during the run */}
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="rounded border bg-muted/20 px-3 py-2">
+                        <div className="text-xl font-bold tabular-nums text-green-600">{matchProgress.auto.toLocaleString()}</div>
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground mt-0.5">Auto</div>
+                      </div>
+                      <div className="rounded border bg-muted/20 px-3 py-2">
+                        <div className="text-xl font-bold tabular-nums text-yellow-600">{matchProgress.review.toLocaleString()}</div>
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground mt-0.5">Review</div>
+                      </div>
+                      <div className="rounded border bg-muted/20 px-3 py-2">
+                        <div className="text-xl font-bold tabular-nums text-red-500">{matchProgress.noMatch.toLocaleString()}</div>
+                        <div className="text-[10px] uppercase tracking-wide text-muted-foreground mt-0.5">No match</div>
+                      </div>
+                    </div>
+
+                    {/* Post-run only: collapsible unmatched panel */}
+                    {matchDone && matchUnmatched.length > 0 && (
+                      <div className="space-y-2 pt-2 border-t">
+                        <button
+                          type="button"
+                          onClick={() => setShowMatchDebug(v => !v)}
+                          className="text-xs underline text-muted-foreground hover:text-foreground"
+                        >
+                          {showMatchDebug ? 'Hide' : 'View'} {matchUnmatched.length} unmatched / review row{matchUnmatched.length !== 1 ? 's' : ''}
+                        </button>
+                        {showMatchDebug && (
+                          <div className="rounded border overflow-auto max-h-96">
+                            <table className="w-full text-xs">
+                              <thead className="bg-muted/50 sticky top-0">
+                                <tr>
+                                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">Player</th>
+                                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">Variant</th>
+                                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">#</th>
+                                  <th className="px-3 py-2 text-center font-medium text-muted-foreground">Conf.</th>
+                                  <th className="px-3 py-2 text-center font-medium text-muted-foreground">Status</th>
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y">
+                                {matchUnmatched.map(r => (
+                                  <tr key={r.variantId} className="hover:bg-muted/20">
+                                    <td className="px-3 py-1.5">{r.playerName}</td>
+                                    <td className="px-3 py-1.5 text-muted-foreground">{r.variantName}</td>
+                                    <td className="px-3 py-1.5 text-muted-foreground">{r.cardNumber ?? '—'}</td>
+                                    <td className="px-3 py-1.5 text-center tabular-nums">{(r.confidence * 100).toFixed(0)}%</td>
+                                    <td className={`px-3 py-1.5 text-center text-[10px] font-medium uppercase ${confidenceColor(r.status)}`}>
+                                      {r.status}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -841,7 +918,10 @@ function ImportChecklistInner() {
                   setStep('upload');
                   setSections([]);
                   setImportResult(null);
-                  setMatchResults(null);
+                  setMatchProgress(null);
+                  setMatchUnmatched([]);
+                  setMatchDone(false);
+                  setMatchError(null);
                   setOddsResult(null);
                   setProductId('');
                   if (fileRef.current) fileRef.current.value = '';
