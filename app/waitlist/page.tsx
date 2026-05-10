@@ -82,8 +82,8 @@ export default function WaitlistPage() {
           backgroundSize: '40px 40px',
         }} />
 
-      {/* Two-column layout */}
-      <div className="relative min-h-screen flex items-center px-6 py-16 max-w-6xl mx-auto">
+      {/* Hero: two-column layout (vertically centered) */}
+      <div className="relative min-h-screen flex items-center px-6 pt-16 pb-12 max-w-6xl mx-auto">
         <div className="w-full grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
 
           {/* Left — brand + value prop + features */}
@@ -253,9 +253,11 @@ export default function WaitlistPage() {
           </div>
 
         </div>
+      </div>
 
-        {/* Pricing transparency — early adopter section */}
-        <div className="relative w-full mt-20 mb-4">
+      {/* Pricing transparency — early adopter section (sibling of hero, full width) */}
+      <div className="relative px-6 pb-20 max-w-6xl mx-auto">
+        <div className="w-full">
           <div className="text-center mb-8">
             <span
               className="inline-block text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full mb-3"
