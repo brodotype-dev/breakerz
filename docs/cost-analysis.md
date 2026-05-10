@@ -47,6 +47,14 @@ Claude costs are effectively negligible with Haiku. CardHedger is the real varia
 | **My Breaks** | Unlimited logging | Unlimited | Unlimited |
 | **Products & Slot Pricing** | All | All | All |
 
+### Early Adopter Pricing (Beta)
+
+The waitlist page (`/waitlist`) advertises **lock-in beta rates for life**: anyone who joins via the waitlist keeps current Hobby ($9.99) / Pro ($24.99) rates indefinitely, even after public-launch pricing changes. Mechanics:
+
+- No credit card required to join the waitlist.
+- 3 lifetime free analyses + 31-day Pro trial unchanged.
+- When/if rates increase post-launch, waitlist-converted users grandfather at the rate they signed up at — kept implicitly by not migrating existing Stripe subscriptions to new price IDs.
+
 ---
 
 ## Revenue vs. Cost at Scale

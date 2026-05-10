@@ -253,6 +253,102 @@ export default function WaitlistPage() {
           </div>
 
         </div>
+
+        {/* Pricing transparency — early adopter section */}
+        <div className="relative w-full mt-20 mb-4">
+          <div className="text-center mb-8">
+            <span
+              className="inline-block text-[10px] font-bold uppercase tracking-widest px-3 py-1 rounded-full mb-3"
+              style={{
+                backgroundColor: 'rgba(139, 92, 246, 0.15)',
+                color: 'var(--accent-purple)',
+                border: '1px solid rgba(139, 92, 246, 0.3)',
+              }}
+            >
+              Early Adopter Pricing
+            </span>
+            <h2 className="text-2xl md:text-3xl font-bold mb-2" style={{ color: 'var(--text-primary)' }}>
+              Lock in beta rates for life
+            </h2>
+            <p className="text-sm md:text-base" style={{ color: 'var(--text-secondary)' }}>
+              Join the waitlist now and your subscription rate stays the same — even after public launch.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {/* Free trial */}
+            <div
+              className="rounded-xl border p-6"
+              style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
+            >
+              <div className="text-[10px] font-bold uppercase tracking-wider mb-3" style={{ color: 'var(--text-tertiary)' }}>
+                Free trial
+              </div>
+              <div className="flex items-baseline gap-1 mb-4">
+                <span className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>$0</span>
+                <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>· 3 lifetime analyses</span>
+              </div>
+              <ul className="space-y-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> 3 BreakIQ Sayz analyses</li>
+                <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> 3 Slab Analysis lookups</li>
+                <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> All products + slot pricing</li>
+                <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> Unlimited break logging</li>
+              </ul>
+            </div>
+
+            {/* Hobby */}
+            <div
+              className="relative rounded-xl border p-6"
+              style={{
+                borderColor: 'var(--accent-blue)',
+                backgroundColor: 'var(--terminal-surface)',
+                boxShadow: '0 0 0 1px var(--accent-blue), 0 8px 32px -8px rgba(59,130,246,0.3)',
+              }}
+            >
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest"
+                style={{ background: 'var(--gradient-blue)', color: 'white' }}>
+                Most Popular
+              </div>
+              <div className="text-[10px] font-bold uppercase tracking-wider mb-3" style={{ color: 'var(--accent-blue)' }}>
+                Hobby
+              </div>
+              <div className="flex items-baseline gap-1 mb-4">
+                <span className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>$9.99</span>
+                <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>/ month</span>
+              </div>
+              <ul className="space-y-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> 10 BreakIQ Sayz analyses / mo</li>
+                <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> 10 Slab Analysis lookups / mo</li>
+                <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> All products + slot pricing</li>
+                <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> Unlimited break logging</li>
+              </ul>
+            </div>
+
+            {/* Pro */}
+            <div
+              className="rounded-xl border p-6"
+              style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
+            >
+              <div className="text-[10px] font-bold uppercase tracking-wider mb-3" style={{ color: 'var(--accent-purple)' }}>
+                Pro
+              </div>
+              <div className="flex items-baseline gap-1 mb-4">
+                <span className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>$24.99</span>
+                <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>/ month</span>
+              </div>
+              <ul className="space-y-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> Unlimited BreakIQ Sayz</li>
+                <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> Unlimited Slab Analysis</li>
+                <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> All products + slot pricing</li>
+                <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> Unlimited break logging</li>
+              </ul>
+            </div>
+          </div>
+
+          <p className="text-center text-xs mt-6" style={{ color: 'var(--text-tertiary)' }}>
+            No credit card required to join the waitlist. You'll only pay after the trial.
+          </p>
+        </div>
       </div>
     </div>
   );
