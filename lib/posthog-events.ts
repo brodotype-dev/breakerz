@@ -11,6 +11,7 @@ export const PH_EVENTS = {
   break_logged: 'break_logged',
 
   slab_analysis_lookup_completed: 'slab_analysis_lookup_completed',
+  slab_analysis_cert_mismatch: 'slab_analysis_cert_mismatch',
 
   subscription_checkout_started: 'subscription_checkout_started',
   subscription_activated: 'subscription_activated',

@@ -78,7 +78,9 @@ Use empty strings for any field not visible or not applicable.`,
 
     // ── Mode 2a: Cert lookup ─────────────────────────────────────────
     if (body.action === 'cert') {
-      const { cert, grader } = body as { cert: string; grader?: string };
+      const { cert, grader, expectedPlayer, expectedYear } = body as {
+        cert: string; grader?: string; expectedPlayer?: string; expectedYear?: string;
+      };
       if (!cert) return NextResponse.json({ error: 'cert required' }, { status: 400 });
 
       const certTrimmed = cert.trim();
@@ -94,6 +96,35 @@ Use empty strings for any field not visible or not applicable.`,
         } catch (err) {
           psaError = err instanceof Error ? err.message : String(err);
           console.error('[card-lookup] PSA API failed:', psaError);
+        }
+      }
+
+      // Step 1b: cross-check PSA's identity against the parsed-from-image identity.
+      // If they disagree on player or year, the cert number was almost certainly
+      // misread — short-circuit before we render someone else's comps.
+      if (psaCert && (expectedPlayer || expectedYear)) {
+        const playerOk = playerMatches(expectedPlayer, psaCert.Subject);
+        const yearOk = yearMatches(expectedYear, psaCert.Year);
+        if (!playerOk || !yearOk) {
+          return NextResponse.json({
+            source: 'cert',
+            psaVerified: true,
+            psaCert,
+            psaError: null,
+            certInfo: { grader: 'PSA', cert: certTrimmed, grade: psaCert.CardGrade, description: psaCert.GradeDescription },
+            card: null,
+            allPrices: [],
+            comps: [],
+            matchedPrice: null,
+            matchedGrade: '',
+            mismatch: {
+              kind: !playerOk && !yearOk ? 'both' : !playerOk ? 'player' : 'year',
+              expectedPlayer: expectedPlayer ?? null,
+              expectedYear: expectedYear ?? null,
+              psaPlayer: psaCert.Subject,
+              psaYear: psaCert.Year,
+            },
+          });
         }
       }
 
@@ -258,4 +289,22 @@ Use empty strings for any field not visible or not applicable.`,
       { status: 500 }
     );
   }
+}
+
+function normalizePlayer(s: string | null | undefined): string {
+  return (s ?? '').toLowerCase().replace(/[^a-z]/g, '');
+}
+
+function playerMatches(parsed: string | undefined, psa: string | undefined): boolean {
+  const a = normalizePlayer(parsed);
+  const b = normalizePlayer(psa);
+  if (!a || !b) return true;
+  return a === b || a.includes(b) || b.includes(a);
+}
+
+function yearMatches(parsed: string | undefined, psa: string | undefined): boolean {
+  const a = (parsed ?? '').match(/\d{4}/)?.[0];
+  const b = (psa ?? '').match(/\d{4}/)?.[0];
+  if (!a || !b) return true;
+  return a === b;
 }

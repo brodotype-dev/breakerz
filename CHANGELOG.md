@@ -5,6 +5,20 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-09 — Slab Analysis cert-mismatch guard
+
+First reported case of Slab Analysis returning the wrong-card comp: a 1992 Skybox Michael Jordan PSA 9 image returned a Ken Griffey Jr. 1990 Score Rising Stars #3 PSA 10 from CardHedger. Pipeline turned out to have worked correctly — Claude vision OCR misread the cert number off the slab, PSA's database has cert `99687660` registered to the Griffey, and the CH search dutifully found that Griffey. Confirmed against PSA's public cert lookup at psacard.com/cert/99687660.
+
+**Fix** ([app/api/card-lookup/route.ts](app/api/card-lookup/route.ts), [app/(consumer)/card-lookup/page.tsx](app/(consumer)/card-lookup/page.tsx)): when the image-parse path fires `Look Up by Cert`, the page now sends the parsed `playerName` and `year` along with the cert. The API normalizes both sides (lowercase + alpha-only player name, 4-digit year extract) and compares them to PSA's `Subject` / `Year`. On disagreement, the route short-circuits — no CardHedger search, no comps, no max-bid — and returns a `mismatch: { kind, expectedPlayer, expectedYear, psaPlayer, psaYear }` payload. Page renders a red banner naming both cards and asks the user to re-check the cert number; price/comp/max-bid panels are hidden so the user can't act on the wrong card. PSA Verified panel stays visible so the user sees what PSA's data actually says for that cert.
+
+**Player match is permissive** (`a === b || a.includes(b) || b.includes(a)`) so legitimate "Mike Jordan" / "Michael Jordan" parses don't trip the guard. Year match is strict — a 4-digit mismatch is never a real card. Direct-cert path (no parsed identity) is unaffected; PSA stays authoritative there.
+
+**Telemetry.** New `slab_analysis_cert_mismatch` event in [lib/posthog-events.ts](lib/posthog-events.ts) captures cert + parsed-vs-PSA identity on every trip. Existing `slab_analysis_lookup_completed` event also gains a `mismatch` field so we can segment lookup quality. Watch this for OCR reliability over time — if the rate climbs, we've got a Claude prompt or image-quality issue to dig into.
+
+**Why a soft check, not a stricter OCR retry.** This was the first reported case in months of usage. The cross-check costs nothing (we already had both sources of truth in hand) and catches both OCR misreads and any future PSA database weirdness. A retry/confidence-score loop would be more code for a problem we've seen exactly once.
+
+---
+
 ## 2026-05-09 — Per-CH-card price cache + incremental flush (timeout-safe pricing refresh)
 
 Production regression repair. Diagnosis of cron_run_log on 2026-05-09 showed the same pattern across 2 days of refresh-pricing crons: 5 firings/night, every firing reports `processed=4 ok=1 errors=3 skipped=15`. Same three big products (2024 Panini Donruss Optic with 471 PPs / never priced; 2025 Topps Pristine Baseball; 2025-26 Topps Finest Basketball) timed out every time, the orchestrator picked them up the next firing, they timed out again. **19 of 20 active products were stale, most by 66–92 hours.** Last successful refresh on those big products was the morning of 2026-05-06 — right before the multi-grade audit shipped that tripled per-product wall time (Raw + PSA 9 + PSA 10 fan-out per chunk).
