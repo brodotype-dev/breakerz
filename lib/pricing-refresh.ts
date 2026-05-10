@@ -7,17 +7,25 @@
  *   - `POST /api/admin/refresh-product-pricing` → admin-only, calls this
  *   - `/api/cron/refresh-pricing` → nightly, fans out to the admin endpoint
  *
- * Known limits (tracked in BACKLOG items C/D):
- *   - Vercel Hobby caps at 60s per invocation. Products with 6,000+ variants
- *     (Bowman Chrome, Topps Finest) may exceed this and leave partial data.
- *   - Per-variant price cache (D) would let us do incremental refreshes and
- *     dodge this entirely; until then, partial completion is acceptable.
+ * Timeout-safety architecture (post-2026-05-09):
+ *   - Per-CH-card prices are cached in `ch_price_cache`, written DURING each
+ *     batch chunk (not at the end). A timed-out function still persists the
+ *     work it completed; the next firing skips fresh cards and continues.
+ *   - Per-player_product cache rows are flushed to `pricing_cache` every
+ *     ~100 PPs during the per-pp phase, not at the end. Same rationale.
+ *   - Stale-first ordering in the cron means the most-overdue products keep
+ *     getting picked up until they finish, while small/healthy products
+ *     refresh in single firings.
  */
 
 import { supabaseAdmin } from '@/lib/supabase';
 import { computeLiveEV, searchAndComputeEV, get90DayPrices, batchPriceEstimate } from '@/lib/cardhedger';
 
 const CACHE_TTL_HOURS = 24;
+// `ch_price_cache` freshness window. Matches CACHE_TTL_HOURS so a refresh
+// run that completes both phases produces consistent results — the per-card
+// cache and the per-pp pricing_cache age out together.
+const CH_PRICE_CACHE_TTL_HOURS = 24;
 
 // Vercel Pro kills the function at 300s. Stop the batch phase early so we
 // have time to run per-pp fallbacks + upsert cache rows. Bowman Chrome
@@ -38,6 +46,8 @@ export interface RefreshSummary {
   defaultPriced: number;
   variantsFetched: number;
   variantsTotal: number;
+  variantsFromCache: number;     // pulled from ch_price_cache (fresh, no CH call)
+  variantsNewlyFetched: number;  // freshly fetched from CH this run
   batchChunkCount: number;
   batchChunksCompleted: number;
   batchDurationMs: number;
@@ -70,6 +80,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
       totalPlayers: 0,
       livePriced: 0, crossPriced: 0, searchPriced: 0, defaultPriced: 0,
       variantsFetched: 0, variantsTotal: 0,
+      variantsFromCache: 0, variantsNewlyFetched: 0,
       batchChunkCount: 0, batchChunksCompleted: 0, batchDurationMs: 0,
       totalDurationMs: Date.now() - started,
       cacheRowsWritten: 0,
@@ -127,6 +138,52 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     new Set(allVariants.map(v => v.cardhedger_card_id).filter((x): x is string => !!x)),
   );
 
+  // Load fresh per-card prices from ch_price_cache. Anything fresher than
+  // CH_PRICE_CACHE_TTL_HOURS goes directly into pricesOnly without a CH call.
+  // This is the timeout-safety win: a previous run that died mid-batch still
+  // persisted its completed chunks here, so subsequent runs only fetch the
+  // remaining stale cards.
+  const cacheCutoff = new Date(Date.now() - CH_PRICE_CACHE_TTL_HOURS * 3_600_000).toISOString();
+  let variantsFromCache = 0;
+  if (allVariantCardIds.length > 0) {
+    const CACHE_LOOKUP_CHUNK = 1000; // supabase .in() works fine well past this; 1k is comfy
+    for (let i = 0; i < allVariantCardIds.length; i += CACHE_LOOKUP_CHUNK) {
+      const slice = allVariantCardIds.slice(i, i + CACHE_LOOKUP_CHUNK);
+      const { data: cachedRows, error: cacheReadErr } = await supabaseAdmin
+        .from('ch_price_cache')
+        .select('cardhedger_card_id, raw_price, psa9_price, psa10_price, confidence')
+        .in('cardhedger_card_id', slice)
+        .gte('fetched_at', cacheCutoff);
+      if (cacheReadErr) {
+        // Don't fail the whole refresh — degrade to "treat everything as stale"
+        console.warn(`[pricing-refresh] ch_price_cache read failed (degrading to live fetch): ${cacheReadErr.message}`);
+        continue;
+      }
+      type CR = { cardhedger_card_id: string; raw_price: number | null; psa9_price: number | null; psa10_price: number | null; confidence: number | null };
+      for (const r of (cachedRows as CR[] | null) ?? []) {
+        // Same evMid/evLow/evHigh derivation as runChunk — keep both paths
+        // in sync so cache hits and live fetches produce identical EV math.
+        const rawPrice  = r.raw_price   != null && r.raw_price   > 0 ? r.raw_price   : null;
+        const midPrice  = r.psa9_price  != null && r.psa9_price  > 0 ? r.psa9_price  : rawPrice;
+        const highPrice = r.psa10_price != null && r.psa10_price > 0 ? r.psa10_price : null;
+        if (!rawPrice && !midPrice && !highPrice) continue;
+        const evMid  = midPrice ?? 0;
+        const evLow  = rawPrice ?? Math.round(evMid * 0.35);
+        const evHigh = highPrice ?? Math.round(evMid * 2.5);
+        pricesOnly.set(r.cardhedger_card_id, {
+          evLow: Math.round(evLow),
+          evMid: Math.round(evMid),
+          evHigh: Math.round(evHigh),
+          confidence: r.confidence ?? 0,
+        });
+        variantsFromCache++;
+      }
+    }
+  }
+
+  // Build chunks from card_ids that DIDN'T hit the cache (i.e., stale or never-fetched).
+  const staleCardIds = allVariantCardIds.filter(id => !pricesOnly.has(id));
+
   const PRICE_CHUNK = 100; // CH endpoint hard cap
   // Bumped from 6 → 12 alongside the multi-grade fan-out (Raw + PSA 9 + PSA 10)
   // so total wall time stays inside BATCH_DEADLINE_MS for jumbo products.
@@ -135,8 +192,8 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
   // in lib/cardhedger.ts absorbs intermittent rate-limit hits.
   const PRICE_FETCH_CONCURRENCY = 12;
   const priceChunks: string[][] = [];
-  for (let i = 0; i < allVariantCardIds.length; i += PRICE_CHUNK) {
-    priceChunks.push(allVariantCardIds.slice(i, i + PRICE_CHUNK));
+  for (let i = 0; i < staleCardIds.length; i += PRICE_CHUNK) {
+    priceChunks.push(staleCardIds.slice(i, i + PRICE_CHUNK));
   }
 
   // Per-grade fan-out. Three parallel batchPriceEstimate calls per chunk
@@ -145,6 +202,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
   // evFromPrices in lib/cardhedger.ts: PSA 9 drives evMid (preferred),
   // Raw drives evLow, PSA 10 drives evHigh. Heuristic 0.35× / 2.5× multipliers
   // remain only as last-resort fallbacks when a grade is missing.
+  let variantsNewlyFetched = 0;
   async function runChunk(idx: number, chunk: string[], attempt = 0): Promise<void> {
     const start = Date.now();
     try {
@@ -156,6 +214,41 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
       const rawMap = new Map(rawResults.map(r => [r.card_id, r]));
       const psa9Map = new Map(psa9Results.map(r => [r.card_id, r]));
       const psa10Map = new Map(psa10Results.map(r => [r.card_id, r]));
+
+      // Persist EVERY card we asked CH about, even ones with no price.
+      // The cache row's purpose is "we've asked CH within the TTL window" —
+      // setting fetched_at on null-price rows prevents a re-fetch storm
+      // for cards CH simply doesn't have data for. Worst case: a freshly-listed
+      // card waits up to 24h before we re-check.
+      const fetchedAt = new Date().toISOString();
+      const cachePersistRows = chunk.map(cardId => {
+        const r   = rawMap.get(cardId);
+        const p9  = psa9Map.get(cardId);
+        const p10 = psa10Map.get(cardId);
+        const validRaw   = r?.success   && r.price   > 0 ? r   : null;
+        const validPsa9  = p9?.success  && p9.price  > 0 ? p9  : null;
+        const validPsa10 = p10?.success && p10.price > 0 ? p10 : null;
+        const contribs = [validRaw, validPsa9, validPsa10].filter((x): x is NonNullable<typeof x> => !!x);
+        const confidence = contribs.length > 0
+          ? contribs.reduce((sum, r) => sum + (r.confidence ?? 0), 0) / contribs.length
+          : null;
+        return {
+          cardhedger_card_id: cardId,
+          raw_price:   validRaw?.price   ?? null,
+          psa9_price:  validPsa9?.price  ?? null,
+          psa10_price: validPsa10?.price ?? null,
+          confidence,
+          fetched_at: fetchedAt,
+        };
+      });
+      const { error: cacheWriteErr } = await supabaseAdmin
+        .from('ch_price_cache')
+        .upsert(cachePersistRows, { onConflict: 'cardhedger_card_id' });
+      if (cacheWriteErr) {
+        // Soft-fail: the in-memory pricesOnly population below still works
+        // for THIS run; we just lose timeout-safety for these rows.
+        console.warn(`[pricing-refresh] ch_price_cache upsert chunk ${idx} failed: ${cacheWriteErr.message}`);
+      }
 
       for (const cardId of chunk) {
         const raw   = rawMap.get(cardId);
@@ -187,6 +280,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
           evHigh: Math.round(evHigh),
           confidence,
         });
+        variantsNewlyFetched++;
       }
     } catch (e) {
       const ms = Date.now() - start;
@@ -259,6 +353,38 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     expires_at: string;
   };
   const cacheRows: CacheRow[] = [];
+
+  // Incremental flush: every ~100 PPs we push the new tail of cacheRows to
+  // pricing_cache. If the function dies, the rows we already pushed are safe.
+  // The sync block (slice + cursor advance) runs to completion before any
+  // await, so concurrent worker calls can't double-flush the same rows.
+  const FLUSH_BATCH = 100;
+  let flushedCount = 0;
+  let cacheRowsWritten = 0;
+  const UPSERT_CHUNK = 500;
+  async function flushCacheRows(slice: CacheRow[]): Promise<void> {
+    if (slice.length === 0) return;
+    for (let i = 0; i < slice.length; i += UPSERT_CHUNK) {
+      const sub = slice.slice(i, i + UPSERT_CHUNK);
+      const { error: upErr } = await supabaseAdmin
+        .from('pricing_cache')
+        .upsert(sub, { onConflict: 'player_product_id' });
+      if (upErr) {
+        throw new Error(
+          `[pricing-refresh] pricing_cache upsert failed at offset ${i}/${slice.length}: ` +
+          `${upErr.message} (code=${upErr.code ?? 'unknown'})`,
+        );
+      }
+      cacheRowsWritten += sub.length;
+    }
+  }
+  async function maybeFlush(): Promise<void> {
+    if (cacheRows.length - flushedCount < FLUSH_BATCH) return;
+    const sliceStart = flushedCount;
+    const sliceEnd = cacheRows.length;
+    flushedCount = sliceEnd;  // synchronous advance — guards against double-flush
+    await flushCacheRows(cacheRows.slice(sliceStart, sliceEnd));
+  }
 
   // Lazy-load sibling pricing once on first fallback demand.
   const pps = playerProducts;
@@ -363,6 +489,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
           raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
         });
         livePriced++;
+        await maybeFlush();
         return;
       }
 
@@ -378,6 +505,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
           raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
         });
         crossPriced++;
+        await maybeFlush();
         return;
       }
 
@@ -390,6 +518,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
         raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
       });
       defaultPriced++;
+      await maybeFlush();
       return;
     }
 
@@ -415,6 +544,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
         raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
       });
       livePriced++;
+      await maybeFlush();
       return;
     } catch { /* fall through */ }
 
@@ -433,6 +563,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
           raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
         });
         searchPriced++;
+        await maybeFlush();
         return;
       }
     } catch { /* continue */ }
@@ -448,6 +579,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
         raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
       });
       crossPriced++;
+      await maybeFlush();
       return;
     }
 
@@ -460,28 +592,15 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
       raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
     });
     defaultPriced++;
+    await maybeFlush();
   });
 
-  // Bulk upsert pricing_cache. Throw on failure — silently swallowing upsert
-  // errors once hid a NOT NULL violation on cardhedger_card_id for 48 hours
-  // (admin summary reported "278 priced" while 0 rows were written). If this
-  // fails again, we want to see it immediately in the UI.
-  let cacheRowsWritten = 0;
-  if (cacheRows.length > 0) {
-    const UPSERT_CHUNK = 500;
-    for (let i = 0; i < cacheRows.length; i += UPSERT_CHUNK) {
-      const slice = cacheRows.slice(i, i + UPSERT_CHUNK);
-      const { error: upErr } = await supabaseAdmin
-        .from('pricing_cache')
-        .upsert(slice, { onConflict: 'player_product_id' });
-      if (upErr) {
-        throw new Error(
-          `[pricing-refresh] pricing_cache upsert failed at offset ${i}/${cacheRows.length}: ` +
-          `${upErr.message} (code=${upErr.code ?? 'unknown'})`,
-        );
-      }
-      cacheRowsWritten += slice.length;
-    }
+  // Final tail flush — anything pushed after the last maybeFlush() trigger.
+  // flushCacheRows throws on upsert errors so silent NOT NULL violations
+  // (which once hid 0-rows-written under "278 priced" for 48h) still surface.
+  if (cacheRows.length > flushedCount) {
+    await flushCacheRows(cacheRows.slice(flushedCount));
+    flushedCount = cacheRows.length;
   }
 
   const totalDurationMs = Date.now() - started;
@@ -491,6 +610,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     `live=${livePriced} cross=${crossPriced} search=${searchPriced} default=${defaultPriced} ` +
     `cache_written=${cacheRowsWritten} ` +
     `variants=${pricesOnly.size}/${allVariantCardIds.length} ` +
+    `(cache=${variantsFromCache} new=${variantsNewlyFetched}) ` +
     `chunks=${chunksCompleted}/${priceChunks.length} batch=${batchDurationMs}ms ` +
     `total=${totalDurationMs}ms${partial ? ' PARTIAL' : ''}`,
   );
@@ -502,6 +622,8 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     livePriced, crossPriced, searchPriced, defaultPriced,
     variantsFetched: pricesOnly.size,
     variantsTotal: allVariantCardIds.length,
+    variantsFromCache,
+    variantsNewlyFetched,
     batchChunkCount: priceChunks.length,
     batchChunksCompleted: chunksCompleted,
     batchDurationMs,
