@@ -43,6 +43,10 @@ Importing both sources double-imports under different `variant_name` strings (e.
 ---
 
 ### D. Per-variant price cache for incremental refresh
+**Status: ✅ Complete (2026-05-09)** — shipped as `ch_price_cache` (keyed by `cardhedger_card_id` rather than per-variant — same CH card can back multiple variants, so per-card sharing is more efficient). Per-chunk writebacks during the batch phase + per-100-PP incremental flush during the per-pp phase mean a timeout no longer wipes the run. Migration: [supabase/migrations/20260509220000_ch_price_cache.sql](../supabase/migrations/20260509220000_ch_price_cache.sql). Pipeline rewrite: [lib/pricing-refresh.ts](../lib/pricing-refresh.ts).
+
+**Original entry below for context.**
+
 **Effort:** ~1 day
 **Why:** Today, refreshing pricing for a product means re-fetching *every* variant from CH in one shot. With 6,000+ variants that pushes the batch endpoint hard and forces us into all-or-nothing invocations. If we stored `raw_price` + `last_priced_at` on `player_product_variants`, we could:
 1. Skip variants priced in the last 24h (incremental refresh)

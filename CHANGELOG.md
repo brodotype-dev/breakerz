@@ -5,6 +5,31 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-09 — Per-CH-card price cache + incremental flush (timeout-safe pricing refresh)
+
+Production regression repair. Diagnosis of cron_run_log on 2026-05-09 showed the same pattern across 2 days of refresh-pricing crons: 5 firings/night, every firing reports `processed=4 ok=1 errors=3 skipped=15`. Same three big products (2024 Panini Donruss Optic with 471 PPs / never priced; 2025 Topps Pristine Baseball; 2025-26 Topps Finest Basketball) timed out every time, the orchestrator picked them up the next firing, they timed out again. **19 of 20 active products were stale, most by 66–92 hours.** Last successful refresh on those big products was the morning of 2026-05-06 — right before the multi-grade audit shipped that tripled per-product wall time (Raw + PSA 9 + PSA 10 fan-out per chunk).
+
+Root cause was structural: per-CH-card prices accumulated in a memory-only `pricesOnly` map and per-pp `cacheRows` were only upserted to `pricing_cache` at the very end of the function. A timeout meant **every byte of CH work was thrown away** — the worker timed out, the upsert never ran, the next firing started from zero on the same too-large product, repeat forever.
+
+**Schema.** New `ch_price_cache` table ([supabase/migrations/20260509220000_ch_price_cache.sql](supabase/migrations/20260509220000_ch_price_cache.sql)) keyed by `cardhedger_card_id`, stores `raw_price` / `psa9_price` / `psa10_price` / `confidence` / `fetched_at`. Internal cache only — RLS enabled with no policies; service-role-only access. Multiple variants linking to the same CH card share one cache row.
+
+**Pipeline.** [lib/pricing-refresh.ts](lib/pricing-refresh.ts) reworked end-to-end:
+- **Cache read on entry.** Before building chunks, look up every variant's `cardhedger_card_id` in `ch_price_cache` and skip-if-fresh (24h TTL). Pre-populate `pricesOnly` directly from cache hits. Build chunks only from card_ids that aren't in cache (or are stale).
+- **Per-chunk writeback.** `runChunk` now upserts to `ch_price_cache` *immediately after* the CH calls return, before populating `pricesOnly`. Persist null-price rows too — the cache row's purpose is "we asked CH within the TTL window," not "we got a price." Worst case for a freshly-listed card: 24h staleness before re-check.
+- **Incremental pricing_cache flush.** New `maybeFlush()` helper triggers after every ~100 PPs persist their aggregated row. Sync slice + cursor advance prevents double-flush across concurrent workers (`flushedCount = sliceEnd` runs before any await). Final tail flush at the end catches the partial batch.
+- **EV math identical across cache-hit and live-fetch paths.** Same `evMid = psa9 ?? raw`, `evLow = raw ?? evMid * 0.35`, `evHigh = psa10 ?? evMid * 2.5` derivation in both branches so cache hits produce identical EV to live fetches.
+- **`RefreshSummary` extended** with `variantsFromCache` + `variantsNewlyFetched` so the admin UI and cron logs can report cache hit rate.
+
+**Recovery curve.** First firing on Donruss Optic (471 PPs, ~thousands of unique CH cards) might still time out, but each completed batch chunk persists 100 cards to `ch_price_cache`. Second firing reads those cached cards and only fetches the remainder. Donruss Optic should be fully cached within 2–3 firings of the next cron window.
+
+**Files:**
+- New: [supabase/migrations/20260509220000_ch_price_cache.sql](supabase/migrations/20260509220000_ch_price_cache.sql)
+- Modified: [lib/pricing-refresh.ts](lib/pricing-refresh.ts) — cache reads, per-chunk writebacks, incremental flush, RefreshSummary extension
+
+Resolves backlog item D ("Per-variant price cache for incremental refresh") via a different schema shape than the original proposal — keying by `cardhedger_card_id` (CH's identity) rather than per-`player_product_variants` row turned out to share more cleanly across products and avoid duplicating prices for variants that point at the same CH card.
+
+---
+
 ## 2026-05-07 — Jumbo case-cost fields + Panini chase-cards fallback + product card redesign
 
 Three P1/P2 backlog items shipped together. All admin-shaped, no schema changes, no engine changes.
