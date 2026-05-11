@@ -22,6 +22,7 @@ Sports card break slot pricing and analysis tool. Built with Kyle (Town & Line /
 - [docs/my-chase.md](./docs/my-chase.md) — My Chase / Players Hub: schema, API, ChaseHeartButton + provider, /chase list, future phases
 - [docs/plans/2026-05-05-my-chase-phase1.md](./docs/plans/2026-05-05-my-chase-phase1.md) — Phase 1 plan (save/unsave + dashboard)
 - [docs/plans/2026-05-06-cardhedger-data-audit.md](./docs/plans/2026-05-06-cardhedger-data-audit.md) — CH endpoint inventory + prioritized punch list (P0.2/P0.3 shipped, P0.1 deferred)
+- [docs/plans/2026-05-10-streaming-pricing-refresh.md](./docs/plans/2026-05-10-streaming-pricing-refresh.md) — Rearchitect pricing refresh as streaming variant cron + cheap aggregation cron. Hard deadline: ship before active product count crosses 25
 - [lib/insights-parser.ts](./lib/insights-parser.ts) — Discord `/insight` Claude parser rules (the prompt). Edit this when you want to add/change extraction rules — sentiment scoring guidance, new hype-tag categories, new risk flags, anti-substitution rules, etc.
 
 Update CHANGELOG.md at the end of every session with what changed and why.
