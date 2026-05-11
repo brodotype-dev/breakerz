@@ -8,6 +8,23 @@ Consolidated list of known work, organized by priority. Items pulled from the So
 
 ## Priority 1 — High value, no external blockers
 
+### Streaming pricing refresh (scaling unblock)
+**Effort:** ~1.5 days (3 phases × ½ day) **Hard deadline: ship before active product count crosses 25.**
+
+**Plan:** [docs/plans/2026-05-10-streaming-pricing-refresh.md](plans/2026-05-10-streaming-pricing-refresh.md)
+
+**Why:** Current pricing pipeline processes one product end-to-end per Vercel invocation (300s ceiling). At ~3 products per cron worker × 3 concurrent workers × 5 firings/night = ~15 products refreshed per night maximum. **At 25 active products this is a 2-day cycle; at 50 it's 3-4 days; at 100 it's 7+. The 22h staleness threshold becomes meaningless — everything is always stale.** Two patches in May (#68 per-CH-card cache, #71 no-abort orchestrator) bought time but don't change the throughput ceiling.
+
+**Fix:** Two stateless crons:
+1. **Variant cron** (every 5 min) — picks N stalest CH cards globally (no product awareness), batches them, writes `ch_price_cache`. Naturally fair — a 10k-variant product's cards refresh at the same per-card cadence as a 100-variant product.
+2. **Aggregation cron** (every 15 min) — for each active product, reads variants joined with `ch_price_cache`, applies engine math, upserts `pricing_cache`. Pure read+aggregate, ~5s per product, no CH calls.
+
+Adding products doesn't change cron timing — it just means each card waits a bit longer for its slot. Linear degradation, not cliff. The `ch_price_cache` schema shipped 2026-05-09 is exactly the primitive this design uses.
+
+**Open questions** (in plan doc): admin manual-refresh UX changes; cron 1 budget tuning; CH rate-limit validation at higher cadence.
+
+---
+
 ### Panini-aware checklist parser (Master Checklist as canonical source)
 **Status: ✅ Complete (2026-05-06)** — `parsePaniniXlsx` shipped in [lib/checklist-parser.ts](../lib/checklist-parser.ts) with auto-detection on the `Master Checklist` sheet header. 2025 Panini Prizm Football now parses to 316 sections / 34,723 cards / 163 variants for Travis Hunter (top star). Variant names match CardHedger's catalog directly. Full rules + verification doc at [docs/manufacturer-rules/panini.md](manufacturer-rules/panini.md). Sanity-check script at [scripts/verify-panini-parser.mjs](../scripts/verify-panini-parser.mjs).
 
