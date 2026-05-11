@@ -80,4 +80,34 @@ export interface ManufacturerDescriptor {
    * Only invoked for genuinely ambiguous variants — not the hot path.
    */
   readonly claudeRules?: string;
+
+  /**
+   * Named anchor *concepts* — the vocabulary the conversational anchor configurator
+   * uses when proposing per-product pricing anchors. Each concept describes a
+   * recognizable variant type for this manufacturer (e.g. "base auto", "gold
+   * refractor auto", "cosmic planetary").
+   *
+   * Claude maps an admin's plain-English description ("price slots off base autos
+   * and golds") to specific regex patterns against `player_product_variants.variant_name`
+   * by combining these concepts with a sample of actual variant names from the product.
+   *
+   * Concepts are the standardization layer; the resulting patterns are unique per product.
+   * See docs/plans/2026-05-11-per-product-anchor-configurator.md.
+   */
+  readonly anchorConcepts?: AnchorConcept[];
+}
+
+/**
+ * One conceptual anchor variant type, used by the configurator's Claude prompt.
+ *
+ * - `name`: short label Claude can reason about ("base auto", "first bowman raw").
+ * - `example`: a real variant_name string from this manufacturer's products. Helps
+ *   Claude anchor the concept to actual catalog vocabulary.
+ * - `description` (optional): one line of additional context — when this concept applies,
+ *   pricing nuance, etc.
+ */
+export interface AnchorConcept {
+  readonly name: string;
+  readonly example: string;
+  readonly description?: string;
 }

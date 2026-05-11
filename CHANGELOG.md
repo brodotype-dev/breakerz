@@ -5,6 +5,34 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-11 — Per-product anchor configurator (Plan A of the pricing-model trilogy)
+
+Triggered by the 2026-05-11 Kyle call: he flagged that Bowman draft sapphire slot prices were systematically low, with `Bobby Witt Jr.` slot showing $121 against his $350–400 gut. Diagnosed three separate issues tangled together: (1) CH catalog gap for `2025 Bowman Draft Sapphire` causing fallback to Chrome Sapphire variants, (2) the engine averaging EV across every variant including thin-comp 1/1s and SuperFractors, (3) no allowance for the breaker markup over pure EV. This change addresses #2 by making per-player EV aggregation configurable per product, via a conversational Claude configurator. (1) is part of the [CardHedger data audit P0.1](docs/plans/2026-05-06-cardhedger-data-audit.md); (3) is the planned but un-shipped [Plan B — market markup](docs/plans/2026-05-11-slot-price-market-markup.md).
+
+**Aggregation strategies.** New [lib/pricing-anchors.ts](lib/pricing-anchors.ts) exports `aggregatePlayerEV(variantEVs, strategy, patterns) → AggregatedEV` with three implementations: `sets_weighted_all` (today's default — sets-weighted average across every priced variant), `curated_variants` (filter to variants matching configured regex patterns, sets-weighted over the filtered subset), and `curated_with_tail` (curated subset + `CURATED_TAIL_BONUS = 0.15` representing long-tail option value). Fallback rule: if a curated strategy yields zero matched variants, fall back to `sets_weighted_all` with `fellBack: true` on the result — never zero out a slot on misconfiguration.
+
+[lib/pricing-refresh.ts](lib/pricing-refresh.ts) now loads the product's `anchor_strategy` + `anchor_variant_patterns` once at top of `refreshProductPricing` and dispatches per `player_product`. Variant query selects `variant_name` so the dispatcher can pattern-match. `RefreshSummary` gains `anchorStrategy`, `anchorFellBackCount`, `anchorMatchedVariantsAvg`; the terminal log line surfaces them.
+
+**Schema.** Migration [20260511180000_product_anchor_strategy.sql](supabase/migrations/20260511180000_product_anchor_strategy.sql) adds three columns to `products` (all defaulting to current behavior): `anchor_strategy text` (check-constrained to the three values), `anchor_variant_patterns text[]` (regex strings), `anchor_config_notes text` (conversation rationale).
+
+**Conversational configurator.** [`ManufacturerDescriptor`](lib/card-knowledge/types.ts) extended with `anchorConcepts?: AnchorConcept[]` — a structured list of named anchor concepts (e.g. for Bowman: `base auto`, `gold refractor auto /50`, `color auto /250`, `first bowman raw`, `sapphire base auto`). Concepts are the standardization layer per manufacturer family; the resulting regex patterns are unique per product. [bowman.ts](lib/card-knowledge/bowman.ts) and [panini.ts](lib/card-knowledge/panini.ts) populate this; other descriptors will fill in as products are configured.
+
+[app/admin/products/[id]/anchor-config/page.tsx](app/admin/products/[id]/anchor-config/page.tsx) + [AnchorConfigClient.tsx](app/admin/products/[id]/anchor-config/AnchorConfigClient.tsx) render the chat UI. [app/api/admin/anchor-config/route.ts](app/api/admin/anchor-config/route.ts) bundles a system prompt with manufacturer descriptor, product context (name, year, lifecycle), 20 sample variant names from the product, and current `(strategy, patterns, notes)`. Admin types plain English, Claude returns strict-JSON `{ strategy, patterns, notes, rationale }`, the page renders a live preview using cached variant prices via `ch_price_cache` lookups (no CH calls). Preview shows top 5 players' current EV vs. proposed EV with delta and percentage, so the admin can A/B test before saving.
+
+Save = publish. The product row gets `(strategy, patterns, notes)` updated; next pricing refresh (within 24h via cron or immediately via the existing "Refresh Pricing" button) applies the new strategy. Old `pricing_cache` rows get overwritten naturally — 24h TTL.
+
+[app/admin/products/[id]/page.tsx](app/admin/products/[id]/page.tsx) gains a "Pricing Anchor Strategy" section between the workflow card and Import Odds, showing current strategy + patterns + notes with a "Configure →" link.
+
+**Defaults.** Everything ships with `anchor_strategy = 'sets_weighted_all'` and empty patterns — zero behavior change for existing products until Kyle configures them. No big-bang switch.
+
+**Plan A of three.** This change ships Plan A from the [2026-05-11 pricing trilogy](docs/plans/2026-05-11-per-product-anchor-configurator.md). Plan B (market markup display, planned) and Plan C (release/freshness decay, planned) live in sibling docs and the [icebox](docs/icebox.md) tracks deferred ideas (per-sale time-weighted pricing, per-product chase rule library, asking-price → fair-value calibration, build-vs-buy CH revisited).
+
+**Files:**
+- New: [supabase/migrations/20260511180000_product_anchor_strategy.sql](supabase/migrations/20260511180000_product_anchor_strategy.sql), [lib/pricing-anchors.ts](lib/pricing-anchors.ts), [app/api/admin/anchor-config/route.ts](app/api/admin/anchor-config/route.ts), [app/admin/products/[id]/anchor-config/page.tsx](app/admin/products/[id]/anchor-config/page.tsx), [app/admin/products/[id]/anchor-config/AnchorConfigClient.tsx](app/admin/products/[id]/anchor-config/AnchorConfigClient.tsx), [docs/plans/2026-05-11-per-product-anchor-configurator.md](docs/plans/2026-05-11-per-product-anchor-configurator.md), [docs/plans/2026-05-11-slot-price-market-markup.md](docs/plans/2026-05-11-slot-price-market-markup.md), [docs/plans/2026-05-11-release-freshness-decay.md](docs/plans/2026-05-11-release-freshness-decay.md), [docs/icebox.md](docs/icebox.md)
+- Modified: [lib/pricing-refresh.ts](lib/pricing-refresh.ts), [lib/card-knowledge/types.ts](lib/card-knowledge/types.ts), [lib/card-knowledge/bowman.ts](lib/card-knowledge/bowman.ts), [lib/card-knowledge/panini.ts](lib/card-knowledge/panini.ts), [app/admin/products/[id]/page.tsx](app/admin/products/[id]/page.tsx), [CLAUDE.md](CLAUDE.md)
+
+---
+
 ## 2026-05-10 — Topps Series 1/2 split: derived productScope fallback predicate
 
 Investigation triggered by Kyle flagging that Topps Series 1 Baseball break analysis was pulling Series 2 data. Diagnosed, planned, and implemented same-session. Full plan at [docs/plans/2026-05-10-topps-series-split.md](docs/plans/2026-05-10-topps-series-split.md); BACKLOG entry promoted to P0 in [docs/BACKLOG.md](docs/BACKLOG.md). New CH question Q14 in [docs/cardhedger-questions.md](docs/cardhedger-questions.md) flagging that CH has no `2025 Topps Series 1 Baseball` canonical set name — only the parent `2025 Topps Baseball` covering both Series 1 and Series 2.

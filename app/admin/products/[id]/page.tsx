@@ -499,6 +499,41 @@ export default async function ProductDashboardPage({ params }: PageProps) {
           </p>
         </Section>
 
+        {/* Anchor Strategy Configurator (Plan A, 2026-05-11) */}
+        <Section title="Pricing Anchor Strategy" accent="linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)">
+          <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
+            Configure which variants drive slot prices via a conversational chat with Claude. Defaults to{' '}
+            <code style={{ color: 'var(--text-primary)' }}>sets_weighted_all</code> (count every variant).
+            Override for products where the long tail of parallels has thin comps and shouldn&apos;t anchor pricing.
+          </p>
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-xs space-y-1">
+              <div>
+                <span className="terminal-label-muted">strategy: </span>
+                <span className="font-mono" style={{ color: 'var(--text-primary)' }}>
+                  {(product as { anchor_strategy?: string }).anchor_strategy ?? 'sets_weighted_all'}
+                </span>
+              </div>
+              <div>
+                <span className="terminal-label-muted">patterns: </span>
+                <span className="font-mono" style={{ color: 'var(--text-primary)' }}>
+                  {(() => {
+                    const pats = (product as { anchor_variant_patterns?: string[] }).anchor_variant_patterns;
+                    return Array.isArray(pats) && pats.length > 0 ? pats.join(', ') : '(none)';
+                  })()}
+                </span>
+              </div>
+              {(product as { anchor_config_notes?: string | null }).anchor_config_notes && (
+                <div className="max-w-2xl" style={{ color: 'var(--text-tertiary)' }}>
+                  <span className="terminal-label-muted">notes: </span>
+                  {(product as { anchor_config_notes?: string | null }).anchor_config_notes}
+                </div>
+              )}
+            </div>
+            <ActionLink href={`/admin/products/${id}/anchor-config`} label="Configure →" />
+          </div>
+        </Section>
+
         {/* Odds upload */}
         <div id="import-odds">
           <Section
