@@ -54,6 +54,12 @@ interface PreviewPlayerRow {
   proposedEvMid: number;
   proposedMatched: number;
   proposedFellBack: boolean;
+  /**
+   * True when this player_product has no hydrated variants and falls back to
+   * search/sibling/default pricing in pricing-refresh. Anchor strategy doesn't
+   * apply to it — the UI should label it so the admin doesn't read $0 as a real drop.
+   */
+  nonHydrated: boolean;
 }
 
 interface ProposalPayload {
@@ -138,14 +144,18 @@ async function runPreview(productId: string, strategy: AnchorStrategy, patterns:
     ? (product.anchor_variant_patterns as string[])
     : [];
 
-  // Top 5 players by cached ev_mid — these are the rows where a pricing shift will be most visible.
+  // Top 20 players by cached ev_mid; we filter down to the top 5 *hydrated* ones below.
+  // Non-hydrated player_products are priced via the search/sibling/default fallback in
+  // pricing-refresh.ts and have no rows in player_product_variants — anchor strategy
+  // doesn't apply to them, so showing them with a $X → $0 (-100%) delta is misleading.
+  // We over-fetch and filter so the preview ends up with rows the strategy actually affects.
   const { data: topRows } = await supabaseAdmin
     .from('player_products')
     .select('id, player:players(id, name), pricing_cache!inner(ev_mid)')
     .eq('product_id', productId)
     .eq('insert_only', false)
     .order('ev_mid', { ascending: false, foreignTable: 'pricing_cache' })
-    .limit(5);
+    .limit(20);
 
   type Row = {
     id: string;
@@ -199,11 +209,32 @@ async function runPreview(productId: string, strategy: AnchorStrategy, patterns:
     variantsByPp.set(v.player_product_id, list);
   }
 
-  const result: PreviewPlayerRow[] = [];
+  // Build two buckets: hydrated rows (the ones the strategy will actually affect) and
+  // non-hydrated rows (kept for visibility, marked nonHydrated=true). Take up to 5 hydrated
+  // first, fill remaining slots from non-hydrated so the panel always has 5 rows when possible.
+  const hydratedResults: PreviewPlayerRow[] = [];
+  const nonHydratedResults: PreviewPlayerRow[] = [];
+
   for (const row of (topRows ?? []) as unknown as Row[]) {
     const playerObj = Array.isArray(row.player) ? row.player[0] : row.player;
     const pc = Array.isArray(row.pricing_cache) ? row.pricing_cache[0] : row.pricing_cache;
+    const cachedEvMid = Math.round(pc?.ev_mid ?? 0);
     const ppVariants = variantsByPp.get(row.id) ?? [];
+
+    if (ppVariants.length === 0) {
+      // Non-hydrated: priced via fallback ladder. Show current cached EV on both sides
+      // so the UI doesn't render a misleading "-100%" delta. Anchor strategy doesn't apply.
+      nonHydratedResults.push({
+        playerProductId: row.id,
+        playerName: playerObj?.name ?? null,
+        currentEvMid: cachedEvMid,
+        proposedEvMid: cachedEvMid,
+        proposedMatched: 0,
+        proposedFellBack: false,
+        nonHydrated: true,
+      });
+      continue;
+    }
 
     const aggregatable = ppVariants.filter(v => v.print_run == null || v.print_run > 1);
     const variantEVs: VariantEV[] = aggregatable.map(v => {
@@ -231,15 +262,27 @@ async function runPreview(productId: string, strategy: AnchorStrategy, patterns:
     const current  = aggregatePlayerEV(variantEVs, currentStrategy,  currentPatterns);
     const proposed = aggregatePlayerEV(variantEVs, strategy,         patterns);
 
-    result.push({
+    // When current aggregation can't recompute (all variants priced 0 in cache), prefer
+    // the stored pricing_cache.ev_mid so the "current" column reflects what consumers see.
+    const currentEvMid = current.evMid > 0 ? current.evMid : cachedEvMid;
+
+    hydratedResults.push({
       playerProductId: row.id,
       playerName: playerObj?.name ?? null,
-      currentEvMid: current.evMid || pc?.ev_mid || 0,
-      proposedEvMid: proposed.evMid,
+      currentEvMid,
+      proposedEvMid: Math.round(proposed.evMid),
       proposedMatched: proposed.matchedVariants,
       proposedFellBack: proposed.fellBack,
+      nonHydrated: false,
     });
+
+    if (hydratedResults.length >= 5) break;
   }
+
+  const result = hydratedResults.length >= 5
+    ? hydratedResults.slice(0, 5)
+    : [...hydratedResults, ...nonHydratedResults.slice(0, 5 - hydratedResults.length)];
+
   return NextResponse.json({ players: result });
 }
 
