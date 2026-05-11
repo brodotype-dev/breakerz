@@ -16,6 +16,8 @@ type Status =
       skippedPlayers: SkippedPlayer[];
       autoCreatedPlayers: number;
       autoCreatedPlayerProducts: number;
+      productScopeSize: number;
+      phase3FilteredByScope: number;
       catalogCards: number;
       durationMs: number;
     }
@@ -64,6 +66,8 @@ export default function HydrateVariantsButton({ productId }: { productId: string
         skippedPlayers: json.skippedPlayers ?? [],
         autoCreatedPlayers: json.autoCreatedPlayers ?? 0,
         autoCreatedPlayerProducts: json.autoCreatedPlayerProducts ?? 0,
+        productScopeSize: json.productScopeSize ?? 0,
+        phase3FilteredByScope: json.phase3FilteredByScope ?? 0,
         catalogCards: json.catalogCards,
         durationMs: json.durationMs,
       });
@@ -110,7 +114,25 @@ export default function HydrateVariantsButton({ productId }: { productId: string
                 {status.autoCreatedPlayers === 1 ? '' : 's'}
               </>
             )}
+            {status.phase3FilteredByScope > 0 && (
+              <>
+                {' '}
+                · {status.phase3FilteredByScope.toLocaleString()} out-of-scope CH rows filtered
+              </>
+            )}
             {' '}· {skipped.length} skipped · {(status.durationMs / 1000).toFixed(1)}s
+          </span>
+        )}
+        {status.kind === 'ok' && status.productScopeSize > 0 && (
+          <span
+            className="text-[10px] uppercase tracking-wider rounded px-1.5 py-0.5 font-bold"
+            style={{ backgroundColor: 'rgba(34,197,94,0.12)', color: '#22c55e' }}
+            title={
+              `Sibling-set leakage safety net active. The fallback predicate for unscoped pps is bounded ` +
+              `by the union of checklist_card_numbers across this product's scoped pps (${status.productScopeSize.toLocaleString()} numbers).`
+            }
+          >
+            scope: {status.productScopeSize.toLocaleString()}
           </span>
         )}
         {status.kind === 'error' && <span className="text-xs text-red-500">{status.msg}</span>}

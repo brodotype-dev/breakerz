@@ -25,6 +25,15 @@ export interface HydrateResult {
   /** Phase 4: CH cards skipped because their card_number wasn't in the
    *  player_product's checklist_card_numbers (e.g. S2 card not in S1 product). */
   scopedOutByCardNumber: number;
+  /** Size of the derived productScope (union of checklist_card_numbers across
+   *  scoped pps). 0 means no checklist has been imported yet; the fallback
+   *  predicate is permissive in that case. Non-zero means the fallback is
+   *  active and blocks sibling-set leakage for unscoped pps. */
+  productScopeSize: number;
+  /** Phase 3 discovery rows skipped because their card_number was outside
+   *  productScope. Each non-zero count means we avoided auto-creating an
+   *  insert_only pp that would have leaked from a sibling set. */
+  phase3FilteredByScope: number;
   catalogCards: number;
   durationMs: number;
   setName: string;
@@ -139,13 +148,31 @@ export async function hydrateVariantsFromCatalog(productId: string): Promise<Hyd
     if (data.length < PP_PAGE) break;
   }
 
+  // Derived productScope: union of every checklist_card_numbers entry across
+  // this product's scoped pps. Acts as the safety net for unscoped pps (auto-
+  // created insert subjects + legacy null-checklist rows) so they can't pull
+  // cards from a sibling set sharing the same ch_set_name (e.g. Topps Series 1
+  // vs Series 2 both live under "2025 Topps Baseball" in CH's catalog).
+  //
+  // Empty scope = no checklist data has been imported yet for this product;
+  // fall back to permissive behavior so brand-new products before first parse
+  // still hydrate as they did before this fix.
+  const productScope = new Set<string>();
+  for (const pp of playerProducts) {
+    for (const n of pp.checklist_card_numbers ?? []) {
+      productScope.add(n);
+    }
+  }
+  const productScopePredicate: (cardNumber: string) => boolean =
+    productScope.size > 0 ? n => productScope.has(n) : () => true;
+
   // Build a per-player attach predicate. checklist_card_numbers carries the
   // truth from the import-checklist parser:
   //   - populated array → only attach CH variants whose card_number is in the
   //     set. This is what scopes Topps S1 vs S2 when they share a ch_set_name.
-  //   - null/empty → legacy data from before we persisted card numbers. Fall
-  //     back to permissive name-only matching (current behavior). Re-importing
-  //     the checklist opts into strict scoping.
+  //   - null/empty → fall back to productScope. Pre-2026-05-10 behavior here
+  //     was `() => true`, which leaked sibling-set cards through Phase 3 auto-
+  //     created pps. See docs/plans/2026-05-10-topps-series-split.md.
   const attachPredicateByPpId = new Map<string, (cardNumber: string) => boolean>();
   for (const pp of playerProducts) {
     const nums = pp.checklist_card_numbers;
@@ -153,7 +180,7 @@ export async function hydrateVariantsFromCatalog(productId: string): Promise<Hyd
       const numSet = new Set(nums);
       attachPredicateByPpId.set(pp.id, n => numSet.has(n));
     } else {
-      attachPredicateByPpId.set(pp.id, () => true);
+      attachPredicateByPpId.set(pp.id, productScopePredicate);
     }
   }
 
@@ -175,8 +202,18 @@ export async function hydrateVariantsFromCatalog(productId: string): Promise<Hyd
   //
   //      Dedupe missing names by normalized form so "Luka Dončić" and
   //      "Luka Doncic" in the same catalog don't create two player rows.
+  //
+  //      Pre-filter by productScopePredicate so we don't auto-create players
+  //      whose only CH appearances are out-of-scope rows (e.g. a Series 2-only
+  //      player when hydrating a Series 1 product). This is the discovery-side
+  //      defense; the attach-phase predicate is the second layer below.
   const missingPlayerNames = new Map<string, string>(); // normalized → first-seen CH name
+  let phase3FilteredByScope = 0;
   for (const c of index.cards) {
+    if (!productScopePredicate(c.number ?? '')) {
+      phase3FilteredByScope++;
+      continue;
+    }
     const chName = c.player_name?.trim();
     if (!chName) continue;
     const norm = normalizeName(chName);
@@ -225,6 +262,11 @@ export async function hydrateVariantsFromCatalog(productId: string): Promise<Hyd
       const pName = (pp as any).player?.name as string | undefined;
       if (!pName) continue;
       nameToPpId.set(normalizeName(pName), pp.id);
+      // Belt-and-suspenders: even though Phase 3 discovery pre-filters by
+      // productScope above, also register productScopePredicate for the auto-
+      // created pp so the attach phase has an explicit predicate and won't
+      // fall through the `if (predicate && ...)` guard at the attach site.
+      attachPredicateByPpId.set(pp.id, productScopePredicate);
     }
   }
 
@@ -316,6 +358,8 @@ export async function hydrateVariantsFromCatalog(productId: string): Promise<Hyd
     autoCreatedPlayers,
     autoCreatedPlayerProducts,
     scopedOutByCardNumber,
+    productScopeSize: productScope.size,
+    phase3FilteredByScope,
     catalogCards: index.cards.length,
     durationMs: Date.now() - started,
     setName,

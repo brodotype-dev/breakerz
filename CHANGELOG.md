@@ -5,6 +5,61 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-10 — Topps Series 1/2 split: derived productScope fallback predicate
+
+Investigation triggered by Kyle flagging that Topps Series 1 Baseball break analysis was pulling Series 2 data. Diagnosed, planned, and implemented same-session. Full plan at [docs/plans/2026-05-10-topps-series-split.md](docs/plans/2026-05-10-topps-series-split.md); BACKLOG entry promoted to P0 in [docs/BACKLOG.md](docs/BACKLOG.md). New CH question Q14 in [docs/cardhedger-questions.md](docs/cardhedger-questions.md) flagging that CH has no `2025 Topps Series 1 Baseball` canonical set name — only the parent `2025 Topps Baseball` covering both Series 1 and Series 2.
+
+**Root cause (verified via DB probes 2026-05-10).** The scoping mechanism already exists — [`player_products.checklist_card_numbers`](lib/variants-from-catalog.ts:144) is populated by the import-checklist parser and consumed by `hydrateVariantsFromCatalog` as a strict per-pp allow-list. The 2026-04-21 catalog pre-load architecture comment explicitly calls out: "This is what scopes Topps S1 vs S2 when they share a ch_set_name." **Scoped pps are pristine** — Judge/Ohtani/Trout/Witt all have 100% of variants matching their checklist. The leak comes entirely from **500 unscoped pps** auto-created via Phase 3 of the hydrate flow. Auto-created pps had no entry in `attachPredicateByPpId`, so the `if (predicate && !predicate(...))` guard at [variants-from-catalog.ts:250](lib/variants-from-catalog.ts) short-circuited and every CH row attached. **Verified leak: 12,112 numeric variants on 500 unscoped pps** (10,525 in S2 range 331–660, 1,587 above 660, plus 1,613 ambiguous-series inserts).
+
+**Insert overlap check.** Spot-checked Aaron Judge's actual Series 1 insert codes (`T90-57`, `T90C-82`, `HA-1`, `MEGA-8`, etc.). Topps continues insert numbering across Series 1 and Series 2 rather than restarting per series — insert overlap is not a meaningful concern for Topps Baseball.
+
+**Design self-correction.** First-pass plan was to add `products.card_number_filter jsonb` as a primary scoping mechanism with admin UI and `{numeric_min, numeric_max, include_prefixes, exclude_prefixes}` JSONB shape. User pushed back: *"we don't actually have a problem, except for the leakage — even for future products, is that correct?"* Correct. The bug is one fallback path in one function. Derived `productScope` (union of `checklist_card_numbers` across the product's scoped pps) is sufficient. No schema, no admin UI, no per-product config — and it automatically handles every future "subset product" case (2026 Bowman Chrome / Prospects consolidation, etc.) as soon as we import its own checklist.
+
+**Implementation ([lib/variants-from-catalog.ts](lib/variants-from-catalog.ts)):**
+1. Compute `productScope = Set<string>` as the union of `checklist_card_numbers` across scoped pps at hydrate time.
+2. `productScopePredicate = n => productScope.has(n)` when scope is non-empty; `() => true` when empty (preserves today's behavior for brand-new products before first checklist parse).
+3. Replace the permissive `() => true` fallback in the per-pp predicate map with `productScopePredicate`.
+4. Pre-filter Phase 3 auto-create discovery: skip CH rows whose `card_number` is outside `productScope`.
+5. Set `productScopePredicate` on each auto-created pp explicitly so the attach phase has a defined predicate (closes the `predicate && !predicate(...)` short-circuit).
+6. `HydrateResult` extended with `productScopeSize` + `phase3FilteredByScope` for admin observability.
+
+**Admin UI ([app/admin/products/[id]/HydrateVariantsButton.tsx](app/admin/products/[id]/HydrateVariantsButton.tsx)):**
+- New `scope: N` chip next to the run summary when `productScopeSize > 0`, indicating the safety net is active.
+- Filter count surfaced inline (`{N} out-of-scope CH rows filtered`).
+- Tooltip on the chip explains why scope is bounded by `checklist_card_numbers`.
+
+**Backward compatible.** Empty scope falls back to today's permissive predicate, so single-set products (the entire current production fleet except Topps Series 1) are unaffected.
+
+**Operational steps (still to do):**
+1. Re-import 2025 Topps Series 1 checklist (populates `checklist_card_numbers` for the legitimate Series 1 base players currently in the unscoped bucket).
+2. Re-hydrate Series 1 from admin UI. Expected outcome: variant count drops from 43,213 to ~28K–30K (scoped surface).
+3. Re-run pricing refresh on Series 1.
+4. Create 2025 Topps Series 2 Baseball product, import its checklist, hydrate.
+
+**Files:**
+- Modified: [lib/variants-from-catalog.ts](lib/variants-from-catalog.ts), [app/admin/products/[id]/HydrateVariantsButton.tsx](app/admin/products/[id]/HydrateVariantsButton.tsx)
+- New: [docs/plans/2026-05-10-topps-series-split.md](docs/plans/2026-05-10-topps-series-split.md)
+- Updated: [docs/BACKLOG.md](docs/BACKLOG.md), [docs/cardhedger-questions.md](docs/cardhedger-questions.md), [CLAUDE.md](CLAUDE.md)
+
+---
+
+## 2026-05-09 — Card Ladder analysis, CH question slate expansion + Graded-0 bugfix on player profile
+
+**Card Ladder competitor teardown.** Kyle shared three CL methodology docs. Stored under [docs/competitor-intel/](docs/competitor-intel/) with a side-by-side analysis at [cardladder-vs-breakiq-analysis.md](docs/competitor-intel/cardladder-vs-breakiq-analysis.md). Verdict: **Grade Ratio Value** (per-card historical PSA 10 / Raw / PSA 9 multipliers) is worth investigating as a P2 follow-up — it directly replaces our hard-coded `evMid × 2.5` and `× 0.35` fallbacks with card-specific ratios, biggest accuracy win on chase parallels. Player-index infrastructure (CL's "Card Ladder Value" + divisor math) intentionally **not** adopted — duplicates what CardHedger already gives us; we don't have the 10-year sales DB to make it competitive. Three actionable items added to [BACKLOG.md](docs/BACKLOG.md): Confidence display polish (P1, pure UI), Grade Ratio Value (P2, blocked on CH Q13), Index-rolled-forward stale pricing (P2, lower priority).
+
+**CH question slate.** New P1.5 section in [docs/cardhedger-questions.md](docs/cardhedger-questions.md):
+- **Q11:** Is `grade` on `/v1/cards/comps` filtering or weighting? *(Investigated — confirmed it filters cleanly; results below.)*
+- **Q12:** Is there a player-scoped sales feed? Today both [`/api/player-profile`](app/api/player-profile/route.ts) and [`/api/player-comps`](app/api/player-comps/route.ts) fan out up to 45 calls per page-view.
+- **Q13:** Per-card cross-grade history endpoint to enable Grade Ratio Value.
+
+**Graded-0 bugfix on player profile.** Investigation root-caused the "RAW 25 · GRADED 0" empty state on `/player/[id]` for Victor Wembanyama. Direct CH probes against all 22 candidate cards × 3 grades returned **149 raw + 19 PSA 9 + 27 PSA 10 sales** — the data was there. The bug was downstream: [app/api/player-profile/route.ts:224](app/api/player-profile/route.ts) merged all grades into one pool, sorted by date desc, and **sliced to 25 globally**. Raw is ~3× the volume of graded for active players, so the most-recent-25 ended up entirely raw. Client splits the response by grade for the Raw/Graded tab toggle — graded came back empty.
+
+Fix: dedupe first, then bucket by grade group BEFORE the slice. Each bucket caps at 25 independently. Response is now up to 50 entries (25 raw + 25 graded) instead of 25 globally; client splits the same way and both tabs surface real sales. Same number of CH calls, no change to the call shape, no breaking response change (still `recent_comps: Comp[]`). [PlayerDetailDrawer's `/api/player-comps`](app/api/player-comps/route.ts) only queries PSA 8/9/10 so it isn't affected by the same bug — left alone.
+
+**Note on Q11/Q12 follow-up.** Q11 is now answered (filter works) but Q12 and Q13 still stand — fan-out architecture is fragile, and we don't have the cross-grade history endpoint we'd need for Grade Ratio Value. Both go on the next CH check-in agenda.
+
+---
+
 ## 2026-05-09 — Slab Analysis cert-mismatch guard
 
 First reported case of Slab Analysis returning the wrong-card comp: a 1992 Skybox Michael Jordan PSA 9 image returned a Ken Griffey Jr. 1990 Score Rising Stars #3 PSA 10 from CardHedger. Pipeline turned out to have worked correctly — Claude vision OCR misread the cert number off the slab, PSA's database has cert `99687660` registered to the Griffey, and the CH search dutifully found that Griffey. Confirmed against PSA's public cert lookup at psacard.com/cert/99687660.
