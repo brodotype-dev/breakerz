@@ -21,6 +21,8 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { computeLiveEV, searchAndComputeEV, get90DayPrices, batchPriceEstimate } from '@/lib/cardhedger';
 import { aggregatePlayerEV, type AnchorStrategy } from '@/lib/pricing-anchors';
+import { lifecycleEvMultiplier } from '@/lib/market-markup';
+import type { ProductLifecycle } from '@/lib/types';
 
 const CACHE_TTL_HOURS = 24;
 // `ch_price_cache` freshness window. Matches CACHE_TTL_HOURS so a refresh
@@ -63,6 +65,10 @@ export interface RefreshSummary {
   anchorFellBackCount: number;
   /** Average matched-variant count across hydrated player_products. Useful sanity check for curated configs. */
   anchorMatchedVariantsAvg: number;
+  /** Plan C: lifecycle state used for the math-layer multiplier. */
+  lifecycleStatus: ProductLifecycle;
+  /** Plan C: actual multiplier applied to ev_low/mid/high before pricing_cache upsert. 1.0 = no change. */
+  lifecycleMultiplier: number;
 }
 
 export async function refreshProductPricing(productId: string): Promise<RefreshSummary> {
@@ -70,7 +76,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
 
   const { data: product } = await supabaseAdmin
     .from('products')
-    .select('name, year, anchor_strategy, anchor_variant_patterns')
+    .select('name, year, anchor_strategy, anchor_variant_patterns, lifecycle_status, live_since')
     .eq('id', productId)
     .single();
 
@@ -85,6 +91,20 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
   const anchorPatterns: string[] = Array.isArray(product?.anchor_variant_patterns)
     ? (product!.anchor_variant_patterns as string[])
     : [];
+
+  // Plan C: lifecycle-aware math-layer multiplier. Applied to every EV
+  // before it lands in pricing_cache, so cached values reflect expected
+  // sale prices in the current lifecycle window. Plan B's display markup
+  // compounds on top at render time. Computed once per refresh — live_since
+  // doesn't change mid-run.
+  const lifecycleStatus = (product?.lifecycle_status ?? 'live') as ProductLifecycle;
+  const liveSince = (product as { live_since?: string | null } | null)?.live_since ?? null;
+  const lifecycleMultiplier = lifecycleEvMultiplier(lifecycleStatus, liveSince);
+  const applyMultiplier = (lo: number, mid: number, hi: number) => ({
+    ev_low:  Math.round(lo  * lifecycleMultiplier),
+    ev_mid:  Math.round(mid * lifecycleMultiplier),
+    ev_high: Math.round(hi  * lifecycleMultiplier),
+  });
 
   const { data: playerProducts, error } = await supabaseAdmin
     .from('player_products')
@@ -110,6 +130,8 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
       anchorStrategy,
       anchorFellBackCount: 0,
       anchorMatchedVariantsAvg: 0,
+      lifecycleStatus,
+      lifecycleMultiplier,
     };
   }
 
@@ -528,7 +550,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
         cacheRows.push({
           player_product_id: pp.id,
           cardhedger_card_id: pp.cardhedger_card_id ?? null,
-          ev_low: aggregated.evLow, ev_mid: aggregated.evMid, ev_high: aggregated.evHigh,
+          ...applyMultiplier(aggregated.evLow, aggregated.evMid, aggregated.evHigh),
           confidence: aggregated.confidence,
           raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
         });
@@ -544,7 +566,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
         cacheRows.push({
           player_product_id: pp.id,
           cardhedger_card_id: pp.cardhedger_card_id ?? null,
-          ev_low: sibling.ev_low, ev_mid: sibling.ev_mid, ev_high: sibling.ev_high,
+          ...applyMultiplier(sibling.ev_low, sibling.ev_mid, sibling.ev_high),
           confidence: null,
           raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
         });
@@ -557,7 +579,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
       cacheRows.push({
         player_product_id: pp.id,
         cardhedger_card_id: pp.cardhedger_card_id ?? null,
-        ev_low: Math.round(evMid * 0.35), ev_mid: evMid, ev_high: Math.round(evMid * 2.5),
+        ...applyMultiplier(evMid * 0.35, evMid, evMid * 2.5),
         confidence: null,
         raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
       });
@@ -583,7 +605,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
       cacheRows.push({
         player_product_id: pp.id,
         cardhedger_card_id: pp.cardhedger_card_id ?? null,
-        ev_low: ev.evLow, ev_mid: ev.evMid, ev_high: ev.evHigh,
+        ...applyMultiplier(ev.evLow, ev.evMid, ev.evHigh),
         confidence: null,
         raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
       });
@@ -597,12 +619,12 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
       const raw = await get90DayPrices(`${playerName} ${cardType}`, 'Raw');
       if (raw && raw.avg_price > 0) {
         const evMid = Math.round(raw.avg_price);
+        const evLow  = raw.min_price > 0 ? raw.min_price : evMid * 0.35;
+        const evHigh = raw.max_price > evMid ? raw.max_price : evMid * 2.5;
         cacheRows.push({
           player_product_id: pp.id,
           cardhedger_card_id: pp.cardhedger_card_id ?? null,
-          ev_low: raw.min_price > 0 ? Math.round(raw.min_price) : Math.round(evMid * 0.35),
-          ev_mid: evMid,
-          ev_high: raw.max_price > evMid ? Math.round(raw.max_price) : Math.round(evMid * 2.5),
+          ...applyMultiplier(evLow, evMid, evHigh),
           confidence: null,
           raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
         });
@@ -618,7 +640,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
       cacheRows.push({
         player_product_id: pp.id,
         cardhedger_card_id: pp.cardhedger_card_id ?? null,
-        ev_low: sibling.ev_low, ev_mid: sibling.ev_mid, ev_high: sibling.ev_high,
+        ...applyMultiplier(sibling.ev_low, sibling.ev_mid, sibling.ev_high),
         confidence: null,
         raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
       });
@@ -631,7 +653,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     cacheRows.push({
       player_product_id: pp.id,
       cardhedger_card_id: pp.cardhedger_card_id ?? null,
-      ev_low: Math.round(evMid * 0.35), ev_mid: evMid, ev_high: Math.round(evMid * 2.5),
+      ...applyMultiplier(evMid * 0.35, evMid, evMid * 2.5),
       confidence: null,
       raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
     });
@@ -659,6 +681,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     `chunks=${chunksCompleted}/${priceChunks.length} batch=${batchDurationMs}ms ` +
     `anchor=${anchorStrategy}${anchorFellBackCount > 0 ? ` fellBack=${anchorFellBackCount}` : ''}` +
     ` matchedAvg=${anchorMatchedAvg.toFixed(1)} ` +
+    `lifecycle=${lifecycleStatus} mult=${lifecycleMultiplier.toFixed(3)} ` +
     `total=${totalDurationMs}ms${partial ? ' PARTIAL' : ''}`,
   );
 
@@ -682,5 +705,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     anchorStrategy,
     anchorFellBackCount,
     anchorMatchedVariantsAvg: anchorMatchedAvg,
+    lifecycleStatus,
+    lifecycleMultiplier,
   };
 }

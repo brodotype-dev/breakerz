@@ -91,21 +91,37 @@ export async function setProductLifecycle(
   // Going live requires a CH set name — without it, the catalog refresh and
   // pricing pipeline have nothing to anchor on. Block the transition with
   // clear messaging instead of letting the admin produce a broken product.
+  // Also captures the prior status so we can stamp live_since only on a
+  // pre_release → live transition (reactivating a dormant product shouldn't
+  // reset its freshness clock).
+  let priorStatus: ProductLifecycle | null = null;
   if (next === 'live') {
     const { data: product, error: readErr } = await supabaseAdmin
       .from('products')
-      .select('ch_set_name')
+      .select('ch_set_name, lifecycle_status')
       .eq('id', productId)
       .single();
     if (readErr) return { error: readErr.message };
     if (!product?.ch_set_name) {
       return { error: 'Set a CardHedger set name on this product before marking it live.' };
     }
+    priorStatus = product.lifecycle_status as ProductLifecycle;
+  }
+
+  // Plan C: stamp live_since on every pre_release → live transition so the
+  // freshness multiplier in lib/pricing-refresh.ts has a starting point.
+  // dormant → live deliberately does NOT reset live_since (winding back up
+  // an old product shouldn't pretend it's freshly released).
+  const update: { lifecycle_status: ProductLifecycle; live_since?: string } = {
+    lifecycle_status: next,
+  };
+  if (next === 'live' && priorStatus === 'pre_release') {
+    update.live_since = new Date().toISOString();
   }
 
   const { error } = await supabaseAdmin
     .from('products')
-    .update({ lifecycle_status: next })
+    .update(update)
     .eq('id', productId);
 
   if (error) return { error: error.message };
