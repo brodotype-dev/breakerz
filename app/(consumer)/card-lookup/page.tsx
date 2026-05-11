@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { ScanLine, Search, Upload, RotateCcw, ShieldCheck, Hash } from 'lucide-react';
+import { ScanLine, Search, Upload, RotateCcw, ShieldCheck, Hash, AlertTriangle } from 'lucide-react';
 import { formatCurrency } from '@/lib/engine';
 import posthog from 'posthog-js';
 import { PH_EVENTS } from '@/lib/posthog-events';
@@ -39,6 +39,14 @@ interface PSACert {
   ItemStatus: string;
 }
 
+interface CertMismatch {
+  kind: 'player' | 'year' | 'both';
+  expectedPlayer: string | null;
+  expectedYear: string | null;
+  psaPlayer: string;
+  psaYear: string;
+}
+
 interface CertResult {
   source: 'cert';
   psaVerified: boolean;
@@ -50,6 +58,7 @@ interface CertResult {
   comps: Array<{ sale_price: number; sale_date: string; grade: string; platform: string }> | null;
   matchedPrice: { grade: string; price: number } | null;
   matchedGrade: string;
+  mismatch?: CertMismatch;
 }
 
 interface SearchResult {
@@ -142,7 +151,11 @@ export default function CardLookupPage() {
     setResult(null);
     try {
       if (extracted.certNumber.trim()) {
-        await runCertLookup(extracted.certNumber.trim(), extracted.gradingCompany || 'PSA');
+        await runCertLookup(
+          extracted.certNumber.trim(),
+          extracted.gradingCompany || 'PSA',
+          { expectedPlayer: extracted.playerName, expectedYear: extracted.year },
+        );
       } else {
         const res = await fetch('/api/card-lookup', {
           method: 'POST',
@@ -178,11 +191,15 @@ export default function CardLookupPage() {
     }
   }
 
-  async function runCertLookup(cert: string, grader: string) {
+  async function runCertLookup(
+    cert: string,
+    grader: string,
+    expected?: { expectedPlayer?: string; expectedYear?: string },
+  ) {
     const res = await fetch('/api/card-lookup', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'cert', cert, grader }),
+      body: JSON.stringify({ action: 'cert', cert, grader, ...expected }),
     });
     const certData = await res.json();
     if (certData.error) throw new Error(certData.error);
@@ -191,7 +208,18 @@ export default function CardLookupPage() {
       grader,
       psa_verified: certData.psaVerified ?? false,
       has_price: !!certData.matchedPrice,
+      mismatch: certData.mismatch?.kind ?? null,
     });
+    if (certData.mismatch) {
+      posthog.capture(PH_EVENTS.slab_analysis_cert_mismatch, {
+        cert,
+        kind: certData.mismatch.kind,
+        expected_player: certData.mismatch.expectedPlayer,
+        expected_year: certData.mismatch.expectedYear,
+        psa_player: certData.mismatch.psaPlayer,
+        psa_year: certData.mismatch.psaYear,
+      });
+    }
     setResult(certData);
   }
 
@@ -495,7 +523,9 @@ function ResultsPanel({
         </div>
       )}
 
-      {result && !isFetching && (
+      {result && !isFetching && (() => {
+        const isMismatch = result.source === 'cert' && !!result.mismatch;
+        return (
         <div className="space-y-4">
           {/* Cert fallback notice */}
           {result.source === 'search' && result.certFallback && (
@@ -508,6 +538,34 @@ function ResultsPanel({
           {result.source === 'cert' && !result.psaVerified && result.psaError && (
             <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-400">
               PSA: {result.psaError}
+            </div>
+          )}
+
+          {/* Cert mismatch — PSA's cert maps to a different card than what was on the slab */}
+          {result.source === 'cert' && result.mismatch && (
+            <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-4 flex items-start gap-3">
+              <AlertTriangle className="size-5 flex-shrink-0 mt-0.5" style={{ color: 'rgb(239,68,68)' }} />
+              <div className="flex-1 text-sm">
+                <p className="font-bold mb-1" style={{ color: 'rgb(239,68,68)' }}>
+                  Cert number doesn&apos;t match this card
+                </p>
+                <p style={{ color: 'var(--text-secondary)' }} className="mb-2">
+                  PSA&apos;s database has cert <span className="font-mono">{result.certInfo.cert}</span> registered to{' '}
+                  <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    {result.mismatch.psaPlayer} ({result.mismatch.psaYear})
+                  </span>
+                  {result.mismatch.expectedPlayer && (
+                    <> — but the slab you uploaded looks like{' '}
+                      <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>
+                        {result.mismatch.expectedPlayer}
+                        {result.mismatch.expectedYear ? ` (${result.mismatch.expectedYear})` : ''}
+                      </span>.</>
+                  )}
+                </p>
+                <p style={{ color: 'var(--text-tertiary)' }} className="text-xs">
+                  Double-check the cert number on your slab and update it above. Comps were skipped to avoid showing the wrong card&apos;s prices.
+                </p>
+              </div>
             </div>
           )}
 
@@ -541,7 +599,8 @@ function ResultsPanel({
             </div>
           )}
 
-          {/* Card identity */}
+          {/* Card identity — hidden on mismatch (PSA Verified panel above already shows PSA's data) */}
+          {!isMismatch && (
           <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
             <div className="flex items-start gap-3">
               {((result.source === 'cert' && result.card?.image) || (result.source === 'search' && result.card.image)) && (
@@ -582,8 +641,10 @@ function ResultsPanel({
               </div>
             </div>
           </div>
+          )}
 
           {/* Price summary */}
+          {!isMismatch && (
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
               <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">
@@ -605,8 +666,10 @@ function ResultsPanel({
               </p>
             </div>
           </div>
+          )}
 
           {/* Max bid calculator */}
+          {!isMismatch && (
           <div className="rounded-lg border p-4" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--card)' }}>
             <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-3">Max Bid Calculator</p>
             <div className="flex items-center gap-3">
@@ -630,6 +693,7 @@ function ResultsPanel({
               </div>
             </div>
           </div>
+          )}
 
           {/* All grade prices — shown for both cert and search results */}
           {result.allPrices.length > 0 && (
@@ -677,7 +741,8 @@ function ResultsPanel({
             </div>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {!result && !isFetching && !lookupError && extracted && (
         <div className="rounded-lg border p-12 flex items-center justify-center" style={{ borderColor: 'var(--border)' }}>
