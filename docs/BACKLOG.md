@@ -2,7 +2,43 @@
 
 Consolidated list of known work, organized by priority. Items pulled from the Social Currency PRD, CLAUDE.md known gaps, and open questions surfaced during development.
 
-**Last updated:** 2026-05-06
+**Last updated:** 2026-05-10
+
+---
+
+## Priority 0 — Live-product blockers
+
+Active products on getbreakiq.com that are currently shipping wrong data. Fix before anything else.
+
+### Topps Baseball Series 1 / Series 2 split — derived productScope as fallback predicate
+**Effort:** ~1–2 hours
+**Full plan:** [docs/plans/2026-05-10-topps-series-split.md](plans/2026-05-10-topps-series-split.md)
+
+**Why P0:** `2025 Topps Series 1 Baseball` ([`/break/topps-series-1-baseball-2025`](https://getbreakiq.com/break/topps-series-1-baseball-2025)) is live with `ch_set_name="2025 Topps Baseball"` pulling **1,249 players × 43,213 variants** from CH's parent set, which conflates Series 1 (#1–330) and Series 2 (#331–660). Slot pricing, chase cards, and Recent Sales blend Series 2 data into Series 1 breaks.
+
+**Root cause (verified 2026-05-10):** The scoping mechanism already exists. `player_products.checklist_card_numbers` is populated by the import-checklist parser and consumed by [`hydrateVariantsFromCatalog`](../lib/variants-from-catalog.ts:144) as a strict per-pp allow-list. **Scoped pps are pristine** — Judge/Ohtani/Trout/Witt all have 100% of variants matching their checklist. The leak comes entirely from **500 unscoped pps** auto-created via Phase 3 of the hydrate flow. Auto-created pps have **no entry** in `attachPredicateByPpId`, so the `if (predicate && !predicate(...))` guard at [line 250](../lib/variants-from-catalog.ts:250) short-circuits and every card through. **Verified leak: 12,112 numeric variants** (10,525 in S2 range + 1,587 above 660).
+
+**Fix shape (no new schema, no admin UI):**
+1. At hydrate time, derive `productScope = Union of checklist_card_numbers across scoped pps`.
+2. For null-checklist pps (including auto-creates), use `n => productScope.has(n)` as the predicate instead of the implicit "everything allowed."
+3. Pre-filter Phase 3's auto-create discovery to only consider CH rows whose card_number is in productScope.
+4. Empty productScope (brand-new products before first checklist import) falls back to permissive — preserves today's behavior for that case.
+
+Why this beats the original `card_number_filter jsonb` design: the existing `checklist_card_numbers` column already encodes the truth. Adding a new column would duplicate that signal less precisely. Deriving productScope at runtime needs zero schema and zero admin training.
+
+**Pre-flight checks:**
+- ✅ Insert overlap NOT a concern — Topps continues numbering across series for Series 1 / Series 2 (each insert subset like "T90-*" uses one continuous numeric range across both physical products).
+- ✅ Backward compatible — empty productScope falls back to today's permissive behavior, so single-set products are unaffected.
+
+**Operational steps (after code lands):**
+1. Re-import 2025 Topps Series 1 checklist to ensure `checklist_card_numbers` is populated for legitimate base players.
+2. Re-hydrate Series 1 from admin (the existing delete-then-insert flow handles cleanup).
+3. Re-run pricing refresh on Series 1.
+4. Create 2025 Topps Series 2 Baseball product, import its checklist, hydrate.
+
+**What this also unlocks**: the 2026 Bowman Chrome / Prospects consolidation River announced, and any future product line where the breaker market and CH's canonical naming diverge — all without any new per-product config.
+
+See the [full plan](plans/2026-05-10-topps-series-split.md) for verified data, code sketches, decision log, and execution order.
 
 ---
 
@@ -161,7 +197,58 @@ Graded pricing still matters for specific decisions (is this slot worth it if I 
 
 ---
 
+### Confidence display — bucket 0..1 into named tiers
+**Effort:** ~1–2 hours
+**Why:** Surfaced 2026-05-09 comparing our pricing model to Card Ladder ([docs/competitor-intel/cardladder-vs-breakiq-analysis.md](competitor-intel/cardladder-vs-breakiq-analysis.md)). CL displays a 5-bucket confidence rating ("last sold" age tier) next to every suggested price; our model already has a sales-weighted `confidence` from CH's batch-price-estimate (0..1, surfaced as a `low conf` chip below 0.5). The data is in the cache; we just don't bucket it.
+
+A named tier system reads better than a raw number for collectors. Suggested:
+- **Strong** — confidence ≥ 0.7
+- **Solid** — 0.5–0.7
+- **Stale** — 0.2–0.5
+- **Cold** — < 0.2
+
+**Files:** `components/breakiq/PlayerTable.tsx`, `components/breakiq/PlayerDetailDrawer.tsx`, `app/(consumer)/player/[id]/page.tsx` (anywhere we render EV).
+
+Cheap, non-blocking. Pure UI.
+
+---
+
 ## Priority 2 — High value, external dependency or more effort
+
+### Grade Ratio Value — replace hard-coded grade multipliers with per-card historical ratios
+**Effort:** ~1–2 days *if CH exposes the data we need* (Q13 in [docs/cardhedger-questions.md](cardhedger-questions.md))
+**Blocked on:** confirmation from Kyle that CH has a per-card cross-grade sales endpoint we can query (or willingness to add one).
+
+**Why:** Surfaced 2026-05-09 from the Card Ladder competitive teardown ([docs/competitor-intel/cardladder-vs-breakiq-analysis.md](competitor-intel/cardladder-vs-breakiq-analysis.md)). Today, when CH gives us a Raw price but no PSA 9 / PSA 10 for a card, [lib/pricing-refresh.ts:170-172](../lib/pricing-refresh.ts) falls back to:
+```
+evHigh = round(evMid × 2.5)   // PSA 10 fallback
+evLow  = round(evMid × 0.35)  // Raw fallback when only PSA is available
+```
+Those multipliers are population averages. They're systematically wrong on the variants that move the most money — chase parallels and superstar rookies have steeper grade curves than commons. CL's "Grade Ratio Value" model uses the *card's own* historical PSA 10 ÷ Raw multiplier (or PSA 10 ÷ PSA 9, whichever has the most recent comp grade) rather than a population mean. Better signal, real dollar accuracy gain on chase variants.
+
+**Approach:**
+1. New CH wrapper: `getCardGradeRatios(cardId): { ratio_psa10_raw, ratio_psa10_psa9, ratio_psa9_raw, computed_at }` — derive from whatever CH endpoint (Q13) lets us query pair-wise sales for one card_id.
+2. Persist in a new table `ch_card_grade_ratios` (keyed by `cardhedger_card_id`, 7d TTL — ratios change slowly).
+3. In `lib/pricing-refresh.ts`, when synthesizing `evHigh` from `psa9_price`, prefer the card's own `ratio_psa10_psa9` over the hard-coded `× 2.5`. Same for `evLow` from `psa10_price`. Population multipliers stay as the very last resort.
+4. Track which path produced each EV in `pricing_cache` (new column `ev_high_source: 'real' | 'card_ratio' | 'population_multiplier'`) so we can measure improvement.
+
+**Risk:** if CH has too few historical sales for a card, the ratio is noisy and we want to fall back to the population mean rather than apply a one-data-point ratio. Need a minimum-sample threshold (e.g. 3 paired sales).
+
+**Validation:** run side-by-side on a 100-variant sample comparing card-ratio EV vs. population-multiplier EV vs. (where available) actual recent PSA 10 comp prices. Report MAE per variant tier.
+
+---
+
+### Index-rolled-forward stale card pricing
+**Effort:** ~½–1 day
+**Blocked on:** Q13 (player-aggregate price-history endpoint shape from CH).
+
+**Why:** Same Card Ladder teardown. When a card hasn't had a CH-pri ced sale recently and our tier ladder falls all the way to the [`$8 / $15` rookie/veteran floor](../lib/pricing-refresh.ts:512), we lose all signal. CL's "Card Ladder Value" rolls a stale card's price forward by tracking the *player's* aggregate market — `today_price = old_price × (today_player_index / past_player_index)`. Better than a flat floor when the player has moved 30%+ since the card's last sale.
+
+**Approach:** insert a new tier between the search rung and the hard-coded floor in [lib/pricing-refresh.ts](../lib/pricing-refresh.ts). If `ch_price_cache` has *some* historical row for this card_id (even if expired) AND CH gives us a usable player-aggregate trend, multiply the stale price by `today / past` aggregate ratio. Floor stays as the very last resort.
+
+**Lower priority than Grade Ratio Value** — it only matters for the small fraction of variants where CH has nothing recent. The existing `ch_price_cache` already absorbs most of the previously-stale variants. But as a defensive layer for the long tail, worth doing once the player-aggregate endpoint is confirmed.
+
+---
 
 ### Chase Cards — Panini-aware fallback when no odds data
 **Status: ✅ Complete (2026-05-07)** — print-run fallback shipped in [app/api/admin/chase-cards/route.ts](../app/api/admin/chase-cards/route.ts). Each candidate's rarest variant carries a `rankBy: 'odds' | 'print_run'` discriminator; the response surfaces `productHasOdds`. [app/admin/products/[id]/ChaseCardsManager.tsx](../app/admin/products/[id]/ChaseCardsManager.tsx) renders a yellow "Ranked by print run" chip when fallback triggered.
