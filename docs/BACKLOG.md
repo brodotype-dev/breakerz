@@ -182,6 +182,16 @@ Apple OAuth deferred — requires Apple Developer account ($99/yr).
 
 ---
 
+### Catalog Refresh cron_run_log instrumentation
+**Effort:** ~15 min
+**Why:** Surfaced 2026-05-11 during the product audit. The Cron Status panel on `/admin/products` shows "Catalog Refresh: NEVER RUN" — but the catalog refresh is actually firing successfully every night at 03:00 UTC (verified via `ch_set_refresh_log` which has rows from every morning). The issue is `app/api/cron/refresh-ch-catalogs/route.ts` only calls `recordCronRun()` at the END of the serial loop, and at ~5 minutes of real work across 17+ sets the route hits Vercel's `maxDuration=300s` and gets killed before reaching that call. Net effect: catalog refreshes complete + `ch_set_cache` is up-to-date, but admin observability is broken.
+
+**Fix:** Either (a) call `recordCronRun()` after each set inside the loop so partial runs are visible, or (b) call a "started" marker at the top of the route (matching the `refresh-product-pricing/start` pattern that's already working) so the panel knows the run kicked off. Option (b) is simpler.
+
+**Files:** `app/api/cron/refresh-ch-catalogs/route.ts`, `lib/cron-log.ts` (maybe add a `recordCronStart()` helper)
+
+---
+
 ### Baseline Fair Value in BreakIQ Sayz
 **Effort:** ~0.5 days
 **Why:** When `buzz_score` or `breakerz_score` adjusts fair value, buyers currently see the adjusted number with no indication of what the "raw" model says. Showing both (e.g., "Fair value: $42 · Baseline: $38 without signal adjustment") adds transparency and trust.
@@ -305,6 +315,16 @@ Those multipliers are population averages. They're systematically wrong on the v
 **Cross-references:**
 - Composes with the Discord `/insight` review flow — same admin pattern (capture qualitative signal, attribute to source, manually review). Eventually both could live behind one `/admin/intel` tab.
 - Feeds the BreakIQ Bets debrief — clusters of thumbs-down on a player are signal for a manual `breakerz_score` adjustment.
+
+---
+
+### Gated product activation wizard (replace "create + flip to live" with a validation stepper)
+**Effort:** ~1 focused session
+**Why:** Surfaced 2026-05-11 reflecting on the day's audit work. Every product-data fire today — Bowman Draft Sapphire mis-anchored to `Bowman Chrome Sapphire`, Topps Series 1/2 conflated under one umbrella, Donruss Football with `ch_set_name=null` shipping for two months, 2024 Panini Prizm Football empty shell — followed the same pattern: a product got configured, flipped to `is_active=true`, and went live before anyone verified the resulting roster matched reality. The forensic signals we used to find them (variant count vs. expected, card_number prefix distribution, ch_set_name exact-match against CH catalog, duplicate-ch_set_name detection, productScope filtered-rows count, pricing coverage %) are exactly the checks that should run *before* activation. The bulk-load-and-hope flow is too forgiving of misconfigurations; once a product is live with bad data, the only way to fix it is the destructive cleanup we did today.
+
+**Sketch:** state machine `draft → validating → ready → live`, with each transition gated by automated checks (CH set-name exists, no other product uses the same anchor, parsed sections look like real titles, hydrate ran with productScope, ≥N% of variants priced). New products default to `draft` instead of going straight live. Editing `ch_set_name` on a live product soft-demotes back to `validating` until checks re-pass. Cross-link to today's audit plan ([docs/plans/2026-05-11-product-audit.md](plans/2026-05-11-product-audit.md)) — the audit is the manual version of what this automates.
+
+Worth a focused session — design the state machine + gates + admin UX in one sitting rather than incrementally bolting validators onto the current form.
 
 ---
 
@@ -441,6 +461,20 @@ When a hit is reported, the relevant player's slot price should reflect the upda
 ---
 
 ## Priority 3 — Future pipeline, external dependencies required
+
+### Odds matcher — handle insert-subset base rows
+**Effort:** ~1–2 hours
+**Why:** Surfaced 2026-05-11 during the Topps Series 1 + Series 2 cleanup. The Topps odds PDF includes one row per *parallel* of each insert subset (e.g. "Call to the Hall Pink Foil /99", "Call to the Hall Gold /50"), plus a single row for the **base** of the subset with no parallel suffix (e.g. just "Call to the Hall"). Our odds matcher matches on `(variant_name, card_number)` and successfully links the colored-parallel rows (94% match rate on Series 1: 211 of 224 odds rows). The 13 unmatched on Series 1 were all insert-base rows: `Call to the Hall`, `Heavy Lumber`, `Legendary Homefield Advantage`, `Plakata`, `All Aces`, `Stars of MLB`, `Topps Mega Stars`, plus a handful of autograph-relic subset bases (`Heavy Lumber Autograph Relics`, `City Connect Swatch Collection Autograph Relic`, `Rickwood Autograph Relic Collection`, `Signature Tunes Dual Autographs`, `City Connect Swatch Collection`, `Rickwood Relic Collection`).
+
+The matcher needs a fallback: when an odds row's name matches a section name AND the row has no parallel suffix, apply that row's odds to every card in that section's base variant. Otherwise these insert subsets ship without base-rate odds data, which makes the `1/odds` weighting in the engine treat them as null (excluded from slot math) when their real pull rate is, say, 1:4 packs.
+
+**Impact today:** Low. The high-EV chase parallels of these subsets ARE matched (Pink Foil /99, Gold Foil /50, etc.). The base rate of an insert subset is the lowest-value pull from that subset, so missing it costs little slot-pricing accuracy.
+
+**Files to touch:**
+- `app/api/admin/match-odds/route.ts` (or wherever the odds matcher lives — name TBD) — add section-name → base-variant fallback path
+- Verification: re-upload Topps Series 1 odds PDF, confirm ≥13 of the previously-unmatched rows now resolve
+
+---
 
 ### Background CardHedger matching (close-the-tab-and-walk-away)
 **Effort:** ~½ day

@@ -118,10 +118,20 @@ export default function OddsUpload({ productId }: { productId: string }) {
           )}
 
           {result.unmatched.length > 0 && (
-            <div className="rounded border border-amber-200 bg-amber-50/50 p-3 space-y-1">
-              <p className="text-xs font-medium text-amber-700">Unmatched odds rows</p>
+            <div
+              className="rounded border p-3 space-y-1"
+              style={{
+                borderColor: 'rgba(245, 158, 11, 0.3)',
+                backgroundColor: 'rgba(245, 158, 11, 0.08)',
+              }}
+            >
+              <p className="text-xs font-medium" style={{ color: '#f59e0b' }}>
+                Unmatched odds rows
+              </p>
               {result.unmatched.map((u, i) => (
-                <p key={i} className="text-xs text-amber-600 font-mono">{u}</p>
+                <p key={i} className="text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>
+                  {u}
+                </p>
               ))}
             </div>
           )}
