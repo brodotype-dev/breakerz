@@ -144,25 +144,74 @@ async function runPreview(productId: string, strategy: AnchorStrategy, patterns:
     ? (product.anchor_variant_patterns as string[])
     : [];
 
-  // Top 20 players by cached ev_mid; we filter down to the top 5 *hydrated* ones below.
-  // Non-hydrated player_products are priced via the search/sibling/default fallback in
-  // pricing-refresh.ts and have no rows in player_product_variants — anchor strategy
-  // doesn't apply to them, so showing them with a $X → $0 (-100%) delta is misleading.
-  // We over-fetch and filter so the preview ends up with rows the strategy actually affects.
-  const { data: topRows } = await supabaseAdmin
-    .from('player_products')
-    .select('id, player:players(id, name), pricing_cache!inner(ev_mid)')
-    .eq('product_id', productId)
-    .eq('insert_only', false)
-    .order('ev_mid', { ascending: false, foreignTable: 'pricing_cache' })
-    .limit(20);
+  // Two-phase fetch: first identify which player_product_ids are *hydrated* (have at
+  // least one variant with a CH card id), then sort those by cached ev_mid. This avoids
+  // a pathology on big products like Bowman Chrome where the top-N by ev_mid are all
+  // sibling-fallback-priced star players whose anchor-strategy doesn't apply.
+  //
+  // Phase 1: distinct hydrated pp_ids for this product.
+  const { data: hydratedRows } = await supabaseAdmin
+    .from('player_product_variants')
+    .select('player_product_id, player_products!inner(product_id)')
+    .eq('player_products.product_id', productId)
+    .not('cardhedger_card_id', 'is', null);
+  const hydratedPpIds = Array.from(
+    new Set(
+      ((hydratedRows ?? []) as { player_product_id: string }[]).map(r => r.player_product_id),
+    ),
+  );
 
+  // Phase 2: top-N over hydrated + a separate top-N over all pps (for fallback rendering when
+  // there aren't 5 usefully-priceable hydrated rows). We over-fetch both to leave room for the
+  // "variants exist but all aggregate to 0" carve-out below.
   type Row = {
     id: string;
     player: { id: string; name: string } | { id: string; name: string }[] | null;
     pricing_cache: { ev_mid: number } | { ev_mid: number }[] | null;
   };
-  const ppIds = ((topRows ?? []) as unknown as Row[]).map(r => r.id);
+
+  let topRows: Row[] = [];
+  if (hydratedPpIds.length > 0) {
+    // Supabase .in() max URL length is the practical limit; chunk if needed (rare for a single product).
+    const PP_CHUNK = 500;
+    const collected: Row[] = [];
+    for (let i = 0; i < hydratedPpIds.length; i += PP_CHUNK) {
+      const slice = hydratedPpIds.slice(i, i + PP_CHUNK);
+      const { data } = await supabaseAdmin
+        .from('player_products')
+        .select('id, player:players(id, name), pricing_cache!inner(ev_mid)')
+        .in('id', slice)
+        .eq('insert_only', false)
+        .order('ev_mid', { ascending: false, foreignTable: 'pricing_cache' })
+        .limit(20);
+      if (data) collected.push(...(data as unknown as Row[]));
+    }
+    // We did per-chunk order+limit; re-sort the merged slice and take top 20 overall.
+    collected.sort((a, b) => {
+      const av = Array.isArray(a.pricing_cache) ? a.pricing_cache[0]?.ev_mid ?? 0 : a.pricing_cache?.ev_mid ?? 0;
+      const bv = Array.isArray(b.pricing_cache) ? b.pricing_cache[0]?.ev_mid ?? 0 : b.pricing_cache?.ev_mid ?? 0;
+      return bv - av;
+    });
+    topRows = collected.slice(0, 20);
+  }
+
+  // If we found no hydrated rows OR fewer than 5, top off with high-ev non-hydrated rows
+  // so the panel still renders something instead of an empty preview.
+  if (topRows.length < 5) {
+    const { data: extra } = await supabaseAdmin
+      .from('player_products')
+      .select('id, player:players(id, name), pricing_cache!inner(ev_mid)')
+      .eq('product_id', productId)
+      .eq('insert_only', false)
+      .order('ev_mid', { ascending: false, foreignTable: 'pricing_cache' })
+      .limit(20);
+    const seen = new Set(topRows.map(r => r.id));
+    for (const r of (extra ?? []) as unknown as Row[]) {
+      if (!seen.has(r.id)) topRows.push(r);
+    }
+  }
+
+  const ppIds = topRows.map(r => r.id);
   if (ppIds.length === 0) {
     return NextResponse.json({ players: [] as PreviewPlayerRow[] });
   }
@@ -215,7 +264,7 @@ async function runPreview(productId: string, strategy: AnchorStrategy, patterns:
   const hydratedResults: PreviewPlayerRow[] = [];
   const nonHydratedResults: PreviewPlayerRow[] = [];
 
-  for (const row of (topRows ?? []) as unknown as Row[]) {
+  for (const row of topRows) {
     const playerObj = Array.isArray(row.player) ? row.player[0] : row.player;
     const pc = Array.isArray(row.pricing_cache) ? row.pricing_cache[0] : row.pricing_cache;
     const cachedEvMid = Math.round(pc?.ev_mid ?? 0);
@@ -262,8 +311,26 @@ async function runPreview(productId: string, strategy: AnchorStrategy, patterns:
     const current  = aggregatePlayerEV(variantEVs, currentStrategy,  currentPatterns);
     const proposed = aggregatePlayerEV(variantEVs, strategy,         patterns);
 
-    // When current aggregation can't recompute (all variants priced 0 in cache), prefer
-    // the stored pricing_cache.ev_mid so the "current" column reflects what consumers see.
+    // Variants exist but neither strategy can compute anything (every priced variant
+    // came back $0 from ch_price_cache). This player was almost certainly priced via
+    // the sibling/search/default fallback ladder in pricing-refresh.ts, so the
+    // anchor strategy doesn't apply. Treat the same as non-hydrated for preview UX —
+    // show single cached EV instead of misleading -100% delta.
+    if (current.evMid === 0 && proposed.evMid === 0) {
+      nonHydratedResults.push({
+        playerProductId: row.id,
+        playerName: playerObj?.name ?? null,
+        currentEvMid: cachedEvMid,
+        proposedEvMid: cachedEvMid,
+        proposedMatched: 0,
+        proposedFellBack: false,
+        nonHydrated: true,
+      });
+      continue;
+    }
+
+    // When current can't recompute but proposed can (curated_* hits something current's
+    // sets_weighted_all path failed on), prefer cached as the "before" anchor.
     const currentEvMid = current.evMid > 0 ? current.evMid : cachedEvMid;
 
     hydratedResults.push({
