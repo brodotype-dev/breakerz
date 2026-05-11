@@ -46,3 +46,32 @@ export async function recordCronRun(summary: CronRunSummary): Promise<void> {
     console.error(`[cron-log] failed to record ${summary.cronPath} run:`, error);
   }
 }
+
+/**
+ * Insert a "started" marker so admin observability sees the run even if the
+ * route hits Vercel's maxDuration before reaching the final recordCronRun.
+ * Marker rows count as successful — the cron actually fired. The follow-up
+ * summary row (if the route completes) will be the more recent record and
+ * supersede this in the Cron Status panel's most-recent lookup.
+ *
+ * Use at the top of any cron route whose summary call sits past potential
+ * timeout points (e.g. serial loops over per-set work).
+ */
+export async function recordCronStart(cronPath: string, startedAt: number): Promise<void> {
+  const { error } = await supabaseAdmin.from('cron_run_log').insert({
+    cron_path: cronPath,
+    started_at: new Date(startedAt).toISOString(),
+    finished_at: new Date(startedAt).toISOString(),
+    duration_ms: 0,
+    processed: 0,
+    ok: 0,
+    errors: 0,
+    skipped: 0,
+    success: true,
+    details: { phase: 'started' },
+  });
+
+  if (error) {
+    console.error(`[cron-log] failed to record ${cronPath} start marker:`, error);
+  }
+}

@@ -15,6 +15,9 @@ interface Props {
   viewFormat: BreakFormat;
   riskFlagMap?: Map<string, RiskFlagEntry[]>;
   productId?: string | null;
+  // Plan B: lifecycle-aware market markup applied to slot cost at display.
+  // 1 = no markup. computeSignal is run against the market-adjusted number.
+  marketMarkup?: number;
 }
 
 // `minmax(140px, 1fr)` keeps the Team column from collapsing to 0 when the
@@ -29,9 +32,10 @@ function pickSlot(t: TeamSlot, fmt: BreakFormat) {
     :                      { slot: t.jumboSlotCost, perCase: t.jumboPerCase };
 }
 
-export default function TeamSlotsTable({ teams, viewFormat, riskFlagMap = new Map(), productId = null }: Props) {
+export default function TeamSlotsTable({ teams, viewFormat, riskFlagMap = new Map(), productId = null, marketMarkup = 1 }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [askPrices, setAskPrices] = useState<Record<string, string>>({});
+  const showMarketMarkup = marketMarkup !== 1;
 
   if (teams.length === 0) {
     return (
@@ -66,7 +70,11 @@ export default function TeamSlotsTable({ teams, viewFormat, riskFlagMap = new Ma
         <div>
           {teams.map((row, i) => {
             const isOpen = expanded.has(row.team);
-            const { slot: slotCost, perCase } = pickSlot(row, viewFormat);
+            const { slot: modelSlotCost, perCase: modelPerCase } = pickSlot(row, viewFormat);
+            // Plan B: market-adjusted slot drives display + signal; model EV
+            // is shown beneath as a sub-line for transparency.
+            const slotCost = modelSlotCost * marketMarkup;
+            const perCase  = modelPerCase  * marketMarkup;
             const askRaw = askPrices[row.team] ?? '';
             const askNum = parseFloat(askRaw);
             const dealCheck = askRaw && !isNaN(askNum) && slotCost > 0
@@ -152,11 +160,16 @@ export default function TeamSlotsTable({ teams, viewFormat, riskFlagMap = new Ma
                     )}
                   </div>
 
-                  {/* Slot cost */}
-                  <div className="flex items-center">
+                  {/* Slot cost (market-adjusted; model EV below) */}
+                  <div className="flex flex-col justify-center leading-tight">
                     <span className="font-mono text-sm font-semibold" style={{ color: 'var(--text-t-primary)' }}>
                       {formatCurrency(slotCost)}
                     </span>
+                    {showMarketMarkup && modelSlotCost > 0 && (
+                      <span className="font-mono text-[10px]" style={{ color: 'var(--text-t-tertiary)' }}>
+                        model {formatCurrency(modelSlotCost)}
+                      </span>
+                    )}
                   </div>
 
                   {/* /Case */}
@@ -211,10 +224,10 @@ export default function TeamSlotsTable({ teams, viewFormat, riskFlagMap = new Ma
                       <div />
                       <div />
                       <div />
-                      {/* Slot cost for this player */}
+                      {/* Slot cost for this player (market-adjusted) */}
                       <div className="flex items-center">
                         <span className="font-mono text-xs" style={{ color: 'var(--text-t-tertiary)' }}>
-                          {formatCurrency(viewFormat === 'hobby' ? p.hobbySlotCost : viewFormat === 'bd' ? p.bdSlotCost : p.jumboSlotCost)}
+                          {formatCurrency((viewFormat === 'hobby' ? p.hobbySlotCost : viewFormat === 'bd' ? p.bdSlotCost : p.jumboSlotCost) * marketMarkup)}
                         </span>
                       </div>
                       <div />

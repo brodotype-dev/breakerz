@@ -62,6 +62,10 @@ export interface Product {
   release_date: string | null; // ISO date string (YYYY-MM-DD)
   ch_set_name: string | null; // Exact CardHedger canonical set name for matching
   lifecycle_status: ProductLifecycle; // pre_release | live | dormant
+  // Stamp of the most recent pre_release → live transition. Drives the
+  // FRESHNESS_PREMIUM decay in lib/market-markup.ts. Backfilled to
+  // created_at for products that were already live before Plan C shipped.
+  live_since: string | null;
   sport?: Sport;
 }
 

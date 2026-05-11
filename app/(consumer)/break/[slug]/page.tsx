@@ -12,6 +12,7 @@ import PlayerDetailDrawer from '@/components/breakiq/PlayerDetailDrawer';
 import PreReleaseLayout from '@/components/breakiq/PreReleaseLayout';
 import { SegmentedControl, CounterInput } from '@/components/breakiq/ds';
 import { computeSlotPricing, computeTeamSlotPricing, formatCurrency } from '@/lib/engine';
+import { getMarketMarkup } from '@/lib/market-markup';
 import { computeRiskAdjustment, computeHypeAdjustment, type HypeObservation } from '@/lib/score-modulation';
 import type { AskingPriceObsRow, BreakConfig, BreakFormat, ChaseCard, HypeObsRow, PlayerWithPricing, PlayerRiskFlag, Product, Sport } from '@/lib/types';
 
@@ -562,7 +563,7 @@ export default function BreakPage() {
 
         {/* Tab content */}
         <div className="mt-4">
-          {activeTab === 'teams' && <TeamSlotsTable teams={teamSlots} viewFormat={viewFormat} riskFlagMap={riskFlagMap} productId={product?.id ?? null} />}
+          {activeTab === 'teams' && <TeamSlotsTable teams={teamSlots} viewFormat={viewFormat} riskFlagMap={riskFlagMap} productId={product?.id ?? null} marketMarkup={getMarketMarkup(lifecycle)} />}
           {activeTab === 'players' && (
             <PlayerTable
               players={players}
@@ -570,6 +571,7 @@ export default function BreakPage() {
               riskFlagMap={riskFlagMap}
               onPlayerClick={id => setActivePlayerProductId(id)}
               productId={product?.id ?? null}
+              marketMarkup={getMarketMarkup(lifecycle)}
             />
           )}
         </div>

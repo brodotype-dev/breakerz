@@ -2,14 +2,23 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { computeLiveEV, get90DayPrices } from '@/lib/cardhedger';
 import { computeSlotPricing, computeTeamSlotPricing, computeSignal, formatCurrency } from '@/lib/engine';
 import { computeRiskAdjustment, computeHypeAdjustment, type HypeObservation, type HypeTag } from '@/lib/score-modulation';
-import type { PlayerWithPricing, BreakConfig, Signal, BreakFormat, PlayerRiskFlag } from '@/lib/types';
+import { getMarketMarkup, MARKET_MARKUP_RANGE } from '@/lib/market-markup';
+import type { PlayerWithPricing, BreakConfig, Signal, BreakFormat, PlayerRiskFlag, ProductLifecycle } from '@/lib/types';
 
 const CACHE_TTL_HOURS = 24;
 
 export interface AnalysisResult {
   signal: Signal;
   valuePct: number;
+  // Pure-EV model fair value (unchanged from prior shape — still what we
+  // persist into user_breaks snapshots and reference in admin tooling).
   fairValue: number;
+  // Lifecycle-adjusted fair value (Plan B). signal/valuePct are computed
+  // against this number, not pure fairValue.
+  marketFairValue: number;
+  marketFairLow: number;
+  marketFairHigh: number;
+  lifecycleStatus: ProductLifecycle;
   askPrice: number;
   analysis: string;
   topPlayers: Array<{ name: string; team: string; isRookie: boolean; isIcon: boolean; evMid: number; evHigh: number }>;
@@ -300,7 +309,17 @@ export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisRe
   const playersTotal = extraPlayers.reduce((sum, p) => sum + p.totalCost, 0);
   const fairValue = teamsTotal + playersTotal;
 
-  const { signal, valuePct } = computeSignal(fairValue, askPrice);
+  // Plan B: lifecycle-aware market markup. The signal is judged against the
+  // market-adjusted number — what breakers actually charge over pure EV —
+  // not the raw model output. Pure fairValue stays in the response for the
+  // "model: $X" sub-line and for user_breaks snapshot continuity.
+  const lifecycleStatus = (product.lifecycle_status ?? 'live') as ProductLifecycle;
+  const markup = getMarketMarkup(lifecycleStatus);
+  const marketFairValue = fairValue * markup;
+  const marketFairLow   = fairValue * (markup - MARKET_MARKUP_RANGE);
+  const marketFairHigh  = fairValue * (markup + MARKET_MARKUP_RANGE);
+
+  const { signal, valuePct } = computeSignal(marketFairValue, askPrice);
 
   // Union of all players in the bundle for top-players, risk flags, HV.
   const teamPlayers = selectedTeamSlots.flatMap(t => t.players);
@@ -399,9 +418,10 @@ Format mix: ${formatSummary}
 Selected teams:
 ${teamLines || '(none)'}
 ${extraPlayerLines ? `Standalone players:\n${extraPlayerLines}\n` : ''}
-Bundle fair value (our model): ${formatCurrency(fairValue)}
+Pure model fair value: ${formatCurrency(fairValue)}
+Market-adjusted fair value (signal reference): ${formatCurrency(marketFairValue)}
 Bundle ask price: ${formatCurrency(askPrice)}
-Signal: ${signal} (${Math.abs(valuePct).toFixed(1)}% ${valuePct >= 0 ? 'below' : 'above'} fair value)
+Signal: ${signal} (${Math.abs(valuePct).toFixed(1)}% ${valuePct >= 0 ? 'below' : 'above'} market value)
 
 Top players in bundle:
 ${playerLines}
@@ -425,6 +445,10 @@ Write a 2–3 sentence analysis explaining whether this bundle is worth buying a
     signal,
     valuePct,
     fairValue,
+    marketFairValue,
+    marketFairLow,
+    marketFairHigh,
+    lifecycleStatus,
     askPrice,
     analysis,
     topPlayers,

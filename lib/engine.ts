@@ -110,6 +110,43 @@ export function formatPct(value: number): string {
   return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
 }
 
+// CardHedger confidence (0..1) bucketed into named tiers. Pattern mirrors
+// Card Ladder's age-based pricing-confidence rating. Reused across the
+// player table + drawer so the same row reads consistently everywhere it
+// renders. Returns null when there's no modeled confidence (fallback-priced
+// rows write `null` into pricing_cache).
+export type ConfidenceTier = 'strong' | 'solid' | 'stale' | 'cold';
+export interface ConfidenceTierInfo {
+  tier: ConfidenceTier;
+  label: string;
+  // CSS variables match the rest of the design system. Strong + Solid lean
+  // green/neutral so they fade into the row; Stale/Cold are the actionable
+  // signals collectors should notice.
+  bg: string;
+  fg: string;
+  border: string;
+}
+
+export function confidenceTier(confidence: number | null | undefined): ConfidenceTierInfo | null {
+  if (confidence == null) return null;
+  if (confidence >= 0.7) return {
+    tier: 'strong', label: 'Strong',
+    bg: 'rgba(34,197,94,0.10)', fg: 'var(--signal-buy)', border: 'rgba(34,197,94,0.30)',
+  };
+  if (confidence >= 0.5) return {
+    tier: 'solid', label: 'Solid',
+    bg: 'rgba(148,163,184,0.10)', fg: 'var(--text-secondary)', border: 'rgba(148,163,184,0.30)',
+  };
+  if (confidence >= 0.2) return {
+    tier: 'stale', label: 'Stale',
+    bg: 'rgba(245,158,11,0.10)', fg: 'var(--accent-orange)', border: 'rgba(245,158,11,0.30)',
+  };
+  return {
+    tier: 'cold', label: 'Cold',
+    bg: 'rgba(239,68,68,0.10)', fg: 'var(--signal-pass)', border: 'rgba(239,68,68,0.30)',
+  };
+}
+
 export function computeTeamSlotPricing(
   pricedPlayers: PlayerWithPricing[],
   config: BreakConfig

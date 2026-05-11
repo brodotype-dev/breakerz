@@ -52,6 +52,10 @@ interface AnalysisResult {
   signal: Signal;
   valuePct: number;
   fairValue: number;
+  marketFairValue: number;
+  marketFairLow: number;
+  marketFairHigh: number;
+  lifecycleStatus: 'pre_release' | 'live' | 'dormant';
   askPrice: number;
   analysis: string;
   topPlayers: Array<{ name: string; team: string; isRookie: boolean; isIcon: boolean; evMid: number; evHigh: number }>;
@@ -518,8 +522,11 @@ function AnalysisResultPanel({
 
         <div className="grid grid-cols-2 gap-4 mb-4">
           <div>
-            <p className="terminal-label mb-1">Fair Value</p>
-            <p className="font-mono text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{formatCurrency(result.fairValue)}</p>
+            <p className="terminal-label mb-1">Market Ask Range</p>
+            <p className="font-mono text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{formatCurrency(result.marketFairValue)}</p>
+            <p className="font-mono text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+              {formatCurrency(result.marketFairLow)}–{formatCurrency(result.marketFairHigh)} · model {formatCurrency(result.fairValue)}
+            </p>
           </div>
           <div>
             <p className="terminal-label mb-1">Total Cost</p>
