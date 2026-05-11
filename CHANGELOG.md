@@ -5,6 +5,48 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-11 — Full product audit + Bowman Draft Sapphire park + Series 1/2 operational cleanup + UI polish
+
+Capstone session after PR #73 (productScope predicate) and PR #75 (Topps XLSX parser fix) landed in prod the day before. Today exercised the new plumbing end-to-end on real products, surfaced a class of latent mis-anchoring across the active product catalog, and parked or remediated every affected SKU.
+
+**Investigation trigger.** Started tracing the Kansas City Royals $1,447 slot price in `2025 Bowman Draft Baseball Sapphire`. The trace found six "Royals" player_products that aren't even in the actual Topps Bowman Draft Sapphire roster (Bobby Witt Jr., Jac Caglianone, Salvador Perez, Noah Cameron, Ramcell Medina, Michael Massey — all MLB veterans or 2024 Bowman Chrome prospects with `BCP-*` codes, but the Sapphire-Draft product uses `BDC-*` codes for 2025 draftees). Root cause: `products.ch_set_name` was set to `"2025 Bowman Chrome Sapphire Baseball"` — the wrong umbrella entirely. The actual product is **2025 Bowman Draft Chrome Sapphire**, which CH hasn't ingested yet. Verified by exhaustively walking CH's `/set-search` for every "2025 Bowman" + "Sapphire" combination — only 2019–2024 Draft Sapphire variants exist in CH; 2025 is missing.
+
+**Bowman Draft Sapphire parked.** Set `is_active = false` + `lifecycle_status = 'pre_release'`, deleted all 547 player_products + 1,763 variants + 547 pricing_cache rows. Pre-emptively re-anchored `ch_set_name = "2025 Bowman Draft Chrome Baseball"` (flagship Draft, gives us BDC-* and CPA-* cards but no Sapphire parallels) so when CH ingests the Sapphire variant we can drop into hydrate cleanly. Filed as CH question Q15 in [docs/cardhedger-questions.md](docs/cardhedger-questions.md) — holistic ask about CH's catalog coverage SLA + visibility into the ingestion pipeline.
+
+**Full product audit.** Surveyed all 21 active products against the same signal pattern. Findings consolidated in [docs/plans/2026-05-11-product-audit.md](docs/plans/2026-05-11-product-audit.md):
+- **3 duplicate `ch_set_name` cases** (Topps Series 1+2 sharing `2025 Topps Baseball`, plus two slug duplicates on Finest Basketball and Midnight Basketball)
+- **3 broken / unconfigured products** (Donruss Football with `ch_set_name=null`, 2024 Panini Prizm Football empty shell, 2025 Bowman Draft Baseball with suspicious prefix patterns — later confirmed CLEAN with BD-* codes for the non-Chrome flagship)
+- **12 healthy products** with no anomalies
+
+**Cleanup landed in one CTE** (1,763 + 18,249 + 334 + 1 + 547 + 629 + 4 = 21,527 rows + 4 product rows deleted):
+- Deleted `topps-finest-basketball-2025-26` (stale duplicate slug; canonical kept at `2025-26-topps-finest-basketball`)
+- Deleted `topps-midnight-basketball-2025-26` (stale duplicate; canonical at `2025-26-topps-chrome-basketball-midnight`)
+- Deleted `2024-panini-prizm-football` (empty shell, mid-setup abandon)
+- Deleted `2025-donruss-football` (broken state, 2 test user_breaks both belonging to `brodyclemmer@gmail.com` test account)
+- Renamed `baseball-series-2` → `topps-series-2-baseball-2025` for slug consistency
+
+**Topps Series 1 + Series 2 cleanup.** Operational validation of PR #73's productScope predicate on both products:
+- **Series 1**: 47,476 contaminated variants → 26,926 clean. **29,472 out-of-scope CH rows filtered** by productScope (Series 2 + Update cards rejected). 54.4s hydrate. Odds PDF imported (211 matched / 13 unmatched insert-base rows).
+- **Series 2**: 40,678 contaminated variants → 26,980 clean. **29,419 out-of-scope CH rows filtered** (Series 1 + Update cards rejected). 44.3s hydrate. Odds imported.
+
+The symmetric ~29K filtered count on both products is proof-of-correctness for the productScope architecture: each product rejects the complementary slice from the shared `2025 Topps Baseball` umbrella. Posted to [PR #73 comment](https://github.com/brodotype-dev/breakerz/pull/73#issuecomment-4422539083) with the live numbers.
+
+**Pricing pending.** Both Series 1 and Series 2 hit `FUNCTION_INVOCATION_TIMEOUT` on the on-demand `/api/admin/refresh-product-pricing` route — 26K+ variants per product × 3 grades exceeds the 300s `maxDuration` cap. Not a bug; the on-demand button can't ship that volume in one invocation. Per-CH-card cache + incremental flush from PR #68 ensures partial progress persists. The nightly cron (5 staggered firings 4:00–6:30 AM UTC, throttled to 3 concurrent products per firing) will complete both products overnight.
+
+**UI polish.** [app/admin/products/[id]/OddsUpload.tsx](app/admin/products/[id]/OddsUpload.tsx) — unmatched-odds-rows panel was using Tailwind light-theme amber classes (`border-amber-200 bg-amber-50/50 text-amber-700`) that rendered as muddy mid-grey on the dark admin theme. Replaced with the established dark-theme amber tokens (`rgba(245, 158, 11, 0.3)` border + `0.08` bg + `#f59e0b` heading + `var(--text-secondary)` body) matching `LifecycleTransitionButton` / `PlayersManager`.
+
+**Backlog additions.** Three new entries in [docs/BACKLOG.md](docs/BACKLOG.md):
+- **P1** Catalog Refresh cron_run_log instrumentation — the catalog refresh fires successfully every night but never reaches its final `recordCronRun()` call before Vercel's 300s timeout. Diagnosed via `ch_set_refresh_log` (17 sets refreshed this morning at 03:00–03:04 UTC) vs `cron_run_log` (zero rows for that path). Cron Status panel reads from `cron_run_log` so the "NEVER RUN" widget is misleading — actual catalog data is healthy.
+- **P3** Odds matcher — insert-subset base rows. The Topps odds PDF includes one row per parallel of each insert subset PLUS one bare base row per subset (e.g. "Call to the Hall" with no parallel suffix). Matcher handles color-parallel rows fine (94% match rate on Series 1) but doesn't recognize "apply this odds row to every card in the section's base variant." 13 unmatched rows on Series 1 follow this exact pattern. Low impact — chase parallels match correctly.
+- **P2** Gated product activation wizard. Every product-data fire today (Bowman Draft Sapphire mis-anchored, Series 1/2 conflation, Donruss Football live for two months with `ch_set_name=null`, 2024 Panini Prizm empty shell) followed the same pattern: product configured + flipped to `is_active=true` before anyone verified the resulting roster matched reality. The forensic signals we used today (variant count, prefix distribution, ch_set_name exact-match, duplicate detection, productScope filtered-count, pricing coverage %) should be pre-flight checks in a `draft → validating → ready → live` state machine, not done forensically after the fact.
+
+**Files:**
+- New: [docs/plans/2026-05-11-product-audit.md](docs/plans/2026-05-11-product-audit.md)
+- Modified: [docs/BACKLOG.md](docs/BACKLOG.md), [docs/cardhedger-questions.md](docs/cardhedger-questions.md), [app/admin/products/[id]/OddsUpload.tsx](app/admin/products/[id]/OddsUpload.tsx)
+- Database: 4 products deleted, 629 player_products deleted, 18,249 variants deleted, 334 pricing_cache + 1 risk_flag + 2 user_breaks deleted; one product renamed and one parked
+
+---
+
 ## 2026-05-10 — Topps Series 1/2 split: derived productScope fallback predicate
 
 Investigation triggered by Kyle flagging that Topps Series 1 Baseball break analysis was pulling Series 2 data. Diagnosed, planned, and implemented same-session. Full plan at [docs/plans/2026-05-10-topps-series-split.md](docs/plans/2026-05-10-topps-series-split.md); BACKLOG entry promoted to P0 in [docs/BACKLOG.md](docs/BACKLOG.md). New CH question Q14 in [docs/cardhedger-questions.md](docs/cardhedger-questions.md) flagging that CH has no `2025 Topps Series 1 Baseball` canonical set name — only the parent `2025 Topps Baseball` covering both Series 1 and Series 2.

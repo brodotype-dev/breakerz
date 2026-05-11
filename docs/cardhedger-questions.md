@@ -8,8 +8,8 @@ Refined list for a focused conversation with the CH team. Organized by priority 
 - 🟢 **Open** — needs CH input or hasn't been raised yet. These are what to send.
 - ✅ **Answered** — closed-out, kept here as historical context. Don't re-send.
 
-**Quick summary of what's still open as of 2026-05-10:**
-- **P1 — blocking real products today:** Q14 (Topps Baseball Series 1 vs Series 2 vs Update — no catalog split)
+**Quick summary of what's still open as of 2026-05-11:**
+- **P1 — blocking real products today:** Q14 (Topps Baseball Series 1 vs Series 2 vs Update — no catalog split), Q15 (catalog coverage SLA + Draft Sapphire missing)
 - **P1.5 — sales feeds:** Q12 (player-scoped sales feed), Q13 (per-card cross-grade history → enables Grade Ratio Value)
 - **P2 — structural:** Q4 (parallel-level card_id coverage), Q5 (multi-player autographs — partial), Q6 (canonical variant naming)
 - **P3 — partnership:** Q8 (webhook), Q9 (test fixture), Q10 (dev channel). Q7 (batch card-search) mostly mooted by Q3.
@@ -99,6 +99,62 @@ The parent set `2025 Topps Baseball` is **56,407 cards across 565 pages** with c
 > Today: matched against `ch_set_name="2025 Topps Baseball"` → 56,407 cards
 > Result: pricing pulls in Series 2 sales which are not in the box
 > Ideal: `/set-search` returns a `"2025 Topps Series 1 Baseball"` canonical name, OR a card-level `series` field on the existing parent set
+
+---
+
+### 15. 🟢 Open — Catalog coverage SLA + visibility into ingestion pipeline (Bowman Draft Sapphire as the trigger)
+
+**The structural ask.** When a new sealed product hits hobby shelves, how long until it's in CH's catalog, and how do we — as an integrator — see what's covered vs. not before we configure a product? Today we have to discover gaps by failing: configure `ch_set_name`, run matching, watch slot prices come back nonsensical, manually trace it back to a coverage gap. We need a feed (or even just a documented SLA + queryable "by-year, by-brand" inventory) so we can manage user expectations and avoid mis-anchoring to wrong umbrella sets.
+
+**Concrete trigger (2026-05-11):** 2025 Bowman Draft Sapphire Baseball releases publicly and breaks live on every major platform. **CH has no `2025 Bowman Draft Sapphire` (or `2025 Bowman Chrome Draft Sapphire`) canonical set.** Every other year does — verified via `/set-search`:
+
+```
+2019 Bowman Chrome Draft Sapphire Baseball  ✅
+2019 Bowman Draft Sapphire Baseball          ✅
+2020 Bowman Chrome Draft Sapphire Baseball  ✅
+2020 Bowman Draft Sapphire Baseball          ✅
+2021 Bowman Draft Chrome Sapphire Baseball  ✅
+2022 Bowman Chrome Draft Sapphire Baseball  ✅
+2022 Bowman Draft Sapphire Baseball          ✅
+2023 Bowman Chrome Draft Sapphire Baseball  ✅
+2024 Bowman Chrome Draft Sapphire Baseball  ✅
+2024 Bowman Draft Sapphire Baseball          ✅
+2025 — (none)
+```
+
+Full 2025 Bowman Baseball coverage in CH today:
+
+```
+2025 Bowman Baseball
+2025 Bowman Chrome Baseball
+2025 Bowman Chrome Mega Box Baseball
+2025 Bowman Chrome Prospects Baseball
+2025 Bowman Chrome Sapphire Baseball       ← NOT the Draft Sapphire product
+2025 Bowman Draft Baseball
+2025 Bowman Draft Chrome Baseball          ← flagship Draft, no Sapphire parallels
+2025 Bowman Draft Mega Box Baseball
+2025 Bowman's Best Baseball
+```
+
+**Downstream impact.** We mis-anchored our `2025 Bowman Draft Baseball Sapphire` product to `2025 Bowman Chrome Sapphire Baseball` (closest-looking umbrella). That's a completely different physical product — Bowman flagship Sapphire features MLB stars + Chrome prospects with `BCP-*` codes; Bowman Draft Sapphire features 2025 draftees only with `BDC-*` codes. Net effect: 14 "Royals" player_products on our break page; 6 of them (Bobby Witt Jr., Caglianone, Salvador Perez, etc.) **aren't in the actual product**. Slot prices computed against the wrong card pool entirely. We didn't catch it for weeks because the failure is silent — `/card-search` happily returns BCP-* cards for "Witt 2025 Bowman" queries, and our search-fallback rung persists those mis-matches to `pp.cardhedger_card_id`.
+
+**Specific asks:**
+
+1. **Timeline for 2025 Bowman Draft Sapphire.** Topps released it late June 2025. When can we expect coverage? Canonical name suggestion: `2025 Bowman Draft Chrome Sapphire Baseball` (matching the 2019, 2021, 2022, 2023, 2024 pattern).
+2. **Catalog inventory endpoint.** Does CH expose a queryable list of "every set you have for year=2025, brand=Bowman" so we can detect coverage gaps proactively instead of through user complaints? `/set-search` works for discovery if we know the name to search for, but doesn't surface what we DON'T have.
+3. **Typical SLA from product release to ingestion.** Some products land in CH within days (the Topps Series 1/2 umbrella was there immediately); others take weeks (Draft Sapphire is now ~10 months post-release). Is there a documented cadence, a backlog we can see, or factors that prioritize one product over another?
+4. **Interim handling when coverage is missing.** For products you haven't ingested yet, do Sapphire parallels live under the flagship Chrome umbrella temporarily (e.g., would `2025 Bowman Draft Chrome Baseball` contain Sapphire variants tagged differently)? Or are they entirely absent until the dedicated set is created? We checked `BDC-185` Hammond in `2025 Bowman Draft Chrome Baseball` — only flagship Chrome parallels (Refractor, Yellow Refractor, Yellow Geometric, etc.); zero Sapphire-flavored variants (`Yellow Sapphire /75`, `Gold Sapphire /50`, etc.).
+5. **Notification for new sets.** Q8 already asks about a webhook for new cards; this is the set-level corollary. Even an RSS feed or weekly "new sets added" digest would let us close the loop.
+
+**Why this matters beyond Bowman Draft Sapphire.** This isn't a one-product issue — it's the integration risk that we have no way to know what's missing. Every new Topps or Panini release has the same exposure window: we configure a product, miss that it isn't yet in CH, and our slot prices are silently anchored on the closest-matching parent umbrella (which is almost always wrong for a Sapphire / Update / parallel-variant product). The "Find on CH" admin search ranks by 30d sales volume, so a stale 2022 entry will out-rank a non-existent 2025 entry — making the wrong choice look like the right one.
+
+**Scenario:**
+> Product: 2025 Bowman Draft Sapphire Baseball (released late June 2025, breaking live as of 2026-05)
+> Topps checklist: 200 base prospects (BDC-1..200) × 6 Sapphire color parallels + 30 CPA-* autos × 6 Sapphire parallels + 18 SS-* + 15 SSA-* = ~1,500 unique card configurations
+> CH coverage: 0 of those 1,500 are in CH today
+> Closest match the admin tool found: `2022 Bowman Draft Sapphire Baseball` (3 years old, wrong roster entirely)
+> Our system: silently anchored to `2025 Bowman Chrome Sapphire Baseball` (different product, MLB stars + Chrome prospects with BCP-* codes)
+> Real user impact: every break analysis for this product reads as if it were Bowman Chrome Sapphire — pricing a slot of Royals 2025-draftee prospects against Bobby Witt Jr. MLB veteran sales.
 
 ---
 
