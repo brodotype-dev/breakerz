@@ -48,6 +48,8 @@ export interface RefreshSummary {
   variantsTotal: number;
   variantsFromCache: number;     // pulled from ch_price_cache (fresh, no CH call)
   variantsNewlyFetched: number;  // freshly fetched from CH this run
+  chunksWithCacheWrite: number;  // chunks whose ch_price_cache upsert ran successfully
+  chunksAllGradesFailed: number; // chunks where every CH call (Raw/PSA 9/PSA 10) rejected
   batchChunkCount: number;
   batchChunksCompleted: number;
   batchDurationMs: number;
@@ -81,6 +83,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
       livePriced: 0, crossPriced: 0, searchPriced: 0, defaultPriced: 0,
       variantsFetched: 0, variantsTotal: 0,
       variantsFromCache: 0, variantsNewlyFetched: 0,
+      chunksWithCacheWrite: 0, chunksAllGradesFailed: 0,
       batchChunkCount: 0, batchChunksCompleted: 0, batchDurationMs: 0,
       totalDurationMs: Date.now() - started,
       cacheRowsWritten: 0,
@@ -185,12 +188,15 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
   const staleCardIds = allVariantCardIds.filter(id => !pricesOnly.has(id));
 
   const PRICE_CHUNK = 100; // CH endpoint hard cap
-  // Bumped from 6 → 12 alongside the multi-grade fan-out (Raw + PSA 9 + PSA 10)
-  // so total wall time stays inside BATCH_DEADLINE_MS for jumbo products.
-  // Each chunk now fires 3 CH calls in parallel, so peak in-flight is
-  // 12 chunks × 3 grades = 36 concurrent CH requests. The retry-with-backoff
-  // in lib/cardhedger.ts absorbs intermittent rate-limit hits.
-  const PRICE_FETCH_CONCURRENCY = 12;
+  // 2026-05-11: dropped from 12 → 4 after a week of refresh failures on
+  // large products. At 12 chunks × 3 grades = 36 concurrent CH requests,
+  // CH was timing out or returning unusable data for every chunk on
+  // products with >5k unique cards (Donruss Optic, Pristine, Topps Finest
+  // all reported variantsNewlyFetched=0 across 49+ "completed" chunks).
+  // 4 × 3 = 12 in-flight gives each call enough bandwidth to complete.
+  // The per-CH-card cache means even small per-firing yields compound —
+  // we don't need to drain the queue in one shot.
+  const PRICE_FETCH_CONCURRENCY = 4;
   const priceChunks: string[][] = [];
   for (let i = 0; i < staleCardIds.length; i += PRICE_CHUNK) {
     priceChunks.push(staleCardIds.slice(i, i + PRICE_CHUNK));
@@ -203,94 +209,107 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
   // Raw drives evLow, PSA 10 drives evHigh. Heuristic 0.35× / 2.5× multipliers
   // remain only as last-resort fallbacks when a grade is missing.
   let variantsNewlyFetched = 0;
-  async function runChunk(idx: number, chunk: string[], attempt = 0): Promise<void> {
+  let chunksWithCacheWrite = 0;  // chunks whose ch_price_cache upsert ran
+  let chunksAllGradesFailed = 0; // chunks where every CH call rejected
+  async function runChunk(idx: number, chunk: string[]): Promise<void> {
     const start = Date.now();
-    try {
-      const [rawResults, psa9Results, psa10Results] = await Promise.all([
-        batchPriceEstimate(chunk.map(card_id => ({ card_id, grade: 'Raw' }))),
-        batchPriceEstimate(chunk.map(card_id => ({ card_id, grade: 'PSA 9' }))),
-        batchPriceEstimate(chunk.map(card_id => ({ card_id, grade: 'PSA 10' }))),
-      ]);
-      const rawMap = new Map(rawResults.map(r => [r.card_id, r]));
-      const psa9Map = new Map(psa9Results.map(r => [r.card_id, r]));
-      const psa10Map = new Map(psa10Results.map(r => [r.card_id, r]));
+    // Promise.allSettled instead of Promise.all: one timing-out CH call
+    // (PSA 9 takes 35s, say) no longer wipes out the other two grades' results
+    // OR the cache writeback. Previously Promise.all rejected on the first
+    // failure → jumped to catch → recursive retry → retry also slow → log and
+    // continue WITHOUT writing anything. That left ch_price_cache empty after
+    // 50 "completed" chunks for Donruss Optic.
+    const settled = await Promise.allSettled([
+      batchPriceEstimate(chunk.map(card_id => ({ card_id, grade: 'Raw' }))),
+      batchPriceEstimate(chunk.map(card_id => ({ card_id, grade: 'PSA 9' }))),
+      batchPriceEstimate(chunk.map(card_id => ({ card_id, grade: 'PSA 10' }))),
+    ]);
+    const rawResults   = settled[0].status === 'fulfilled' ? settled[0].value : null;
+    const psa9Results  = settled[1].status === 'fulfilled' ? settled[1].value : null;
+    const psa10Results = settled[2].status === 'fulfilled' ? settled[2].value : null;
 
-      // Persist EVERY card we asked CH about, even ones with no price.
-      // The cache row's purpose is "we've asked CH within the TTL window" —
-      // setting fetched_at on null-price rows prevents a re-fetch storm
-      // for cards CH simply doesn't have data for. Worst case: a freshly-listed
-      // card waits up to 24h before we re-check.
-      const fetchedAt = new Date().toISOString();
-      const cachePersistRows = chunk.map(cardId => {
-        const r   = rawMap.get(cardId);
-        const p9  = psa9Map.get(cardId);
-        const p10 = psa10Map.get(cardId);
-        const validRaw   = r?.success   && r.price   > 0 ? r   : null;
-        const validPsa9  = p9?.success  && p9.price  > 0 ? p9  : null;
-        const validPsa10 = p10?.success && p10.price > 0 ? p10 : null;
-        const contribs = [validRaw, validPsa9, validPsa10].filter((x): x is NonNullable<typeof x> => !!x);
-        const confidence = contribs.length > 0
-          ? contribs.reduce((sum, r) => sum + (r.confidence ?? 0), 0) / contribs.length
-          : null;
-        return {
-          cardhedger_card_id: cardId,
-          raw_price:   validRaw?.price   ?? null,
-          psa9_price:  validPsa9?.price  ?? null,
-          psa10_price: validPsa10?.price ?? null,
-          confidence,
-          fetched_at: fetchedAt,
-        };
-      });
-      const { error: cacheWriteErr } = await supabaseAdmin
-        .from('ch_price_cache')
-        .upsert(cachePersistRows, { onConflict: 'cardhedger_card_id' });
-      if (cacheWriteErr) {
-        // Soft-fail: the in-memory pricesOnly population below still works
-        // for THIS run; we just lose timeout-safety for these rows.
-        console.warn(`[pricing-refresh] ch_price_cache upsert chunk ${idx} failed: ${cacheWriteErr.message}`);
-      }
-
-      for (const cardId of chunk) {
-        const raw   = rawMap.get(cardId);
-        const psa9  = psa9Map.get(cardId);
-        const psa10 = psa10Map.get(cardId);
-        const validRaw   = raw?.success   && raw.price   > 0 ? raw   : null;
-        const validPsa9  = psa9?.success  && psa9.price  > 0 ? psa9  : null;
-        const validPsa10 = psa10?.success && psa10.price > 0 ? psa10 : null;
-        if (!validRaw && !validPsa9 && !validPsa10) continue;
-
-        const rawPrice  = validRaw?.price  ?? null;
-        const midPrice  = validPsa9?.price ?? rawPrice ?? null;
-        const highPrice = validPsa10?.price ?? null;
-        const evMid  = midPrice ?? 0;
-        const evLow  = rawPrice ?? Math.round(evMid * 0.35);
-        const evHigh = highPrice ?? Math.round(evMid * 2.5);
-
-        // Confidence: average across the grades that contributed real prices.
-        // Falls to 0 only when all three were synthesized — but the early
-        // continue above guarantees at least one is real.
-        const contribs = [validRaw, validPsa9, validPsa10].filter((x): x is NonNullable<typeof x> => !!x);
-        const confidence = contribs.length > 0
-          ? contribs.reduce((sum, r) => sum + (r.confidence ?? 0), 0) / contribs.length
-          : 0;
-
-        pricesOnly.set(cardId, {
-          evLow: Math.round(evLow),
-          evMid: Math.round(evMid),
-          evHigh: Math.round(evHigh),
-          confidence,
-        });
-        variantsNewlyFetched++;
-      }
-    } catch (e) {
+    if (!rawResults && !psa9Results && !psa10Results) {
+      chunksAllGradesFailed++;
       const ms = Date.now() - start;
-      const msg = e instanceof Error ? e.message : String(e);
-      if (attempt === 0) {
-        console.warn(`[pricing-refresh] chunk ${idx} failed after ${ms}ms (retrying): ${msg}`);
-        await runChunk(idx, chunk, 1);
-        return;
-      }
-      console.error(`[pricing-refresh] chunk ${idx} failed after retry (${ms}ms): ${msg}`);
+      const rejections = settled
+        .map(s => s.status === 'rejected' ? (s.reason instanceof Error ? s.reason.message : String(s.reason)) : null)
+        .filter(Boolean);
+      console.error(`[pricing-refresh] chunk ${idx} all grades failed (${ms}ms): ${rejections.join(' | ')}`);
+      // Still write null-price cache rows so we don't re-fetch this chunk on
+      // the next firing's first attempt. The 24h TTL means we'll come back.
+      // Without this, a transient CH outage means we re-attempt forever.
+    }
+
+    const rawMap   = new Map(rawResults?.map(r => [r.card_id, r])   ?? []);
+    const psa9Map  = new Map(psa9Results?.map(r => [r.card_id, r])  ?? []);
+    const psa10Map = new Map(psa10Results?.map(r => [r.card_id, r]) ?? []);
+
+    // Persist EVERY card we asked CH about, even ones with no price.
+    // The cache row's purpose is "we've asked CH within the TTL window" —
+    // setting fetched_at on null-price rows prevents a re-fetch storm
+    // for cards CH simply doesn't have data for. Worst case: a freshly-listed
+    // card waits up to 24h before we re-check.
+    const fetchedAt = new Date().toISOString();
+    const cachePersistRows = chunk.map(cardId => {
+      const r   = rawMap.get(cardId);
+      const p9  = psa9Map.get(cardId);
+      const p10 = psa10Map.get(cardId);
+      const validRaw   = r?.success   && r.price   > 0 ? r   : null;
+      const validPsa9  = p9?.success  && p9.price  > 0 ? p9  : null;
+      const validPsa10 = p10?.success && p10.price > 0 ? p10 : null;
+      const contribs = [validRaw, validPsa9, validPsa10].filter((x): x is NonNullable<typeof x> => !!x);
+      const confidence = contribs.length > 0
+        ? contribs.reduce((sum, r) => sum + (r.confidence ?? 0), 0) / contribs.length
+        : null;
+      return {
+        cardhedger_card_id: cardId,
+        raw_price:   validRaw?.price   ?? null,
+        psa9_price:  validPsa9?.price  ?? null,
+        psa10_price: validPsa10?.price ?? null,
+        confidence,
+        fetched_at: fetchedAt,
+      };
+    });
+    const { error: cacheWriteErr } = await supabaseAdmin
+      .from('ch_price_cache')
+      .upsert(cachePersistRows, { onConflict: 'cardhedger_card_id' });
+    if (cacheWriteErr) {
+      console.warn(`[pricing-refresh] ch_price_cache upsert chunk ${idx} failed: ${cacheWriteErr.message}`);
+    } else {
+      chunksWithCacheWrite++;
+    }
+
+    for (const cardId of chunk) {
+      const raw   = rawMap.get(cardId);
+      const psa9  = psa9Map.get(cardId);
+      const psa10 = psa10Map.get(cardId);
+      const validRaw   = raw?.success   && raw.price   > 0 ? raw   : null;
+      const validPsa9  = psa9?.success  && psa9.price  > 0 ? psa9  : null;
+      const validPsa10 = psa10?.success && psa10.price > 0 ? psa10 : null;
+      if (!validRaw && !validPsa9 && !validPsa10) continue;
+
+      const rawPrice  = validRaw?.price  ?? null;
+      const midPrice  = validPsa9?.price ?? rawPrice ?? null;
+      const highPrice = validPsa10?.price ?? null;
+      const evMid  = midPrice ?? 0;
+      const evLow  = rawPrice ?? Math.round(evMid * 0.35);
+      const evHigh = highPrice ?? Math.round(evMid * 2.5);
+
+      // Confidence: average across the grades that contributed real prices.
+      // Falls to 0 only when all three were synthesized — but the early
+      // continue above guarantees at least one is real.
+      const contribs = [validRaw, validPsa9, validPsa10].filter((x): x is NonNullable<typeof x> => !!x);
+      const confidence = contribs.length > 0
+        ? contribs.reduce((sum, r) => sum + (r.confidence ?? 0), 0) / contribs.length
+        : 0;
+
+      pricesOnly.set(cardId, {
+        evLow: Math.round(evLow),
+        evMid: Math.round(evMid),
+        evHigh: Math.round(evHigh),
+        confidence,
+      });
+      variantsNewlyFetched++;
     }
   }
 
@@ -624,6 +643,8 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     variantsTotal: allVariantCardIds.length,
     variantsFromCache,
     variantsNewlyFetched,
+    chunksWithCacheWrite,
+    chunksAllGradesFailed,
     batchChunkCount: priceChunks.length,
     batchChunksCompleted: chunksCompleted,
     batchDurationMs,
