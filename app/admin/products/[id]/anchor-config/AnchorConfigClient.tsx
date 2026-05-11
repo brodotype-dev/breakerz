@@ -12,6 +12,7 @@ interface PreviewPlayerRow {
   proposedEvMid: number;
   proposedMatched: number;
   proposedFellBack: boolean;
+  nonHydrated: boolean;
 }
 
 interface Proposal {
@@ -312,25 +313,40 @@ export default function AnchorConfigClient({
           )}
           <ul className="text-sm space-y-2">
             {preview.map(p => {
-              const delta = p.proposedEvMid - p.currentEvMid;
-              const pct = p.currentEvMid > 0 ? (delta / p.currentEvMid) * 100 : 0;
+              const current = Math.round(p.currentEvMid);
+              const proposed = Math.round(p.proposedEvMid);
+              const delta = proposed - current;
+              const pct = current > 0 ? (delta / current) * 100 : 0;
               const sign = delta >= 0 ? '+' : '';
               const color = delta > 0 ? 'var(--success, #10b981)' : delta < 0 ? 'var(--danger, #ef4444)' : 'var(--text-tertiary)';
               return (
                 <li key={p.playerProductId} className="flex items-center justify-between gap-3">
                   <span className="truncate" style={{ color: 'var(--text-primary)' }}>{p.playerName ?? '—'}</span>
-                  <span className="font-mono text-xs whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
-                    ${p.currentEvMid} → ${p.proposedEvMid}
-                  </span>
-                  <span className="font-mono text-xs whitespace-nowrap" style={{ color }}>
-                    {sign}${Math.abs(delta)} ({sign}{pct.toFixed(0)}%)
-                  </span>
-                  {p.proposedFellBack && (
-                    <span className="text-xs" style={{ color: 'var(--warning, #f59e0b)' }}>fellback</span>
+                  {p.nonHydrated ? (
+                    <>
+                      <span className="font-mono text-xs whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
+                        ${current}
+                      </span>
+                      <span className="text-xs whitespace-nowrap" style={{ color: 'var(--text-tertiary)' }}>
+                        non-hydrated · fallback pricing
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-mono text-xs whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>
+                        ${current} → ${proposed}
+                      </span>
+                      <span className="font-mono text-xs whitespace-nowrap" style={{ color }}>
+                        {sign}${Math.abs(delta)} ({sign}{pct.toFixed(0)}%)
+                      </span>
+                      {p.proposedFellBack && (
+                        <span className="text-xs" style={{ color: 'var(--warning, #f59e0b)' }}>fellback</span>
+                      )}
+                      <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                        {p.proposedMatched} var
+                      </span>
+                    </>
                   )}
-                  <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                    {p.proposedMatched} var
-                  </span>
                 </li>
               );
             })}
