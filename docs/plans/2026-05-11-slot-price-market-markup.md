@@ -1,6 +1,6 @@
 # Slot price market markup (Plan B of the 2026-05-11 pricing trilogy)
 
-**Status (2026-05-11):** Planned — not yet implemented. Plan A (per-product anchor configurator) shipped same day and unblocks this work. Dependency note: this multiplies the fair-value number, so it should run on a fair-value that already represents Kyle's intended anchoring.
+**Status (2026-05-11):** Shipped — `lib/market-markup.ts` constants, `runBreakAnalysis` returning both `fairValue` and `marketFairValue`, `computeSignal` running against the market-adjusted number, `<PlayerTable>` + `<TeamSlotsTable>` dual-number rendering with the "model $X" sub-line, `/analysis` result card "Market Ask Range" headline. No DB migration. Plan C (release/freshness decay) shipped same session.
 
 Sibling plans:
 - [docs/plans/2026-05-11-per-product-anchor-configurator.md](2026-05-11-per-product-anchor-configurator.md) — Plan A (shipped)

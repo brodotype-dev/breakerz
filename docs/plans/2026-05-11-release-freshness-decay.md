@@ -1,6 +1,6 @@
 # Release freshness decay — lifecycle-aware pricing (Plan C of the 2026-05-11 pricing trilogy)
 
-**Status (2026-05-11):** Planned — not yet implemented. Should ship after Plan B (market markup display) so the math-layer release premium and display-layer market markup are in the same constants file and easy to reason about together.
+**Status (2026-05-11):** Shipped — `lib/market-markup.ts` extended with `RELEASE_PREMIUM = 1.15`, `FRESHNESS_PREMIUM = 0.20`, halflife 10d, settled past day 30; `lifecycleEvMultiplier()` applied at all 7 cache-row push sites in `lib/pricing-refresh.ts` via the `applyMultiplier()` helper. Migration `20260512170000_products_live_since.sql` applied to prod via Supabase MCP — backfilled `live_since = created_at` on 15/15 live products (all past 30d floor, multiplier = 1.0, no behavior change). `setProductLifecycle` stamps `live_since = now()` only on `pre_release → live` transitions (dormant → live reactivations don't reset the clock). `RefreshSummary` exposes `lifecycleStatus` + `lifecycleMultiplier`; cron log shows `lifecycle=live mult=1.200`.
 
 Sibling plans:
 - [docs/plans/2026-05-11-per-product-anchor-configurator.md](2026-05-11-per-product-anchor-configurator.md) — Plan A (shipped)
