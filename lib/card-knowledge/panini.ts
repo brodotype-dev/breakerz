@@ -40,6 +40,34 @@ export const paniniDescriptor: ManufacturerDescriptor = {
 
   multiPlayerIndicator: /\//,
 
+  anchorConcepts: [
+    {
+      name: 'base rookie auto',
+      example: 'RPA-XYZ Rookie Patch Autograph',
+      description: 'Rookie patch autograph (RPA) — the headline chase on every Panini rookie product. Deep enough comps to anchor.',
+    },
+    {
+      name: 'prizm silver auto',
+      example: 'Silver Prizm Autograph',
+      description: 'Silver parallel of the rookie auto. Common anchor for Prizm products specifically — the Silver tier is heavily collected.',
+    },
+    {
+      name: 'optic holo auto',
+      example: 'Holo Autograph',
+      description: 'Donruss Optic Holo parallel of the rookie auto. The de facto Optic anchor.',
+    },
+    {
+      name: 'base raw rookie',
+      example: 'XYZ Rookie',
+      description: 'Non-auto rookie base card. Useful as a low-end anchor for veteran-heavy products where autos are scarce.',
+    },
+    {
+      name: 'color /99 auto',
+      example: 'Red Wave Autograph /99',
+      description: 'Mid-tier color autos. Comps thin out past Silver/Holo — use as tail-upside concept, not as primary anchor.',
+    },
+  ],
+
   claudeRules: `Panini/Donruss matching rules:
 - Prizm parallels: "Silver", "Blue Ice", "Red Wave", "Gold Prizm" — all real CH variants.
 - Donruss Optic parallels: "Holo", "Pulsar", "Checkerboard" — all real CH variants.

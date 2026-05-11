@@ -20,6 +20,7 @@
 
 import { supabaseAdmin } from '@/lib/supabase';
 import { computeLiveEV, searchAndComputeEV, get90DayPrices, batchPriceEstimate } from '@/lib/cardhedger';
+import { aggregatePlayerEV, type AnchorStrategy } from '@/lib/pricing-anchors';
 
 const CACHE_TTL_HOURS = 24;
 // `ch_price_cache` freshness window. Matches CACHE_TTL_HOURS so a refresh
@@ -56,6 +57,12 @@ export interface RefreshSummary {
   totalDurationMs: number;
   cacheRowsWritten: number;
   partial: boolean;
+  /** Configured anchor strategy at refresh time. */
+  anchorStrategy: AnchorStrategy;
+  /** Number of player_products that fell back to sets_weighted_all because curated patterns matched 0 variants. */
+  anchorFellBackCount: number;
+  /** Average matched-variant count across hydrated player_products. Useful sanity check for curated configs. */
+  anchorMatchedVariantsAvg: number;
 }
 
 export async function refreshProductPricing(productId: string): Promise<RefreshSummary> {
@@ -63,9 +70,21 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
 
   const { data: product } = await supabaseAdmin
     .from('products')
-    .select('name, year')
+    .select('name, year, anchor_strategy, anchor_variant_patterns')
     .eq('id', productId)
     .single();
+
+  // Anchor configuration: defaults preserve pre-2026-05-11 sets-weighted behavior.
+  // Validate the strategy string to a narrow union — fall back if a future column value
+  // doesn't match (defense against schema drift, not against current values).
+  const rawStrategy = (product?.anchor_strategy ?? 'sets_weighted_all') as string;
+  const anchorStrategy: AnchorStrategy =
+    rawStrategy === 'curated_variants' || rawStrategy === 'curated_with_tail' || rawStrategy === 'sets_weighted_all'
+      ? rawStrategy
+      : 'sets_weighted_all';
+  const anchorPatterns: string[] = Array.isArray(product?.anchor_variant_patterns)
+    ? (product!.anchor_variant_patterns as string[])
+    : [];
 
   const { data: playerProducts, error } = await supabaseAdmin
     .from('player_products')
@@ -88,6 +107,9 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
       totalDurationMs: Date.now() - started,
       cacheRowsWritten: 0,
       partial: false,
+      anchorStrategy,
+      anchorFellBackCount: 0,
+      anchorMatchedVariantsAvg: 0,
     };
   }
 
@@ -99,6 +121,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     id: string;
     player_product_id: string;
     cardhedger_card_id: string | null;
+    variant_name: string | null;
     hobby_sets: number | null;
     bd_only_sets: number | null;
     jumbo_sets: number | null;
@@ -111,7 +134,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     for (let offset = 0; ; offset += PAGE) {
       const { data, error: vErr } = await supabaseAdmin
         .from('player_product_variants')
-        .select('id, player_product_id, cardhedger_card_id, hobby_sets, bd_only_sets, jumbo_sets, hobby_odds, print_run')
+        .select('id, player_product_id, cardhedger_card_id, variant_name, hobby_sets, bd_only_sets, jumbo_sets, hobby_odds, print_run')
         .in('player_product_id', slice)
         .not('cardhedger_card_id', 'is', null)
         .range(offset, offset + PAGE - 1);
@@ -451,6 +474,9 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
 
   let livePriced = 0, crossPriced = 0, searchPriced = 0, defaultPriced = 0;
   let hardDeadlineHit = false;
+  let anchorFellBackCount = 0;
+  let anchorMatchedSum = 0;
+  let anchorAggregatedCount = 0;
 
   // Narrowed shape of the Supabase join — `player` comes back as an object,
   // not an array, when the FK is unique.
@@ -482,29 +508,28 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
         const price = pricesOnly.get(v.cardhedger_card_id!);
         const sets = (v.hobby_sets ?? 0) + (v.bd_only_sets ?? 0) + (v.jumbo_sets ?? 0);
         return {
+          variantId: v.id,
+          variantName: v.variant_name,
           evLow: price?.evLow ?? 0,
           evMid: price?.evMid ?? 0,
           evHigh: price?.evHigh ?? 0,
           confidence: price?.confidence ?? 0,
           sets: Math.max(sets, 1),
-          hobby_odds: v.hobby_odds,
+          hobbyOdds: v.hobby_odds,
+          printRun: v.print_run,
         };
       });
-      const pricedVariants = variantEVs.filter(v => v.evMid > 0);
 
-      if (pricedVariants.length > 0) {
-        const totalSets = pricedVariants.reduce((sum, v) => sum + v.sets, 0);
-        const ev = {
-          evLow: pricedVariants.reduce((sum, v) => sum + v.evLow * v.sets, 0) / totalSets,
-          evMid: pricedVariants.reduce((sum, v) => sum + v.evMid * v.sets, 0) / totalSets,
-          evHigh: pricedVariants.reduce((sum, v) => sum + v.evHigh * v.sets, 0) / totalSets,
-        };
-        const confidence = pricedVariants.reduce((sum, v) => sum + v.confidence * v.sets, 0) / totalSets;
+      const aggregated = aggregatePlayerEV(variantEVs, anchorStrategy, anchorPatterns);
+      if (aggregated.evMid > 0) {
+        if (aggregated.fellBack) anchorFellBackCount++;
+        anchorMatchedSum += aggregated.matchedVariants;
+        anchorAggregatedCount++;
         cacheRows.push({
           player_product_id: pp.id,
           cardhedger_card_id: pp.cardhedger_card_id ?? null,
-          ev_low: ev.evLow, ev_mid: ev.evMid, ev_high: ev.evHigh,
-          confidence,
+          ev_low: aggregated.evLow, ev_mid: aggregated.evMid, ev_high: aggregated.evHigh,
+          confidence: aggregated.confidence,
           raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
         });
         livePriced++;
@@ -624,6 +649,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
 
   const totalDurationMs = Date.now() - started;
   const partial = batchTimedOut || hardDeadlineHit;
+  const anchorMatchedAvg = anchorAggregatedCount > 0 ? anchorMatchedSum / anchorAggregatedCount : 0;
   console.log(
     `[pricing-refresh] product=${product?.name ?? productId} players=${playerProducts.length} ` +
     `live=${livePriced} cross=${crossPriced} search=${searchPriced} default=${defaultPriced} ` +
@@ -631,6 +657,8 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     `variants=${pricesOnly.size}/${allVariantCardIds.length} ` +
     `(cache=${variantsFromCache} new=${variantsNewlyFetched}) ` +
     `chunks=${chunksCompleted}/${priceChunks.length} batch=${batchDurationMs}ms ` +
+    `anchor=${anchorStrategy}${anchorFellBackCount > 0 ? ` fellBack=${anchorFellBackCount}` : ''}` +
+    ` matchedAvg=${anchorMatchedAvg.toFixed(1)} ` +
     `total=${totalDurationMs}ms${partial ? ' PARTIAL' : ''}`,
   );
 
@@ -651,5 +679,8 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     totalDurationMs,
     cacheRowsWritten,
     partial,
+    anchorStrategy,
+    anchorFellBackCount,
+    anchorMatchedVariantsAvg: anchorMatchedAvg,
   };
 }

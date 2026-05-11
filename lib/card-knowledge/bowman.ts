@@ -60,6 +60,44 @@ export const bowmanDescriptor: ManufacturerDescriptor = {
 
   multiPlayerIndicator: /\//,
 
+  anchorConcepts: [
+    {
+      name: 'base auto',
+      example: 'BCP-91 Eli Willits Autograph',
+      description: 'Base autograph version — the most common autograph for any prospect. Foundational anchor on every Bowman product because comps are deep.',
+    },
+    {
+      name: 'gold refractor auto /50',
+      example: 'BCP-91 Gold Refractor Autograph /50',
+      description: 'Gold parallel auto, /50. The second most common anchor for breakers — chase-tier but still has enough comps to price reliably.',
+    },
+    {
+      name: 'color auto /250',
+      example: 'Aqua Refractor Autograph /250',
+      description: 'Mid-tier color autos (aqua, blue, purple). Less reliable for anchoring; comps thin out past gold.',
+    },
+    {
+      name: 'color auto /150',
+      example: 'Red Refractor Autograph /150',
+      description: 'Lower-pop color autos. Avoid as the primary anchor — too few comps. Often the visible price drivers in marketing but they should be tail upside, not the anchor.',
+    },
+    {
+      name: 'superfractor 1/1',
+      example: 'SuperFractor Autograph 1/1',
+      description: '1/1 SuperFractor — explicitly excluded from sets-weighted EV aggregation (print_run <= 1 filter). Never use as anchor; the single-sale variance ruins pricing.',
+    },
+    {
+      name: 'first bowman raw',
+      example: 'BCP-91 Eli Willits',
+      description: 'Non-auto base — the first Bowman card of a prospect. Cheap individually but pulled deep per case. Anchor candidate for products where most cards are non-auto (e.g. base Bowman Chrome prospect cards).',
+    },
+    {
+      name: 'sapphire base auto',
+      example: 'BCP-91 Sapphire Autograph',
+      description: 'Sapphire-specific base auto. Slightly elevated over Chrome base auto due to product positioning. Only relevant in *Sapphire* products.',
+    },
+  ],
+
   claudeRules: `Bowman/Topps matching rules:
 - Year must match exactly. Reject cross-year candidates even if player + set look similar.
 - Card numbers uniquely identify a player in a given set (letter-prefixed BDC-91 / B25-SS / BMA-JG / TP-8, or short numbers 38 / 69). If a candidate's number matches the query's number AND player + set match, that IS the correct card — confidence 0.9+.
