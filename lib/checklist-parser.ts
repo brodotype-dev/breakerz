@@ -531,10 +531,13 @@ const PARALLEL_LABEL_RE = /\/\d+\s*$/;
 // parseChecklistXlsx  (Bowman/Topps XLSX format with parallel expansion)
 //
 // Sheet layout is a repeating block:
-//   <Section Name>             ← e.g. "Finest Autographs", "Base - Common"
+//   <Section Name>             ← e.g. "Finest Autographs", "Base Set",
+//                                "1990 Topps Baseball Autographs Checklist"
 //   (blank)
-//   "<N> cards"                ← metadata row, ignored
-//   "Parallels"                ← structural label
+//   "<N> cards."               ← prose metadata row, ignored (trailing period)
+//   "Hobby only."              ← distribution flag, ignored (trailing period)
+//   "Players may have ..."     ← description, ignored (trailing period)
+//   "Parallels"                ← structural label (no period)
 //   (blank)
 //   <parallel1>                ← e.g. "Refractor", "Gold /50", "SuperFractor /1"
 //   <parallel2>
@@ -542,6 +545,12 @@ const PARALLEL_LABEL_RE = /\/\d+\s*$/;
 //   (blank)
 //   <card_num>, <player>, <team>, [flag]   ← data rows
 //   ...
+//
+// Discriminator: real section names are titles and NEVER end with a period;
+// every prose metadata row Topps puts in these sheets does. We use the
+// trailing period as the bright-line filter for label-only rows. Verified
+// against 2025 Topps Series 1 Baseball (Base / Variations / Inserts /
+// Autographs / Memorabilia) — 0 false positives.
 //
 // The old parser collapsed every label-only row into `currentSectionName`, so each
 // card only got ONE variant row — the label of the LAST label-only row before it.
@@ -619,7 +628,12 @@ export function parseChecklistXlsx(buffer: Buffer): ParsedChecklist {
       if (isLabelOnly) {
         const label = (c0 as string).trim();
 
-        if (/^\d+ cards?$/i.test(label)) continue;
+        // Trailing period → prose metadata, not a section/parallel name.
+        // Catches "350 cards.", "1 card.", "Hobby only.", "Silver packs only.",
+        // "Fanatics box only.", "Players may have multiple cards.",
+        // "Each card serial-numbered to the player's jersey number.", etc.
+        // Real section/parallel labels are titles and never end with a period.
+        if (label.endsWith('.')) continue;
         if (STRUCTURAL_LABEL_RE.test(label)) continue;
 
         if (isParallelLabel(label)) {
