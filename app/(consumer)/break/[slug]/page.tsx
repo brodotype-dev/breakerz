@@ -4,16 +4,22 @@ import { useEffect, useLayoutEffect, useRef, useState, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
+import { Sparkles, Search, Plus, X } from 'lucide-react';
+import posthog from 'posthog-js';
 import PlayerTable from '@/components/breakiq/PlayerTable';
 import TeamSlotsTable from '@/components/breakiq/TeamSlotsTable';
 import TopMoversWidget from '@/components/breakiq/TopMoversWidget';
 import ChaseCardsPanel from '@/components/breakiq/ChaseCardsPanel';
 import PlayerDetailDrawer from '@/components/breakiq/PlayerDetailDrawer';
 import PreReleaseLayout from '@/components/breakiq/PreReleaseLayout';
-import { SegmentedControl, CounterInput } from '@/components/breakiq/ds';
+import TeamChip from '@/components/breakiq/TeamChip';
+import AnalysisResultPanel from '@/components/breakiq/AnalysisResultPanel';
+import { SegmentedControl, CounterInput, LargeCTAButton } from '@/components/breakiq/ds';
 import { computeSlotPricing, computeTeamSlotPricing, formatCurrency } from '@/lib/engine';
 import { getMarketMarkup } from '@/lib/market-markup';
 import { computeRiskAdjustment, computeHypeAdjustment, type HypeObservation } from '@/lib/score-modulation';
+import { PH_EVENTS } from '@/lib/posthog-events';
+import type { AnalysisResult as AnalysisResultShape } from '@/lib/analysis';
 import type { AskingPriceObsRow, BreakConfig, BreakFormat, ChaseCard, HypeObsRow, PlayerWithPricing, PlayerRiskFlag, Product, Sport } from '@/lib/types';
 
 const FORMAT_DEFS: Array<{ key: BreakFormat; label: string; short: string }> = [
@@ -85,6 +91,18 @@ export default function BreakPage() {
   const [bdAmPrice, setBdAmPrice] = useState<number | null>(null);
   const [jumboMsrp, setJumboMsrp] = useState<number | null>(null);
   const [jumboAmPrice, setJumboAmPrice] = useState<number | null>(null);
+
+  // Inline analysis block state — mirrors /analysis page. Format counters
+  // reuse the existing `config` state since it also drives the slot tables
+  // below; selecting "1 Hobby + 0 BD" here is the same as selecting "1
+  // Hobby" on /analysis.
+  const [selectedAnalysisTeams, setSelectedAnalysisTeams] = useState<string[]>([]);
+  const [selectedAnalysisPlayerIds, setSelectedAnalysisPlayerIds] = useState<string[]>([]);
+  const [analysisAskPrice, setAnalysisAskPrice] = useState('');
+  const [analysisPlayerSearch, setAnalysisPlayerSearch] = useState('');
+  const [analysisRunning, setAnalysisRunning] = useState(false);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResultShape | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -460,8 +478,10 @@ export default function BreakPage() {
           </div>
         )}
 
-        {/* Format mix — three counters, one per format the product supports.
-            Cases set to 0 zero out that pool; total break cost rolls up. */}
+        {/* Break Analysis — configure format mix + teams + player slots, set
+            an ask price, run the same bundle analysis as /analysis without
+            leaving the product. The format counters here also drive the
+            slot tables below (single source of truth on `config`). */}
         {!isDormant && (() => {
           const formatMeta: Record<BreakFormat, { cases: number; setCases: (v: number) => void; cost: number; amPrice: number | null; msrp: number | null }> = {
             hobby: {
@@ -488,41 +508,243 @@ export default function BreakPage() {
           };
           const availableFormats = FORMAT_DEFS.filter(f => formatMeta[f.key].msrp != null || formatMeta[f.key].amPrice != null);
           if (availableFormats.length === 0) return null;
-          const totalCost = availableFormats.reduce((sum, f) => sum + formatMeta[f.key].cases * formatMeta[f.key].cost, 0);
+          const totalBreakCost = availableFormats.reduce((sum, f) => sum + formatMeta[f.key].cases * formatMeta[f.key].cost, 0);
+
+          // Team list comes from the loaded roster — same source the team slot
+          // table below uses, so the user sees only teams that exist in this
+          // product.
+          const uniqueTeams = Array.from(new Set(rawPlayers.map(p => p.player?.team).filter(Boolean))).sort() as string[];
+
+          // Filter players for the picker: hide already-selected, hide teams
+          // already covered by a selected team (avoid double-counting), apply
+          // free-text search, cap to 8 visible.
+          const q = analysisPlayerSearch.trim().toLowerCase();
+          const selectedTeamSet = new Set(selectedAnalysisTeams);
+          const filteredPlayers = rawPlayers
+            .filter(p => !selectedAnalysisPlayerIds.includes(p.id))
+            .filter(p => !selectedTeamSet.has(p.player?.team ?? ''))
+            .filter(p => !q || p.player?.name.toLowerCase().includes(q) || p.player?.team.toLowerCase().includes(q))
+            .slice(0, 8);
+
+          const totalCases = config.hobbyCases + config.bdCases + config.jumboCases;
+          const hasSelection = selectedAnalysisTeams.length > 0 || selectedAnalysisPlayerIds.length > 0;
+          const askPriceNum = parseFloat(analysisAskPrice);
+          const askPriceValid = !Number.isNaN(askPriceNum) && askPriceNum > 0;
+          const canRunAnalysis = hasSelection && askPriceValid && totalCases > 0 && !analysisRunning;
+
+          function toggleTeam(t: string) {
+            setSelectedAnalysisTeams(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
+          }
+          function addPlayer(id: string) {
+            setSelectedAnalysisPlayerIds(prev => prev.includes(id) ? prev : [...prev, id]);
+            setAnalysisPlayerSearch('');
+          }
+          function removePlayer(id: string) {
+            setSelectedAnalysisPlayerIds(prev => prev.filter(x => x !== id));
+          }
+
+          async function runAnalysis() {
+            if (!canRunAnalysis || !product) return;
+            setAnalysisRunning(true);
+            setAnalysisResult(null);
+            setAnalysisError(null);
+            try {
+              const res = await fetch('/api/analysis', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  productId: product.id,
+                  teams: selectedAnalysisTeams,
+                  extraPlayerProductIds: selectedAnalysisPlayerIds,
+                  formats: { hobby: config.hobbyCases, bd: config.bdCases, jumbo: config.jumboCases },
+                  askPrice: askPriceNum,
+                }),
+              });
+              const data = await res.json();
+              if (data.error) throw new Error(data.error);
+              posthog.capture(PH_EVENTS.break_analysis_run, {
+                product_id: product.id,
+                teams: selectedAnalysisTeams,
+                extra_player_count: selectedAnalysisPlayerIds.length,
+                formats: { hobby: config.hobbyCases, bd: config.bdCases, jumbo: config.jumboCases },
+                ask_price: askPriceNum,
+                signal: data.signal,
+                value_pct: data.valuePct,
+                fair_value: data.fairValue,
+                surface: 'break_page_inline',
+              });
+              setAnalysisResult(data as AnalysisResultShape);
+            } catch (err) {
+              posthog.captureException(err);
+              setAnalysisError(err instanceof Error ? err.message : 'Unknown error');
+            } finally {
+              setAnalysisRunning(false);
+            }
+          }
+
           return (
             <div
-              className="px-4 py-3 rounded-lg space-y-3"
+              className="px-4 py-4 rounded-lg space-y-5"
               style={{ backgroundColor: 'var(--terminal-surface)', border: '1px solid var(--terminal-border)' }}
             >
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
-                  Format Mix
-                </span>
-                {totalCost > 0 && (
-                  <span className="text-xs font-mono font-bold" style={{ color: 'var(--text-primary)' }}>
-                    Break cost: {formatCurrency(totalCost)}
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-4 h-4" style={{ color: 'var(--accent-blue)' }} />
+                  <span className="text-sm font-bold uppercase tracking-wider" style={{ color: 'var(--text-primary)' }}>
+                    Break Analysis
+                  </span>
+                </div>
+                {totalBreakCost > 0 && (
+                  <span className="text-xs font-mono" style={{ color: 'var(--text-tertiary)' }}>
+                    Break cost: {formatCurrency(totalBreakCost)}
                   </span>
                 )}
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {availableFormats.map(({ key, short }) => {
-                  const m = formatMeta[key];
-                  const priceLabel = m.amPrice != null ? 'market' : m.msrp != null ? 'MSRP' : null;
-                  return (
-                    <div key={key} className="flex items-center justify-between gap-2 px-3 py-2 rounded border" style={{ borderColor: 'var(--terminal-border)' }}>
-                      <div className="flex flex-col">
-                        <span className="text-[11px] font-bold uppercase" style={{ color: 'var(--text-tertiary)' }}>{short}</span>
-                        {m.cost > 0 && (
-                          <span className="text-[10px] font-mono" style={{ color: 'var(--text-tertiary)' }}>
-                            {formatCurrency(m.cost)}{priceLabel ? ` (${priceLabel})` : ''}
-                          </span>
-                        )}
+
+              {/* Format mix */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Format mix</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {availableFormats.map(({ key, short }) => {
+                    const m = formatMeta[key];
+                    const priceLabel = m.amPrice != null ? 'market' : m.msrp != null ? 'MSRP' : null;
+                    return (
+                      <div key={key} className="flex items-center justify-between gap-2 px-3 py-2 rounded border" style={{ borderColor: 'var(--terminal-border)' }}>
+                        <div className="flex flex-col">
+                          <span className="text-[11px] font-bold uppercase" style={{ color: 'var(--text-tertiary)' }}>{short}</span>
+                          {m.cost > 0 && (
+                            <span className="text-[10px] font-mono" style={{ color: 'var(--text-tertiary)' }}>
+                              {formatCurrency(m.cost)}{priceLabel ? ` (${priceLabel})` : ''}
+                            </span>
+                          )}
+                        </div>
+                        <CounterInput value={m.cases} onChange={m.setCases} min={0} />
                       </div>
-                      <CounterInput value={m.cases} onChange={m.setCases} min={0} />
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
+
+              {/* Teams */}
+              {uniqueTeams.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Teams</p>
+                  <div className="flex flex-wrap gap-2">
+                    {uniqueTeams.map(t => (
+                      <TeamChip
+                        key={t}
+                        team={t}
+                        sport={product?.sport?.name}
+                        selected={selectedAnalysisTeams.includes(t)}
+                        onClick={() => toggleTeam(t)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Specific player slots */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>
+                  Specific player slots <span className="font-normal opacity-60">(optional)</span>
+                </p>
+                {selectedAnalysisPlayerIds.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {selectedAnalysisPlayerIds.map(id => {
+                      const p = rawPlayers.find(x => x.id === id);
+                      if (!p) return null;
+                      return (
+                        <span
+                          key={id}
+                          className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full text-xs font-semibold border"
+                          style={{
+                            backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                            color: 'var(--text-primary)',
+                            borderColor: 'rgba(59, 130, 246, 0.4)',
+                          }}
+                        >
+                          {p.player.name}
+                          <span className="opacity-60 text-[10px] font-normal">{p.player.team}</span>
+                          <button
+                            onClick={() => removePlayer(id)}
+                            className="w-4 h-4 inline-flex items-center justify-center rounded-full transition-opacity hover:opacity-70"
+                            style={{ backgroundColor: 'rgba(255,255,255,0.08)' }}
+                            aria-label="Remove player"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none" style={{ color: 'var(--text-tertiary)' }} />
+                  <input
+                    type="text"
+                    placeholder="Search by player name or team…"
+                    value={analysisPlayerSearch}
+                    onChange={e => setAnalysisPlayerSearch(e.target.value)}
+                    className="w-full h-10 text-sm rounded-lg border pl-9 pr-3 focus:outline-none"
+                    style={{ backgroundColor: 'var(--terminal-bg)', borderColor: 'var(--terminal-border)', color: 'var(--text-primary)' }}
+                  />
+                </div>
+                {q.length > 0 && filteredPlayers.length > 0 && (
+                  <div className="mt-2 border rounded-lg overflow-hidden" style={{ borderColor: 'var(--terminal-border)' }}>
+                    {filteredPlayers.map(p => (
+                      <button
+                        key={p.id}
+                        onClick={() => addPlayer(p.id)}
+                        className="w-full flex items-center justify-between px-3 py-2 text-sm hover:opacity-80 transition-opacity border-b last:border-b-0"
+                        style={{ backgroundColor: 'var(--terminal-bg)', borderColor: 'var(--terminal-border)', color: 'var(--text-primary)' }}
+                      >
+                        <span className="flex items-center gap-2">
+                          <Plus className="w-3 h-3 opacity-60" />
+                          <span>{p.player.name}</span>
+                          {p.player.is_rookie && (
+                            <span className="text-[9px] px-1 py-0.5 rounded font-bold" style={{ backgroundColor: 'var(--accent-blue)', color: 'white' }}>RC</span>
+                          )}
+                        </span>
+                        <span className="text-[10px] uppercase" style={{ color: 'var(--text-tertiary)' }}>{p.player.team}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Ask price */}
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Total ask price</p>
+                <div className="relative max-w-xs">
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl font-mono font-bold pointer-events-none" style={{ color: 'var(--text-secondary)' }}>$</span>
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={analysisAskPrice}
+                    onChange={e => setAnalysisAskPrice(e.target.value)}
+                    disabled={!hasSelection}
+                    className="w-full h-12 text-xl font-mono font-bold rounded-lg border-2 pl-9 pr-3 focus:outline-none transition-all disabled:opacity-40"
+                    style={{ backgroundColor: 'var(--terminal-bg)', borderColor: analysisAskPrice ? 'var(--accent-blue)' : 'var(--terminal-border)', color: 'var(--text-primary)' }}
+                  />
+                </div>
+              </div>
+
+              {/* Run */}
+              <LargeCTAButton onClick={runAnalysis} disabled={!canRunAnalysis} loading={analysisRunning}>
+                {analysisRunning ? 'Analyzing Deal…' : <><Sparkles className="w-5 h-5" /> Analyze Bundle</>}
+              </LargeCTAButton>
+
+              {/* Inline result */}
+              {analysisError && (
+                <div className="rounded-lg p-4 text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid var(--signal-pass)', color: 'var(--signal-pass)' }}>
+                  {analysisError}
+                </div>
+              )}
+              {analysisResult && !analysisRunning && (
+                <div className="pt-2 border-t" style={{ borderColor: 'var(--terminal-border)' }}>
+                  <AnalysisResultPanel result={analysisResult} productId={product?.id ?? ''} />
+                </div>
+              )}
             </div>
           );
         })()}

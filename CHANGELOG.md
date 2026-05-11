@@ -5,6 +5,24 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-11 — Inline Break Analysis block on the product page
+
+UX change: `/break/[slug]`'s "Format Mix" card was just three case counters + a break-cost rollup. Replaced with a full **Break Analysis** block that runs the same bundle analysis as `/analysis` without leaving the product page — pre-selected since we're on the product. Same flow Kyle uses on `/analysis` (format mix → team chip multi-select → searchable player picker → ask price → Run → AI verdict + market ask range + top players + risk flags), now reachable directly from any product without re-picking the product.
+
+**Shared `<AnalysisResultPanel>`.** Extracted the result-rendering UI from `/analysis/page.tsx` into [components/breakiq/AnalysisResultPanel.tsx](components/breakiq/AnalysisResultPanel.tsx) so both surfaces render the verdict identically. New prop `productSlug?: string | null` hides the "View full break analysis →" link when the panel is already rendering on the break page (otherwise it self-links). `signalConfig` + `FLAG_LABELS` + `AnalysisResult` interface migrated alongside; the local `AnalysisResult` type alias in `/analysis/page.tsx` now imports from `lib/analysis.ts`. Removed ~150 lines of duplicate UI code.
+
+**Inline block.** [app/(consumer)/break/[slug]/page.tsx](app/(consumer)/break/[slug]/page.tsx) gains state for `selectedAnalysisTeams`, `selectedAnalysisPlayerIds`, `analysisAskPrice`, `analysisPlayerSearch`, `analysisRunning`, `analysisResult`, `analysisError`. Format counters reuse the existing `config` state — single source of truth across the analysis block AND the slot tables below (one config drives both). Submits to `POST /api/analysis` with the same payload `/analysis` sends; result renders inline within the same bordered card via `<AnalysisResultPanel result={...} productId={product.id} />` (no slug, no link). PostHog `break_analysis_run` event fires with `surface: 'break_page_inline'` so we can segment per-surface conversion. Gated on `!isDormant` (matching the old format-mix block).
+
+**Team / player picker reuse.** `<TeamChip>` from the design system handles team selection; the searchable player picker mirrors the `/analysis` shape (Search icon + 8-row dropdown + chip removal). Players already covered by a selected team are hidden from the picker to avoid double-counting in the bundle math.
+
+**`/analysis` stays.** Standalone deal checker preserved for cross-product comparison and people who start at the deal checker rather than a product page. Both surfaces produce identical results.
+
+**Files:**
+- New: [components/breakiq/AnalysisResultPanel.tsx](components/breakiq/AnalysisResultPanel.tsx)
+- Modified: [app/(consumer)/break/[slug]/page.tsx](app/(consumer)/break/[slug]/page.tsx), [app/(consumer)/analysis/page.tsx](app/(consumer)/analysis/page.tsx)
+
+---
+
 ## 2026-05-11 — Quick wins: catalog cron observability + confidence tiering
 
 Two low-friction follow-ups to the trilogy.
