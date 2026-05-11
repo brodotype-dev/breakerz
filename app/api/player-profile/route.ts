@@ -209,21 +209,37 @@ export async function GET(req: NextRequest) {
       calls.push(getComps(cardId, 180, 'PSA 10', 10).catch(() => ({ comps: [] })));
     }
     const settled = await Promise.allSettled(calls);
+    const allComps: typeof recentComps = [];
     for (const r of settled) {
       if (r.status === 'fulfilled' && Array.isArray(r.value.comps)) {
-        recentComps.push(...r.value.comps);
+        allComps.push(...r.value.comps);
       }
     }
     // Dedupe (same sale can appear if multiple variants point to the same
-    // CH listing), then sort by date desc and cap.
+    // CH listing).
     const dedup = new Map<string, typeof recentComps[number]>();
-    for (const c of recentComps) {
+    for (const c of allComps) {
       const key = `${c.sale_date}|${c.sale_price}|${c.grade}|${c.platform}`;
       if (!dedup.has(key)) dedup.set(key, c);
     }
-    recentComps = Array.from(dedup.values())
-      .sort((a, b) => new Date(b.sale_date).getTime() - new Date(a.sale_date).getTime())
-      .slice(0, 25);
+    // Bucket by grade group BEFORE slicing — otherwise on high-raw-volume
+    // players (Wemby Sapphire et al.) raw saturates the top-25 by date and
+    // graded comes back empty even though PSA 9/10 sales exist. Slice each
+    // bucket independently so the client's Raw/Graded tabs both have data.
+    const isRawComp = (g: string | null | undefined) => g === 'Raw' || g === 'Ungraded';
+    const sortedDeduped = Array.from(dedup.values())
+      .sort((a, b) => new Date(b.sale_date).getTime() - new Date(a.sale_date).getTime());
+    const rawBucket: typeof recentComps = [];
+    const gradedBucket: typeof recentComps = [];
+    for (const c of sortedDeduped) {
+      if (isRawComp(c.grade)) {
+        if (rawBucket.length < 25) rawBucket.push(c);
+      } else {
+        if (gradedBucket.length < 25) gradedBucket.push(c);
+      }
+      if (rawBucket.length >= 25 && gradedBucket.length >= 25) break;
+    }
+    recentComps = [...rawBucket, ...gradedBucket];
   }
 
   // 4. Insights — risk flags + recent sentiment history + active market
