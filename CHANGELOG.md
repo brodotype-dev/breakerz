@@ -5,6 +5,19 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-11 — Quick wins: catalog cron observability + confidence tiering
+
+Two low-friction follow-ups to the trilogy.
+
+**Catalog cron observability.** `app/api/cron/refresh-ch-catalogs/route.ts` only called `recordCronRun()` at the end of the serial loop, which sat past Vercel's `maxDuration=300s` for any night with 17+ sets. The cron always ran successfully (verified via `ch_set_refresh_log`) but the admin Cron Status panel rendered "Catalog Refresh: NEVER RUN" because the summary insert never got reached. Fix: new `recordCronStart()` helper in [lib/cron-log.ts](lib/cron-log.ts) inserts a `success=true` marker row at the top of the route. If the function completes, the final `recordCronRun` summary supersedes it; if it times out, the marker stays as the most-recent row and the panel correctly shows "healthy · ran X minutes ago." Pure observability — no behavior change to the cron itself.
+
+**Confidence tiering on the player table.** `pricing_cache.confidence` has populated since 2026-05-06 (P0.2 of the CH audit) but rendered as a binary "low conf" chip below 0.5. Replaced with named tiers per Card Ladder's pattern: Strong ≥ 0.7 (green), Solid 0.5–0.7 (neutral), Stale 0.2–0.5 (amber), Cold < 0.2 (red). New `confidenceTier()` helper in [lib/engine.ts](lib/engine.ts) returns `{ tier, label, bg, fg, border }` so the same row reads consistently anywhere it gets surfaced later (PlayerDetailDrawer will pick this up when it surfaces a per-player confidence indicator). Fallback-priced rows still skip the chip — the existing `est` chip already signals that case.
+
+**Files:**
+- Modified: [lib/cron-log.ts](lib/cron-log.ts) (new `recordCronStart` export), [app/api/cron/refresh-ch-catalogs/route.ts](app/api/cron/refresh-ch-catalogs/route.ts), [lib/engine.ts](lib/engine.ts), [components/breakiq/PlayerTable.tsx](components/breakiq/PlayerTable.tsx)
+
+---
+
 ## 2026-05-11 — Pricing trilogy Plans B + C: market markup display + lifecycle EV multiplier
 
 Completes the 2026-05-11 pricing trilogy. Plan A (per-product anchor configurator) shipped earlier today and addressed the EV-aggregation half of Kyle's $1,447 Royals slot complaint. Plans B and C address the other two halves: (B) pure-EV slot prices systematically signal BUY on market-fair asks because real breaker asks sit 15–40% above pure EV, and (C) pre-release products + first-2-weeks-live products need release-window math that 90-day-average aggregates can't capture (Cooper Flagg $9,500 → $2,500 in 10 days). The two layers compound legitimately — Plan C math layer reflects "what these cards are worth in this lifecycle window" and lands in `pricing_cache`; Plan B display layer reflects "what the breaker charges for a slot above that" and applies at render time.

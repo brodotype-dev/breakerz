@@ -3,7 +3,7 @@ import {
   listActiveProductsWithCHSet,
   refreshSetCatalog,
 } from '@/lib/cardhedger-catalog';
-import { recordCronRun } from '@/lib/cron-log';
+import { recordCronRun, recordCronStart } from '@/lib/cron-log';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300; // 5 minutes — large sets can take a minute each
@@ -24,6 +24,12 @@ export async function GET(req: Request) {
   }
 
   const started = Date.now();
+
+  // Stamp a started marker BEFORE the serial loop. Without this, if the
+  // function hits maxDuration=300s the final recordCronRun at the end
+  // never runs and the admin panel shows "NEVER RUN" — even though
+  // ch_set_cache writes were happening successfully all along.
+  await recordCronStart('/api/cron/refresh-ch-catalogs', started);
 
   try {
     const products = await listActiveProductsWithCHSet();

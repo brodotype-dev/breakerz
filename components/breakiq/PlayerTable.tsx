@@ -1,6 +1,6 @@
 'use client';
 
-import { formatCurrency, computeEffectiveScore } from '@/lib/engine';
+import { formatCurrency, computeEffectiveScore, confidenceTier } from '@/lib/engine';
 import { IconPlayerBadge, BullishBadge, BearishBadge, HighVolatilityBadge, RiskFlagBadge } from '@/components/breakiq/SocialBadges';
 import ChaseHeartButton, { ChaseSetProvider } from '@/components/breakiq/ChaseHeartButton';
 import PricingFeedback from '@/components/breakiq/PricingFeedback';
@@ -85,9 +85,10 @@ export default function PlayerTable({ players, fetching = false, viewFormat, ris
               const score = computeEffectiveScore(row.buzz_score, row.breakerz_score, row.player?.is_icon ?? false);
               const playerFlags = riskFlagMap.get(row.id) ?? [];
               const isEstimated = row.pricingSource === 'search-fallback' || row.pricingSource === 'cross-product' || row.pricingSource === 'default';
-              // CH batch-price-estimate confidence (0..1). Threshold at 0.5 is a
-              // starting cut; tune once we see the distribution across products.
-              const lowConfidence = row.confidence != null && row.confidence < 0.5 && !isEstimated;
+              // Bucket CH confidence into named tiers (Strong/Solid/Stale/Cold).
+              // Skipped on fallback-priced rows since they don't have a modeled
+              // confidence — the `est` chip already signals that case.
+              const confInfo = !isEstimated ? confidenceTier(row.confidence) : null;
 
               return (
                 <tr
@@ -193,17 +194,17 @@ export default function PlayerTable({ players, fetching = false, viewFormat, ris
                               est
                             </span>
                           )}
-                          {lowConfidence && (
+                          {confInfo && (
                             <span
                               className="text-[9px] font-medium px-1 py-0.5 rounded border whitespace-nowrap"
                               title={`CardHedger confidence: ${(row.confidence! * 100).toFixed(0)}%`}
                               style={{
-                                backgroundColor: 'rgba(245,158,11,0.1)',
-                                color: 'var(--accent-orange)',
-                                borderColor: 'rgba(245,158,11,0.3)',
+                                backgroundColor: confInfo.bg,
+                                color: confInfo.fg,
+                                borderColor: confInfo.border,
                               }}
                             >
-                              low conf
+                              {confInfo.label}
                             </span>
                           )}
                         </div>
