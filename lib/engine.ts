@@ -1,9 +1,10 @@
 import type { PlayerWithPricing, BreakConfig, Signal, TeamSlot } from './types';
 
 // Exported for use in UI components that need to display buzz signals.
-// risk_score_adj / hype_score_adj / prospect_score_adj are runtime modulators
-// folded in alongside buzz + breakerz before the clamp. All default 0 when
-// omitted. See lib/score-modulation.ts (risk + hype) and lib/prospect-score.ts.
+// risk_score_adj / hype_score_adj / prospect_score_adj / cascade_score_adj are
+// runtime modulators folded in alongside buzz + breakerz before the clamp.
+// All default 0 when omitted. See lib/score-modulation.ts (risk + hype),
+// lib/prospect-score.ts (Track A), lib/cascading-sentiment.ts (Track B).
 export function computeEffectiveScore(
   buzzScore: number | null | undefined,
   breakerzScore: number | null | undefined,
@@ -11,6 +12,7 @@ export function computeEffectiveScore(
   riskScoreAdj: number | null | undefined = 0,
   hypeScoreAdj: number | null | undefined = 0,
   prospectScoreAdj: number | null | undefined = 0,
+  cascadeScoreAdj: number | null | undefined = 0,
 ): number {
   if (isIcon) return 0;
   return Math.max(
@@ -21,7 +23,8 @@ export function computeEffectiveScore(
         (breakerzScore ?? 0) +
         (riskScoreAdj ?? 0) +
         (hypeScoreAdj ?? 0) +
-        (prospectScoreAdj ?? 0),
+        (prospectScoreAdj ?? 0) +
+        (cascadeScoreAdj ?? 0),
     ),
   );
 }
@@ -49,7 +52,8 @@ export function computeSlotPricing(
               (p.breakerz_score ?? 0) +
               (p.risk_score_adj ?? 0) +
               (p.hype_score_adj ?? 0) +
-              (p.prospect_score_adj ?? 0),
+              (p.prospect_score_adj ?? 0) +
+              (p.cascade_score_adj ?? 0),
           ),
         );
   const hobbyWeightFor = (p: PlayerWithPricing) =>

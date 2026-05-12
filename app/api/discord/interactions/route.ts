@@ -467,6 +467,50 @@ async function applyUpdates(args: {
           applied++;
           break;
         }
+        case 'team_sentiment':
+        case 'product_sentiment':
+        case 'team_product_sentiment': {
+          // Track B cascade sentiment. Three shapes, one write path — the
+          // discriminator is observation_type, with scope_type + scope_team
+          // + product_id filling in based on which scope this is.
+          const payload: Record<string, unknown> = {
+            direction: u.direction,
+            strength: u.strength,
+            decay_days: u.decay_days,
+          };
+          if (u.tag) payload.tag = u.tag;
+
+          const expiresAt = new Date(
+            Date.now() + Math.max(1, u.decay_days) * 24 * 3600 * 1000,
+          ).toISOString();
+
+          const isTeamScoped =
+            u.kind === 'team_sentiment' || u.kind === 'team_product_sentiment';
+          const isProductScoped =
+            u.kind === 'product_sentiment' || u.kind === 'team_product_sentiment';
+
+          const { error } = await supabaseAdmin.from('market_observations').insert({
+            observation_type: u.kind,
+            // scope_type matches the dominant axis — 'team' for the two
+            // team-scoped kinds, 'product' for product_sentiment. Cascade
+            // reader keys off observation_type for cap selection so this
+            // value is mostly informational, but we keep it consistent with
+            // hype_tag's conventions for any future joined queries.
+            scope_type: isTeamScoped ? 'team' : 'product',
+            scope_id: null,
+            scope_team: isTeamScoped ? (u as { team_name: string }).team_name : null,
+            product_id: isProductScoped ? (u as { product_id: string }).product_id : null,
+            payload,
+            source_pending_id: args.pendingId,
+            source_user_id: args.sourceUserId,
+            source_narrative: args.sourceText,
+            confidence: u.confidence,
+            expires_at: expiresAt,
+          });
+          if (error) throw error;
+          applied++;
+          break;
+        }
       }
     } catch (err) {
       errors.push(`${u.kind}: ${err instanceof Error ? err.message : String(err)}`);

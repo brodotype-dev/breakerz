@@ -19,6 +19,11 @@ import { computeSlotPricing, computeTeamSlotPricing, formatCurrency } from '@/li
 import { getMarketMarkup } from '@/lib/market-markup';
 import { computeRiskAdjustment, computeHypeAdjustment, type HypeObservation } from '@/lib/score-modulation';
 import { computeProspectAdjustment } from '@/lib/prospect-score';
+import {
+  computeCascadeAdjustment,
+  filterObservationsForPlayer,
+  type CascadeObservation,
+} from '@/lib/cascading-sentiment';
 import { PH_EVENTS } from '@/lib/posthog-events';
 import type { AnalysisResult as AnalysisResultShape } from '@/lib/analysis';
 import type { AskingPriceObsRow, BreakConfig, BreakFormat, ChaseCard, HypeObsRow, PlayerWithPricing, PlayerRiskFlag, Product, Sport } from '@/lib/types';
@@ -170,7 +175,26 @@ export default function BreakPage() {
               .eq('observation_type', 'hype_tag')
               .gt('expires_at', nowIso)
               .is('superseded_at', null),
+            // Track B cascade: product-scoped sentiment types live with
+            // product_id = prod.id; global team_sentiment rows live with
+            // product_id IS NULL. Two queries because PostgREST can't OR a
+            // null-check across an enum filter cleanly.
+            supabase
+              .from('market_observations')
+              .select('observation_type, scope_team, product_id, payload, observed_at')
+              .eq('product_id', prod.id)
+              .in('observation_type', ['team_sentiment', 'product_sentiment', 'team_product_sentiment'])
+              .gt('expires_at', nowIso)
+              .is('superseded_at', null),
+            supabase
+              .from('market_observations')
+              .select('observation_type, scope_team, product_id, payload, observed_at')
+              .is('product_id', null)
+              .eq('observation_type', 'team_sentiment')
+              .gt('expires_at', nowIso)
+              .is('superseded_at', null),
           ];
+          const askingIdx = fetches.length;
           if (isPreReleaseProduct) {
             fetches.push(
               supabase
@@ -182,12 +206,14 @@ export default function BreakPage() {
                 .is('superseded_at', null),
             );
           }
-          const settled = (await Promise.all(fetches)) as [
-            { data: Array<{ player_product_id: string; flag_type: string; note: string }> | null },
-            { data: HypeObsRow[] | null },
-            { data: AskingPriceObsRow[] | null } | undefined,
-          ];
-          const [flagsRes, obsRes, askRes] = settled;
+          const settled = (await Promise.all(fetches)) as Array<{ data: unknown[] | null }>;
+          const flagsRes = settled[0] as { data: Array<{ player_product_id: string; flag_type: string; note: string }> | null };
+          const obsRes = settled[1] as { data: HypeObsRow[] | null };
+          const cascadeProductRes = settled[2] as { data: CascadeObservation[] | null };
+          const cascadeGlobalRes = settled[3] as { data: CascadeObservation[] | null };
+          const askRes = isPreReleaseProduct
+            ? (settled[askingIdx] as { data: AskingPriceObsRow[] | null })
+            : undefined;
 
           const fm = new Map<string, Array<{ flagType: string; note: string }>>();
           const riskAdjMap = new Map<string, number>();
@@ -235,10 +261,19 @@ export default function BreakPage() {
           }
 
           const sportSlug = (prod.sport?.slug ?? '').toLowerCase();
+          const cascadeAll: CascadeObservation[] = [
+            ...(cascadeProductRes.data ?? []),
+            ...(cascadeGlobalRes.data ?? []),
+          ];
           const augmented: PlayerWithPricing[] = playerList.map(p => {
             const teamObs = teamScope.get(p.player?.team ?? '') ?? [];
             const playerObs = playerScope.get(p.player_id) ?? [];
             const all = [...productScope, ...teamObs, ...playerObs];
+            const cascadeForPlayer = filterObservationsForPlayer(cascadeAll, p.player?.team);
+            const cascade = computeCascadeAdjustment({
+              observations: cascadeForPlayer,
+              sportSlug,
+            });
             return {
               ...p,
               risk_score_adj: riskAdjMap.get(p.id) ?? 0,
@@ -248,6 +283,7 @@ export default function BreakPage() {
                 prospect_status: p.player?.prospect_status,
                 sportSlug,
               }),
+              cascade_score_adj: cascade.adjustment,
             };
           });
           setRawPlayers(augmented);
