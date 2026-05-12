@@ -42,16 +42,29 @@ export default function TeamChip({ team, sport, selected, onClick }: Props) {
       {showLogos ? (
         <span className="inline-flex items-center gap-1">
           {visibleLogos.map((logo, i) => (
-            <img
+            // White disc behind each logo so dark-on-dark logos pop on dark theme.
+            // Without it, Pirates, Tigers, Reds, White Sox script, Padres all wash out.
+            // The disc looks intentional (a "chip within a chip") and works for both
+            // selected (blue chip) and unselected (transparent chip) states.
+            <span
               key={`${logo.src}-${i}`}
-              src={logo.src}
-              alt={logo.alt}
-              width={20}
-              height={20}
-              className="inline-block"
-              style={{ filter: selected ? 'brightness(1.05)' : undefined }}
-              onError={() => setFailed(prev => new Set(prev).add(i))}
-            />
+              className="inline-flex items-center justify-center rounded-full"
+              style={{
+                width: 20,
+                height: 20,
+                backgroundColor: 'rgba(255, 255, 255, 0.95)',
+              }}
+            >
+              <img
+                src={logo.src}
+                alt={logo.alt}
+                width={16}
+                height={16}
+                className="inline-block"
+                style={{ filter: selected ? 'brightness(1.05)' : undefined }}
+                onError={() => setFailed(prev => new Set(prev).add(i))}
+              />
+            </span>
           ))}
         </span>
       ) : (
