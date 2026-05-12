@@ -192,6 +192,16 @@ Apple OAuth deferred — requires Apple Developer account ($99/yr).
 
 ---
 
+### Parser-side team-name normalization
+**Effort:** ~1 hour
+**Why:** Surfaced 2026-05-11 — three real data bugs in `players.team` created duplicate chips in the consumer team picker (and one text-only fallback when the typo defeated the logo map): `Dallas mavericks` (lowercase 'm'), `Portland Trail blazers` (lowercase 'b'), `San Francsico Giants` (typo). Manually canonicalized via SQL UPDATE, but the upstream cause is the checklist parser writing whatever string the manufacturer XLSX/PDF emits without normalizing against a canonical team-name table. Future imports will keep introducing the same drift.
+
+**Fix:** Build a canonical-team table (or hard-coded TS map) keyed by `(sport, normalized_name)` → canonical display string, and route every parsed team string through it at import time. Fuzz-match (lowercase + diacritic-strip + spelling-distance ≤ 2) so typos resolve to the canonical name. Log un-mappable strings for admin review instead of silently writing them. Reuse the abbreviation map in [lib/team-logos.ts](../lib/team-logos.ts) as the canonical-name source of truth — keep one list, not two.
+
+**Files:** `lib/checklist-parser.ts` (apply normalization), new `lib/team-canonical.ts` (the map + matcher), reused by `lib/team-logos.ts`. Migration to add a `CHECK` constraint or unique-on-`(sport_id, LOWER(team))` to prevent case-dupes at the DB level.
+
+---
+
 ### Baseline Fair Value in BreakIQ Sayz
 **Effort:** ~0.5 days
 **Why:** When `buzz_score` or `breakerz_score` adjusts fair value, buyers currently see the adjusted number with no indication of what the "raw" model says. Showing both (e.g., "Fair value: $42 · Baseline: $38 without signal adjustment") adds transparency and trust.
