@@ -5,6 +5,35 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-12 — Phase 1A of prospect attrs + cascading sentiment: Track A engine wire-up
+
+First slice of [docs/plans/2026-05-12-prospect-attrs-and-cascading-sentiment.md](docs/plans/2026-05-12-prospect-attrs-and-cascading-sentiment.md). Plan splits subjective vs. objective player signals into two governance tracks:
+
+- **Track A — Objective:** prospect rank + status from institutional sources (MLB Pipeline, ESPN Big Board, NHL Central Scouting, etc.). Bulk-importable; attribution is the institution, not a person.
+- **Track B — Subjective:** team / product / team-product sentiment via Discord `/insight` (or bulk-import with per-row personal attribution for launch analyses). Out of scope for this commit.
+
+This commit is Track A's engine wire-up — schema + module + threading only, no importer, no actual data ingest yet. Effective scores are unchanged on every player until prospect_rank gets populated.
+
+**Schema** ([supabase/migrations/20260512180000_players_prospect_attributes.sql](supabase/migrations/20260512180000_players_prospect_attributes.sql)): 4 nullable columns on `players` — `prospect_rank` (integer), `prospect_status` (CHECK in `'graduated_rc' | 'international_signee' | NULL`), `prospect_rank_source` (institutional provenance string), `prospect_rank_updated_at`. One sport-agnostic column set; per-sport interpretation lives in the source string and the per-sport multiplier in the score module. Migration **NOT YET APPLIED to production** — awaiting Brody's `supabase db push`.
+
+**Scoring module** ([lib/prospect-score.ts](lib/prospect-score.ts)): `computeProspectAdjustment({ prospect_rank, prospect_status, sportSlug })` returns the additive bump folded into `effectiveScore`. Constants per the plan: rank tier ladder (top-10 → +0.60, top-30 → +0.40, top-100 → +0.20), status bumps (graduated_rc +0.15, international_signee +0.10), sport multipliers (baseball 1.0, basketball 0.9, football 0.7, hockey 0.6), cap +0.70.
+
+**Engine threading** ([lib/engine.ts](lib/engine.ts)): `computeEffectiveScore` gains an optional 6th arg `prospectScoreAdj` (default 0 — every existing 3-arg / 5-arg caller continues working unchanged). The inline `effectiveScore` calc inside `computeSlotPricing` reads `p.prospect_score_adj` alongside the existing risk + hype adjustments, so slot-cost math picks up the bump automatically for any player with prospect_rank populated.
+
+**Types** ([lib/types.ts](lib/types.ts)): `Player` gains optional `prospect_rank` / `prospect_status` / `prospect_rank_source` / `prospect_rank_updated_at`. `PlayerWithPricing` gains optional `prospect_score_adj` — runtime modulator, not persisted in pricing_cache (matches the existing risk/hype pattern).
+
+**Computation sites** — same render-time pattern as risk/hype, no pricing-refresh changes needed:
+- [lib/analysis.ts](lib/analysis.ts) computes per-pp `prospect_score_adj` using `product.sport.slug` + `p.player.prospect_rank` + `p.player.prospect_status`, attaches alongside the existing risk + hype augmentation
+- [app/(consumer)/break/[slug]/page.tsx](app/(consumer)/break/[slug]/page.tsx) does the same for the live break page
+
+**Out of scope (next commits):** importer (`/api/admin/import-prospect-ranks`), Kyle's CrossRef CSV ingest, Track B Discord parser extension, cascade reader, transparency UI. See plan for the full Phase 2/2.5/3 split.
+
+**Files:**
+- New: [supabase/migrations/20260512180000_players_prospect_attributes.sql](supabase/migrations/20260512180000_players_prospect_attributes.sql), [lib/prospect-score.ts](lib/prospect-score.ts), [docs/plans/2026-05-12-prospect-attrs-and-cascading-sentiment.md](docs/plans/2026-05-12-prospect-attrs-and-cascading-sentiment.md)
+- Modified: [lib/engine.ts](lib/engine.ts), [lib/types.ts](lib/types.ts), [lib/analysis.ts](lib/analysis.ts), [app/(consumer)/break/[slug]/page.tsx](app/(consumer)/break/[slug]/page.tsx)
+
+---
+
 ## 2026-05-11 — Import-checklist page no longer crashes when an API returns a non-string error
 
 Brody hit a React #31 ("Objects are not valid as a React child, found: object with keys {code, id, ...}") while running CH match on the import-checklist page. The page renders four error states (`parseError`, `importError`, `matchError`, `oddsError`) as direct JSX children. All four setters assigned `json.error` straight from the API response without coercion — so any time the server returned a structured error (Postgrest, Anthropic envelope, etc.) instead of a string, React would blow up and the whole page would go to the "Application error" fallback.

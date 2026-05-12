@@ -18,6 +18,7 @@ import { SegmentedControl, CounterInput, LargeCTAButton } from '@/components/bre
 import { computeSlotPricing, computeTeamSlotPricing, formatCurrency } from '@/lib/engine';
 import { getMarketMarkup } from '@/lib/market-markup';
 import { computeRiskAdjustment, computeHypeAdjustment, type HypeObservation } from '@/lib/score-modulation';
+import { computeProspectAdjustment } from '@/lib/prospect-score';
 import { PH_EVENTS } from '@/lib/posthog-events';
 import type { AnalysisResult as AnalysisResultShape } from '@/lib/analysis';
 import type { AskingPriceObsRow, BreakConfig, BreakFormat, ChaseCard, HypeObsRow, PlayerWithPricing, PlayerRiskFlag, Product, Sport } from '@/lib/types';
@@ -233,6 +234,7 @@ export default function BreakPage() {
             }
           }
 
+          const sportSlug = (prod.sport?.slug ?? '').toLowerCase();
           const augmented: PlayerWithPricing[] = playerList.map(p => {
             const teamObs = teamScope.get(p.player?.team ?? '') ?? [];
             const playerObs = playerScope.get(p.player_id) ?? [];
@@ -241,6 +243,11 @@ export default function BreakPage() {
               ...p,
               risk_score_adj: riskAdjMap.get(p.id) ?? 0,
               hype_score_adj: computeHypeAdjustment(all),
+              prospect_score_adj: computeProspectAdjustment({
+                prospect_rank: p.player?.prospect_rank,
+                prospect_status: p.player?.prospect_status,
+                sportSlug,
+              }),
             };
           });
           setRawPlayers(augmented);

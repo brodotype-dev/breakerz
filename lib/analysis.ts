@@ -2,6 +2,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { computeLiveEV, get90DayPrices } from '@/lib/cardhedger';
 import { computeSlotPricing, computeTeamSlotPricing, computeSignal, formatCurrency } from '@/lib/engine';
 import { computeRiskAdjustment, computeHypeAdjustment, type HypeObservation, type HypeTag } from '@/lib/score-modulation';
+import { computeProspectAdjustment } from '@/lib/prospect-score';
 import { getMarketMarkup, MARKET_MARKUP_RANGE } from '@/lib/market-markup';
 import type { PlayerWithPricing, BreakConfig, Signal, BreakFormat, PlayerRiskFlag, ProductLifecycle } from '@/lib/types';
 
@@ -273,6 +274,7 @@ export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisRe
     }
   }
 
+  const sportSlug = ((product.sport as { slug?: string } | null)?.slug ?? '').toLowerCase();
   const augmentedRawPlayers: PlayerWithPricing[] = rawPlayers.map(p => {
     const teamObs = teamScope.get(p.player?.team ?? '') ?? [];
     const playerObs = playerScope.get(p.player_id) ?? [];
@@ -281,6 +283,11 @@ export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisRe
       ...p,
       risk_score_adj: riskAdjMap.get(p.id) ?? 0,
       hype_score_adj: computeHypeAdjustment(all),
+      prospect_score_adj: computeProspectAdjustment({
+        prospect_rank: p.player?.prospect_rank,
+        prospect_status: p.player?.prospect_status,
+        sportSlug,
+      }),
     };
   });
 
