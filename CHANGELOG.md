@@ -5,6 +5,29 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-12 — Phase 1B of prospect attrs + cascading sentiment: Track A importer + Kyle CrossRef ingest script
+
+Second slice of [docs/plans/2026-05-12-prospect-attrs-and-cascading-sentiment.md](docs/plans/2026-05-12-prospect-attrs-and-cascading-sentiment.md). Phase 1A wired the engine; this commit adds the bulk-importer path and a one-shot script to load Kyle's 2026 Bowman CrossRef data.
+
+**Importer** ([app/api/admin/import-prospect-ranks/route.ts](app/api/admin/import-prospect-ranks/route.ts)): POST endpoint accepting `{ source, dryRun, rows: [{ sport, player_name, prospect_rank?, prospect_status?, team? }] }`. Validates every row up-front (no bail-on-first-error), fuzz-matches `player_name` to existing `players` rows within the sport (Levenshtein ≤ 2 on normalized names), uses `team` as tiebreaker when multiple candidates tie, and reports every outcome — `written`, `dryrun_matched`, `unmatched`, `ambiguous`, `invalid`, or `sport_unknown` — back in `perRow` for admin review. Auth: admin cookie OR `Bearer ${CRON_SECRET}` (so the one-shot script can run server-to-server). Update statement only writes columns the row explicitly provides — a status-only row won't blank out an existing rank, and vice versa.
+
+**Source-attribution governance.** Per the plan, Track A is institutional-only. Source strings must contain one of an allowlist of institutional keywords (Pipeline, ESPN, Big Board, Central Scouting, McKenzie, PFF, Kiper, Jeremiah, 247Sports, EliteProspects, TSN, MLB, NHL, NFL, NBA, Baseball America). "Kyle" rejects with a 400 explaining that subjective contributions belong in Track B Discord `/insight`. The Kyle CrossRef import uses `"MLB Pipeline May 2026 via Kyle CrossRef"` — keyword `pipeline` carries the institutional warrant, the trailing fragment is human-readable provenance.
+
+**Fuzz-match utility** ([lib/fuzz-match-players.ts](lib/fuzz-match-players.ts)): exports `normalizePlayerName` (lowercase + NFD diacritic-strip + punctuation-strip — `Dončić` → `doncic`, `Lombard Jr.` → `lombard jr`), iterative `editDistance` Levenshtein, `loadPlayersForSport` (one query per sport, reused across the whole batch), and `matchOne` (tier ladder: exact → ≤ N edit distance → team-tiebreaker → ambiguous). Ambiguous results never write — left for admin review.
+
+**Kyle CrossRef ingest script** ([scripts/import-kyle-crossref.mjs](scripts/import-kyle-crossref.mjs)): reads `~/Downloads/2026_Bowman_BreakIQ_CrossRef.xlsx` (Players (Full) sheet), parses the "Top 100" column into `{ prospect_rank, prospect_status }` — numeric → rank, "Graduated MLB" → `graduated_rc`, "NPB signee (ineligible)" → `international_signee`, "Top 100 (Mar '26 add)" → skipped (no precise rank). Posts to `/api/admin/import-prospect-ranks` with `dryRun: true` by default; pass `--commit` to actually write. Expected counts per plan: 17 ranked + 6 graduated_rc + 3 international_signee = 26 writes. Andrew Fischer skipped pending a precise rank from a later Pipeline release.
+
+**Out of scope (still ahead):** Track B Discord parser extension (Phase 2), bulk-sentiment Markdown importer + Claude skill (Phase 2.5), transparency UI (Phase 3).
+
+**Blocked on Brody before this is operational:**
+1. `supabase db push` to apply the 20260512180000 migration to production. The importer code expects those columns.
+2. Run `BREAKIQ_URL=https://www.getbreakiq.com CRON_SECRET=... node scripts/import-kyle-crossref.mjs` to inspect the dry-run, then `--commit` once the row results look right.
+
+**Files:**
+- New: [app/api/admin/import-prospect-ranks/route.ts](app/api/admin/import-prospect-ranks/route.ts), [lib/fuzz-match-players.ts](lib/fuzz-match-players.ts), [scripts/import-kyle-crossref.mjs](scripts/import-kyle-crossref.mjs)
+
+---
+
 ## 2026-05-12 — Phase 1A of prospect attrs + cascading sentiment: Track A engine wire-up
 
 First slice of [docs/plans/2026-05-12-prospect-attrs-and-cascading-sentiment.md](docs/plans/2026-05-12-prospect-attrs-and-cascading-sentiment.md). Plan splits subjective vs. objective player signals into two governance tracks:
