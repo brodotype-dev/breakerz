@@ -2,7 +2,7 @@
 
 Consolidated list of known work, organized by priority. Items pulled from the Social Currency PRD, CLAUDE.md known gaps, and open questions surfaced during development.
 
-**Last updated:** 2026-05-10
+**Last updated:** 2026-05-11
 
 ---
 
@@ -325,6 +325,20 @@ Those multipliers are population averages. They're systematically wrong on the v
 **Cross-references:**
 - Composes with the Discord `/insight` review flow — same admin pattern (capture qualitative signal, attribute to source, manually review). Eventually both could live behind one `/admin/intel` tab.
 - Feeds the BreakIQ Bets debrief — clusters of thumbs-down on a player are signal for a manual `breakerz_score` adjustment.
+
+---
+
+### Post-import setup flow — drop "Import another checklist", push admins forward
+**Effort:** ~2–3 hours
+
+**Why:** Surfaced 2026-05-11 by Brody after a clean checklist import + match (1,051 player-products, 6,892 variants, 100% auto match). The import-checklist result page's only terminal CTA other than "Go to Product Dashboard" is "Import another checklist" — but no admin sets up a new product by importing two checklists in a row. The real next steps after a fresh import are **(1)** add Chase Cards, **(2)** configure the anchor (per-product anchor configurator shipped in PR #78), **(3)** verify pricing coverage, **(4)** flip lifecycle to live. Today the admin has to navigate back to the product dashboard and remember those steps; the result page should walk them through.
+
+**Sketch:**
+- On step 3 (`Result`), replace the "Import another checklist" link with a small forward-flow stepper: **Chase Cards → Anchor Config → Verify Pricing → Flip to Live**. Each step is a card with a one-line description, a CTA button that deep-links into the relevant admin surface, and a checkmark once the underlying state is met (e.g. ≥1 chase card row, `products.pricing_anchor_*` set, ≥80% pricing coverage, `lifecycle_status='live'`).
+- "Import another checklist" relegated to a small secondary link at the bottom for the rare case where it's actually wanted.
+- Each step's "done?" check is a single SQL/Supabase read — keep it dumb, no cron involvement.
+
+**Relationship to the gated activation wizard below:** that entry is the structural rewrite — state machine, validation gates, demotion on edit. This entry is the tactical "good enough wizard" we can ship today using the existing surfaces. When the gated wizard lands it absorbs this flow; until then, this version closes the biggest UX gap (admins forgetting to configure anchors / chase cards before going live) for a fraction of the effort.
 
 ---
 
