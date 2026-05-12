@@ -5,6 +5,16 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-11 — Import-checklist page no longer crashes when an API returns a non-string error
+
+Brody hit a React #31 ("Objects are not valid as a React child, found: object with keys {code, id, ...}") while running CH match on the import-checklist page. The page renders four error states (`parseError`, `importError`, `matchError`, `oddsError`) as direct JSX children. All four setters assigned `json.error` straight from the API response without coercion — so any time the server returned a structured error (Postgrest, Anthropic envelope, etc.) instead of a string, React would blow up and the whole page would go to the "Application error" fallback.
+
+**Fix** ([app/admin/import-checklist/page.tsx](app/admin/import-checklist/page.tsx)): new `asErrorMessage(value, fallback)` helper coerces any value to a renderable string — returns `value.message` or `value.error` if those are strings, otherwise `JSON.stringify(value)`, otherwise the fallback. Applied at every `set*Error(json.error ?? ...)` site. Now the page surfaces the underlying error instead of crashing, which lets us actually diagnose what the server returned.
+
+**Root cause on the server side is still open.** The defensive fix unblocks the UI; next pass is to find which call inside `/api/admin/match-cardhedger` (or its CH / Claude / Supabase dependencies) returned an `{code, id, ...}` envelope, and fix the source so the error message is human-readable.
+
+---
+
 ## 2026-05-11 — Inline Break Analysis block on the product page
 
 UX change: `/break/[slug]`'s "Format Mix" card was just three case counters + a break-cost rollup. Replaced with a full **Break Analysis** block that runs the same bundle analysis as `/analysis` without leaving the product page — pre-selected since we're on the product. Same flow Kyle uses on `/analysis` (format mix → team chip multi-select → searchable player picker → ask price → Run → AI verdict + market ask range + top players + risk flags), now reachable directly from any product without re-picking the product.

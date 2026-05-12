@@ -56,6 +56,20 @@ function confidenceColor(status: MatchRow['status']) {
   return 'text-red-500';
 }
 
+// Coerce any API error value to a renderable string. Server JSON sometimes
+// hands back `error` as an object (Postgres / Anthropic / nested envelopes);
+// rendering that directly as a React child throws #31.
+function asErrorMessage(value: unknown, fallback: string): string {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    if (typeof obj.message === 'string') return obj.message;
+    if (typeof obj.error === 'string') return obj.error;
+    try { return JSON.stringify(value); } catch { return fallback; }
+  }
+  return fallback;
+}
+
 // ─── Component ───────────────────────────────────────────────────────────────
 
 function ImportChecklistInner() {
@@ -123,7 +137,7 @@ function ImportChecklistInner() {
       const json = await res.json();
 
       if (!res.ok || json.error) {
-        setParseError(json.error ?? 'Parse failed');
+        setParseError(asErrorMessage(json.error, 'Parse failed'));
         setParsing(false);
         return;
       }
@@ -269,7 +283,7 @@ function ImportChecklistInner() {
         }
 
         if (!res.ok || json.error) {
-          setImportError(`Batch ${i + 1}/${batches.length}: ${json.error ?? `HTTP ${res.status}`}`);
+          setImportError(`Batch ${i + 1}/${batches.length}: ${asErrorMessage(json.error, `HTTP ${res.status}`)}`);
           setImporting(false);
           return;
         }
@@ -337,7 +351,7 @@ function ImportChecklistInner() {
         }
 
         if (!res.ok || json.error) {
-          setMatchError(json.error ?? `Match failed (${res.status})`);
+          setMatchError(asErrorMessage(json.error, `Match failed (${res.status})`));
           setMatching(false);
           return;
         }
@@ -388,7 +402,7 @@ function ImportChecklistInner() {
       const parseRes = await fetch('/api/admin/parse-odds', { method: 'POST', body: formData });
       const parseJson = await parseRes.json();
       if (!parseRes.ok || parseJson.error) {
-        setOddsError(parseJson.error ?? 'Odds parse failed');
+        setOddsError(asErrorMessage(parseJson.error, 'Odds parse failed'));
         setOddsUploading(false);
         return;
       }
@@ -401,7 +415,7 @@ function ImportChecklistInner() {
       });
       const applyJson = await applyRes.json();
       if (!applyRes.ok || applyJson.error) {
-        setOddsError(applyJson.error ?? 'Apply odds failed');
+        setOddsError(asErrorMessage(applyJson.error, 'Apply odds failed'));
       } else {
         setOddsResult(applyJson);
       }
