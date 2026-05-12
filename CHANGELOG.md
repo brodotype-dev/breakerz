@@ -5,6 +5,58 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-12 — Phase 1B of prospect attrs + cascading sentiment: Track A importer + Kyle CrossRef ingest script
+
+Second slice of [docs/plans/2026-05-12-prospect-attrs-and-cascading-sentiment.md](docs/plans/2026-05-12-prospect-attrs-and-cascading-sentiment.md). Phase 1A wired the engine; this commit adds the bulk-importer path and a one-shot script to load Kyle's 2026 Bowman CrossRef data.
+
+**Importer** ([app/api/admin/import-prospect-ranks/route.ts](app/api/admin/import-prospect-ranks/route.ts)): POST endpoint accepting `{ source, dryRun, rows: [{ sport, player_name, prospect_rank?, prospect_status?, team? }] }`. Validates every row up-front (no bail-on-first-error), fuzz-matches `player_name` to existing `players` rows within the sport (Levenshtein ≤ 2 on normalized names), uses `team` as tiebreaker when multiple candidates tie, and reports every outcome — `written`, `dryrun_matched`, `unmatched`, `ambiguous`, `invalid`, or `sport_unknown` — back in `perRow` for admin review. Auth: admin cookie OR `Bearer ${CRON_SECRET}` (so the one-shot script can run server-to-server). Update statement only writes columns the row explicitly provides — a status-only row won't blank out an existing rank, and vice versa.
+
+**Source-attribution governance.** Per the plan, Track A is institutional-only. Source strings must contain one of an allowlist of institutional keywords (Pipeline, ESPN, Big Board, Central Scouting, McKenzie, PFF, Kiper, Jeremiah, 247Sports, EliteProspects, TSN, MLB, NHL, NFL, NBA, Baseball America). "Kyle" rejects with a 400 explaining that subjective contributions belong in Track B Discord `/insight`. The Kyle CrossRef import uses `"MLB Pipeline May 2026 via Kyle CrossRef"` — keyword `pipeline` carries the institutional warrant, the trailing fragment is human-readable provenance.
+
+**Fuzz-match utility** ([lib/fuzz-match-players.ts](lib/fuzz-match-players.ts)): exports `normalizePlayerName` (lowercase + NFD diacritic-strip + punctuation-strip — `Dončić` → `doncic`, `Lombard Jr.` → `lombard jr`), iterative `editDistance` Levenshtein, `loadPlayersForSport` (one query per sport, reused across the whole batch), and `matchOne` (tier ladder: exact → ≤ N edit distance → team-tiebreaker → ambiguous). Ambiguous results never write — left for admin review.
+
+**Kyle CrossRef ingest script** ([scripts/import-kyle-crossref.mjs](scripts/import-kyle-crossref.mjs)): reads `~/Downloads/2026_Bowman_BreakIQ_CrossRef.xlsx` (Players (Full) sheet), parses the "Top 100" column into `{ prospect_rank, prospect_status }` — numeric → rank, "Graduated MLB" → `graduated_rc`, "NPB signee (ineligible)" → `international_signee`, "Top 100 (Mar '26 add)" → skipped (no precise rank). Posts to `/api/admin/import-prospect-ranks` with `dryRun: true` by default; pass `--commit` to actually write. Expected counts per plan: 17 ranked + 6 graduated_rc + 3 international_signee = 26 writes. Andrew Fischer skipped pending a precise rank from a later Pipeline release.
+
+**Out of scope (still ahead):** Track B Discord parser extension (Phase 2), bulk-sentiment Markdown importer + Claude skill (Phase 2.5), transparency UI (Phase 3).
+
+**Blocked on Brody before this is operational:**
+1. `supabase db push` to apply the 20260512180000 migration to production. The importer code expects those columns.
+2. Run `BREAKIQ_URL=https://www.getbreakiq.com CRON_SECRET=... node scripts/import-kyle-crossref.mjs` to inspect the dry-run, then `--commit` once the row results look right.
+
+**Files:**
+- New: [app/api/admin/import-prospect-ranks/route.ts](app/api/admin/import-prospect-ranks/route.ts), [lib/fuzz-match-players.ts](lib/fuzz-match-players.ts), [scripts/import-kyle-crossref.mjs](scripts/import-kyle-crossref.mjs)
+
+---
+
+## 2026-05-12 — Phase 1A of prospect attrs + cascading sentiment: Track A engine wire-up
+
+First slice of [docs/plans/2026-05-12-prospect-attrs-and-cascading-sentiment.md](docs/plans/2026-05-12-prospect-attrs-and-cascading-sentiment.md). Plan splits subjective vs. objective player signals into two governance tracks:
+
+- **Track A — Objective:** prospect rank + status from institutional sources (MLB Pipeline, ESPN Big Board, NHL Central Scouting, etc.). Bulk-importable; attribution is the institution, not a person.
+- **Track B — Subjective:** team / product / team-product sentiment via Discord `/insight` (or bulk-import with per-row personal attribution for launch analyses). Out of scope for this commit.
+
+This commit is Track A's engine wire-up — schema + module + threading only, no importer, no actual data ingest yet. Effective scores are unchanged on every player until prospect_rank gets populated.
+
+**Schema** ([supabase/migrations/20260512180000_players_prospect_attributes.sql](supabase/migrations/20260512180000_players_prospect_attributes.sql)): 4 nullable columns on `players` — `prospect_rank` (integer), `prospect_status` (CHECK in `'graduated_rc' | 'international_signee' | NULL`), `prospect_rank_source` (institutional provenance string), `prospect_rank_updated_at`. One sport-agnostic column set; per-sport interpretation lives in the source string and the per-sport multiplier in the score module. Migration **NOT YET APPLIED to production** — awaiting Brody's `supabase db push`.
+
+**Scoring module** ([lib/prospect-score.ts](lib/prospect-score.ts)): `computeProspectAdjustment({ prospect_rank, prospect_status, sportSlug })` returns the additive bump folded into `effectiveScore`. Constants per the plan: rank tier ladder (top-10 → +0.60, top-30 → +0.40, top-100 → +0.20), status bumps (graduated_rc +0.15, international_signee +0.10), sport multipliers (baseball 1.0, basketball 0.9, football 0.7, hockey 0.6), cap +0.70.
+
+**Engine threading** ([lib/engine.ts](lib/engine.ts)): `computeEffectiveScore` gains an optional 6th arg `prospectScoreAdj` (default 0 — every existing 3-arg / 5-arg caller continues working unchanged). The inline `effectiveScore` calc inside `computeSlotPricing` reads `p.prospect_score_adj` alongside the existing risk + hype adjustments, so slot-cost math picks up the bump automatically for any player with prospect_rank populated.
+
+**Types** ([lib/types.ts](lib/types.ts)): `Player` gains optional `prospect_rank` / `prospect_status` / `prospect_rank_source` / `prospect_rank_updated_at`. `PlayerWithPricing` gains optional `prospect_score_adj` — runtime modulator, not persisted in pricing_cache (matches the existing risk/hype pattern).
+
+**Computation sites** — same render-time pattern as risk/hype, no pricing-refresh changes needed:
+- [lib/analysis.ts](lib/analysis.ts) computes per-pp `prospect_score_adj` using `product.sport.slug` + `p.player.prospect_rank` + `p.player.prospect_status`, attaches alongside the existing risk + hype augmentation
+- [app/(consumer)/break/[slug]/page.tsx](app/(consumer)/break/[slug]/page.tsx) does the same for the live break page
+
+**Out of scope (next commits):** importer (`/api/admin/import-prospect-ranks`), Kyle's CrossRef CSV ingest, Track B Discord parser extension, cascade reader, transparency UI. See plan for the full Phase 2/2.5/3 split.
+
+**Files:**
+- New: [supabase/migrations/20260512180000_players_prospect_attributes.sql](supabase/migrations/20260512180000_players_prospect_attributes.sql), [lib/prospect-score.ts](lib/prospect-score.ts), [docs/plans/2026-05-12-prospect-attrs-and-cascading-sentiment.md](docs/plans/2026-05-12-prospect-attrs-and-cascading-sentiment.md)
+- Modified: [lib/engine.ts](lib/engine.ts), [lib/types.ts](lib/types.ts), [lib/analysis.ts](lib/analysis.ts), [app/(consumer)/break/[slug]/page.tsx](app/(consumer)/break/[slug]/page.tsx)
+
+---
+
 ## 2026-05-11 — Import-checklist page no longer crashes when an API returns a non-string error
 
 Brody hit a React #31 ("Objects are not valid as a React child, found: object with keys {code, id, ...}") while running CH match on the import-checklist page. The page renders four error states (`parseError`, `importError`, `matchError`, `oddsError`) as direct JSX children. All four setters assigned `json.error` straight from the API response without coercion — so any time the server returned a structured error (Postgrest, Anthropic envelope, etc.) instead of a string, React would blow up and the whole page would go to the "Application error" fallback.

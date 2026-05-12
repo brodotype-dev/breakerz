@@ -76,6 +76,13 @@ export interface Player {
   team: string;
   is_rookie: boolean;
   is_icon: boolean;
+  // Track A — Objective prospect attributes (institutional source). NULL on
+  // every player by default; populated via admin CSV import. See
+  // lib/prospect-score.ts and docs/plans/2026-05-12-prospect-attrs-and-cascading-sentiment.md.
+  prospect_rank?: number | null;
+  prospect_status?: 'graduated_rc' | 'international_signee' | null;
+  prospect_rank_source?: string | null;
+  prospect_rank_updated_at?: string | null;
 }
 
 export interface PlayerProduct {
@@ -152,10 +159,11 @@ export interface PlayerWithPricing extends PlayerProduct {
   // confidence to report.
   confidence?: number | null;
   // Runtime-only score modulators applied before the engine clamps.
-  // Both default to 0 when undefined; not persisted in pricing_cache.
-  // See lib/score-modulation.ts.
+  // All default to 0 when undefined; not persisted in pricing_cache.
+  // See lib/score-modulation.ts (risk + hype) and lib/prospect-score.ts.
   risk_score_adj?: number;
   hype_score_adj?: number;
+  prospect_score_adj?: number;
 }
 
 export interface PlayerProductVariant {
