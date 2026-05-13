@@ -37,6 +37,33 @@ const commands = [
       },
     ],
   },
+  {
+    name: 'break-price',
+    description: 'Capture a live breaker slot ask — narrative, screenshot, or both',
+    type: 1, // CHAT_INPUT
+    options: [
+      {
+        name: 'narrative',
+        description: 'Optional: "Dodgers $625 hobby Whatnot tonight" — at least one of narrative/screenshot required',
+        type: 3, // STRING
+        required: false,
+        max_length: 500,
+      },
+      {
+        name: 'screenshot',
+        description: 'Optional: screenshot of the listing (Whatnot, Fanatics Live, eBay, etc.)',
+        type: 11, // ATTACHMENT
+        required: false,
+      },
+      {
+        name: 'notes',
+        description: 'Optional context for Claude — "this is the BD slot, not hobby"',
+        type: 3, // STRING
+        required: false,
+        max_length: 500,
+      },
+    ],
+  },
 ];
 
 const url = `https://discord.com/api/v10/applications/${DISCORD_APP_ID}/guilds/${DISCORD_GUILD_ID}/commands`;

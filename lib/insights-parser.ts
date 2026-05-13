@@ -705,3 +705,254 @@ export function summarizeUpdate(u: ParsedUpdate): string {
     }
   }
 }
+
+// ─── /break-price — specialized parser ──────────────────────────────────
+//
+// Single-purpose: extract asking_price observations from a narrative, an
+// image (Whatnot/Fanatics/eBay screenshot), or both. Returns only
+// `asking_price` ParsedUpdate rows so the apply path can reuse the
+// existing /insight handler for asking_price.
+//
+// Multi-team and multi-format bundles are EXPLICITLY out of scope — see
+// docs/edge-cases.md. The prompt tells Claude to drop them.
+
+export interface BreakPriceInput {
+  /** At least one of narrative / imageBase64 must be set. */
+  narrative?: string;
+  /** Base64-encoded image bytes (no data: prefix). */
+  imageBase64?: string;
+  /** MIME type, e.g. 'image/png' or 'image/jpeg'. */
+  imageMediaType?: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
+  /** Optional context to add to the prompt. */
+  notes?: string;
+}
+
+export interface BreakPriceResult {
+  updates: Extract<ParsedUpdate, { kind: 'asking_price' }>[];
+  debug: {
+    rosterSize: number;
+    productsCount: number;
+    rawResponseExcerpt: string;
+    parsedRawCount: number;
+    droppedReasons: string[];
+    hadImage: boolean;
+    hadNarrative: boolean;
+  };
+}
+
+export async function parseBreakPrice(input: BreakPriceInput): Promise<BreakPriceResult> {
+  const hadNarrative = !!input.narrative?.trim();
+  const hadImage = !!input.imageBase64;
+
+  const baseDebug = {
+    rosterSize: 0,
+    productsCount: 0,
+    rawResponseExcerpt: '',
+    parsedRawCount: 0,
+    droppedReasons: [] as string[],
+    hadImage,
+    hadNarrative,
+  };
+
+  if (!hadNarrative && !hadImage) {
+    return { updates: [], debug: { ...baseDebug, rawResponseExcerpt: 'no input' } };
+  }
+
+  // Roster fetch — same shape as parseInsights but only loads active
+  // products. We don't need the full player roster for asking_price
+  // captures since scope_player_id is rare (most asks are team-scoped).
+  // But we still load it so player-scoped asks work.
+  const { data: products, error: prodErr } = await supabaseAdmin
+    .from('products')
+    .select('id, name, year, lifecycle_status')
+    .eq('is_active', true)
+    .in('lifecycle_status', ['live', 'pre_release']);
+
+  if (prodErr || !products?.length) {
+    return {
+      updates: [],
+      debug: {
+        ...baseDebug,
+        productsCount: 0,
+        rawResponseExcerpt: prodErr?.message ?? 'no active products',
+        droppedReasons: ['no active products'],
+      },
+    };
+  }
+
+  let players: Array<{ id: string; name: string; team: string }> = [];
+  {
+    const PAGE = 1000;
+    for (let from = 0; ; from += PAGE) {
+      const { data } = await supabaseAdmin
+        .from('players')
+        .select('id, name, team')
+        .not('name', 'like', '%/%')
+        .order('name')
+        .range(from, from + PAGE - 1);
+      if (!data || data.length === 0) break;
+      players.push(...data);
+      if (data.length < PAGE || players.length >= 5000) break;
+    }
+  }
+
+  const productLines = products.map(p => `- ${p.year} ${p.name} [id: ${p.id}]`).join('\n');
+
+  const prompt = `You are extracting a live-break slot ask price from a sports card market observation.
+
+Available products (use product ids exactly):
+${productLines}
+
+${
+    hadNarrative
+      ? `Narrative from the contributor:\n"""\n${input.narrative!.trim()}\n"""`
+      : 'No narrative provided — extract from the image only.'
+  }
+${input.notes?.trim() ? `\nAdditional context:\n"""\n${input.notes.trim()}\n"""` : ''}
+${hadImage ? '\nA screenshot is attached. Read it carefully — Whatnot, Fanatics Live, eBay listings, and Discord stream embeds all encode the product / team / price / format / platform in their UI.' : ''}
+
+Return JSON ONLY — a JSON array of zero or more asking_price update objects. No markdown, no explanation. Empty array = couldn't extract.
+
+Schema for each asking_price update:
+{
+  "kind": "asking_price",
+  "product_id": "<exact id from the list above>",
+  "product_name": "<exact name from the list>",
+  "scope_type": "team" | "player" | "product" | "variant",
+  "scope_team": "<full team name, only when scope_type=team>",
+  "scope_player_id": "<player id, only when scope_type=player or variant>",
+  "variant_name": "<free text, only when scope_type=variant>",
+  "format": "hobby" | "bd" | "jumbo",
+  "price_low": <integer dollars>,
+  "price_high": <integer dollars — same as price_low for a single price, different for a range>,
+  "source": "stream_ask" | "ebay_listing" | "social_post" | "other",
+  "source_note": "<one-line description of where this came from, e.g. 'Whatnot Dave Adams Sunday break'>",
+  "confidence": <0..1>
+}
+
+RULES:
+- ONE asking_price row per call. Multiple rows ONLY if the screenshot shows multiple discrete slot listings.
+- Multi-team bundle ("Yankees + Red Sox + Dodgers $2,400"): return empty array. Multi-team is not yet supported (see edge-cases doc).
+- Multi-format bundle ("1 hobby + 2 BD for $5k"): return empty array. Multi-format is not yet supported.
+- Multi-player bundles inside a one-team slot are FINE — that's still a team slot ask, just with chase cards listed.
+- DO NOT GUESS the product. If you can't match the listing to a product in the list, return empty array. Wrong product attribution is worse than missing data.
+- For source: 'stream_ask' = Whatnot/Fanatics Live/breaker stream. 'ebay_listing' = unsold eBay listing. 'social_post' = Twitter/IG/Discord post. 'other' = anything else.
+- Format defaults to 'hobby' when ambiguous and the platform is a hobby-only stream.
+- Team names: use the canonical full name ("Los Angeles Dodgers" not "Dodgers"). If you only see the city/nickname, expand it.
+- price_low and price_high are integer dollars. Strip $ and commas.
+- confidence: 0.9+ if every field is unambiguous in the source. Lower for inferred fields.`;
+
+  // Build the content block — text + optional image.
+  type ImageMediaType = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
+  const userContent: Array<
+    | { type: 'text'; text: string }
+    | { type: 'image'; source: { type: 'base64'; media_type: ImageMediaType; data: string } }
+  > = [];
+  if (hadImage) {
+    userContent.push({
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: (input.imageMediaType ?? 'image/png') as ImageMediaType,
+        data: input.imageBase64!,
+      },
+    });
+  }
+  userContent.push({ type: 'text', text: prompt });
+
+  const { default: Anthropic } = await import('@anthropic-ai/sdk');
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  const message = await client.messages.create(
+    {
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: userContent }],
+    },
+    { timeout: 30_000 },
+  );
+
+  const raw = (message.content[0] as { type: string; text: string }).text.trim();
+  const debug = {
+    ...baseDebug,
+    rosterSize: players.length,
+    productsCount: products.length,
+    rawResponseExcerpt: raw.slice(0, 600),
+  };
+  console.log(`[break-price] products=${products.length} hadImage=${hadImage} hadNarrative=${hadNarrative} response_chars=${raw.length}`);
+
+  const arrayMatch = raw.match(/\[[\s\S]*\]/);
+  if (!arrayMatch) {
+    return { updates: [], debug: { ...debug, droppedReasons: ['no JSON array in response'] } };
+  }
+
+  let parsed: unknown[];
+  try {
+    parsed = JSON.parse(arrayMatch[0]);
+  } catch (err) {
+    return { updates: [], debug: { ...debug, droppedReasons: [`json parse: ${err instanceof Error ? err.message : err}`] } };
+  }
+
+  const validProductIds = new Set(products.map(p => p.id));
+  const productById = new Map(products.map(p => [p.id, p.name]));
+  const playerById = new Map(players.map(p => [p.id, p.name]));
+  const validFormats = new Set(['hobby', 'bd', 'jumbo']);
+  const validSources = new Set(['stream_ask', 'ebay_listing', 'social_post', 'other']);
+  const validScopes = new Set(['team', 'player', 'product', 'variant']);
+
+  const valid: Extract<ParsedUpdate, { kind: 'asking_price' }>[] = [];
+  const dropped: string[] = [];
+
+  for (const u of parsed) {
+    if (!u || typeof u !== 'object' || (u as any).kind !== 'asking_price') {
+      dropped.push('not an asking_price update'); continue;
+    }
+    const row = u as Record<string, unknown>;
+    if (!validProductIds.has(row.product_id as string)) {
+      dropped.push(`unknown product_id=${row.product_id}`); continue;
+    }
+    if (!validScopes.has(row.scope_type as string)) {
+      dropped.push(`bad scope_type=${row.scope_type}`); continue;
+    }
+    if (!validFormats.has(row.format as string)) {
+      dropped.push(`bad format=${row.format}`); continue;
+    }
+    if (!validSources.has(row.source as string)) {
+      dropped.push(`bad source=${row.source}`); continue;
+    }
+    const lo = Number(row.price_low);
+    const hi = Number(row.price_high);
+    if (!Number.isFinite(lo) || !Number.isFinite(hi) || lo <= 0 || hi < lo) {
+      dropped.push(`bad price range lo=${row.price_low} hi=${row.price_high}`); continue;
+    }
+    if (row.scope_type === 'player' || row.scope_type === 'variant') {
+      if (!playerById.has(row.scope_player_id as string)) {
+        dropped.push(`scope_player_id not in roster: ${row.scope_player_id}`); continue;
+      }
+    }
+    if (row.scope_type === 'team' && !(row.scope_team as string)?.trim()) {
+      dropped.push('team scope missing scope_team'); continue;
+    }
+
+    valid.push({
+      kind: 'asking_price',
+      product_id: row.product_id as string,
+      product_name: productById.get(row.product_id as string) ?? (row.product_name as string),
+      scope_type: row.scope_type as 'team' | 'player' | 'product' | 'variant',
+      scope_team: row.scope_team as string | undefined,
+      scope_player_id: row.scope_player_id as string | undefined,
+      variant_name: row.variant_name as string | undefined,
+      format: row.format as 'hobby' | 'bd' | 'jumbo',
+      price_low: Math.round(lo),
+      price_high: Math.round(hi),
+      source: row.source as AskingPriceSource,
+      source_note: (row.source_note as string) ?? '',
+      confidence: Math.max(0, Math.min(1, Number(row.confidence) || 0)),
+    });
+  }
+
+  return {
+    updates: valid,
+    debug: { ...debug, parsedRawCount: parsed.length, droppedReasons: dropped },
+  };
+}

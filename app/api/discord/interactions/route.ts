@@ -9,7 +9,7 @@ import {
   ButtonStyle,
   InteractionFlags,
 } from '@/lib/discord';
-import { parseInsights, summarizeUpdate, type ParsedUpdate } from '@/lib/insights-parser';
+import { parseInsights, parseBreakPrice, summarizeUpdate, type ParsedUpdate } from '@/lib/insights-parser';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -74,6 +74,17 @@ function ephemeralReply(content: string) {
 
 // ─── /insight handler ────────────────────────────────────────────────────
 
+interface DiscordAttachment {
+  id: string;
+  filename: string;
+  size: number;
+  url: string;
+  proxy_url: string;
+  content_type?: string;
+  width?: number;
+  height?: number;
+}
+
 interface SlashCommandInteraction {
   application_id: string;
   token: string;
@@ -82,11 +93,19 @@ interface SlashCommandInteraction {
   user?: { id: string; username: string; global_name?: string };
   data: {
     name: string;
-    options?: Array<{ name: string; value: string }>;
+    // option.type 11 is ATTACHMENT — value is the attachment id, resolved
+    // via data.resolved.attachments. Other option types have string values.
+    options?: Array<{ name: string; value: string; type?: number }>;
+    resolved?: {
+      attachments?: Record<string, DiscordAttachment>;
+    };
   };
 }
 
 async function handleSlashCommand(interaction: SlashCommandInteraction): Promise<NextResponse> {
+  if (interaction.data.name === 'break-price') {
+    return handleBreakPrice(interaction);
+  }
   if (interaction.data.name !== 'insight') {
     return ephemeralReply('Unknown command.');
   }
@@ -186,6 +205,157 @@ async function handleSlashCommand(interaction: SlashCommandInteraction): Promise
   });
 
   // Synchronous ack — the final reply will land via the after() block above.
+  return NextResponse.json({
+    type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+  });
+}
+
+// ─── /break-price handler ────────────────────────────────────────────────
+// Roadmap step #2. Structured slot-ask capture: narrative + optional
+// screenshot. Claude parses both into one or more asking_price
+// observations. Reuses the same pending_insights staging + ✅/❌ button
+// flow as /insight, so the apply path doesn't fork.
+//
+// Multi-team and multi-format bundles are dropped at parse time — see
+// docs/edge-cases.md.
+
+async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<NextResponse> {
+  const user = interaction.member?.user ?? interaction.user;
+  if (!user) return ephemeralReply('Could not identify you, sorry.');
+
+  if (!(await isAllowlisted(user.id))) {
+    return ephemeralReply(
+      'You are not on the BreakIQ contributor allowlist. Ping Brody to get added.',
+    );
+  }
+
+  const options = interaction.data.options ?? [];
+  const narrative = options.find(o => o.name === 'narrative')?.value?.trim();
+  const notes = options.find(o => o.name === 'notes')?.value?.trim();
+  const attachmentId = options.find(o => o.name === 'screenshot')?.value;
+  const attachment = attachmentId
+    ? interaction.data.resolved?.attachments?.[attachmentId]
+    : undefined;
+
+  if (!narrative && !attachment) {
+    return ephemeralReply('Include at least a narrative or a screenshot.');
+  }
+
+  // Defer immediately — image fetch + Claude vision call can take several
+  // seconds and we only have 3s to ack.
+  after(async () => {
+    try {
+      let imageBase64: string | undefined;
+      let imageMediaType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif' | undefined;
+
+      if (attachment) {
+        const VALID_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
+        const mt = (attachment.content_type ?? '').split(';')[0].trim();
+        if (!VALID_TYPES.has(mt)) {
+          await editInteractionResponse(interaction.application_id, interaction.token, {
+            content: `❓ Attachment type \`${mt || 'unknown'}\` isn't supported. Use PNG/JPEG/WebP/GIF.`,
+          });
+          return;
+        }
+        // Discord CDN URLs are time-bound. We need to fetch within ~24h
+        // of the interaction, which we are — this runs in the same request.
+        const imgRes = await fetch(attachment.url);
+        if (!imgRes.ok) {
+          await editInteractionResponse(interaction.application_id, interaction.token, {
+            content: `⚠️ Couldn't fetch the screenshot (status ${imgRes.status}).`,
+          });
+          return;
+        }
+        const buf = Buffer.from(await imgRes.arrayBuffer());
+        // Cap at 5 MB to keep Claude payload sane. Discord allows up to
+        // 25 MB for Nitro users but anything that big is screen-recording
+        // territory, not a screenshot.
+        if (buf.byteLength > 5 * 1024 * 1024) {
+          await editInteractionResponse(interaction.application_id, interaction.token, {
+            content: `⚠️ Screenshot is ${(buf.byteLength / 1024 / 1024).toFixed(1)} MB — please re-share under 5 MB.`,
+          });
+          return;
+        }
+        imageBase64 = buf.toString('base64');
+        imageMediaType = mt as typeof imageMediaType;
+      }
+
+      const { updates, debug } = await parseBreakPrice({ narrative, notes, imageBase64, imageMediaType });
+
+      if (updates.length === 0) {
+        const excerpt = debug.rawResponseExcerpt.replace(/```/g, "'''").slice(0, 500);
+        await editInteractionResponse(interaction.application_id, interaction.token, {
+          content:
+            `❓ Couldn't extract a slot ask.\n` +
+            (narrative ? `> ${narrative.slice(0, 200)}\n` : '') +
+            `\n**Debug:** products=${debug.productsCount}, parsedRaw=${debug.parsedRawCount}, hadImage=${debug.hadImage}, drops=${debug.droppedReasons.length}\n` +
+            (debug.droppedReasons.length > 0
+              ? `**Dropped:** ${debug.droppedReasons.slice(0, 4).join(' | ')}\n\n`
+              : '\n') +
+            (excerpt ? `**Claude raw (first 500):**\n\`\`\`${excerpt}\`\`\`` : ''),
+        });
+        return;
+      }
+
+      const { data: pending, error: pendErr } = await supabaseAdmin
+        .from('pending_insights')
+        .insert({
+          discord_channel_id: interaction.channel_id,
+          source_user_id: user.id,
+          source_text: narrative ?? (attachment ? `[screenshot: ${attachment.filename}]` : ''),
+          parsed_updates: updates as unknown as object,
+        })
+        .select('id')
+        .single();
+
+      if (pendErr || !pending) {
+        await editInteractionResponse(interaction.application_id, interaction.token, {
+          content: `⚠️ Parsed ${updates.length} ask${updates.length === 1 ? '' : 's'} but couldn't stage them: ${pendErr?.message ?? 'unknown error'}`,
+        });
+        return;
+      }
+
+      const summary = updates.map((u, i) => `**${i + 1}.** ${summarizeUpdate(u)}`).join('\n');
+      const handle = user.global_name ?? user.username;
+      const sourceLabel = narrative
+        ? `> ${narrative.slice(0, 240)}${attachment ? ` _(+ screenshot)_` : ''}`
+        : `_(screenshot only: ${attachment?.filename})_`;
+
+      await editInteractionResponse(interaction.application_id, interaction.token, {
+        content:
+          `**Slot ask from @${handle}:**\n${sourceLabel}\n\n` +
+          `**Proposed (${updates.length}):**\n${summary}\n\n` +
+          `Click ✅ to apply, ❌ to discard.`,
+        components: [
+          {
+            type: ComponentType.ACTION_ROW,
+            components: [
+              {
+                type: ComponentType.BUTTON,
+                style: ButtonStyle.SUCCESS,
+                label: 'Apply',
+                custom_id: `confirm:${pending.id}`,
+                emoji: { name: '✅' },
+              },
+              {
+                type: ComponentType.BUTTON,
+                style: ButtonStyle.DANGER,
+                label: 'Discard',
+                custom_id: `discard:${pending.id}`,
+                emoji: { name: '❌' },
+              },
+            ],
+          },
+        ],
+      });
+    } catch (err) {
+      console.error('[discord/break-price] parse failed', err);
+      await editInteractionResponse(interaction.application_id, interaction.token, {
+        content: `⚠️ Parser error: ${err instanceof Error ? err.message : 'unknown'}`,
+      }).catch(() => {});
+    }
+  });
+
   return NextResponse.json({
     type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
   });

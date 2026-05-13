@@ -5,6 +5,31 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-13 — Execution roadmap step #2: `/break-price` Discord slash command (text + vision capture)
+
+Replaces the original "admin paste UI" sketch of step #2 with a Discord-first design — meets SMEs where their eyeballs already are (watching streams) and reuses the entire Phase 2 `/insight` infrastructure for staging + confirmation + apply.
+
+**New slash command** `/break-price` with three options: `narrative` (string, optional), `screenshot` (attachment, optional), `notes` (string, optional). At least one of narrative/screenshot is required. Registered via [scripts/register-discord-commands.mjs](scripts/register-discord-commands.mjs) — re-run with `DISCORD_APP_ID` + `DISCORD_BOT_TOKEN` + `DISCORD_GUILD_ID` env vars to push to Discord. The screenshot option (type 11) resolves to a Discord CDN URL in `data.resolved.attachments`; the dispatcher fetches it, base64-encodes, and feeds into Claude vision.
+
+**Parser** ([lib/insights-parser.ts](lib/insights-parser.ts)). New `parseBreakPrice()` function next to `parseInsights()`. Single-purpose: emit `asking_price` ParsedUpdate rows only — no sentiment, no risk, no hype. Builds Claude messages with `[{ type: 'image', source: { type: 'base64', media_type, data } }, { type: 'text', text: prompt }]` when a screenshot is present. Uses Haiku 4.5 (vision-capable, $0.002/image vs Sonnet's $0.005). Roster-aware: pre-loads active products + player names so Claude can return canonical product_id and scope_player_id. Validates every row against the roster, drops anything with bad scope/format/source/price-range. Empty array on multi-team or multi-format bundles per the edge-cases doc.
+
+**Discord dispatcher** ([app/api/discord/interactions/route.ts](app/api/discord/interactions/route.ts)). New `handleBreakPrice()` function. Resolves attachment from `data.resolved.attachments[attachmentId]`, validates MIME type (PNG/JPEG/WebP/GIF), enforces 5 MB cap, fetches the Discord CDN URL, base64-encodes, calls `parseBreakPrice`. Stages proposed updates to the existing `pending_insights` table with the same ✅/❌ button flow as `/insight` — so the apply path (which already supports `asking_price`) doesn't fork. Allowlist check identical to `/insight`. Reply renders "Slot ask from @handle: > narrative (+ screenshot)" with the proposed rows below.
+
+**Market Delta Watch surface** ([app/admin/market-delta/page.tsx](app/admin/market-delta/page.tsx)). New "/break-price captures" panel below the existing per-product breakdown. Lists the most recent 50 `market_observations.asking_price` rows with their product / scope / format / price / source. Resolves player names for player- and variant-scoped rows. Doesn't yet compute delta vs. current pricing — that's a follow-up requiring per-team fair-value lookup from `pricing_cache`. v1 surface is "did the capture pipeline flow?", not "what does the delta look like?"
+
+**Edge cases doc** ([docs/edge-cases.md](docs/edge-cases.md)). New running log for documented-but-deferred edge cases. Seeded with three entries:
+- **Multi-team bundle asks** ("Yankees + Red Sox + Dodgers $2,400"): Claude returns empty array. Brody's hunch — the right answer is a `break_config_id` concept tying multiple team-rows together as a bundle, but defer until either the `needs_human_review` queue gets noisy or step #3 needs bundle deltas.
+- **Multi-format bundle asks** ("$5k for 1 hobby + 2 BD"): same treatment. Cleanest later answer is a `bundle` observation_type with `formats: { hobby, bd, jumbo }` in payload.
+- **Price ranges** ($600-700): handled — schema already supports `price_low` + `price_high` separately.
+
+**Why Discord-first instead of admin UI.** Eyeballs already there (watching Whatnot/Fanatics streams from phone), zero context switch, mobile-friendly, reuses Phase 2 audit chain (pending_insights → confirmed → market_observations with source attribution). Net: ~5 hours of work instead of 1-2 days for an admin form, and better-shaped for the actual use case.
+
+**Operational steps to enable.** (1) Re-run `register-discord-commands.mjs` against the prod guild after deploy. (2) Existing allowlist (`discord_contributors` table) gates access — no per-command allowlist needed. (3) First capture should be a smoke test from Brody to confirm Discord ↔ Vercel ↔ Claude vision works end-to-end.
+
+**Next up.** Step #3 — side-by-side comparison UI on `/break/[slug]`. With observations now flowing in, the comparison surface has a real source. Per-team fair-value query that powers the comparison can be reused on the captures panel for the delta column. Follow-up: auto-apply on high-confidence single-product captures (skip the ✅ step) once we have feedback from real usage.
+
+---
+
 ## 2026-05-12 — Execution roadmap steps #1 + #6: Market Delta Watch + Consumer Audit Trail
 
 Two coordinated shipments that execute the first and sixth items of the [execution roadmap](docs/strategy/execution-roadmap.md). Step #1 validates the herd-mispricing thesis before further investment; step #6 surfaces the multi-source moat so Track A and Track B (Phase 2, entry below) aren't invisible work when their bumps go operational.
