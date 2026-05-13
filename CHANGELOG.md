@@ -5,6 +5,22 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-13 — `/break-price` product autocomplete (step #2 polish)
+
+Follow-up to the step #2 ship earlier today. First-day usage surfaced the most common reason for empty parses: SMEs typed short narratives ("Dodgers 625 hobby Whatnot") without naming the product, and Claude correctly refused to guess across 16 active products. Defeats the "zero typing" goal.
+
+**Fix.** Added a `product` option to `/break-price` with Discord autocomplete (`autocomplete: true`). User types a few chars → Discord pings our route with `APPLICATION_COMMAND_AUTOCOMPLETE` (type 4) → we respond within 3s with up to 25 matching active products, ranked by year DESC. New `handleAutocomplete()` in [app/api/discord/interactions/route.ts](app/api/discord/interactions/route.ts) handles the lookup; new `APPLICATION_COMMAND_AUTOCOMPLETE_RESULT` (type 8) constant added to [lib/discord.ts](lib/discord.ts) for the response payload.
+
+When the user picks a product, the resolved `product_id` flows through `handleBreakPrice` → `parseBreakPrice({ productId })`. In the parser, the candidate-products query is scoped to just that one product, and the prompt tells Claude the contributor PINNED the product so don't infer it. Removes the most common reason for empty captures.
+
+Product remains optional — leaving it out falls back to Claude inferring from narrative/screenshot (which works fine when the narrative names the product explicitly, or when a screenshot has the product in its UI).
+
+**Backlog updates** ([docs/BACKLOG.md](docs/BACKLOG.md)). Marked P1 entries #1, #2, and #6 as ✅ SHIPPED with notes on what shipped vs. the original plan (the original plan for step #2 was admin-paste UI; the actual ship was Discord-first). Step #3 (side-by-side comparison UI on `/break/[slug]`) is now flagged as ⏭ NEXT UP and is the natural follow-on now that captures are flowing.
+
+**Operational.** Re-run [scripts/register-discord-commands.mjs](scripts/register-discord-commands.mjs) after deploy to push the new schema to Discord — the autocomplete flag is part of the command definition, not just the handler.
+
+---
+
 ## 2026-05-13 — Execution roadmap step #2: `/break-price` Discord slash command (text + vision capture)
 
 Replaces the original "admin paste UI" sketch of step #2 with a Discord-first design — meets SMEs where their eyeballs already are (watching streams) and reuses the entire Phase 2 `/insight` infrastructure for staging + confirmation + apply.

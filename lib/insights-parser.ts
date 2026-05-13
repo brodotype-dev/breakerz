@@ -725,6 +725,14 @@ export interface BreakPriceInput {
   imageMediaType?: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
   /** Optional context to add to the prompt. */
   notes?: string;
+  /**
+   * Optional explicit product id (picked from Discord autocomplete). When
+   * supplied, the parser scopes the candidate-products roster to just this
+   * one product and instructs Claude to use it without inferring. Common
+   * case for SMEs watching a single stream — they pick the product once,
+   * then drop short narratives or screenshots for slot after slot.
+   */
+  productId?: string;
 }
 
 export interface BreakPriceResult {
@@ -762,11 +770,20 @@ export async function parseBreakPrice(input: BreakPriceInput): Promise<BreakPric
   // products. We don't need the full player roster for asking_price
   // captures since scope_player_id is rare (most asks are team-scoped).
   // But we still load it so player-scoped asks work.
-  const { data: products, error: prodErr } = await supabaseAdmin
+  //
+  // When the caller pinned a specific product via Discord autocomplete
+  // (input.productId), we scope the candidate list to just that product
+  // and tell Claude to use it directly. Removes the most common reason
+  // for empty parses ("which Topps Chrome did you mean?").
+  let productQuery = supabaseAdmin
     .from('products')
     .select('id, name, year, lifecycle_status')
     .eq('is_active', true)
     .in('lifecycle_status', ['live', 'pre_release']);
+  if (input.productId) {
+    productQuery = productQuery.eq('id', input.productId);
+  }
+  const { data: products, error: prodErr } = await productQuery;
 
   if (prodErr || !products?.length) {
     return {
@@ -774,8 +791,8 @@ export async function parseBreakPrice(input: BreakPriceInput): Promise<BreakPric
       debug: {
         ...baseDebug,
         productsCount: 0,
-        rawResponseExcerpt: prodErr?.message ?? 'no active products',
-        droppedReasons: ['no active products'],
+        rawResponseExcerpt: prodErr?.message ?? (input.productId ? `productId ${input.productId} not found or inactive` : 'no active products'),
+        droppedReasons: [input.productId ? 'pinned product not in active set' : 'no active products'],
       },
     };
   }
@@ -798,10 +815,12 @@ export async function parseBreakPrice(input: BreakPriceInput): Promise<BreakPric
 
   const productLines = products.map(p => `- ${p.year} ${p.name} [id: ${p.id}]`).join('\n');
 
+  const productPinned = !!input.productId;
   const prompt = `You are extracting a live-break slot ask price from a sports card market observation.
 
-Available products (use product ids exactly):
-${productLines}
+${productPinned
+    ? `The contributor PINNED the product for this capture — you do not need to infer it. Use this product id exactly:\n${productLines}`
+    : `Available products (use product ids exactly):\n${productLines}`}
 
 ${
     hadNarrative

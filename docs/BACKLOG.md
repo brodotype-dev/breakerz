@@ -48,39 +48,27 @@ See the [full plan](plans/2026-05-10-topps-series-split.md) for verified data, c
 
 > **Execution sequencing:** The P1 entries below are ordered by the execution roadmap in [docs/strategy/execution-roadmap.md](strategy/execution-roadmap.md). Each step is calibrated to "strategic clarity per engineering day" rather than feature size — items earlier in the list make strategic claims visibly true to users faster. **Do not ship Track A/B (steps 5, 8) before items 1-3 — sophisticated model work without surfacing UI is invisible moat-building.**
 
-### 1. Market Delta Watch — Stage 1 measurement, available today
-**Effort:** ~½ day  
-**Why:** Per [docs/strategy/north-star-and-feedback-loop.md](strategy/north-star-and-feedback-loop.md), we have a measurable success metric available with data we already capture. Every `user_breaks` row has an `ask_price` (what the user paid) and `snapshot_fair_value` (what our engine said at break time). The delta — `(ask_price − snapshot_fair_value) / snapshot_fair_value` — answers "is BreakIQ disagreeing with the breaker market in a useful direction?" without needing pull data.
+### 1. Market Delta Watch — Stage 1 measurement, available today  ✅ SHIPPED 2026-05-12
+**Effort (actual):** ~½ day, as estimated.
+**Shipped at:** [`/admin/market-delta`](../app/admin/market-delta/page.tsx). Reads `user_breaks` rows directly (no new schema). Renders thesis verdict (P90 absolute delta) + headline stats + 7-bucket distribution histogram + per-product breakdown + recent-50 observation list. Now also includes a "/break-price captures" panel listing the most recent 50 `market_observations.asking_price` rows from step #2.
 
-**Build:** New admin dashboard at `/admin/market-delta-watch` that surfaces:
-- Distribution of `market_delta` across all logged breaks (histogram)
-- Per-product / per-team / per-platform aggregates
-- "Top systematic mispricings this week" — products + teams where our number diverged most from observed asks
-- (Eventual) public-facing version: "BreakIQ flagged $X in overpriced slots last month"
-
-**Why P1 now:** This is the metric that proves the herd-mispricing thesis. Before we invest in any new model work, prove that BreakIQ ALREADY says something different from the market and which direction it points. If the delta distribution is centered on zero, we're a CH wrapper. If it's systematically negative on some products and positive on others, we have a real product.
+**Why it stays in the backlog as a reference:** future iterations (slot-level delta vs. bundle delta, per-team fair-value lookup that lets us compute deltas for `/break-price` captures, public-facing version) will live underneath this entry.
 
 ---
 
-### 2. Live ask-price ingestion (admin-paste path v1)
-**Effort:** ~1-2 days  
-**Why:** Foundation for Market Delta Watch (#1) at meaningful volume, side-by-side comparison UI (#3), and downstream in-stream delivery (#7). Today `user_breaks.ask_price` is our only source of observed breaker asks — too low-volume and too lagged to power systematic mispricing surfaces. We need broader ingestion across products and breakers.
+### 2. Live ask-price ingestion  ✅ SHIPPED 2026-05-13 (as Discord `/break-price`)
+**Effort (actual):** ~5 hours. Half the original 1-2 day estimate because we reused the entire `/insight` infrastructure.
+**Shipped via:** `/break-price` Discord slash command — narrative + screenshot + notes options, optional product picker via Discord autocomplete (added 2026-05-13). Writes to `market_observations.asking_price` via the existing `pending_insights` ✅/❌ flow. Original "admin-paste UI" sketch was abandoned in favor of Discord-first design — SMEs already watch streams in Discord-adjacent contexts (or on mobile), and zero-context-switch capture beats a separate web form.
 
-**Build (v1, admin-paste):**
-- New `breaker_ask_observations` table: `id, product_id, scope_team, breaker_handle, platform, ask_price, observed_at, source_url, source_screenshot_hash, source_user_id`
-- Admin page `/admin/breaker-asks/paste` — admin uploads a screenshot of a stream's slot-pricing list (like the East West examples from Kyle's Discord threads). Claude OCRs into rows, admin confirms, batch inserts
-- Per-row validation: team name canonicalization, product slug match, price range sanity
-- Per-batch logging: who uploaded, when, what file, batch row count
-
-**Build (v2, deferred):** consumer-side paste flow — user submits a screenshot to get a comparison. Same plumbing.
-
-**Build (v3, long-term):** stream-replay scraping / CV. Defer until Path A demonstrates value.
-
-**Why P1 now:** Market Delta Watch alone needs this to be useful. Side-by-side comparison UI needs this. Anything in-stream needs this. **It is foundational to three downstream P1 items.**
+**Still queued under this entry:**
+- Auto-apply on high-confidence single-product captures (skip the ✅ step). Needs feedback from real usage first.
+- Disambiguation buttons when product autocomplete is skipped AND Claude can't infer.
+- v2: consumer-side submission flow (still deferred — admin/SME-only for now).
+- v3: stream-replay scraping / CV (still deferred).
 
 ---
 
-### 3. Side-by-side comparison UI on `/break/[slug]`
+### 3. Side-by-side comparison UI on `/break/[slug]`  ⏭ NEXT UP
 **Effort:** ~2-3 days  
 **Why:** This is the single highest-user-perceived-impact change in the entire strategic roadmap. Once #2 (ask ingestion) lands, surface the data where users already look. Each team slot row shows:
 
@@ -118,24 +106,13 @@ Related: see Section 4 of [docs/strategy/north-star-and-feedback-loop.md](strate
 
 ---
 
-### 6. Consumer audit trail UI — "Why this price?" expandable on `/break/[slug]`
-**Effort:** ~2-3 days  
-**Why:** The strategic moat — multi-source pricing model + SME-provenance + cascade architecture — is **invisible to consumers today.** They see a price; they don't see WHY that price differs from the breaker's number. The admin-side sentiment-breakdown panel in the prospect-attrs plan covers admin observability; this entry covers the consumer-facing version.
+### 6. Consumer audit trail UI — "Why this price?"  ✅ SHIPPED 2026-05-12
+**Effort (actual):** as estimated.
+**Shipped at:** [components/breakiq/WhyThisPriceCard.tsx](../components/breakiq/WhyThisPriceCard.tsx). Renders inside [PlayerDetailDrawer](../components/breakiq/PlayerDetailDrawer.tsx) above the variants table when an `audit` prop is provided. Decomposes the slot price into baseline EV → lifecycle multiplier → score modulation rows (Track A prospect with source, SME with note, AI buzz, dominant risk flag, hype tag, Track B cascade combined) → pool allocation → market markup. Per-scope cascade breakdown (Team / Product / Team×Product) is deferred to Phase 3 UI — for now Track B contributions show as a single combined row.
 
-**Without this UI, Track A and Track B are invisible moat-building.** Sophisticated cascade math + Discord-attributed sentiment + per-sport multipliers don't matter to a user unless they can see the contributions and the sources.
-
-**Build:** Expandable on each player slot in the team table at `/break/[slug]`. When expanded:
-
-```
-Konnor Griffin · $620 slot weight
-  Source: CardHedger sales data (4,231 comps) → $245 base
-  +60% MLB Pipeline #1 prospect (Track A, MLB Pipeline 2026-05)
-  +12% Kyle's Discord 2026-05-10: "Pirates stacked" (Track B team_sentiment, 28d left)
-```
-
-Per-contribution: source name, narrative if SME-driven, decay timer if applicable, magnitude in either pp/% or dollars. Same data model as the admin sentiment-breakdown panel — just a different render with consumer-friendly framing.
-
-**Sequencing:** Ship this BEFORE Track A. If we ship Track A first, the engine produces sophisticated numbers nobody can interpret. **Build the moat after surfacing it** (per [docs/strategy/execution-roadmap.md](strategy/execution-roadmap.md) Principle 1).
+**Still queued under this entry:**
+- Phase 3 UI: per-scope cascade breakdown (split Team / Product / Team×Product into separate rows).
+- Mobile-first redesign of the card for sub-400px viewports (current layout works but is dense on phone).
 
 ---
 

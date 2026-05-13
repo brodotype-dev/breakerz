@@ -42,6 +42,17 @@ const commands = [
     description: 'Capture a live breaker slot ask — narrative, screenshot, or both',
     type: 1, // CHAT_INPUT
     options: [
+      // Product is first so Discord prompts for it before the narrative.
+      // Autocomplete-driven — type a few chars, pick from active products.
+      // Optional: skipping it falls back to Claude inferring from narrative
+      // (which works if the narrative names the product) or the screenshot.
+      {
+        name: 'product',
+        description: 'Optional: pick from active products. Skips when narrative/screenshot makes the product obvious.',
+        type: 3, // STRING
+        required: false,
+        autocomplete: true,
+      },
       {
         name: 'narrative',
         description: 'Optional: "Dodgers $625 hobby Whatnot tonight" — at least one of narrative/screenshot required',
