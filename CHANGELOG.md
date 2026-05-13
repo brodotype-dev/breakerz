@@ -25,11 +25,48 @@ Third slice of [docs/plans/2026-05-12-prospect-attrs-and-cascading-sentiment.md]
 
 **Pure additive ship.** Behavior on existing live products is unchanged until the first cascade observation is captured via Discord — `cascade_score_adj` is `0` for every player_product right now.
 
+**Coordination with the strategy reframe (entry below).** [docs/strategy/execution-roadmap.md](docs/strategy/execution-roadmap.md) Principle 1 says consumer audit trail UI ships BEFORE engine bumps go operational. Phase 2 is engine-side only and contributes zero to slot math until the first cascade observation lands. The ordering concern is still valid for operational rollout — Phase 3 (transparency UI) is the gating step before Discord contributors start dropping observations that move real slot prices users see.
+
 **Out of scope (still ahead):** bulk-sentiment Markdown importer + Claude skill for launch-time SME analyses (Phase 2.5), transparency UI showing per-contribution attribution (Phase 3).
 
 **Files:**
 - New: [supabase/migrations/20260512200000_market_observations_cascade.sql](supabase/migrations/20260512200000_market_observations_cascade.sql), [lib/cascading-sentiment.ts](lib/cascading-sentiment.ts)
 - Modified: [lib/engine.ts](lib/engine.ts), [lib/types.ts](lib/types.ts), [lib/analysis.ts](lib/analysis.ts), [app/(consumer)/break/[slug]/page.tsx](app/(consumer)/break/[slug]/page.tsx), [lib/insights-parser.ts](lib/insights-parser.ts), [app/api/discord/interactions/route.ts](app/api/discord/interactions/route.ts)
+
+---
+
+## 2026-05-12 — Product strategy reframe + execution roadmap (docs only, framing layer)
+
+No code shipped in this entry. A strategic reset that codifies the **lens** every Phase 1A/1B and future implementation should be evaluated under. Prompted by a thread between Brody and Kyle pressure-testing "how do we objectively quantify if something is a good deal." Two insights together reshape how BreakIQ should evolve:
+
+**1. The market herds, and the herd is wildly wrong.** Live breakers price slots by copying each other — one stream priced 2026 Bowman Pirates at $625 vs. Kyle's ~$1,900 estimate (3x undervalued); another priced Red Sox at $6,000 vs. Kyle's $2,600 (2.3x overvalued). BreakIQ's core role is *the differentiated voice with receipts at the moment of decision*, not a fair-value calculator. New value prop: **"Stop overpaying breakers."**
+
+**2. We've been tuning a piano with the lid closed.** Every model constant we've shipped is a hypothesis without a feedback loop. Until users log actual pulls, we can't measure whether the engine is right — only whether it's internally consistent. Two-stage measurement framework: Stage 1 (Market Delta, available today from `user_breaks.ask_price` + `snapshot_fair_value`) bridges to Stage 2 (Recovery Ratio, requires My Breaks Phase 2 pull capture).
+
+**Three-doc strategy trilogy in new `docs/strategy/` folder:**
+- [`north-star-and-feedback-loop.md`](docs/strategy/north-star-and-feedback-loop.md) — five candidate metrics with tradeoffs, ranked by honesty; recommended north-star (Recovery Rate per User) + operational metric (Market Delta until pull data lands); variance-honesty stance; open questions list
+- [`product-strategy-map.md`](docs/strategy/product-strategy-map.md) — Reforge 6-dimension strategy map filled out for BreakIQ. Sharper target audience (serial PYT participants on Whatnot / Fanatics Live, 3+ breaks/month, $500+ monthly spend). Locked value prop with "before you claim the slot" wording
+- [`execution-roadmap.md`](docs/strategy/execution-roadmap.md) — the 10-step execution sequence ordered by strategic clarity per engineering day; gap analysis mapping each strategic claim to required product change; order-of-operations principles ("Build the moat AFTER you've surfaced it"); session-continuity reading order
+
+**[CLAUDE.md](CLAUDE.md) reframed.** New "Product Strategy — read first" section near the top so future sessions ground in positioning + north star before reading anything else. Docs index extended with the strategy folder + the prospect-attrs plan. Cold-start reading order documented (~17 minutes to full strategic context).
+
+**[BACKLOG.md](docs/BACKLOG.md) reordered.** Six P1 entries promoted, ordered to match the execution roadmap:
+- **P1 #1** Market Delta Watch — Stage 1 measurement, available today (~½ day)
+- **P1 #2** Live ask-price ingestion (admin-paste path v1) — foundation for #1, #3, #7
+- **P1 #3** Side-by-side comparison UI on `/break/[slug]` — visible form of "differentiated voice"
+- **P1 #4** Pull-Data Capture in My Breaks — Stage 2 measurement unblocker
+- **P1 #6** Consumer audit trail UI ("Why this price?") — **must ship BEFORE Track A's bumps go operational** per Principle 1
+- **P1 #7** In-Stream Delivery (Discord bot v1) — meets users at moment of decision
+- **P2 #9** Confidence bands in UI — variance-honesty stance from Kyle's "level of gambling" point
+
+**Important coordination note with Phase 1A/1B (entries below).** Phase 1A and 1B shipped the prospect_score engine + importer before the consumer audit trail UI (roadmap step #6). Per [execution-roadmap.md Principle 1](docs/strategy/execution-roadmap.md), that's an ordering violation we should resolve before operational rollout. **The violation is currently potential, not realized**: the migration is unapplied to prod and the Kyle CrossRef script hasn't been run with `--commit`. Resolution before that operational step: ship roadmap step #6 (consumer audit trail UI) so users can see WHY the engine starts emitting bumped numbers.
+
+**What this changes about in-flight work:**
+- The prospect_score / cascading sentiment plan is still right; Phase 1A/1B are correct work — they just need step #6 to land alongside before going operational
+- Every tuning constant in the engine should be documented inline with its HYPOTHESIS so Stage 2 data (when it lands in 60-90 days) can validate or revise each one empirically
+- Pull-data capture (My Breaks Phase 2) graduates from "deferred consumer feature" to "P1 unblocker for measurable success"
+
+No code shipped in this entry. Pure context-setting: strategy docs, plan refinements, BACKLOG reorder, CLAUDE.md reframe, the execution roadmap that ties all of it together.
 
 ---
 
