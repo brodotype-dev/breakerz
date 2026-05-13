@@ -1,5 +1,37 @@
 # Prospect attributes (objective) + multi-scope sentiment (Discord-only) — a two-track player-attribute layer
 
+## Status (2026-05-12 late evening, two parallel sessions)
+
+**Shipped to main + live in prod:**
+- **Phase 1A** ([breakerz#85](https://github.com/brodotype-dev/breakerz/pull/85), squash `34e0403`) — Track A schema + scoring module + engine threading. `players` has 4 new prospect_* columns; `computeEffectiveScore` gained 6th arg `prospectScoreAdj`; analysis.ts + break page compute it per-pp.
+- **Phase 1B** (same PR #85 squash) — `/api/admin/import-prospect-ranks` + `lib/fuzz-match-players.ts` + `scripts/import-kyle-crossref.mjs`. Institutional-source guard + fuzz-match + dry-run mode.
+- **Phase 2** ([breakerz#86](https://github.com/brodotype-dev/breakerz/pull/86), squash `2cebb2c5`) — Track B Discord parser extension + cascade reader. `market_observations.product_id` now nullable, observation_type CHECK extended for `team_sentiment / product_sentiment / team_product_sentiment`. `computeEffectiveScore` gained 7th arg `cascadeScoreAdj`. Discord `/insight` parser knows the three new kinds, dispatcher writes them, engine reads them with per-scope caps + per-sport multiplier.
+
+**Migrations live in prod** (applied via Supabase MCP + `supabase migration repair --status applied`):
+- `20260512180000_players_prospect_attributes.sql`
+- `20260512200000_market_observations_cascade.sql`
+
+**Operational items pending** (no code, just running things):
+- Kyle CrossRef ingest never run. `node scripts/import-kyle-crossref.mjs` dry-run first, then `--commit`. Expected 26 rows. Currently 0 prospect_rank rows in prod.
+
+**Currently in flight in the other session:**
+- **Phase 3 — Transparency UI / Consumer audit trail ("Why this price?")**. Per the [strategy reframe](../strategy/execution-roadmap.md) Principle 1, this MUST land before operational rollout (Kyle CrossRef commit + Discord cascade observations going live). The strategy doc explicitly flags Phase 1A/1B as a potential ordering violation that the audit trail UI resolves.
+
+**Not yet built (don't start here without coordinating with the other session):**
+- **Phase 2.5** — Claude skill `.claude/skills/breakiq-product-analysis/` + zip-distribution pipeline + Markdown bulk importer at `/api/admin/import-bulk-sentiment` + admin upload UI. Personal attribution per row.
+- **Phase 4** — Multi-sport CSV templates (NBA Big Board / NFL consensus / NHL Central Scouting) + tune `SPORT_PROSPECT_MULTIPLIER` / `SPORT_CASCADE_MULTIPLIER` from sales feedback.
+- **Phase 5** (deferred) — Automated mlb.com/pipeline scraper.
+
+**Coordination rules between the two sessions:**
+- Both edits to `lib/engine.ts`, `lib/types.ts`, `lib/analysis.ts`, `app/(consumer)/break/[slug]/page.tsx` will conflict — these are the integration points for both the engine modulators (Phases 1/2/3) and the audit trail UI surface. Whoever is working on Phase 3 owns those files for now.
+- `/api/pricing` response shape will likely change for Phase 3 (per-player breakdown payload). Don't ship Phase 2.5 changes that touch `/api/pricing` until Phase 3 lands.
+- Discord parser and dispatcher are owned by Phase 2 (shipped, frozen) + Phase 2.5 (not started). Phase 3 should not need to touch them.
+- The Kyle CrossRef ingest is blocked on Phase 3 shipping per the strategy doc — don't run `--commit` until the audit trail UI is live.
+
+**Verification checklist (from the plan, items 10–14 are blocked on Phase 3 + 2.5):** items 1 done; items 2–9 + 15 are operational and pending the data ingest; items 10–14 require the unshipped code.
+
+---
+
 ## Context
 
 Kyle shared `~/Downloads/2026_Bowman_BreakIQ_CrossRef.xlsx` — a player-level cross-reference for 2026 Bowman Baseball mixing objective player attributes (MLB Pipeline Top 100 rank, NPB signee status, graduated MLB rookie status) with subjective interpretation (PDF Team Tier `GREAT/GOOD/OK/BAD/AWFUL`, suggested PYT multiplier `0.7x–5.0x`).
