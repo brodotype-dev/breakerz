@@ -3,6 +3,11 @@ import { computeLiveEV, get90DayPrices } from '@/lib/cardhedger';
 import { computeSlotPricing, computeTeamSlotPricing, computeSignal, formatCurrency } from '@/lib/engine';
 import { computeRiskAdjustment, computeHypeAdjustment, type HypeObservation, type HypeTag } from '@/lib/score-modulation';
 import { computeProspectAdjustment } from '@/lib/prospect-score';
+import {
+  loadCascadeObservations,
+  filterObservationsForPlayer,
+  computeCascadeAdjustment,
+} from '@/lib/cascading-sentiment';
 import { getMarketMarkup, MARKET_MARKUP_RANGE } from '@/lib/market-markup';
 import type { PlayerWithPricing, BreakConfig, Signal, BreakFormat, PlayerRiskFlag, ProductLifecycle } from '@/lib/types';
 
@@ -224,7 +229,7 @@ export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisRe
   // effectiveScore. The bundle-level riskFlags response below reuses the
   // same flags fetch — no second round-trip.
   const nowIso = new Date().toISOString();
-  const [poolFlagsRes, poolObsRes] = await Promise.all([
+  const [poolFlagsRes, poolObsRes, cascadeObs] = await Promise.all([
     supabaseAdmin
       .from('player_risk_flags')
       .select('player_product_id, flag_type, note')
@@ -237,6 +242,7 @@ export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisRe
       .eq('observation_type', 'hype_tag')
       .gt('expires_at', nowIso)
       .is('superseded_at', null),
+    loadCascadeObservations(productId),
   ]);
 
   const flagsByPp = new Map<string, PlayerRiskFlag['flag_type'][]>();
@@ -279,6 +285,11 @@ export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisRe
     const teamObs = teamScope.get(p.player?.team ?? '') ?? [];
     const playerObs = playerScope.get(p.player_id) ?? [];
     const all = [...productScope, ...teamObs, ...playerObs];
+    const cascadeForPlayer = filterObservationsForPlayer(cascadeObs, p.player?.team);
+    const cascade = computeCascadeAdjustment({
+      observations: cascadeForPlayer,
+      sportSlug,
+    });
     return {
       ...p,
       risk_score_adj: riskAdjMap.get(p.id) ?? 0,
@@ -288,6 +299,7 @@ export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisRe
         prospect_status: p.player?.prospect_status,
         sportSlug,
       }),
+      cascade_score_adj: cascade.adjustment,
     };
   });
 

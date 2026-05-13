@@ -92,6 +92,49 @@ export type ParsedUpdate =
       source: AskingPriceSource;
       source_note: string;
       confidence: number;
+    }
+  | {
+      // Track B (Phase 2): cascading sentiment about a team across all products.
+      // "Royals are stacked this year" — applies to every Royals player_product
+      // in every product they appear in. Capped at ±0.20 contribution per the
+      // engine's per-scope ladder.
+      kind: 'team_sentiment';
+      team_name: string;        // canonical team string (must match players.team)
+      direction: 1 | -1;
+      strength: number;         // 0..1
+      decay_days: number;       // 14..60
+      tag?: string;             // optional free-text label like "stacked_roster"
+      source_note: string;
+      confidence: number;
+    }
+  | {
+      // Track B: sentiment about a whole product. "2026 Bowman is the loaded
+      // class" — applies to every player in that product. Capped at ±0.15.
+      kind: 'product_sentiment';
+      product_id: string;
+      product_name: string;
+      direction: 1 | -1;
+      strength: number;
+      decay_days: number;
+      tag?: string;
+      source_note: string;
+      confidence: number;
+    }
+  | {
+      // Track B: team × product intersection — the most specific cascade
+      // scope. "Pirates in 2026 Bowman are loaded" only nudges Pirates
+      // players in that one product. Capped at ±0.25 (more than team alone
+      // because the intersection is narrower).
+      kind: 'team_product_sentiment';
+      team_name: string;
+      product_id: string;
+      product_name: string;
+      direction: 1 | -1;
+      strength: number;
+      decay_days: number;
+      tag?: string;
+      source_note: string;
+      confidence: number;
     };
 
 export interface ParseInput {
@@ -258,6 +301,33 @@ Extract zero or more updates. Each update is one of five kinds:
      "source_note": "...", "confidence": 0.7 }
    Use this only when someone explicitly reports a per-case pull rate that contradicts the odds sheet (e.g. "this card is hitting 1 in 80 cases on hobby, way rarer than published"). DO NOT emit this for "X is a chase" or "X is rare" without a number.
 
+6. TEAM_SENTIMENT — a take on a whole team across every product they're in. Use for "Royals are stacked this year", "Tigers' farm is loaded", "Cowboys are a sell". Output:
+   { "kind": "team_sentiment", "team_name": "Kansas City Royals",
+     "direction": 1 | -1, "strength": 0.8, "decay_days": 30,
+     "tag": "stacked_roster",                     // optional, free text
+     "source_note": "...", "confidence": 0.85 }
+   team_name must match a team string used by players in the roster above. direction=+1 for bullish, -1 for bearish. Skip neutral takes — emit nothing for "Royals are OK" or "Royals are average". Caps at a small per-scope contribution, so don't overstate strength — 0.8 is reserved for "stacked roster, top of the league".
+
+7. PRODUCT_SENTIMENT — a take on a whole product. "2026 Bowman is the loaded class", "Bowman Draft is going to print money", "Topps Chrome was a flop". Output:
+   { "kind": "product_sentiment", "product_id": "...", "product_name": "...",
+     "direction": 1 | -1, "strength": 0.7, "decay_days": 60,
+     "tag": "loaded_class",                       // optional
+     "source_note": "...", "confidence": 0.8 }
+   Use product_sentiment ONLY for the overall product take. If the narrative is really about a team or a specific player IN this product, use a more specific scope (team_product_sentiment, hype_tag scope=team/player, or sentiment).
+
+8. TEAM_PRODUCT_SENTIMENT — a take on one team specifically in one product. "Pirates in 2026 Bowman are loaded", "Mavs in Prizm are a sleeper". Output:
+   { "kind": "team_product_sentiment",
+     "team_name": "Pittsburgh Pirates",
+     "product_id": "...", "product_name": "...",
+     "direction": 1 | -1, "strength": 0.8, "decay_days": 30,
+     "tag": "intersection_pop",                   // optional
+     "source_note": "...", "confidence": 0.85 }
+   Use when the take is the intersection of a team and a product. If the narrative is about the team across all products, use team_sentiment instead. If it's about the product as a whole, use product_sentiment.
+
+CASCADE DIFFERENTIATION (kinds 6–8 vs 3 hype_tag):
+- hype_tag is for the four canonical labels (release_premium / cooled / overhyped / underhyped) — use it when the narrative names one of those four patterns explicitly.
+- team_sentiment / product_sentiment / team_product_sentiment are general bullish/bearish takes WITHOUT one of those four canonical labels. Don't emit both for the same observation — pick the more specific match.
+
 Return JSON ONLY — a JSON array of update objects. No markdown, no explanation, no text before or after. If nothing extractable, return exactly: []
 
 CRITICAL:
@@ -309,6 +379,20 @@ CRITICAL:
   const validProductIds = new Set(products.map(p => p.id));
   const playerById = new Map(players.map((p: any) => [p.id, { name: p.name, team: p.team }]));
   const productById = new Map(products.map(p => [p.id, p.name]));
+  // Cascade sentiment kinds reference a team by string. Build a case-insensitive
+  // set of valid teams from the roster so we drop rows whose team_name doesn't
+  // match anything in the DB (those rows would write but never affect any
+  // player_product at engine-read time).
+  const validTeamsLower = new Set(
+    players.map((p: any) => (p.team ?? '').trim().toLowerCase()).filter((t: string) => t.length > 0),
+  );
+  const canonicalTeamByLower = new Map<string, string>();
+  for (const p of players as any[]) {
+    const t = (p.team ?? '').trim();
+    if (!t) continue;
+    const lower = t.toLowerCase();
+    if (!canonicalTeamByLower.has(lower)) canonicalTeamByLower.set(lower, t);
+  }
 
   // We don't validate the model's claimed name against the DB name anymore
   // — the original Wemby->Robinson bug was caused by a truncated roster
@@ -481,6 +565,83 @@ CRITICAL:
         });
         break;
       }
+      case 'team_sentiment': {
+        const teamRaw = String(u.team_name ?? '').trim();
+        const teamLower = teamRaw.toLowerCase();
+        if (!teamRaw || !validTeamsLower.has(teamLower)) {
+          dropReasons.push(`team_sentiment: unknown team_name=${teamRaw}`);
+          continue;
+        }
+        const direction = u.direction === -1 ? -1 : u.direction === 1 ? 1 : 0;
+        if (!direction) {
+          dropReasons.push(`team_sentiment: missing direction (must be 1 or -1)`);
+          continue;
+        }
+        out.push({
+          kind: 'team_sentiment',
+          team_name: canonicalTeamByLower.get(teamLower) ?? teamRaw,
+          direction,
+          strength: Math.max(0, Math.min(1, Number(u.strength) || 0)),
+          decay_days: Math.max(1, Math.min(60, Number(u.decay_days) || 30)),
+          tag: u.tag ? String(u.tag).slice(0, 60) : undefined,
+          source_note: String(u.source_note ?? '').slice(0, 240),
+          confidence: Math.max(0, Math.min(1, Number(u.confidence) || 0)),
+        });
+        break;
+      }
+      case 'product_sentiment': {
+        if (!validProductIds.has(u.product_id)) {
+          dropReasons.push(`product_sentiment: unknown product_id=${u.product_id}`);
+          continue;
+        }
+        const direction = u.direction === -1 ? -1 : u.direction === 1 ? 1 : 0;
+        if (!direction) {
+          dropReasons.push(`product_sentiment: missing direction (must be 1 or -1)`);
+          continue;
+        }
+        out.push({
+          kind: 'product_sentiment',
+          product_id: u.product_id,
+          product_name: productById.get(u.product_id) ?? u.product_name,
+          direction,
+          strength: Math.max(0, Math.min(1, Number(u.strength) || 0)),
+          decay_days: Math.max(1, Math.min(60, Number(u.decay_days) || 30)),
+          tag: u.tag ? String(u.tag).slice(0, 60) : undefined,
+          source_note: String(u.source_note ?? '').slice(0, 240),
+          confidence: Math.max(0, Math.min(1, Number(u.confidence) || 0)),
+        });
+        break;
+      }
+      case 'team_product_sentiment': {
+        const teamRaw = String(u.team_name ?? '').trim();
+        const teamLower = teamRaw.toLowerCase();
+        if (!teamRaw || !validTeamsLower.has(teamLower)) {
+          dropReasons.push(`team_product_sentiment: unknown team_name=${teamRaw}`);
+          continue;
+        }
+        if (!validProductIds.has(u.product_id)) {
+          dropReasons.push(`team_product_sentiment: unknown product_id=${u.product_id}`);
+          continue;
+        }
+        const direction = u.direction === -1 ? -1 : u.direction === 1 ? 1 : 0;
+        if (!direction) {
+          dropReasons.push(`team_product_sentiment: missing direction (must be 1 or -1)`);
+          continue;
+        }
+        out.push({
+          kind: 'team_product_sentiment',
+          team_name: canonicalTeamByLower.get(teamLower) ?? teamRaw,
+          product_id: u.product_id,
+          product_name: productById.get(u.product_id) ?? u.product_name,
+          direction,
+          strength: Math.max(0, Math.min(1, Number(u.strength) || 0)),
+          decay_days: Math.max(1, Math.min(60, Number(u.decay_days) || 30)),
+          tag: u.tag ? String(u.tag).slice(0, 60) : undefined,
+          source_note: String(u.source_note ?? '').slice(0, 240),
+          confidence: Math.max(0, Math.min(1, Number(u.confidence) || 0)),
+        });
+        break;
+      }
     }
   }
 
@@ -527,5 +688,20 @@ export function summarizeUpdate(u: ParsedUpdate): string {
     }
     case 'odds_observation':
       return `${u.variant_name ?? 'card'} (${u.format}): observed 1:${u.observed_odds_per_case} cases — ${u.source_note}`;
+    case 'team_sentiment': {
+      const arrow = u.direction === 1 ? '↑' : '↓';
+      const tag = u.tag ? ` [${u.tag}]` : '';
+      return `${u.team_name} (all products) ${arrow} strength ${u.strength.toFixed(2)}, decay ${u.decay_days}d${tag} — ${u.source_note}`;
+    }
+    case 'product_sentiment': {
+      const arrow = u.direction === 1 ? '↑' : '↓';
+      const tag = u.tag ? ` [${u.tag}]` : '';
+      return `${u.product_name} ${arrow} strength ${u.strength.toFixed(2)}, decay ${u.decay_days}d${tag} — ${u.source_note}`;
+    }
+    case 'team_product_sentiment': {
+      const arrow = u.direction === 1 ? '↑' : '↓';
+      const tag = u.tag ? ` [${u.tag}]` : '';
+      return `${u.team_name} × ${u.product_name} ${arrow} strength ${u.strength.toFixed(2)}, decay ${u.decay_days}d${tag} — ${u.source_note}`;
+    }
   }
 }

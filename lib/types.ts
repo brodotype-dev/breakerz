@@ -160,10 +160,12 @@ export interface PlayerWithPricing extends PlayerProduct {
   confidence?: number | null;
   // Runtime-only score modulators applied before the engine clamps.
   // All default to 0 when undefined; not persisted in pricing_cache.
-  // See lib/score-modulation.ts (risk + hype) and lib/prospect-score.ts.
+  // See lib/score-modulation.ts (risk + hype), lib/prospect-score.ts (Track A),
+  // lib/cascading-sentiment.ts (Track B).
   risk_score_adj?: number;
   hype_score_adj?: number;
   prospect_score_adj?: number;
+  cascade_score_adj?: number;
 }
 
 export interface PlayerProductVariant {

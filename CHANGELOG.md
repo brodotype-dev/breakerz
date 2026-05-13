@@ -5,6 +5,36 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-12 — Phase 2 of prospect attrs + cascading sentiment: Track B Discord parser + cascade reader
+
+Third slice of [docs/plans/2026-05-12-prospect-attrs-and-cascading-sentiment.md](docs/plans/2026-05-12-prospect-attrs-and-cascading-sentiment.md). Adds the engine-side cascading-sentiment reader and the Discord-parser extension so SMEs can drop team / product / team-product takes via `/insight` and have them fold into slot pricing.
+
+**Schema** ([supabase/migrations/20260512200000_market_observations_cascade.sql](supabase/migrations/20260512200000_market_observations_cascade.sql)): `market_observations.product_id` relaxed to nullable so global team_sentiment rows can exist without a product. The CHECK constraint on `observation_type` extended to accept three new values: `team_sentiment`, `product_sentiment`, `team_product_sentiment`. Existing writers always supply `product_id`, so the relaxation does not silently break them. Migration applied to prod via Supabase MCP + repair.
+
+**Cascade reader** ([lib/cascading-sentiment.ts](lib/cascading-sentiment.ts)): new module exposes `loadCascadeObservations(productId)`, `filterObservationsForPlayer(all, team)`, and `computeCascadeAdjustment({ observations, sportSlug })`. Each scope contributes `direction × strength × SCOPE_CAP × linearDecay` per observation — same shape as `computeHypeAdjustment` — with per-scope caps (team_product_sentiment ±0.25, team_sentiment ±0.20, product_sentiment ±0.15). Three caps sum to the combined ±0.65 ceiling; that combined value × per-sport multiplier (`baseball 1.0 / basketball 0.9 / football 0.7 / hockey 0.6`) yields the engine adjustment. Returns a full `CascadeBreakdown` with per-scope subtotals + decorated rows for the Phase 3 transparency UI.
+
+**Engine threading** ([lib/engine.ts](lib/engine.ts), [lib/types.ts](lib/types.ts)): `computeEffectiveScore` accepts an optional 7th arg `cascadeScoreAdj` (default 0). `computeSlotPricing`'s inline `effectiveScore` reads `p.cascade_score_adj` alongside the existing risk + hype + prospect modulators. `PlayerWithPricing` gains `cascade_score_adj?: number`.
+
+**Compute sites:**
+- [lib/analysis.ts](lib/analysis.ts) — bulk-fetches cascade observations once via `loadCascadeObservations`, then `filterObservationsForPlayer` per pp before `computeCascadeAdjustment`. Runs in parallel with the existing flags + hype fetches.
+- [app/(consumer)/break/[slug]/page.tsx](app/(consumer)/break/[slug]/page.tsx) — client-side equivalent: two parallel supabase queries (product-scoped cascade + global team_sentiment) merge into a single observation list, then per-player filter + compute. No new round-trips beyond the two queries.
+
+**Discord parser** ([lib/insights-parser.ts](lib/insights-parser.ts)): `ParsedUpdate` union gains three new kinds — `team_sentiment`, `product_sentiment`, `team_product_sentiment`. Claude prompt extended with three new numbered sections (6 / 7 / 8) plus an explicit "cascade vs hype_tag" differentiation rule (canonical hype labels stay in hype_tag; general bullish/bearish takes land in the new cascade kinds). Roster validation includes a case-insensitive team-name set so cascade rows with unknown teams get dropped at parse time. Neutral takes (direction missing) also get dropped to keep the engine signal tight.
+
+**Discord dispatcher** ([app/api/discord/interactions/route.ts](app/api/discord/interactions/route.ts)): new case in the apply path writes the three new types to `market_observations` with payload `{ direction, strength, decay_days, tag? }`, scope_type matching the dominant axis (`team` / `product`), and product_id only set for the product-scoped kinds. Decay clock matches the observation's `decay_days`.
+
+**Pure additive ship.** Behavior on existing live products is unchanged until the first cascade observation is captured via Discord — `cascade_score_adj` is `0` for every player_product right now.
+
+**Coordination with the strategy reframe (entry below).** [docs/strategy/execution-roadmap.md](docs/strategy/execution-roadmap.md) Principle 1 says consumer audit trail UI ships BEFORE engine bumps go operational. Phase 2 is engine-side only and contributes zero to slot math until the first cascade observation lands. The ordering concern is still valid for operational rollout — Phase 3 (transparency UI) is the gating step before Discord contributors start dropping observations that move real slot prices users see.
+
+**Out of scope (still ahead):** bulk-sentiment Markdown importer + Claude skill for launch-time SME analyses (Phase 2.5), transparency UI showing per-contribution attribution (Phase 3).
+
+**Files:**
+- New: [supabase/migrations/20260512200000_market_observations_cascade.sql](supabase/migrations/20260512200000_market_observations_cascade.sql), [lib/cascading-sentiment.ts](lib/cascading-sentiment.ts)
+- Modified: [lib/engine.ts](lib/engine.ts), [lib/types.ts](lib/types.ts), [lib/analysis.ts](lib/analysis.ts), [app/(consumer)/break/[slug]/page.tsx](app/(consumer)/break/[slug]/page.tsx), [lib/insights-parser.ts](lib/insights-parser.ts), [app/api/discord/interactions/route.ts](app/api/discord/interactions/route.ts)
+
+---
+
 ## 2026-05-12 — Product strategy reframe + execution roadmap (docs only, framing layer)
 
 No code shipped in this entry. A strategic reset that codifies the **lens** every Phase 1A/1B and future implementation should be evaluated under. Prompted by a thread between Brody and Kyle pressure-testing "how do we objectively quantify if something is a good deal." Two insights together reshape how BreakIQ should evolve:
