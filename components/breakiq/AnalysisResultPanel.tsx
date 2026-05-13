@@ -47,7 +47,10 @@ export default function AnalysisResultPanel({ result, productId, productSlug }: 
   return (
     <div className="space-y-4">
       <div className="rounded-lg p-6 border-2" style={{ backgroundColor: cfg.bgColor, borderColor: cfg.borderColor }}>
-        <div className="flex items-center justify-between mb-4">
+        <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--text-tertiary)' }}>
+          Our take
+        </p>
+        <div className="flex items-center justify-between mb-2">
           <span className="text-3xl font-black" style={{ color: cfg.textColor }}>{cfg.label}</span>
           <div className="flex items-center gap-3">
             <div className="text-right">
@@ -64,6 +67,10 @@ export default function AnalysisResultPanel({ result, productId, productSlug }: 
             />
           </div>
         </div>
+
+        <p className="text-[11px] mb-3 leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
+          Based on CardHedger comps + our lifecycle-aware pricing model. Flag us if it&rsquo;s off — we tune from every report.
+        </p>
 
         <div className="mb-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
           {compositionLabel} · {formatLine || '0 cases'}

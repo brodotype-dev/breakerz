@@ -17,6 +17,7 @@ import {
 } from '@/components/breakiq/ds';
 import TeamChip from '@/components/breakiq/TeamChip';
 import AnalysisResultPanel from '@/components/breakiq/AnalysisResultPanel';
+import BetaBanner from '@/components/breakiq/BetaBanner';
 import type { AnalysisResult as AnalysisResultShape } from '@/lib/analysis';
 
 const supabase = createClient(
@@ -202,6 +203,9 @@ export default function AnalysisPage() {
         <div className="absolute top-0 right-0 w-96 h-96 blur-3xl opacity-20" style={{ background: 'radial-gradient(circle, var(--accent-blue) 0%, transparent 70%)' }} />
         <div className="absolute bottom-0 left-0 w-96 h-96 blur-3xl opacity-20" style={{ background: 'radial-gradient(circle, var(--badge-icon) 0%, transparent 70%)' }} />
         <div className="relative px-6 py-8 max-w-7xl mx-auto">
+          <div className="mb-5">
+            <BetaBanner surface="analysis" />
+          </div>
           <Link
             href="/"
             className="inline-flex items-center gap-2 text-sm font-semibold mb-6 px-3 py-1.5 rounded-lg backdrop-blur-sm hover:opacity-70 transition-opacity"
@@ -217,12 +221,12 @@ export default function AnalysisPage() {
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <h1 className="text-4xl font-bold" style={{ background: 'linear-gradient(135deg, var(--text-primary) 0%, var(--accent-blue) 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                  BreakIQ Bets
+                  BreakIQ Insights
                 </h1>
                 <Sparkles className="w-6 h-6 animate-pulse" style={{ color: 'var(--badge-icon)' }} />
               </div>
               <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
-                Bundle teams, players, and case formats — get a single deal verdict
+                Research any break before you buy in — we read the comps, you make the call.
               </p>
             </div>
           </div>
@@ -415,7 +419,7 @@ export default function AnalysisPage() {
                 </div>
 
                 <LargeCTAButton onClick={runAnalysis} disabled={!canAnalyze} loading={running}>
-                  {running ? 'Analyzing Deal…' : <><Sparkles className="w-5 h-5" /> Analyze Bundle</>}
+                  {running ? 'Reading the comps…' : <><Sparkles className="w-5 h-5" /> Run the check</>}
                 </LargeCTAButton>
               </div>
             </ElevatedCard>

@@ -556,8 +556,8 @@ export default async function ProductDashboardPage({ params }: PageProps) {
           <ChaseCardsManager productId={id} />
         </Section>
 
-        {/* Breakerz Bets debrief */}
-        <Section title="BreakIQ Bets" accent="var(--gradient-purple)">
+        {/* BreakIQ Insights debrief */}
+        <Section title="BreakIQ Insights Debrief" accent="var(--gradient-purple)">
           <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
             Tell us what you{"'"}re seeing in the market — Claude extracts player mentions, scores sentiment, and drafts reason notes for your review.
           </p>

@@ -18,6 +18,8 @@ export const PH_EVENTS = {
   subscription_canceled: 'subscription_canceled',
 
   pricing_feedback_submitted: 'pricing_feedback_submitted',
+
+  beta_banner_dismissed: 'beta_banner_dismissed',
 } as const;
 
 export type PHEvent = typeof PH_EVENTS[keyof typeof PH_EVENTS];

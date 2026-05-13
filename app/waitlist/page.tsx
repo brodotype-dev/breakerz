@@ -101,10 +101,10 @@ export default function WaitlistPage() {
               </div>
 
               <h1 className="text-3xl md:text-4xl font-bold leading-tight mb-4" style={{ color: 'var(--text-primary)' }}>
-                The intelligence layer for sports card breaks
+                Stop buying breaks blind.
               </h1>
               <p className="text-base md:text-lg leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-                Real-time slot pricing, AI-powered deal analysis, and market signals — built for breakers and serious collectors.
+                Every break you buy, in one place — research it, log it, learn from it.
               </p>
             </div>
 
@@ -114,8 +114,8 @@ export default function WaitlistPage() {
                 {
                   icon: Zap,
                   gradient: 'var(--gradient-blue)',
-                  title: 'BreakIQ Bets',
-                  body: 'Enter any break price and get instant BUY / WATCH / PASS signals with analyst-grade narratives.',
+                  title: 'BreakIQ Insights',
+                  body: 'Research any break before you buy in. Our take + comps + risk flags — you make the call.',
                 },
                 {
                   icon: TrendingUp,
@@ -291,7 +291,7 @@ export default function WaitlistPage() {
                 <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>· 3 lifetime analyses</span>
               </div>
               <ul className="space-y-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> 3 BreakIQ Sayz analyses</li>
+                <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> 3 BreakIQ Insights analyses</li>
                 <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> 3 Slab Analysis lookups</li>
                 <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> All products + slot pricing</li>
                 <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> Unlimited break logging</li>
@@ -319,7 +319,7 @@ export default function WaitlistPage() {
                 <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>/ month</span>
               </div>
               <ul className="space-y-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> 10 BreakIQ Sayz analyses / mo</li>
+                <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> 10 BreakIQ Insights analyses / mo</li>
                 <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> 10 Slab Analysis lookups / mo</li>
                 <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> All products + slot pricing</li>
                 <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> Unlimited break logging</li>
@@ -339,7 +339,7 @@ export default function WaitlistPage() {
                 <span className="text-sm" style={{ color: 'var(--text-tertiary)' }}>/ month</span>
               </div>
               <ul className="space-y-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> Unlimited BreakIQ Sayz</li>
+                <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> Unlimited BreakIQ Insights</li>
                 <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> Unlimited Slab Analysis</li>
                 <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> All products + slot pricing</li>
                 <li className="flex gap-2"><span style={{ color: 'var(--signal-buy)' }}>✓</span> Unlimited break logging</li>

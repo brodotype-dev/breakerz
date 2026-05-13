@@ -4,6 +4,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import type { Product, Sport } from '@/lib/types';
 import { Logo } from '@/components/Logo';
 import ActiveProductsBrowser, { type ProductSignal } from './ActiveProductsBrowser';
+import BetaBanner from '@/components/breakiq/BetaBanner';
 
 const POSITIVE_HYPE_TAGS = new Set(['release_premium', 'underhyped']);
 
@@ -118,6 +119,11 @@ export default async function HomePage() {
 
         {/* Content */}
         <div className="relative px-6 py-10 md:py-14 max-w-6xl mx-auto">
+          {/* Beta banner — sets expectations before the user reads the hero */}
+          <div className="mb-6 max-w-3xl mx-auto">
+            <BetaBanner surface="home" />
+          </div>
+
           <div className="text-center mb-8">
             {/* Live / pre-release counts */}
             <div className="flex items-center justify-center gap-4 mb-6">
@@ -143,10 +149,10 @@ export default async function HomePage() {
             </div>
 
             <p className="text-xl md:text-2xl font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>
-              Your Terminal for Sports Card Breaks
+              Stop buying breaks blind.
             </p>
             <p className="text-base md:text-lg max-w-2xl mx-auto" style={{ color: 'var(--text-secondary)' }}>
-              Real-time slot pricing, AI-powered deal analysis, and market intelligence for serious collectors
+              Every break you buy, in one place — research it, log it, learn from it.
             </p>
 
             {/* CTA Buttons */}
