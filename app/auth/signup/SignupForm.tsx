@@ -97,7 +97,7 @@ export default function SignupForm({
           Hey {firstName}, you're in.
         </h1>
         <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-          Create your account to access the beta. Takes 10 seconds.
+          Create your account. Takes 10 seconds — your break record starts today.
         </p>
       </div>
 

@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'BreakIQ',
     short_name: 'BreakIQ',
-    description: 'Break analysis engine for sports card breaks',
+    description: 'Stop buying breaks blind. Research, decide, log, and learn from every break — all in one terminal.',
     start_url: '/',
     scope: '/',
     display: 'standalone',

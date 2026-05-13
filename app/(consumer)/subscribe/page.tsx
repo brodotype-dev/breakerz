@@ -65,7 +65,7 @@ export default function SubscribePage() {
             Choose Your Plan
           </h1>
           <p className="text-base" style={{ color: 'var(--text-secondary)' }}>
-            Start with 3 free analyses. Upgrade when you're ready.
+            Every break you buy, in one place. Start with 3 free analyses.
           </p>
           <p className="text-sm mt-2" style={{ color: 'var(--text-tertiary)' }}>
             Beta pricing — locks in for early adopters.
@@ -99,7 +99,7 @@ export default function SubscribePage() {
 
             <ul className="space-y-2.5 mb-6 flex-1">
               {[
-                '10 BreakIQ Bets analyses/mo',
+                '10 BreakIQ Insights analyses/mo',
                 '10 Slab Analysis lookups/mo',
                 'Unlimited My Breaks logging',
                 'All products & slot pricing',
@@ -148,7 +148,7 @@ export default function SubscribePage() {
 
             <ul className="space-y-2.5 mb-6 flex-1">
               {[
-                'Unlimited BreakIQ Bets analyses',
+                'Unlimited BreakIQ Insights analyses',
                 'Unlimited Slab Analysis lookups',
                 'Unlimited My Breaks logging',
                 'All products & slot pricing',

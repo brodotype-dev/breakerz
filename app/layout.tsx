@@ -14,14 +14,25 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "BreakIQ",
-  description: "Break analysis engine",
+  title: "BreakIQ — Stop buying breaks blind.",
+  description: "Every break you buy, in one place — research it, log it, learn from it.",
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "https://www.getbreakiq.com"),
   applicationName: "BreakIQ",
   appleWebApp: {
     capable: true,
     title: "BreakIQ",
     statusBarStyle: "black-translucent",
+  },
+  openGraph: {
+    title: "BreakIQ — Stop buying breaks blind.",
+    description: "The break terminal for collectors and pros. Research it, log it, learn from it.",
+    type: "website",
+    siteName: "BreakIQ",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "BreakIQ — Stop buying breaks blind.",
+    description: "The break terminal for collectors and pros. Research it, log it, learn from it.",
   },
   icons: {
     icon: [{ url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],

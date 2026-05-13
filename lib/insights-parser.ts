@@ -1,7 +1,7 @@
 /**
  * Multi-output Claude parser for market insights captured via Discord.
  *
- * Today's BreakIQ Bets parser only emits player-sentiment scores. This
+ * Today's BreakIQ Insights debrief parser only emits player-sentiment scores. This
  * extends the schema to four update types — sentiment, asking-price,
  * hype-tag, risk-flag — so a single narrative ("Flagg PYP is 12-15k on
  * streams, Wemby is hurt, Bowman Concan crystallized cooled off") can

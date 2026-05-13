@@ -5,6 +5,28 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-13 — Beta launch messaging PR1: positioning spine + verdict reframe + beta banner
+
+PR1 of the three-PR beta-launch messaging refresh from `~/.claude/plans/2026-05-13-beta-launch-messaging-refresh.md`. The "existential" PR — without it, beta opens with the wrong promise and verdicts users can't yet trust. PR2 (feedback loop framing) and PR3 (nav + onboarding polish) ship next.
+
+**Naming sweep.** "BreakIQ Bets" / "BreakIQ Sayz" → "BreakIQ Insights" across every consumer-facing surface (waitlist pricing tiers, `/analysis` hero, `/subscribe` plan features). The admin debrief tool renamed in parallel: "BreakIQ Bets" → "BreakIQ Insights Debrief" in `/admin/products/[id]` and `/admin/breakiq-betz` (admin nav label + page title). The `/admin/breakiq-betz` URL path stays put — renaming the route is a separate migration. The Discord `/insight` command name is untouched — verb-shaped, already a habit for the contributor allowlist, and changing it would require re-registration with no user-value payoff. Mental model: "BreakIQ Insights" is the noun for the verdict feature; `/insight` is the verb for contributing one.
+
+**Positioning spine.** New two-line stack used everywhere the product introduces itself:
+- **Hook:** *"Stop buying breaks blind."* — pain-led, drives the click
+- **Descriptor:** *"Every break you buy, in one place — research it, log it, learn from it."* — workflow-led, sets honest expectations
+
+Applied to: [app/manifest.ts](app/manifest.ts) (PWA description), [app/layout.tsx](app/layout.tsx) (metadata title + description + OpenGraph + Twitter card — first time OG/Twitter were configured at all), [app/waitlist/page.tsx](app/waitlist/page.tsx) (H1 + sub), [app/(consumer)/page.tsx](app/(consumer)/page.tsx) (home hero H1 + sub), [app/(consumer)/subscribe/page.tsx](app/(consumer)/subscribe/page.tsx) (sub-line above plan grid), [app/auth/signup/SignupForm.tsx](app/auth/signup/SignupForm.tsx) (sub copy).
+
+**Verdict reframe.** [components/breakiq/AnalysisResultPanel.tsx](components/breakiq/AnalysisResultPanel.tsx) — verdict block prefixed with a small "Our take" label above the BUY / WATCH / PASS badge; new one-line attribution sub below: *"Based on CardHedger comps + our lifecycle-aware pricing model. Flag us if it's off — we tune from every report."* BUY/WATCH/PASS color treatment intact (per Brody's confirmation — soften language, not the badge). CTA verb on `/analysis` and `/break/[slug]` inline analysis softened from "Analyze Bundle" → "Run the check"; loading state from "Analyzing Deal…" → "Reading the comps…".
+
+**BetaBanner component.** New [components/breakiq/BetaBanner.tsx](components/breakiq/BetaBanner.tsx). Thin, dismissible banner: *"Our model is learning from every break logged. Tell us when our take is off — we're tuning with every flag."* Dismissal persists via `localStorage.breakiq_beta_banner_dismissed=1` (cheap-and-cheerful for beta; profile column migration queued post-beta). PostHog `beta_banner_dismissed` event with `surface` property for segmentation. Rendered on three surfaces where beta users are most likely to land on a verdict they can't yet fully trust: home (above hero), `/break/[slug]` (top of main), and `/analysis` (above the Back-to-Home link).
+
+**Out of scope for PR1** (queued for PR2 / PR3): feedback-loop microcopy on PricingFeedback / ChaseHeartButton / My Breaks save confirmations, home footer real stats, nav restructure ("Log a Break" primary), empty-state CTAs, onboarding helpers, jargon tooltips. None of those block beta launch — PR1 covers the existential pieces.
+
+**Operational.** No DB migrations. No API contract changes. All edits are text/JSX. Revertable per-file. PostHog `beta_banner_dismissed` event added to the canonical taxonomy in [lib/posthog-events.ts](lib/posthog-events.ts).
+
+---
+
 ## 2026-05-13 — `/break-price` product autocomplete (step #2 polish)
 
 Follow-up to the step #2 ship earlier today. First-day usage surfaced the most common reason for empty parses: SMEs typed short narratives ("Dodgers 625 hobby Whatnot") without naming the product, and Claude correctly refused to guess across 16 active products. Defeats the "zero typing" goal.

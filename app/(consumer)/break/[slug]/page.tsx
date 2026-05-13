@@ -14,6 +14,7 @@ import PlayerDetailDrawer from '@/components/breakiq/PlayerDetailDrawer';
 import PreReleaseLayout from '@/components/breakiq/PreReleaseLayout';
 import TeamChip from '@/components/breakiq/TeamChip';
 import AnalysisResultPanel from '@/components/breakiq/AnalysisResultPanel';
+import BetaBanner from '@/components/breakiq/BetaBanner';
 import { SegmentedControl, CounterInput, LargeCTAButton } from '@/components/breakiq/ds';
 import { computeSlotPricing, computeTeamSlotPricing, formatCurrency } from '@/lib/engine';
 import { getMarketMarkup } from '@/lib/market-markup';
@@ -491,6 +492,7 @@ export default function BreakPage() {
       )}
 
       <main ref={mainRef} className="px-3 sm:px-4 md:px-6 py-4 sm:py-6 space-y-5 max-w-[1400px] mx-auto">
+        <BetaBanner surface="break_page" />
         {isPreRelease ? (
           <PreReleaseLayout
             product={product}
@@ -774,7 +776,7 @@ export default function BreakPage() {
 
               {/* Run */}
               <LargeCTAButton onClick={runAnalysis} disabled={!canRunAnalysis} loading={analysisRunning}>
-                {analysisRunning ? 'Analyzing Deal…' : <><Sparkles className="w-5 h-5" /> Analyze Bundle</>}
+                {analysisRunning ? 'Reading the comps…' : <><Sparkles className="w-5 h-5" /> Run the check</>}
               </LargeCTAButton>
 
               {/* Inline result */}
