@@ -51,7 +51,68 @@ export async function POST(req: Request) {
     return handleButton(interaction);
   }
 
+  // 4. Autocomplete (typing into an option with autocomplete:true)
+  if (interaction.type === InteractionType.APPLICATION_COMMAND_AUTOCOMPLETE) {
+    return handleAutocomplete(interaction);
+  }
+
   return NextResponse.json({ error: 'unsupported interaction' }, { status: 400 });
+}
+
+// ─── Autocomplete handler ────────────────────────────────────────────────
+// Discord pings us every keystroke on an option flagged autocomplete:true.
+// We have to respond within 3s with up to 25 choices. No defer — autocomplete
+// doesn't support deferred responses. Keep the query lean.
+
+interface AutocompleteInteraction {
+  data: {
+    name: string;
+    options?: Array<{ name: string; value: string; type?: number; focused?: boolean }>;
+  };
+}
+
+async function handleAutocomplete(interaction: AutocompleteInteraction): Promise<NextResponse> {
+  if (interaction.data.name !== 'break-price') {
+    return NextResponse.json({
+      type: InteractionResponseType.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT,
+      data: { choices: [] },
+    });
+  }
+
+  const focused = interaction.data.options?.find(o => o.focused);
+  if (!focused || focused.name !== 'product') {
+    return NextResponse.json({
+      type: InteractionResponseType.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT,
+      data: { choices: [] },
+    });
+  }
+
+  const query = (focused.value ?? '').trim().toLowerCase();
+
+  const { data: products } = await supabaseAdmin
+    .from('products')
+    .select('id, name, year')
+    .eq('is_active', true)
+    .in('lifecycle_status', ['live', 'pre_release'])
+    .order('year', { ascending: false })
+    .limit(50);
+
+  const ranked = (products ?? [])
+    .map(p => ({ id: p.id, label: `${p.year} ${p.name}` }))
+    .filter(p => !query || p.label.toLowerCase().includes(query))
+    .slice(0, 25);
+
+  return NextResponse.json({
+    type: InteractionResponseType.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT,
+    data: {
+      choices: ranked.map(p => ({
+        // Discord requires choice name ≤ 100 chars. Year + product name is
+        // comfortably under for all current products.
+        name: p.label.slice(0, 100),
+        value: p.id,
+      })),
+    },
+  });
 }
 
 // ─── Allowlist check ─────────────────────────────────────────────────────
@@ -232,6 +293,7 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
   const options = interaction.data.options ?? [];
   const narrative = options.find(o => o.name === 'narrative')?.value?.trim();
   const notes = options.find(o => o.name === 'notes')?.value?.trim();
+  const productId = options.find(o => o.name === 'product')?.value?.trim() || undefined;
   const attachmentId = options.find(o => o.name === 'screenshot')?.value;
   const attachment = attachmentId
     ? interaction.data.resolved?.attachments?.[attachmentId]
@@ -280,7 +342,7 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
         imageMediaType = mt as typeof imageMediaType;
       }
 
-      const { updates, debug } = await parseBreakPrice({ narrative, notes, imageBase64, imageMediaType });
+      const { updates, debug } = await parseBreakPrice({ narrative, notes, imageBase64, imageMediaType, productId });
 
       if (updates.length === 0) {
         const excerpt = debug.rawResponseExcerpt.replace(/```/g, "'''").slice(0, 500);
