@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { createClient } from '@supabase/supabase-js';
-import { ClipboardList, Plus, Clock, ArrowLeft, Sparkles, Trophy, Meh, ThumbsDown, ChevronDown, Download, Upload, X, Search } from 'lucide-react';
+import { ClipboardList, Plus, Clock, ArrowLeft, Sparkles, Trophy, Meh, ThumbsDown, ChevronDown, Download, Upload, X, Search, Check } from 'lucide-react';
 import { formatCurrency } from '@/lib/engine';
 import type { Signal, Platform, BreakOutcome, BreakStatus, BreakFormat } from '@/lib/types';
 import TeamChip from '@/components/breakiq/TeamChip';
@@ -457,6 +457,7 @@ function PendingBreakCard({ brk, onComplete }: { brk: BreakRecord; onComplete: (
   const [notes, setNotes] = useState('');
   const [analysisFeedback, setAnalysisFeedback] = useState<'helpful' | 'not_helpful' | null>(null);
   const [saving, setSaving] = useState(false);
+  const [justSavedMessage, setJustSavedMessage] = useState<string | null>(null);
 
   const [completeError, setCompleteError] = useState<string | null>(null);
 
@@ -472,7 +473,14 @@ function PendingBreakCard({ brk, onComplete }: { brk: BreakRecord; onComplete: (
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
-      onComplete();
+      // Surface a brief "saved" confirmation that names what changed, so the
+      // user sees the loop closed before the card disappears from the list.
+      setJustSavedMessage(
+        analysisFeedback
+          ? 'Saved — your record + take feedback are in.'
+          : 'Saved — your win/bust record updated.',
+      );
+      window.setTimeout(() => onComplete(), 1200);
     } catch (err) {
       setCompleteError(err instanceof Error ? err.message : 'Failed to save');
     } finally {
@@ -532,7 +540,10 @@ function PendingBreakCard({ brk, onComplete }: { brk: BreakRecord; onComplete: (
             </p>
           )}
           <div>
-            <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>How did it go?</p>
+            <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>How did it go?</p>
+            <p className="text-[11px] mb-2 leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
+              Logged outcomes sharpen the model on your favorite formats.
+            </p>
             <div className="flex gap-2">
               {OUTCOME_OPTIONS.map(o => {
                 const Icon = o.icon;
@@ -566,7 +577,10 @@ function PendingBreakCard({ brk, onComplete }: { brk: BreakRecord; onComplete: (
           {/* Analysis feedback */}
           {brk.snapshot_analysis && (
             <div>
-              <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Was our analysis helpful?</p>
+              <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Was our take helpful?</p>
+              <p className="text-[11px] mb-2 leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
+                Helps us calibrate BUY/WATCH/PASS for breaks like this.
+              </p>
               <div className="flex gap-2">
                 {([
                   { value: 'helpful' as const, label: 'Yes', emoji: '👍' },
@@ -594,6 +608,12 @@ function PendingBreakCard({ brk, onComplete }: { brk: BreakRecord; onComplete: (
 
           {completeError && (
             <p className="text-sm" style={{ color: 'var(--signal-pass)' }}>{completeError}</p>
+          )}
+          {justSavedMessage && (
+            <p className="text-sm flex items-center gap-1.5" style={{ color: 'var(--signal-buy)' }}>
+              <Check className="w-3.5 h-3.5" />
+              {justSavedMessage}
+            </p>
           )}
           <div className="flex gap-3">
             <button

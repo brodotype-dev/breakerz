@@ -68,12 +68,21 @@ interface Props {
   onToggled?: (next: boolean) => void;
 }
 
+// localStorage key gating the one-time "Saved — find them on My Chase" hint.
+// Cheap-and-cheerful for beta — profile-column migration is queued post-beta.
+const FIRST_SAVE_SEEN_KEY = 'breakiq_chase_first_save_seen';
+
 export default function ChaseHeartButton({ playerId, size = 'sm', className, onToggled }: Props) {
   const ctx = useContext(ChaseContext);
 
   // Local state mirrors the context (when present) and otherwise self-hydrates.
   const [filledLocal, setFilledLocal] = useState<boolean | null>(null);
   const [pending, setPending] = useState(false);
+
+  // First-save hint — fires once per browser, after the first successful save.
+  // Surfaces the payoff ("find them on My Chase") that users otherwise have
+  // to discover by hunting through the nav.
+  const [showFirstSaveHint, setShowFirstSaveHint] = useState(false);
 
   const filled = ctx ? ctx.saved.has(playerId) : (filledLocal ?? false);
 
@@ -109,6 +118,19 @@ export default function ChaseHeartButton({ playerId, size = 'sm', className, onT
 
       if (!res.ok) throw new Error(String(res.status));
       onToggled?.(next);
+
+      // First successful save in this browser → surface the payoff once.
+      if (next) {
+        try {
+          if (window.localStorage.getItem(FIRST_SAVE_SEEN_KEY) !== '1') {
+            window.localStorage.setItem(FIRST_SAVE_SEEN_KEY, '1');
+            setShowFirstSaveHint(true);
+            window.setTimeout(() => setShowFirstSaveHint(false), 4500);
+          }
+        } catch {
+          // localStorage unavailable — silently skip the hint.
+        }
+      }
     } catch {
       // Revert on failure
       if (ctx) ctx.toggle(playerId, !next); else setFilledLocal(!next);
@@ -120,16 +142,35 @@ export default function ChaseHeartButton({ playerId, size = 'sm', className, onT
   const dim = size === 'md' ? 'w-4 h-4' : 'w-3.5 h-3.5';
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-label={filled ? 'Remove from chase list' : 'Add to chase list'}
-      aria-pressed={filled}
-      title={filled ? 'On your chase list — tap to remove' : 'Tap to add to your chase list'}
-      className={`shrink-0 inline-flex items-center justify-center rounded-md p-1 transition-colors hover:bg-[var(--terminal-surface-hover)] ${className ?? ''}`}
-      style={{ color: filled ? '#ef4444' : 'var(--text-disabled)', opacity: pending ? 0.6 : 1 }}
-    >
-      <Heart className={dim} fill={filled ? 'currentColor' : 'none'} strokeWidth={2} />
-    </button>
+    <span className="relative inline-flex shrink-0">
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={filled ? 'Remove from chase list' : 'Add to chase list'}
+        aria-pressed={filled}
+        title={filled ? 'On your chase list — tap to remove' : 'Tap to add to your chase list'}
+        className={`shrink-0 inline-flex items-center justify-center rounded-md p-1 transition-colors hover:bg-[var(--terminal-surface-hover)] ${className ?? ''}`}
+        style={{ color: filled ? '#ef4444' : 'var(--text-disabled)', opacity: pending ? 0.6 : 1 }}
+      >
+        <Heart className={dim} fill={filled ? 'currentColor' : 'none'} strokeWidth={2} />
+      </button>
+
+      {showFirstSaveHint && (
+        <a
+          href="/chase"
+          className="absolute left-full top-0 ml-2 z-30 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-[10px] font-semibold shadow-lg flex items-center gap-1"
+          style={{
+            backgroundColor: 'var(--terminal-surface)',
+            color: 'var(--text-primary)',
+            border: '1px solid rgba(59,130,246,0.4)',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+          }}
+          onClick={e => e.stopPropagation()}
+        >
+          Saved — find them on My Chase
+          <span aria-hidden="true">↗</span>
+        </a>
+      )}
+    </span>
   );
 }

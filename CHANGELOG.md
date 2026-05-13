@@ -5,6 +5,24 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-13 — Beta launch messaging PR2: feedback-loop framing + home footer real stats
+
+PR2 of the three-PR beta-launch messaging refresh. The "retention" PR — turns silent contribution into a visible loop, makes "feedback is the feature" credible during beta when the model is honestly imperfect and SME tuning IS the product.
+
+**PricingFeedback** ([components/breakiq/PricingFeedback.tsx](components/breakiq/PricingFeedback.tsx)). Two changes: (1) one-line helper under the 👎 popover header — *"We retrain pricing weekly from breaker reports."* — names what the input does. (2) Success state replaces the generic "✓ Thanks" with *"Logged for the next pricing pass"* — names the change the user just caused.
+
+**ChaseHeartButton first-save hint** ([components/breakiq/ChaseHeartButton.tsx](components/breakiq/ChaseHeartButton.tsx)). First successful save in a browser session fires a one-time floating hint next to the heart: *"Saved — find them on My Chase ↗"* (clickable, links to `/chase`). Persists via `localStorage.breakiq_chase_first_save_seen=1` and auto-hides after 4.5s. Surfaces the payoff (personalized `/chase` page) that users otherwise have to discover by hunting through the nav. Profile-column migration for the flag is queued post-beta — localStorage is fine for beta scale.
+
+**My Breaks copy** ([app/(consumer)/my-breaks/page.tsx](app/(consumer)/my-breaks/page.tsx)). (1) Under "How did it go?" — *"Logged outcomes sharpen the model on your favorite formats."* (2) Under "Was our take helpful?" (renamed from "Was our analysis helpful?" for consistency with the new verdict framing from PR1) — *"Helps us calibrate BUY/WATCH/PASS for breaks like this."* (3) Post-save: a brief 1.2s confirmation banner inside the form before the card collapses — *"Saved — your record + take feedback are in."* or *"Saved — your win/bust record updated."* depending on whether analysis feedback was included. Names what changed instead of fading silently.
+
+**Home footer real stats** ([app/(consumer)/page.tsx](app/(consumer)/page.tsx)). Replaced the vague *AI / 24/7* placeholders with real numbers pulled at page render: (1) `liveCount` products live (already real, kept). (2) Breaks logged in the last 7 days from `user_breaks` (non-abandoned). (3) Community insights applied this month from `pending_insights` where `status='applied'` since the start of the current UTC month. Makes the management-tool loop visible in aggregate; doubles as social proof for the beta cohort.
+
+**No new schema, no API contract changes.** Two parallel Supabase `count: 'exact'` queries on the home page are cheap, indexed, and run in parallel with the existing products query.
+
+**Out of scope for PR2** (queued for PR3): ConsumerNav restructure with primary "Log a Break" CTA, empty-state CTAs on `/my-breaks` and `/chase`, onboarding microcopy, jargon tooltips.
+
+---
+
 ## 2026-05-13 — Beta launch messaging PR1: positioning spine + verdict reframe + beta banner
 
 PR1 of the three-PR beta-launch messaging refresh from `~/.claude/plans/2026-05-13-beta-launch-messaging-refresh.md`. The "existential" PR — without it, beta opens with the wrong promise and verdicts users can't yet trust. PR2 (feedback loop framing) and PR3 (nav + onboarding polish) ship next.
