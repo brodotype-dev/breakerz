@@ -62,6 +62,19 @@ function median(nums: number[]): number {
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 }
 
+type BreakPriceCapture = {
+  id: string;
+  observed_at: string;
+  product_name: string;
+  scope_type: string;
+  scope_label: string;
+  format: string;
+  source: string;
+  price_low: number;
+  price_high: number;
+  narrative: string;
+};
+
 export default async function MarketDeltaPage() {
   const { data: rows } = await supabaseAdmin
     .from('user_breaks')
@@ -98,6 +111,58 @@ export default async function MarketDeltaPage() {
       } as DeltaRow;
     })
     .filter((r): r is DeltaRow => r !== null);
+
+  // /break-price captures — recent asking_price observations from
+  // market_observations (live capture path, parallel to user_breaks).
+  // Pulling player names separately because Postgres doesn't auto-join
+  // when scope_id can be either a player or null.
+  const { data: obsRows } = await supabaseAdmin
+    .from('market_observations')
+    .select(`
+      id, observed_at, scope_type, scope_id, scope_team, payload, source_narrative,
+      product:products(name)
+    `)
+    .eq('observation_type', 'asking_price')
+    .is('superseded_at', null)
+    .order('observed_at', { ascending: false })
+    .limit(50);
+
+  const playerScopeIds = Array.from(
+    new Set(
+      (obsRows ?? [])
+        .filter((r: any) => (r.scope_type === 'player' || r.scope_type === 'variant') && r.scope_id)
+        .map((r: any) => r.scope_id as string),
+    ),
+  );
+  const playerNameById = new Map<string, string>();
+  if (playerScopeIds.length > 0) {
+    const { data: playerRows } = await supabaseAdmin
+      .from('players')
+      .select('id, name')
+      .in('id', playerScopeIds);
+    for (const p of playerRows ?? []) playerNameById.set(p.id, p.name);
+  }
+
+  const captures: BreakPriceCapture[] = (obsRows ?? []).map((r: any) => {
+    const payload = (r.payload ?? {}) as Record<string, unknown>;
+    let scopeLabel = '—';
+    if (r.scope_type === 'team') scopeLabel = r.scope_team ?? '—';
+    else if (r.scope_type === 'player') scopeLabel = playerNameById.get(r.scope_id) ?? '(player)';
+    else if (r.scope_type === 'variant') scopeLabel = `${playerNameById.get(r.scope_id) ?? '(player)'} · ${payload.variant_name ?? 'variant'}`;
+    else if (r.scope_type === 'product') scopeLabel = '(entire product)';
+    return {
+      id: r.id,
+      observed_at: r.observed_at,
+      product_name: r.product?.name ?? 'Unknown',
+      scope_type: r.scope_type,
+      scope_label: scopeLabel,
+      format: (payload.format as string) ?? '—',
+      source: (payload.source as string) ?? '—',
+      price_low: Number(payload.price_low) || 0,
+      price_high: Number(payload.price_high) || 0,
+      narrative: r.source_narrative ?? '',
+    };
+  });
 
   const total = deltas.length;
   const meanDelta = total > 0 ? deltas.reduce((s, r) => s + r.delta_pct, 0) / total : 0;
@@ -319,6 +384,55 @@ export default async function MarketDeltaPage() {
                 </div>
               );
             })}
+          </div>
+        </Section>
+      )}
+
+      {/* /break-price captures — observations from the Discord capture path.
+          Listed separately because the scope is per-slot, not per-bundle —
+          deltas vs. our number aren't directly comparable to the user_breaks
+          distribution above without a per-team fair-value query, which is a
+          follow-up. */}
+      {captures.length > 0 && (
+        <Section title="/break-price captures" subtitle={`Most recent ${captures.length} slot asks from Discord`}>
+          <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
+            <div
+              className="grid grid-cols-12 gap-3 px-4 py-2 border-b text-[10px] font-bold uppercase tracking-widest"
+              style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface-hover)', color: 'var(--text-tertiary)' }}
+            >
+              <div className="col-span-2">When</div>
+              <div className="col-span-3">Product</div>
+              <div className="col-span-3">Scope</div>
+              <div className="col-span-1 text-center">Fmt</div>
+              <div className="col-span-2 text-right">Ask</div>
+              <div className="col-span-1 text-right">Source</div>
+            </div>
+            {captures.map(c => (
+              <div
+                key={c.id}
+                className="grid grid-cols-12 gap-3 px-4 py-2 border-b last:border-b-0 items-center text-xs"
+                style={{ borderColor: 'var(--terminal-border)' }}
+              >
+                <div className="col-span-2 font-mono" style={{ color: 'var(--text-tertiary)' }}>
+                  {new Date(c.observed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                </div>
+                <div className="col-span-3 truncate" style={{ color: 'var(--text-secondary)' }}>{c.product_name}</div>
+                <div className="col-span-3 truncate" style={{ color: 'var(--text-primary)' }}>
+                  <span className="text-[9px] uppercase tracking-widest mr-1.5" style={{ color: 'var(--text-tertiary)' }}>{c.scope_type}</span>
+                  {c.scope_label}
+                </div>
+                <div className="col-span-1 text-center text-[10px] uppercase font-bold" style={{ color: 'var(--accent-blue)' }}>{c.format}</div>
+                <div className="col-span-2 text-right font-mono font-bold" style={{ color: 'var(--text-primary)' }}>
+                  {c.price_low === c.price_high
+                    ? `$${c.price_low.toLocaleString()}`
+                    : `$${c.price_low.toLocaleString()}–${c.price_high.toLocaleString()}`}
+                </div>
+                <div className="col-span-1 text-right text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{c.source.replace('_', ' ')}</div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 px-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+            Delta vs. our number for these rows lands in a follow-up — requires per-team fair-value lookup from current pricing_cache.
           </div>
         </Section>
       )}
