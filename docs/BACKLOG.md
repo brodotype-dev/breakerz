@@ -44,6 +44,114 @@ See the [full plan](plans/2026-05-10-topps-series-split.md) for verified data, c
 
 ## Priority 1 — High value, no external blockers
 
+> **Note (2026-05-12):** P1 ordering was re-evaluated against the strategic reframe captured in [docs/strategy/north-star-and-feedback-loop.md](strategy/north-star-and-feedback-loop.md) and [docs/strategy/product-strategy-map.md](strategy/product-strategy-map.md). The three entries below — Market Delta Watch, In-Stream Delivery, and Pull-Data Capture — are the items that turn the model work we've already shipped into a measurable, defensible product. They precede pure model-improvement items because measurement-driven validation now unblocks all the model work.
+
+> **Execution sequencing:** The P1 entries below are ordered by the execution roadmap in [docs/strategy/execution-roadmap.md](strategy/execution-roadmap.md). Each step is calibrated to "strategic clarity per engineering day" rather than feature size — items earlier in the list make strategic claims visibly true to users faster. **Do not ship Track A/B (steps 5, 8) before items 1-3 — sophisticated model work without surfacing UI is invisible moat-building.**
+
+### 1. Market Delta Watch — Stage 1 measurement, available today
+**Effort:** ~½ day  
+**Why:** Per [docs/strategy/north-star-and-feedback-loop.md](strategy/north-star-and-feedback-loop.md), we have a measurable success metric available with data we already capture. Every `user_breaks` row has an `ask_price` (what the user paid) and `snapshot_fair_value` (what our engine said at break time). The delta — `(ask_price − snapshot_fair_value) / snapshot_fair_value` — answers "is BreakIQ disagreeing with the breaker market in a useful direction?" without needing pull data.
+
+**Build:** New admin dashboard at `/admin/market-delta-watch` that surfaces:
+- Distribution of `market_delta` across all logged breaks (histogram)
+- Per-product / per-team / per-platform aggregates
+- "Top systematic mispricings this week" — products + teams where our number diverged most from observed asks
+- (Eventual) public-facing version: "BreakIQ flagged $X in overpriced slots last month"
+
+**Why P1 now:** This is the metric that proves the herd-mispricing thesis. Before we invest in any new model work, prove that BreakIQ ALREADY says something different from the market and which direction it points. If the delta distribution is centered on zero, we're a CH wrapper. If it's systematically negative on some products and positive on others, we have a real product.
+
+---
+
+### 2. Live ask-price ingestion (admin-paste path v1)
+**Effort:** ~1-2 days  
+**Why:** Foundation for Market Delta Watch (#1) at meaningful volume, side-by-side comparison UI (#3), and downstream in-stream delivery (#7). Today `user_breaks.ask_price` is our only source of observed breaker asks — too low-volume and too lagged to power systematic mispricing surfaces. We need broader ingestion across products and breakers.
+
+**Build (v1, admin-paste):**
+- New `breaker_ask_observations` table: `id, product_id, scope_team, breaker_handle, platform, ask_price, observed_at, source_url, source_screenshot_hash, source_user_id`
+- Admin page `/admin/breaker-asks/paste` — admin uploads a screenshot of a stream's slot-pricing list (like the East West examples from Kyle's Discord threads). Claude OCRs into rows, admin confirms, batch inserts
+- Per-row validation: team name canonicalization, product slug match, price range sanity
+- Per-batch logging: who uploaded, when, what file, batch row count
+
+**Build (v2, deferred):** consumer-side paste flow — user submits a screenshot to get a comparison. Same plumbing.
+
+**Build (v3, long-term):** stream-replay scraping / CV. Defer until Path A demonstrates value.
+
+**Why P1 now:** Market Delta Watch alone needs this to be useful. Side-by-side comparison UI needs this. Anything in-stream needs this. **It is foundational to three downstream P1 items.**
+
+---
+
+### 3. Side-by-side comparison UI on `/break/[slug]`
+**Effort:** ~2-3 days  
+**Why:** This is the single highest-user-perceived-impact change in the entire strategic roadmap. Once #2 (ask ingestion) lands, surface the data where users already look. Each team slot row shows:
+
+```
+Royals · BreakIQ $1,447 (±$280) · Last 5 breaker asks: $1,800 / $2,100 / $1,650 / $2,600 / $1,950
+VERDICT: BUY under $1,800
+```
+
+Without this UI, the strategic claim "differentiated voice" is invisible to consumers. The moat is real but unobservable to a user landing on a break page.
+
+**Build:**
+- Component on `/break/[slug]` team slot table: per-team row shows BreakIQ value, observed-asks distribution (median + min/max of recent N), recommended action threshold
+- Pull from `breaker_ask_observations` filtered to `product_id` + `scope_team`, last 30 days (or last N observations, whichever is smaller)
+- Empty state when no asks observed yet: "No recent asks observed — we'll show comparison when data lands"
+- Decay/freshness handling: weight more-recent asks higher when computing the comparison center
+
+**Why P1 now:** Step 3 of execution roadmap. The visible form of every prior step's investment. Without this, every Track A/B/UI improvement is invisible to the people we're trying to win.
+
+---
+
+### 4. Pull-Data Capture in My Breaks — Stage 2 measurement unblocker
+**Effort:** ~1 week  
+**Why:** Per [docs/strategy/north-star-and-feedback-loop.md](strategy/north-star-and-feedback-loop.md), our north-star metric (recovery rate per user — `pull_value / ask_price ≥ 0.5`) requires observing what cards users actually pulled from breaks. Today `user_breaks.outcome` is a 3-bucket subjective label (Win/Mediocre/Bust); we don't capture the actual cards or their values. Until we do, we can't compute recovery rate, calibration error, or verdict accuracy — all of the metrics that would prove BreakIQ's model is right (not just internally consistent).
+
+**Build:** Extend `My Breaks` flow so users completing a break can log their pulls. Three input modes:
+1. Manual entry — player name + variant (slowest, most accurate)
+2. Photo upload + Claude OCR — friction-light, auto-extracts cards from a breaker's card-list screenshot
+3. Bulk paste from breaker's card-list message — works for some platforms
+
+Each logged pull gets CH-priced via existing infrastructure → sum to `total_pull_value` → compute `recovery_ratio`. Backfill historic breaks where data still exists.
+
+**Why P1 now:** Without this, every model improvement (Track A prospect_score, Track B cascading sentiment, freshness multiplier, anchor strategies, grade ratio value) is hypothesis-driven and unprovable. With this, every model constant becomes a tunable hyperparameter validated against observed reality. **This is the single shipping change that converts BreakIQ from "tuning a piano with the lid closed" to a learnable system.**
+
+Related: see Section 4 of [docs/strategy/north-star-and-feedback-loop.md](strategy/north-star-and-feedback-loop.md) for the full measurement stack — Stage 1 (Market Delta, this section) → Stage 2 (recovery ratio, this entry) → Stage 3 (verdict accuracy) → Stage 4 (confidence-calibrated coverage).
+
+---
+
+### 6. Consumer audit trail UI — "Why this price?" expandable on `/break/[slug]`
+**Effort:** ~2-3 days  
+**Why:** The strategic moat — multi-source pricing model + SME-provenance + cascade architecture — is **invisible to consumers today.** They see a price; they don't see WHY that price differs from the breaker's number. The admin-side sentiment-breakdown panel in the prospect-attrs plan covers admin observability; this entry covers the consumer-facing version.
+
+**Without this UI, Track A and Track B are invisible moat-building.** Sophisticated cascade math + Discord-attributed sentiment + per-sport multipliers don't matter to a user unless they can see the contributions and the sources.
+
+**Build:** Expandable on each player slot in the team table at `/break/[slug]`. When expanded:
+
+```
+Konnor Griffin · $620 slot weight
+  Source: CardHedger sales data (4,231 comps) → $245 base
+  +60% MLB Pipeline #1 prospect (Track A, MLB Pipeline 2026-05)
+  +12% Kyle's Discord 2026-05-10: "Pirates stacked" (Track B team_sentiment, 28d left)
+```
+
+Per-contribution: source name, narrative if SME-driven, decay timer if applicable, magnitude in either pp/% or dollars. Same data model as the admin sentiment-breakdown panel — just a different render with consumer-friendly framing.
+
+**Sequencing:** Ship this BEFORE Track A. If we ship Track A first, the engine produces sophisticated numbers nobody can interpret. **Build the moat after surfacing it** (per [docs/strategy/execution-roadmap.md](strategy/execution-roadmap.md) Principle 1).
+
+---
+
+### 7. In-Stream Delivery — meeting users at the moment of decision
+**Effort:** ~1-2 weeks for v1 (Discord bot)  
+**Why:** Per the strategy reframe, the web app's pre-break analysis posture misses the actual moment of decision. Users decide while watching a live stream with ~8 seconds to claim a slot, not 30 minutes before the break sitting at a laptop. The value prop ("Stop overpaying breakers — before you claim the slot") writes a check the current product surface can't fully cash.
+
+**Three plausible v1 channels — pick one:**
+1. **Discord bot** (recommended for v1) — most breakers already run Discord servers; lowest engineering cost; reuses the Discord parser + bot infrastructure already in production. Bot posts BreakIQ verdicts in real time as the SME types or as the breaker calls slots
+2. **Browser extension** — overlays verdict next to live ask on Whatnot / Fanatics Live. Higher engineering cost; harder distribution
+3. **Mobile push (PWA)** — pre-configured "watching this product" alerts. We already have PWA infrastructure; alert-payload design is the main work
+
+**Recommendation:** Discord bot first. Lowest cost to market, validates the in-stream-decision-support hypothesis, builds on existing Discord investment.
+
+---
+
 ### Streaming pricing refresh (scaling unblock)
 **Effort:** ~1.5 days (3 phases × ½ day) **Hard deadline: ship before active product count crosses 25.**
 
@@ -251,6 +359,19 @@ Cheap, non-blocking. Pure UI.
 ---
 
 ## Priority 2 — High value, external dependency or more effort
+
+### 9. Confidence bands in UI (variance-honesty surface)
+**Effort:** ~2-3 days  
+**Why:** Per [docs/strategy/north-star-and-feedback-loop.md](strategy/north-star-and-feedback-loop.md) variance-honesty stance + Kyle's "level of gambling" point: every slot price is one sample from a distribution, and publishing point estimates as if they're certain misrepresents the model and the market. Surface ranges, not just numbers.
+
+**Build:**
+- Engine extension: compute per-player evLow/evMid/evHigh ranges using variant-level EV variance derived from CH's sales-count distribution and odds-weighted sums (math already partially exists in `pricing-refresh.ts` — we have `ev_low / ev_mid / ev_high`, just need to expose meaningfully)
+- UI: every place we render a slot price gets a confidence chip — `$1,447 (likely $1,150-$1,820)` — primary surface on `/break/[slug]`, secondary in BreakIQ Sayz analysis result, tertiary in BulkSentimentUpload preview
+- Composes with consumer audit trail UI (#6) — the breakdown shows ranges per contribution too
+
+**Sequencing:** Step 9 in the execution roadmap. Comes after #6 (audit trail) so the bands render alongside the contribution breakdown. Lower-than-P1 because it's variance-honesty refinement on a product that doesn't exist in its strategically-clarified form until #1-7 ship.
+
+---
 
 ### Grade Ratio Value — replace hard-coded grade multipliers with per-card historical ratios
 **Effort:** ~1–2 days *if CH exposes the data we need* (Q13 in [docs/cardhedger-questions.md](cardhedger-questions.md))

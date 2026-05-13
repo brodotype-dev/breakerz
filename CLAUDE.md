@@ -2,6 +2,23 @@
 
 Sports card break slot pricing and analysis tool. Built with Kyle (Town & Line / CardPulse).
 
+## Product Strategy — read first
+
+BreakIQ exists to be the **differentiated voice at the moment of decision** — credible because of our data infrastructure, valuable because the live-break market herds and we don't. Breakers price slots by copying each other; the market is systematically mispriced in both directions (one breaker prices DBacks at $625 when fair value is closer to $1,900; another prices Red Sox at $6,000 when fair value is $2,600). Our job is to catch both directions in real time, before users claim the slot.
+
+**Core value prop:** *"Stop overpaying breakers."* Live breakers price slots by copying each other. The market gets it wrong by hundreds or thousands of dollars per slot. BreakIQ catches both — overcharges and steals — in real time, before you claim the slot. Backed by a multi-source pricing model (CH sales data + objective prospect rankings + Discord-attributed SME observations) that no breaker, calculator, or platform can replicate.
+
+**North star metric:** *Recovery rate per user* — `pull_value / ask_price ≥ 0.5` for X% of breaks over a rolling window. Pull data isn't captured yet (My Breaks Phase 2 unblocks this). **Operational metric in the interim:** EV calibration error + **market delta** (our predicted slot price vs. observed breaker asks — available today from `user_breaks.ask_price` + `snapshot_fair_value`).
+
+**Strategic moat:** Track A (objective player attributes — MLB Pipeline rank, NPB signee status, graduated_rc, etc.) + Track B (subjective multi-scope sentiment via Discord `/insight`) + CH sales data, combined into a transparent, auditable pricing model with full source attribution. The moat is the combination — competitors can copy CH; they can't replicate the SME network or the cascade architecture.
+
+Full strategy:
+- [docs/strategy/north-star-and-feedback-loop.md](./docs/strategy/north-star-and-feedback-loop.md) — how we measure success, why the data feedback loop matters, candidate metrics in priority order
+- [docs/strategy/product-strategy-map.md](./docs/strategy/product-strategy-map.md) — Reforge 6-dimension framework filled out for BreakIQ (audience, problem, value prop, differentiation, channel, monetization)
+- [docs/strategy/execution-roadmap.md](./docs/strategy/execution-roadmap.md) — **the 10-step execution sequence** ordered by strategic clarity per engineering day; gap analysis mapping each strategic claim to required product change; order-of-operations principles ("build the moat after you've surfaced it"); session-continuity reading order for cold-start contributors
+
+**Session continuity:** if picking up this strategic thread cold, read in this order — CLAUDE.md (this section, 1 min) → `north-star-and-feedback-loop.md` (5 min) → `product-strategy-map.md` (3 min) → `execution-roadmap.md` (5 min) → BACKLOG P0+P1 (3 min). ~17 minutes to full strategic context.
+
 **Docs (read on demand, not automatically):**
 - [CHANGELOG.md](./CHANGELOG.md) — full feature history
 - [docs/BACKLOG.md](./docs/BACKLOG.md) — prioritized work queue
@@ -28,6 +45,8 @@ Sports card break slot pricing and analysis tool. Built with Kyle (Town & Line /
 - [docs/plans/2026-05-11-per-product-anchor-configurator.md](./docs/plans/2026-05-11-per-product-anchor-configurator.md) — Plan A (shipped 2026-05-11): per-product `anchor_strategy` + `anchor_variant_patterns`, dispatcher in `lib/pricing-anchors.ts`, conversational configurator at `/admin/products/[id]/anchor-config`
 - [docs/plans/2026-05-11-slot-price-market-markup.md](./docs/plans/2026-05-11-slot-price-market-markup.md) — Plan B (planned): dual-number display (`fairValue` + `marketFairValue`) so slot prices reflect breaker markup over pure EV. Lifecycle-aware constants in `lib/market-markup.ts`
 - [docs/plans/2026-05-11-release-freshness-decay.md](./docs/plans/2026-05-11-release-freshness-decay.md) — Plan C (planned): math-layer release premium + exponential freshness decay for first-2-weeks-live pricing. Stamps `products.live_since` on `pre_release → live`
+- [docs/plans/2026-05-11-product-audit.md](./docs/plans/2026-05-11-product-audit.md) — Full audit of 21 active products (2026-05-11). Caught 3 duplicate `ch_set_name` cases (Topps Series 1+2, Finest, Midnight), 3 broken/empty products (Donruss Football, 2024 Panini Prizm, Bowman Draft Sapphire). Cleanup landed; Series 1+2 re-imported with productScope predicate filtering ~58K out-of-scope rows
+- [docs/plans/2026-05-12-prospect-attrs-and-cascading-sentiment.md](./docs/plans/2026-05-12-prospect-attrs-and-cascading-sentiment.md) — Two-track player-attribute layer plan (approved 2026-05-12, not yet implemented). **Track A:** objective `players.prospect_rank` / `prospect_status` columns + CSV importer (MLB Pipeline rank, NPB signee, graduated_rc, etc.). **Track B:** multi-scope sentiment via Discord `/insight` extended with `team_sentiment` / `product_sentiment` / `team_product_sentiment` scopes, PLUS a Claude skill for SMEs that captures voice/chat narration → structured Markdown → bulk-import-with-attribution path. Per-sport multiplier table. New `lib/cascading-sentiment.ts` reads observations across scopes with per-scope caps. Per-sport sources: MLB Pipeline, ESPN Big Board, NFL consensus draft boards, NHL Central Scouting
 - [docs/icebox.md](./docs/icebox.md) — Long-running tracking doc for deferred ideas: per-sale time-weighted pricing, per-product chase rule library, asking-price → fair-value calibration, build-vs-buy CH revisited
 - [lib/insights-parser.ts](./lib/insights-parser.ts) — Discord `/insight` Claude parser rules (the prompt). Edit this when you want to add/change extraction rules — sentiment scoring guidance, new hype-tag categories, new risk flags, anti-substitution rules, etc.
 
