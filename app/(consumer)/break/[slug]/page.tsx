@@ -848,6 +848,16 @@ export default function BreakPage() {
         playerProductId={activePlayerProductId}
         onClose={() => setActivePlayerProductId(null)}
         topOffset={drawerTop}
+        audit={{
+          row: activePlayerProductId
+            ? players.find(p => p.id === activePlayerProductId) ?? null
+            : null,
+          productLifecycle: lifecycle,
+          liveSince: product?.live_since ?? null,
+          marketMarkup: getMarketMarkup(lifecycle),
+          viewFormat,
+          riskFlags: activePlayerProductId ? (riskFlagMap.get(activePlayerProductId) ?? []) : [],
+        }}
       />
     </div>
   );
