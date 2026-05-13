@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import ChaseHeartButton from '@/components/breakiq/ChaseHeartButton';
+import WhyThisPriceCard, { type WhyThisPriceProps } from '@/components/breakiq/WhyThisPriceCard';
 import type { VariantWithPrices } from '@/lib/types';
 
 interface PlayerCompsData {
@@ -18,6 +19,11 @@ interface Props {
   playerProductId: string | null;
   onClose: () => void;
   topOffset?: number;
+  // Optional audit-trail context. When provided, renders a "Why this price?"
+  // decomposition card above the variants table. The drawer keeps working
+  // without this — non-break surfaces (e.g. chase list) can render variants
+  // alone.
+  audit?: Omit<WhyThisPriceProps, 'row'> & { row: WhyThisPriceProps['row'] | null };
 }
 
 function GradeBadge({ grade }: { grade: string }) {
@@ -40,7 +46,7 @@ function PlatformLabel({ platform }: { platform: string }) {
   return <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{label}</span>;
 }
 
-export default function PlayerDetailDrawer({ playerProductId, onClose, topOffset = 0 }: Props) {
+export default function PlayerDetailDrawer({ playerProductId, onClose, topOffset = 0, audit }: Props) {
   const [data, setData] = useState<PlayerCompsData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -170,6 +176,18 @@ export default function PlayerDetailDrawer({ playerProductId, onClose, topOffset
 
           {!loading && data && (
             <>
+              {/* Why this price? — multi-source audit trail */}
+              {audit?.row && (
+                <WhyThisPriceCard
+                  row={audit.row}
+                  productLifecycle={audit.productLifecycle}
+                  liveSince={audit.liveSince}
+                  marketMarkup={audit.marketMarkup}
+                  viewFormat={audit.viewFormat}
+                  riskFlags={audit.riskFlags}
+                />
+              )}
+
               {/* Variants table */}
               <div>
                 <p
