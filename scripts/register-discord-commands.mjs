@@ -75,6 +75,20 @@ const commands = [
       },
     ],
   },
+  // Message context-menu — long-press / right-click any message in Discord
+  // and pick Apps → Capture as /break-price. The handler receives the full
+  // target message including all attachments (up to Discord's 10/message
+  // cap, soft-capped at 5 in the handler). Use this when you want to dump
+  // multiple screenshots from the same break in one gesture instead of
+  // firing /break-price N times.
+  //
+  // Type 3 = MESSAGE context menu. Type 2 would be USER context menu. No
+  // options allowed on either — the target is implied by data.target_id.
+  {
+    name: 'Capture as /break-price',
+    type: 3,
+    dm_permission: false,
+  },
 ];
 
 const url = `https://discord.com/api/v10/applications/${DISCORD_APP_ID}/guilds/${DISCORD_GUILD_ID}/commands`;

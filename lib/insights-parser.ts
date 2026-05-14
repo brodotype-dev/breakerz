@@ -860,13 +860,27 @@ export function salvageJsonArrayObjects(raw: string): unknown[] | null {
 // Multi-team and multi-format bundles are EXPLICITLY out of scope — see
 // docs/edge-cases.md. The prompt tells Claude to drop them.
 
-export interface BreakPriceInput {
-  /** At least one of narrative / imageBase64 must be set. */
-  narrative?: string;
+export type BreakPriceImageMediaType = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
+
+export interface BreakPriceImage {
   /** Base64-encoded image bytes (no data: prefix). */
+  base64: string;
+  mediaType: BreakPriceImageMediaType;
+}
+
+export interface BreakPriceInput {
+  /** At least one of narrative / imageBase64 / images[] must be set. */
+  narrative?: string;
+  /** Legacy single-image path used by the /break-price slash command. */
   imageBase64?: string;
-  /** MIME type, e.g. 'image/png' or 'image/jpeg'. */
-  imageMediaType?: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
+  imageMediaType?: BreakPriceImageMediaType;
+  /**
+   * Multi-image path used by the message context-menu command. When set
+   * and non-empty, takes precedence over `imageBase64` — Claude receives
+   * one image content block per entry, in the order supplied. Same break
+   * = one parse pass = one proposal. Cap enforced by the caller.
+   */
+  images?: BreakPriceImage[];
   /** Optional context to add to the prompt. */
   notes?: string;
   /**
@@ -894,7 +908,21 @@ export interface BreakPriceResult {
 
 export async function parseBreakPrice(input: BreakPriceInput): Promise<BreakPriceResult> {
   const hadNarrative = !!input.narrative?.trim();
-  const hadImage = !!input.imageBase64;
+
+  // Normalize legacy single-image input + multi-image input into one
+  // array. Caller can supply either; `images` wins when both are set.
+  const images: BreakPriceImage[] = (() => {
+    if (input.images && input.images.length > 0) return input.images;
+    if (input.imageBase64) {
+      return [{
+        base64: input.imageBase64,
+        mediaType: (input.imageMediaType ?? 'image/png') as BreakPriceImageMediaType,
+      }];
+    }
+    return [];
+  })();
+  const hadImage = images.length > 0;
+  const imageCount = images.length;
 
   const baseDebug = {
     rosterSize: 0,
@@ -972,7 +1000,11 @@ ${
       : 'No narrative provided — extract from the image only.'
   }
 ${input.notes?.trim() ? `\nAdditional context:\n"""\n${input.notes.trim()}\n"""` : ''}
-${hadImage ? '\nA screenshot is attached. Read it carefully — Whatnot, Fanatics Live, eBay listings, and Discord stream embeds all encode the product / team / price / format / platform in their UI.' : ''}
+${hadImage
+    ? imageCount === 1
+      ? '\nA screenshot is attached. Read it carefully — Whatnot, Fanatics Live, eBay listings, and Discord stream embeds all encode the product / team / price / format / platform in their UI.'
+      : `\n${imageCount} screenshots are attached, in order. Treat them as ONE capture session from the same break — extract every distinct slot ask across all images, and DEDUPE identical rows that appear in multiple shots (same team + same price + same format = one row, not two). Read each carefully — Whatnot, Fanatics Live, eBay listings, and Discord stream embeds all encode the product / team / price / format / platform in their UI.`
+    : ''}
 
 Return JSON ONLY — a JSON array of zero or more asking_price update objects. No markdown, no explanation. Empty array = couldn't extract.
 
@@ -1013,20 +1045,16 @@ RULES:
 - price_low and price_high are integer dollars. Strip $ and commas. Use literal values — "$700.00" = 700, not 700000. The "." is a decimal point. Do not scale up because a price seems low.
 - confidence: 0.9+ if every field is unambiguous in the source. Lower for inferred fields.`;
 
-  // Build the content block — text + optional image.
+  // Build the content block — N image blocks (in supplied order) + text.
   type ImageMediaType = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
   const userContent: Array<
     | { type: 'text'; text: string }
     | { type: 'image'; source: { type: 'base64'; media_type: ImageMediaType; data: string } }
   > = [];
-  if (hadImage) {
+  for (const img of images) {
     userContent.push({
       type: 'image',
-      source: {
-        type: 'base64',
-        media_type: (input.imageMediaType ?? 'image/png') as ImageMediaType,
-        data: input.imageBase64!,
-      },
+      source: { type: 'base64', media_type: img.mediaType, data: img.base64 },
     });
   }
   userContent.push({ type: 'text', text: prompt });

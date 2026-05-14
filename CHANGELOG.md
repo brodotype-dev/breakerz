@@ -5,6 +5,23 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-14 — `/break-price` multi-screenshot via message context menu
+
+Adds a Discord MESSAGE context-menu command — "Apps → Capture as /break-price" — that pulls every image attachment off a target message (cap 5) and runs them through `parseBreakPrice` as one batch. Replaces the "fire `/break-price` N times" workflow when an SME is dumping multiple screenshots from the same break. Plan: [docs/plans/2026-05-14-break-price-multi-screenshot.md](docs/plans/2026-05-14-break-price-multi-screenshot.md).
+
+**Why now.** Mobile UX. Picking 5 screenshots through slash-command attachment options means 5 separate gallery dives. Composing one Discord message with 5 attachments is one multi-select. The slash command stays as the single-shot path; context menu is the batch path. Same allowlist, same parser, same staging, same ✅/❌ confirm.
+
+**Mechanics.**
+- New command registered in [scripts/register-discord-commands.mjs](scripts/register-discord-commands.mjs) with `type: 3` (MESSAGE context menu). No options — target message is implied by `data.target_id`.
+- [app/api/discord/interactions/route.ts](app/api/discord/interactions/route.ts) gains a `data.type === 3` branch routing to new `handleBreakPriceFromMessage`. Reads attachments from `data.resolved.messages[target_id].attachments`, filters to valid image MIME types, soft-caps at 5, parallel-fetches with per-image 5 MB byte cap. One failed image aborts the parse with per-index error reporting — partial proposals aren't honest. Narrative comes from the message content text.
+- [lib/insights-parser.ts](lib/insights-parser.ts) `BreakPriceInput` gains an optional `images: BreakPriceImage[]` (each `{ base64, mediaType }`); when set and non-empty, takes precedence over the legacy single-image fields. Loop pushes N `image` content blocks into the Claude call. Prompt addendum tells Claude to treat the images as one capture session and dedupe identical rows (same team + same price + same format = one row).
+
+**Operational rollout.** Re-run `node scripts/register-discord-commands.mjs` after deploy so Discord picks up the new context-menu command. Long-press / right-click any message → Apps → "Capture as /break-price" — bot replies with one combined proposal. The existing `/break-price` slash command stays unchanged for single-shot captures.
+
+**Out of scope.** Numbered-slot slash variant (`screenshot1`, `screenshot2`...). Thread-based collector. Reply-chain capture. Auto-dedupe inside a parse beyond the prompt hint. All deferred per plan.
+
+---
+
 ## 2026-05-14 — Side-by-side comparison UI on `/break/[slug]` (execution-roadmap step #3)
 
 Renders observed `/break-price` asks next to our predicted slot fair value, on the consumer surface users already use. The strategic point of BreakIQ — "we say something different from the breaker market" — is now visible in the place the user is making decisions. Plan: [docs/plans/2026-05-14-side-by-side-comparison.md](docs/plans/2026-05-14-side-by-side-comparison.md). Step #3 of [docs/strategy/execution-roadmap.md](docs/strategy/execution-roadmap.md) — flagged as "highest single user-perceived impact in the entire roadmap."
