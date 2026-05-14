@@ -3,6 +3,8 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { createClient } from '@/lib/supabase-server';
 import { runBreakAnalysis } from '@/lib/analysis';
 import { checkAndIncrementUsage } from '@/lib/usage';
+import { captureServer } from '@/lib/posthog-server';
+import { PH_EVENTS } from '@/lib/posthog-events';
 
 export const maxDuration = 60;
 
@@ -91,6 +93,25 @@ export async function POST(req: NextRequest) {
       caseCosts: overrides,
       askPrice: ask,
     });
+
+    // Slice 2b — fire the PostHog event when observation context was
+    // actually applied (flag on AND ≥3 observations). Best-effort; never
+    // fails the verdict response on analytics issues.
+    if (user && result.observationContext.applied) {
+      try {
+        await captureServer({
+          distinctId: user.id,
+          event: PH_EVENTS.verdict_observation_context_applied,
+          properties: {
+            product_id: productId,
+            observation_count: result.observationContext.observationCount,
+            signal: result.signal,
+          },
+        });
+      } catch {
+        // ignore
+      }
+    }
 
     return NextResponse.json(result);
   } catch (err) {

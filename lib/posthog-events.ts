@@ -20,6 +20,12 @@ export const PH_EVENTS = {
   pricing_feedback_submitted: 'pricing_feedback_submitted',
 
   beta_banner_dismissed: 'beta_banner_dismissed',
+
+  // Slice 2b — fires when the AI verdict prompt was enriched with recent
+  // /break-price observations. Only emits when feature flag is on AND
+  // ≥3 ranked observations were available. Lets us segment beta retention
+  // with vs. without enrichment during the A/B window.
+  verdict_observation_context_applied: 'verdict_observation_context_applied',
 } as const;
 
 export type PHEvent = typeof PH_EVENTS[keyof typeof PH_EVENTS];
