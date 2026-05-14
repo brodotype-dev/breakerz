@@ -271,6 +271,10 @@ Extract zero or more updates. Each update is one of five kinds:
      "source": "ebay_listing" | "stream_ask" | "social_post" | "other",
      "source_note": "...", "confidence": 0.85 }
    If only one price was mentioned, set price_low=price_high.
+   PRICE RULES:
+   - Use the LITERAL dollar amount as written. "$700.00" = 700, not 700000. "$1,200" = 1200. "$3.5k" = 3500. "$12k–$15k" = 12000–15000.
+   - The "." in "$700.00" is a decimal point (cents). Round to whole dollars: "$700.00" → 700, "$699.99" → 700.
+   - DO NOT scale a price up because it seems low for the card. Capture exactly what was said. A buddy-deal or undervalue is itself the signal we want to record.
    SOURCE RULES:
    - 'ebay_listing' = unsold eBay listing (asking price on a live listing). This is the leading-indicator signal — CardHedger only sees sold comps, so eBay listings during the first few days of a release are critical intel we can't get elsewhere.
    - 'stream_ask' = what a breaker is charging on a live break (Whatnot/Fanatics Live/etc.).
@@ -706,6 +710,66 @@ export function summarizeUpdate(u: ParsedUpdate): string {
   }
 }
 
+/**
+ * Salvage a JSON array of objects from a Claude response that may be:
+ *   - wrapped in ```json … ``` markdown fences (Haiku does this often)
+ *   - truncated mid-array because max_tokens was hit (no closing `]`)
+ *   - truncated mid-object inside an array (last `{ … }` never closed)
+ *
+ * Strategy: strip code fences, find the opening `[`, walk character-by-character
+ * tracking string + brace depth, parse each top-level `{…}` as a standalone
+ * object and collect what validates. Stop at the first `]` we encounter at
+ * depth 0, OR at end-of-string (truncation case). Last partial object is
+ * silently dropped — we'd rather return 17 valid asking_price rows than
+ * throw all 18 away because the closing bracket never came.
+ *
+ * Returns null only when no `[` is found at all.
+ */
+export function salvageJsonArrayObjects(raw: string): unknown[] | null {
+  // Strip a single code-fence wrapper if present. Tolerates both ```json and bare ```.
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  let body = fenced ? fenced[1] : raw;
+
+  const start = body.indexOf('[');
+  if (start === -1) return null;
+  body = body.slice(start + 1);
+
+  const objects: unknown[] = [];
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  let objStart = -1;
+
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i];
+    if (escape) { escape = false; continue; }
+    if (inString) {
+      if (ch === '\\') escape = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') { inString = true; continue; }
+    if (ch === '{') {
+      if (depth === 0) objStart = i;
+      depth++;
+    } else if (ch === '}') {
+      depth--;
+      if (depth === 0 && objStart !== -1) {
+        try {
+          objects.push(JSON.parse(body.slice(objStart, i + 1)));
+        } catch {
+          // Skip malformed object; keep going — later siblings may parse fine.
+        }
+        objStart = -1;
+      }
+    } else if (ch === ']' && depth === 0) {
+      break;
+    }
+  }
+
+  return objects;
+}
+
 // ─── /break-price — specialized parser ──────────────────────────────────
 //
 // Single-purpose: extract asking_price observations from a narrative, an
@@ -850,15 +914,16 @@ Schema for each asking_price update:
 }
 
 RULES:
-- ONE asking_price row per call. Multiple rows ONLY if the screenshot shows multiple discrete slot listings.
-- Multi-team bundle ("Yankees + Red Sox + Dodgers $2,400"): return empty array. Multi-team is not yet supported (see edge-cases doc).
+- One asking_price ROW PER DISCRETE SLOT ASK. A screenshot with 18 team rows ("Diamondbacks $625, Red Sox $6000, Cubs $625, …") = 18 separate asking_price updates, one per row. A breaker stream listing four slot prices = four updates.
+- DISTINGUISH a price-sheet (N rows, each is its own slot) from a multi-team BUNDLE (one combined ask spanning multiple teams). A bundle like "Yankees + Red Sox + Dodgers for $2,400" → return empty array (single combined ask not yet supported, see edge-cases doc). A list like "Yankees $800 / Red Sox $750 / Dodgers $850" → three rows.
 - Multi-format bundle ("1 hobby + 2 BD for $5k"): return empty array. Multi-format is not yet supported.
 - Multi-player bundles inside a one-team slot are FINE — that's still a team slot ask, just with chase cards listed.
+- NARRATIVE + SCREENSHOT INTERACTION: when both are present, treat the narrative as PRODUCT/SOURCE CONTEXT first ("this is for 2026 Bowman, from Dan Reed's IG DM") and per-row OVERRIDES second ("the actual White Sox price was $6500" → use $6500 for the White Sox row, keep the rest as the screenshot shows). The narrative does NOT cap the number of rows you emit. If the screenshot has 18 rows, emit 18 rows even when the narrative only mentions one.
 - DO NOT GUESS the product. If you can't match the listing to a product in the list, return empty array. Wrong product attribution is worse than missing data.
-- For source: 'stream_ask' = Whatnot/Fanatics Live/breaker stream. 'ebay_listing' = unsold eBay listing. 'social_post' = Twitter/IG/Discord post. 'other' = anything else.
+- For source: 'stream_ask' = Whatnot/Fanatics Live/breaker stream. 'ebay_listing' = unsold eBay listing. 'social_post' = Twitter/IG/Discord/DM post. 'other' = anything else.
 - Format defaults to 'hobby' when ambiguous and the platform is a hobby-only stream.
 - Team names: use the canonical full name ("Los Angeles Dodgers" not "Dodgers"). If you only see the city/nickname, expand it.
-- price_low and price_high are integer dollars. Strip $ and commas.
+- price_low and price_high are integer dollars. Strip $ and commas. Use literal values — "$700.00" = 700, not 700000. The "." is a decimal point. Do not scale up because a price seems low.
 - confidence: 0.9+ if every field is unambiguous in the source. Lower for inferred fields.`;
 
   // Build the content block — text + optional image.
@@ -885,7 +950,11 @@ RULES:
   const message = await client.messages.create(
     {
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1024,
+      // 8192 fits ~30 asking_price rows (~250 tokens each) — covers Dan-Reed-style
+      // 18-team price-sheet screenshots without truncating the closing `]`.
+      // Previous 1024 was the silent failure: response cut off mid-object,
+      // regex found no array, all rows discarded.
+      max_tokens: 8192,
       messages: [{ role: 'user', content: userContent }],
     },
     { timeout: 30_000 },
@@ -900,17 +969,22 @@ RULES:
   };
   console.log(`[break-price] products=${products.length} hadImage=${hadImage} hadNarrative=${hadNarrative} response_chars=${raw.length}`);
 
-  const arrayMatch = raw.match(/\[[\s\S]*\]/);
-  if (!arrayMatch) {
+  // Salvage handles three failure modes that hit 1024-token responses regularly
+  // and still hit 8192-token responses occasionally: markdown code fences,
+  // truncated array (no closing `]`), truncated last object. Returns whatever
+  // top-level objects parsed cleanly — partial last entry is silently dropped.
+  const parsed = salvageJsonArrayObjects(raw);
+  if (parsed === null) {
     return { updates: [], debug: { ...debug, droppedReasons: ['no JSON array in response'] } };
   }
-
-  let parsed: unknown[];
-  try {
-    parsed = JSON.parse(arrayMatch[0]);
-  } catch (err) {
-    return { updates: [], debug: { ...debug, droppedReasons: [`json parse: ${err instanceof Error ? err.message : err}`] } };
+  if (parsed.length === 0) {
+    return { updates: [], debug: { ...debug, droppedReasons: ['JSON array was empty or had zero parseable objects'] } };
   }
+  // Detect truncation so the bot reply can mention it. Heuristic: response
+  // ends without the array closer AND we got at least one object.
+  const truncatedReason = !raw.trimEnd().endsWith(']') && !raw.trimEnd().endsWith('```')
+    ? `response appeared truncated — kept ${parsed.length} parseable object(s); raise max_tokens if this recurs`
+    : null;
 
   const validProductIds = new Set(products.map(p => p.id));
   const productById = new Map(products.map(p => [p.id, p.name]));
@@ -972,6 +1046,10 @@ RULES:
 
   return {
     updates: valid,
-    debug: { ...debug, parsedRawCount: parsed.length, droppedReasons: dropped },
+    debug: {
+      ...debug,
+      parsedRawCount: parsed.length,
+      droppedReasons: truncatedReason ? [truncatedReason, ...dropped] : dropped,
+    },
   };
 }
