@@ -5,6 +5,22 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-13 — Parser: /break-price truncation salvage + literal-price rule
+
+Two parser fixes uncovered by a real-world `/break-price` capture: Dan Reed's Bowman Baseball 2026 IG DM screenshot (18 team rows) returned "Couldn't extract a slot ask" with debug `parsedRaw=0, hadImage=true, drops=1, Dropped: no JSON array in response`. Claude was actually parsing every row correctly — the response was being truncated mid-object because `max_tokens: 1024` couldn't hold 18 × ~250-token asking_price rows, the closing `]` never came, and the `/\[[\s\S]*\]/` regex bailed throwing away ~17 valid entries that were sitting in the buffer.
+
+**parseBreakPrice** ([lib/insights-parser.ts](lib/insights-parser.ts)). Three changes:
+
+1. **`max_tokens: 1024 → 8192`.** Fits ~30 asking_price rows comfortably; enough headroom for any realistic price-sheet screenshot. Cost ceiling per call is still well under $0.005 on Haiku 4.5.
+2. **`salvageJsonArrayObjects(raw)` helper** replaces the all-or-nothing `[…]` regex + JSON.parse. Strips a `\`\`\`json … \`\`\`` markdown fence if present (Haiku does this often), finds the opening `[`, walks the body character-by-character tracking string state and brace depth, parses each top-level `{…}` independently. Stops at first `]` at depth 0 OR end-of-string. Returns whatever objects parsed cleanly — partial last entry is silently dropped. Old behavior threw all 18 rows away when the closer was missing; new behavior keeps the 17 that completed and surfaces a `response appeared truncated` reason in the debug payload so contributors see what happened.
+3. **Prompt clarified** to distinguish a price-SHEET (N rows, each its own slot) from a multi-team BUNDLE (single combined ask). Old wording "ONE asking_price row per call. Multiple rows ONLY if the screenshot shows multiple discrete slot listings" was ambiguous against Dan Reed's row-per-team format; new wording calls out the distinction explicitly with examples. Also adds a `NARRATIVE + SCREENSHOT INTERACTION` rule — narrative is product/source context first, per-row override second; does NOT cap row count.
+
+**parseInsights** also gets a literal-price rule on the asking_price section. Same-day fix as the [Ohtani $700 → $700000](#) bug from earlier — Claude was scaling "$700.00" to 700000 by interpreting `.00` as a thousands separator (or by silently rejecting the price as implausibly low for a /25 parallel and substituting). Prompt now spells out: literal dollar amount as written, `.` is decimal/cents not thousands, do not scale up because a price seems low.
+
+The salvage helper is exported so future parser additions can reuse it.
+
+---
+
 ## 2026-05-13 — Beta launch messaging PR2: feedback-loop framing + home footer real stats
 
 PR2 of the three-PR beta-launch messaging refresh. The "retention" PR — turns silent contribution into a visible loop, makes "feedback is the feature" credible during beta when the model is honestly imperfect and SME tuning IS the product.
