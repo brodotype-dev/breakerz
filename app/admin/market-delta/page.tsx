@@ -62,20 +62,73 @@ function median(nums: number[]): number {
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 }
 
+type CompositionMap = Partial<Record<'hobby' | 'bd' | 'jumbo', number | null>>;
+
 type BreakPriceCapture = {
   id: string;
   observed_at: string;
   product_name: string;
   scope_type: string;
   scope_label: string;
-  format: string;
+  composition: CompositionMap;
+  compositionLabel: string;
+  isMixed: boolean;
   source: string;
+  source_type: 'competitor_listing' | 'breaker_estimate' | 'historical_sale' | null;
   price_low: number;
   price_high: number;
   narrative: string;
 };
 
-export default async function MarketDeltaPage() {
+function renderComposition(comp: CompositionMap): string {
+  const ORDER: Array<'hobby' | 'bd' | 'jumbo'> = ['hobby', 'bd', 'jumbo'];
+  const present = ORDER.filter(k => comp[k] !== undefined);
+  if (present.length === 0) return '—';
+  if (present.length === 1) {
+    const k = present[0];
+    const v = comp[k];
+    return v == null ? k : `${k} ×${v}`;
+  }
+  return present.map(k => {
+    const v = comp[k];
+    return v == null ? k : `${k} ${v}`;
+  }).join(' + ');
+}
+
+function parseCompositionFromPayload(payload: Record<string, unknown>): CompositionMap {
+  // Prefer new shape; fall back to legacy `format` for rows that haven't
+  // been backfilled yet so the admin panel doesn't render "—" on stale data.
+  const composition = payload.composition as Record<string, unknown> | undefined;
+  if (composition && typeof composition === 'object') {
+    const out: CompositionMap = {};
+    for (const k of ['hobby', 'bd', 'jumbo'] as const) {
+      if (k in composition) {
+        const v = composition[k];
+        out[k] = v == null ? null : Number(v);
+      }
+    }
+    return out;
+  }
+  const legacy = payload.format as string | undefined;
+  if (legacy === 'hobby' || legacy === 'bd' || legacy === 'jumbo') {
+    return { [legacy]: null };
+  }
+  return {};
+}
+
+type SourceTypeFilter = 'all' | 'competitor_listing' | 'breaker_estimate' | 'historical_sale';
+
+export default async function MarketDeltaPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ source_type?: string }>;
+}) {
+  const params = await searchParams;
+  const rawFilter = params.source_type;
+  const sourceTypeFilter: SourceTypeFilter =
+    rawFilter === 'competitor_listing' || rawFilter === 'breaker_estimate' || rawFilter === 'historical_sale'
+      ? rawFilter
+      : 'all';
   const { data: rows } = await supabaseAdmin
     .from('user_breaks')
     .select(`
@@ -143,26 +196,53 @@ export default async function MarketDeltaPage() {
     for (const p of playerRows ?? []) playerNameById.set(p.id, p.name);
   }
 
-  const captures: BreakPriceCapture[] = (obsRows ?? []).map((r: any) => {
+  const allCaptures: BreakPriceCapture[] = (obsRows ?? []).map((r: any) => {
     const payload = (r.payload ?? {}) as Record<string, unknown>;
     let scopeLabel = '—';
     if (r.scope_type === 'team') scopeLabel = r.scope_team ?? '—';
     else if (r.scope_type === 'player') scopeLabel = playerNameById.get(r.scope_id) ?? '(player)';
     else if (r.scope_type === 'variant') scopeLabel = `${playerNameById.get(r.scope_id) ?? '(player)'} · ${payload.variant_name ?? 'variant'}`;
     else if (r.scope_type === 'product') scopeLabel = '(entire product)';
+
+    const composition = parseCompositionFromPayload(payload);
+    const compositionLabel = renderComposition(composition);
+    const isMixed = Object.keys(composition).length > 1;
+    const rawSourceType = payload.source_type as string | undefined;
+    const source_type =
+      rawSourceType === 'competitor_listing' || rawSourceType === 'breaker_estimate' || rawSourceType === 'historical_sale'
+        ? rawSourceType
+        : null; // legacy rows without source_type render as "—"
+
     return {
       id: r.id,
       observed_at: r.observed_at,
       product_name: r.product?.name ?? 'Unknown',
       scope_type: r.scope_type,
       scope_label: scopeLabel,
-      format: (payload.format as string) ?? '—',
+      composition,
+      compositionLabel,
+      isMixed,
       source: (payload.source as string) ?? '—',
+      source_type,
       price_low: Number(payload.price_low) || 0,
       price_high: Number(payload.price_high) || 0,
       narrative: r.source_narrative ?? '',
     };
   });
+
+  // Distribution counter — computed before filtering so the user sees the
+  // full denominator. Filter dropdown narrows the list, not the totals.
+  const totalCaptures = allCaptures.length;
+  const pureFormatCount = allCaptures.filter(c => !c.isMixed).length;
+  const mixedCount = allCaptures.filter(c => c.isMixed).length;
+  const listingCount = allCaptures.filter(c => c.source_type === 'competitor_listing').length;
+  const estimateCount = allCaptures.filter(c => c.source_type === 'breaker_estimate').length;
+  const saleCount = allCaptures.filter(c => c.source_type === 'historical_sale').length;
+
+  const captures =
+    sourceTypeFilter === 'all'
+      ? allCaptures
+      : allCaptures.filter(c => c.source_type === sourceTypeFilter);
 
   const total = deltas.length;
   const meanDelta = total > 0 ? deltas.reduce((s, r) => s + r.delta_pct, 0) / total : 0;
@@ -393,8 +473,47 @@ export default async function MarketDeltaPage() {
           deltas vs. our number aren't directly comparable to the user_breaks
           distribution above without a per-team fair-value query, which is a
           follow-up. */}
-      {captures.length > 0 && (
-        <Section title="/break-price captures" subtitle={`Most recent ${captures.length} slot asks from Discord`}>
+      {totalCaptures > 0 && (
+        <Section title="/break-price captures" subtitle={`${totalCaptures} recent slot asks from Discord`}>
+          {/* Distribution counter — shows composition + source-type split
+              for the unfiltered set so filter doesn't lie about volume. */}
+          <div className="mb-3 flex flex-wrap gap-2 text-[11px]">
+            <span className="px-2 py-1 rounded font-mono" style={{ backgroundColor: 'var(--terminal-surface)', color: 'var(--text-secondary)', border: '1px solid var(--terminal-border)' }}>
+              {pureFormatCount} pure-format · {mixedCount} mixed
+            </span>
+            <span className="px-2 py-1 rounded font-mono" style={{ backgroundColor: 'var(--terminal-surface)', color: 'var(--text-secondary)', border: '1px solid var(--terminal-border)' }}>
+              {listingCount} listings · {estimateCount} estimates · {saleCount} sales
+            </span>
+          </div>
+
+          {/* Filter — anchor tags so the page stays server-rendered.
+              Selected pill highlighted blue. */}
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {([
+              { v: 'all', label: 'All' },
+              { v: 'competitor_listing', label: 'Listings' },
+              { v: 'breaker_estimate', label: 'Estimates' },
+              { v: 'historical_sale', label: 'Sales' },
+            ] as Array<{ v: SourceTypeFilter; label: string }>).map(opt => {
+              const selected = sourceTypeFilter === opt.v;
+              const href = opt.v === 'all' ? '/admin/market-delta' : `/admin/market-delta?source_type=${opt.v}`;
+              return (
+                <a
+                  key={opt.v}
+                  href={href}
+                  className="text-[11px] px-2.5 py-1 rounded font-semibold transition-colors"
+                  style={{
+                    backgroundColor: selected ? 'rgba(59,130,246,0.15)' : 'var(--terminal-surface)',
+                    color: selected ? 'var(--accent-blue)' : 'var(--text-secondary)',
+                    border: `1px solid ${selected ? 'var(--accent-blue)' : 'var(--terminal-border)'}`,
+                  }}
+                >
+                  {opt.label}
+                </a>
+              );
+            })}
+          </div>
+
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
             <div
               className="grid grid-cols-12 gap-3 px-4 py-2 border-b text-[10px] font-bold uppercase tracking-widest"
@@ -403,11 +522,15 @@ export default async function MarketDeltaPage() {
               <div className="col-span-2">When</div>
               <div className="col-span-3">Product</div>
               <div className="col-span-3">Scope</div>
-              <div className="col-span-1 text-center">Fmt</div>
+              <div className="col-span-1 text-center">Comp</div>
               <div className="col-span-2 text-right">Ask</div>
-              <div className="col-span-1 text-right">Source</div>
+              <div className="col-span-1 text-right">Kind</div>
             </div>
-            {captures.map(c => (
+            {captures.length === 0 ? (
+              <div className="px-4 py-6 text-center text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                No captures match the current filter.
+              </div>
+            ) : captures.map(c => (
               <div
                 key={c.id}
                 className="grid grid-cols-12 gap-3 px-4 py-2 border-b last:border-b-0 items-center text-xs"
@@ -421,13 +544,20 @@ export default async function MarketDeltaPage() {
                   <span className="text-[9px] uppercase tracking-widest mr-1.5" style={{ color: 'var(--text-tertiary)' }}>{c.scope_type}</span>
                   {c.scope_label}
                 </div>
-                <div className="col-span-1 text-center text-[10px] uppercase font-bold" style={{ color: 'var(--accent-blue)' }}>{c.format}</div>
+                <div className="col-span-1 text-center text-[10px] font-mono font-bold" style={{ color: c.isMixed ? 'var(--accent-orange)' : 'var(--accent-blue)' }}>
+                  {c.compositionLabel}
+                </div>
                 <div className="col-span-2 text-right font-mono font-bold" style={{ color: 'var(--text-primary)' }}>
                   {c.price_low === c.price_high
                     ? `$${c.price_low.toLocaleString()}`
                     : `$${c.price_low.toLocaleString()}–${c.price_high.toLocaleString()}`}
                 </div>
-                <div className="col-span-1 text-right text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{c.source.replace('_', ' ')}</div>
+                <div className="col-span-1 text-right text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                  {c.source_type === 'competitor_listing' ? 'listing'
+                    : c.source_type === 'breaker_estimate' ? 'estimate'
+                    : c.source_type === 'historical_sale' ? 'sale'
+                    : '—'}
+                </div>
               </div>
             ))}
           </div>
