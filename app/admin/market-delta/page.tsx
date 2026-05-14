@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { Activity, TrendingUp, TrendingDown, Scale } from 'lucide-react';
 import VerdictContextToggle from './VerdictContextToggle';
+import { getTeamFairValuesForProducts } from '@/lib/team-fair-value';
 
 // Market Delta Watch — admin-only thesis validation surface.
 //
@@ -68,6 +69,7 @@ type CompositionMap = Partial<Record<'hobby' | 'bd' | 'jumbo', number | null>>;
 type BreakPriceCapture = {
   id: string;
   observed_at: string;
+  product_id: string | null;
   product_name: string;
   scope_type: string;
   scope_label: string;
@@ -79,6 +81,12 @@ type BreakPriceCapture = {
   price_low: number;
   price_high: number;
   narrative: string;
+  // Slice B — delta vs. our per-team fair value for this capture's scope.
+  // null when we can't compute (no product_id, scope isn't a team, no
+  // pricing_cache, or composition is mixed/unknown). Reference unit is
+  // 1-case-equivalent; see lib/team-fair-value.ts.
+  delta_pct: number | null;
+  fair_value: number | null;
 };
 
 function renderComposition(comp: CompositionMap): string {
@@ -182,13 +190,22 @@ export default async function MarketDeltaPage({
   const { data: obsRows } = await supabaseAdmin
     .from('market_observations')
     .select(`
-      id, observed_at, scope_type, scope_id, scope_team, payload, source_narrative,
+      id, observed_at, product_id, scope_type, scope_id, scope_team, payload, source_narrative,
       product:products(name)
     `)
     .eq('observation_type', 'asking_price')
     .is('superseded_at', null)
     .order('observed_at', { ascending: false })
     .limit(50);
+
+  // Slice B — batch-fetch per-team fair values for every distinct product
+  // referenced in the captures list. Dedupes by product_id; one
+  // `pricing_cache` query per product (chunked internally for large
+  // rosters). Avoids N+1 over the captures map below.
+  const captureProductIds = Array.from(
+    new Set(((obsRows ?? []).map((r: any) => r.product_id).filter(Boolean) as string[])),
+  );
+  const fairValuesByProduct = await getTeamFairValuesForProducts(captureProductIds);
 
   const playerScopeIds = Array.from(
     new Set(
@@ -223,9 +240,41 @@ export default async function MarketDeltaPage({
         ? rawSourceType
         : null; // legacy rows without source_type render as "—"
 
+    const price_low = Number(payload.price_low) || 0;
+    const price_high = Number(payload.price_high) || 0;
+
+    // Slice B — delta vs. our per-team fair value. Only computed for
+    // team-scoped, single-format captures with a snapshot for the product.
+    // Mixed compositions are out of scope for the 1-case-equivalent
+    // reference (engine would need a custom case mix); player/variant/
+    // product scopes don't have a per-team comparable; legacy rows
+    // without composition/format get skipped.
+    let delta_pct: number | null = null;
+    let fair_value: number | null = null;
+    if (
+      r.scope_type === 'team'
+      && r.scope_team
+      && r.product_id
+      && !isMixed
+      && Object.keys(composition).length === 1
+    ) {
+      const snapshot = fairValuesByProduct.get(r.product_id);
+      const teamFv = snapshot?.teams.get(r.scope_team);
+      const fmt = Object.keys(composition)[0] as 'hobby' | 'bd' | 'jumbo';
+      const teamRef = teamFv
+        ? (fmt === 'hobby' ? teamFv.marketHobby : fmt === 'bd' ? teamFv.marketBd : teamFv.marketJumbo)
+        : 0;
+      if (teamRef > 0) {
+        const askMid = (price_low + price_high) / 2;
+        fair_value = teamRef;
+        delta_pct = ((askMid - teamRef) / teamRef) * 100;
+      }
+    }
+
     return {
       id: r.id,
       observed_at: r.observed_at,
+      product_id: (r.product_id as string | null) ?? null,
       product_name: r.product?.name ?? 'Unknown',
       scope_type: r.scope_type,
       scope_label: scopeLabel,
@@ -234,9 +283,11 @@ export default async function MarketDeltaPage({
       isMixed,
       source: (payload.source as string) ?? '—',
       source_type,
-      price_low: Number(payload.price_low) || 0,
-      price_high: Number(payload.price_high) || 0,
+      price_low,
+      price_high,
       narrative: r.source_narrative ?? '',
+      delta_pct,
+      fair_value,
     };
   });
 
@@ -532,53 +583,68 @@ export default async function MarketDeltaPage({
 
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
             <div
-              className="grid grid-cols-12 gap-3 px-4 py-2 border-b text-[10px] font-bold uppercase tracking-widest"
-              style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface-hover)', color: 'var(--text-tertiary)' }}
+              className="grid grid-cols-13 gap-3 px-4 py-2 border-b text-[10px] font-bold uppercase tracking-widest"
+              style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface-hover)', color: 'var(--text-tertiary)', gridTemplateColumns: 'repeat(13, minmax(0, 1fr))' }}
             >
               <div className="col-span-2">When</div>
               <div className="col-span-3">Product</div>
               <div className="col-span-3">Scope</div>
               <div className="col-span-1 text-center">Comp</div>
               <div className="col-span-2 text-right">Ask</div>
+              <div className="col-span-1 text-right">Δ vs model</div>
               <div className="col-span-1 text-right">Kind</div>
             </div>
             {captures.length === 0 ? (
               <div className="px-4 py-6 text-center text-xs" style={{ color: 'var(--text-tertiary)' }}>
                 No captures match the current filter.
               </div>
-            ) : captures.map(c => (
-              <div
-                key={c.id}
-                className="grid grid-cols-12 gap-3 px-4 py-2 border-b last:border-b-0 items-center text-xs"
-                style={{ borderColor: 'var(--terminal-border)' }}
-              >
-                <div className="col-span-2 font-mono" style={{ color: 'var(--text-tertiary)' }}>
-                  {new Date(c.observed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+            ) : captures.map(c => {
+              const deltaColor = c.delta_pct === null
+                ? 'var(--text-tertiary)'
+                : c.delta_pct >= 20 ? '#ef4444'
+                : c.delta_pct <= -20 ? '#22c55e'
+                : 'var(--text-secondary)';
+              return (
+                <div
+                  key={c.id}
+                  className="grid grid-cols-13 gap-3 px-4 py-2 border-b last:border-b-0 items-center text-xs"
+                  style={{ borderColor: 'var(--terminal-border)', gridTemplateColumns: 'repeat(13, minmax(0, 1fr))' }}
+                >
+                  <div className="col-span-2 font-mono" style={{ color: 'var(--text-tertiary)' }}>
+                    {new Date(c.observed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                  </div>
+                  <div className="col-span-3 truncate" style={{ color: 'var(--text-secondary)' }}>{c.product_name}</div>
+                  <div className="col-span-3 truncate" style={{ color: 'var(--text-primary)' }}>
+                    <span className="text-[9px] uppercase tracking-widest mr-1.5" style={{ color: 'var(--text-tertiary)' }}>{c.scope_type}</span>
+                    {c.scope_label}
+                  </div>
+                  <div className="col-span-1 text-center text-[10px] font-mono font-bold" style={{ color: c.isMixed ? 'var(--accent-orange)' : 'var(--accent-blue)' }}>
+                    {c.compositionLabel}
+                  </div>
+                  <div className="col-span-2 text-right font-mono font-bold" style={{ color: 'var(--text-primary)' }}>
+                    {c.price_low === c.price_high
+                      ? `$${c.price_low.toLocaleString()}`
+                      : `$${c.price_low.toLocaleString()}–${c.price_high.toLocaleString()}`}
+                  </div>
+                  <div
+                    className="col-span-1 text-right font-mono"
+                    style={{ color: deltaColor }}
+                    title={c.fair_value !== null ? `Model: $${Math.round(c.fair_value).toLocaleString()} (1-case ref)` : c.isMixed ? 'Mixed composition — skipped' : 'No team fair value available'}
+                  >
+                    {c.delta_pct === null ? '—' : `${c.delta_pct >= 0 ? '+' : ''}${c.delta_pct.toFixed(0)}%`}
+                  </div>
+                  <div className="col-span-1 text-right text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                    {c.source_type === 'competitor_listing' ? 'listing'
+                      : c.source_type === 'breaker_estimate' ? 'estimate'
+                      : c.source_type === 'historical_sale' ? 'sale'
+                      : '—'}
+                  </div>
                 </div>
-                <div className="col-span-3 truncate" style={{ color: 'var(--text-secondary)' }}>{c.product_name}</div>
-                <div className="col-span-3 truncate" style={{ color: 'var(--text-primary)' }}>
-                  <span className="text-[9px] uppercase tracking-widest mr-1.5" style={{ color: 'var(--text-tertiary)' }}>{c.scope_type}</span>
-                  {c.scope_label}
-                </div>
-                <div className="col-span-1 text-center text-[10px] font-mono font-bold" style={{ color: c.isMixed ? 'var(--accent-orange)' : 'var(--accent-blue)' }}>
-                  {c.compositionLabel}
-                </div>
-                <div className="col-span-2 text-right font-mono font-bold" style={{ color: 'var(--text-primary)' }}>
-                  {c.price_low === c.price_high
-                    ? `$${c.price_low.toLocaleString()}`
-                    : `$${c.price_low.toLocaleString()}–${c.price_high.toLocaleString()}`}
-                </div>
-                <div className="col-span-1 text-right text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-                  {c.source_type === 'competitor_listing' ? 'listing'
-                    : c.source_type === 'breaker_estimate' ? 'estimate'
-                    : c.source_type === 'historical_sale' ? 'sale'
-                    : '—'}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           <div className="mt-3 px-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-            Delta vs. our number for these rows lands in a follow-up — requires per-team fair-value lookup from current pricing_cache.
+            Δ vs model uses a 1-case-equivalent per-team fair value (matches the consumer page math; applies lifecycle-aware market markup). Mixed-composition captures show "—" until per-mix engine reference math ships.
           </div>
         </Section>
       )}
