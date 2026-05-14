@@ -1,38 +1,31 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { ChevronDown, Settings, Monitor, User, ClipboardList, Menu, X, LogOut, Heart, Home, Sparkles, Search as SearchIcon, Plus } from 'lucide-react';
+import { Settings, User, ClipboardList, Menu, X, LogOut, Heart, Home, Sparkles, Search as SearchIcon, Plus } from 'lucide-react';
 import { Logo } from '@/components/Logo';
-import SignOutButton from './SignOutButton';
 import { logout } from './actions';
 
 interface ConsumerNavProps {
   isAdmin: boolean;
 }
 
+// Collapsed nav: logo + primary "+ Log a Break" pill + hamburger.
+// All destinations live inside the slide-out sheet — same at every
+// breakpoint. The previous desktop split (icon-only md, full lg)
+// was overstuffed at desktop widths; one consistent pattern reads
+// cleaner and the sheet already groups items by workflow phase.
+
 export default function ConsumerNav({ isAdmin }: ConsumerNavProps) {
-  const [adminOpen, setAdminOpen] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
-  const adminRef = useRef<HTMLDivElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
+  // Close the sheet when the user navigates via back/forward.
   useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (adminRef.current && !adminRef.current.contains(e.target as Node)) {
-        setAdminOpen(false);
-      }
-    }
-    if (adminOpen) document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [adminOpen]);
-
-  // Close the mobile sheet when the user navigates.
-  useEffect(() => {
-    if (!mobileOpen) return;
-    const close = () => setMobileOpen(false);
+    if (!menuOpen) return;
+    const close = () => setMenuOpen(false);
     window.addEventListener('popstate', close);
     return () => window.removeEventListener('popstate', close);
-  }, [mobileOpen]);
+  }, [menuOpen]);
 
   return (
     <>
@@ -46,22 +39,15 @@ export default function ConsumerNav({ isAdmin }: ConsumerNavProps) {
           paddingTop: 'max(0.625rem, env(safe-area-inset-top))',
         }}
       >
-        {/* Brand — bigger on mobile so home is an easy tap target */}
+        {/* Brand */}
         <Link href="/" className="flex items-center hover:opacity-80 transition-opacity shrink-0">
           <Logo variant="lockup" height={32} className="h-8 sm:h-7 w-auto" priority />
         </Link>
 
-        {/* Desktop nav (≥ md only — lg+ shows full set; md collapses to icons).
-            Order maps to the workflow: discover (Breaks/Research/Slabs) →
-            ACT (Log a Break primary) → manage (Chase/My Breaks/Profile). */}
-        <div className="hidden md:flex items-center gap-1.5 lg:gap-2">
-          <NavLink href="/" icon={Home} label="Breaks" />
-          <NavLink href="/analysis" icon={Sparkles} label="Research" />
-          <NavLink href="/card-lookup" icon={SearchIcon} label="Slabs" />
-
-          {/* Primary CTA — central act of the management-tool frame should
-              be one tap from every page. Filled blue. Deep-links into the
-              "new break" form via ?view=new. */}
+        {/* Right side: primary CTA + hamburger.
+            Pill label collapses to "Log" on the smallest screens to
+            preserve thumb-room next to the hamburger. */}
+        <div className="flex items-center gap-2">
           <Link
             href="/my-breaks?view=new"
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all hover:opacity-90"
@@ -72,81 +58,15 @@ export default function ConsumerNav({ isAdmin }: ConsumerNavProps) {
             }}
           >
             <Plus className="w-3 h-3" />
-            Log a Break
-          </Link>
-
-          <div className="w-px h-5 mx-1" style={{ backgroundColor: 'var(--terminal-border)' }} />
-
-          <NavLink href="/chase" icon={Heart} label="Chase" />
-          <NavLink href="/my-breaks" icon={ClipboardList} label="My Breaks" />
-          <NavLink href="/profile" icon={User} label="Profile" />
-
-          {isAdmin && (
-            <div className="relative" ref={adminRef}>
-              <button
-                onClick={() => setAdminOpen(v => !v)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium border transition-colors hover:bg-[var(--terminal-surface)]"
-                style={{ color: 'var(--accent-blue)', borderColor: 'var(--terminal-border)' }}
-              >
-                <Monitor className="w-3 h-3" />
-                Consumer View
-                <ChevronDown className={`w-3 h-3 transition-transform ${adminOpen ? 'rotate-180' : ''}`} />
-              </button>
-              {adminOpen && (
-                <div
-                  className="absolute right-0 top-full mt-1 w-44 rounded-lg border shadow-lg overflow-hidden"
-                  style={{ backgroundColor: 'var(--terminal-surface)', borderColor: 'var(--terminal-border)' }}
-                >
-                  <div
-                    className="flex items-center gap-2 px-3 py-2.5 text-xs font-medium"
-                    style={{
-                      color: 'var(--accent-blue)',
-                      borderBottom: '1px solid var(--terminal-border)',
-                      backgroundColor: 'rgba(59,130,246,0.06)',
-                    }}
-                  >
-                    <Monitor className="w-3 h-3" />
-                    Consumer View
-                  </div>
-                  <Link
-                    href="/admin"
-                    className="flex items-center gap-2 px-3 py-2.5 text-xs font-medium transition-colors hover:bg-[var(--terminal-surface-hover)]"
-                    style={{ color: 'var(--text-secondary)' }}
-                    onClick={() => setAdminOpen(false)}
-                  >
-                    <Settings className="w-3 h-3" />
-                    Admin Portal
-                  </Link>
-                </div>
-              )}
-            </div>
-          )}
-
-          <SignOutButton />
-        </div>
-
-        {/* Mobile: "+ Log" pill + hamburger.
-            Primary CTA visible even on mobile because logging is the
-            central act and shouldn't be one extra tap behind the sheet. */}
-        <div className="md:hidden flex items-center gap-2">
-          <Link
-            href="/my-breaks?view=new"
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-all hover:opacity-90"
-            style={{
-              background: 'var(--accent-blue)',
-              color: 'white',
-              boxShadow: '0 2px 8px rgba(59,130,246,0.25)',
-            }}
-          >
-            <Plus className="w-3 h-3" />
-            Log
+            <span className="hidden sm:inline">Log a Break</span>
+            <span className="sm:hidden">Log</span>
           </Link>
           <button
             type="button"
             aria-label="Open menu"
-            aria-expanded={mobileOpen}
-            onClick={() => setMobileOpen(true)}
-            className="inline-flex items-center justify-center h-10 w-10 rounded-md transition-colors hover:bg-[var(--terminal-surface)]"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen(true)}
+            className="inline-flex items-center justify-center h-9 w-9 sm:h-10 sm:w-10 rounded-md transition-colors hover:bg-[var(--terminal-surface)]"
             style={{ color: 'var(--text-secondary)' }}
           >
             <Menu className="w-5 h-5" />
@@ -154,10 +74,10 @@ export default function ConsumerNav({ isAdmin }: ConsumerNavProps) {
         </div>
       </header>
 
-      {/* Mobile sheet — full-height drawer, paints over the page */}
-      {mobileOpen && (
+      {/* Slide-out destinations sheet — same at every breakpoint. */}
+      {menuOpen && (
         <div
-          className="fixed inset-0 z-70 sm:hidden"
+          className="fixed inset-0 z-70"
           style={{ zIndex: 70 }}
           role="dialog"
           aria-modal="true"
@@ -165,7 +85,7 @@ export default function ConsumerNav({ isAdmin }: ConsumerNavProps) {
           {/* Scrim */}
           <div
             className="absolute inset-0 bg-black/60"
-            onClick={() => setMobileOpen(false)}
+            onClick={() => setMenuOpen(false)}
           />
           {/* Panel */}
           <div
@@ -182,7 +102,7 @@ export default function ConsumerNav({ isAdmin }: ConsumerNavProps) {
               <button
                 type="button"
                 aria-label="Close menu"
-                onClick={() => setMobileOpen(false)}
+                onClick={() => setMenuOpen(false)}
                 className="inline-flex items-center justify-center h-9 w-9 rounded-md hover:bg-[var(--terminal-surface)]"
                 style={{ color: 'var(--text-secondary)' }}
               >
@@ -196,7 +116,7 @@ export default function ConsumerNav({ isAdmin }: ConsumerNavProps) {
                   obviously the central act. */}
               <Link
                 href="/my-breaks?view=new"
-                onClick={() => setMobileOpen(false)}
+                onClick={() => setMenuOpen(false)}
                 className="flex items-center gap-3 px-3 py-3 rounded-md text-sm font-semibold transition-all mb-1"
                 style={{
                   background: 'var(--accent-blue)',
@@ -211,21 +131,21 @@ export default function ConsumerNav({ isAdmin }: ConsumerNavProps) {
               <div className="text-[10px] uppercase tracking-widest px-3 py-1 mt-2" style={{ color: 'var(--text-tertiary)' }}>
                 Discover
               </div>
-              <MobileNavLink href="/" icon={Home} label="Breaks" onClick={() => setMobileOpen(false)} />
-              <MobileNavLink href="/analysis" icon={Sparkles} label="Research" onClick={() => setMobileOpen(false)} />
-              <MobileNavLink href="/card-lookup" icon={SearchIcon} label="Slabs" onClick={() => setMobileOpen(false)} />
+              <SheetLink href="/" icon={Home} label="Breaks" onClick={() => setMenuOpen(false)} />
+              <SheetLink href="/analysis" icon={Sparkles} label="Research" onClick={() => setMenuOpen(false)} />
+              <SheetLink href="/card-lookup" icon={SearchIcon} label="Slabs" onClick={() => setMenuOpen(false)} />
 
               <div className="text-[10px] uppercase tracking-widest px-3 py-1 mt-2" style={{ color: 'var(--text-tertiary)' }}>
                 Manage
               </div>
-              <MobileNavLink href="/chase" icon={Heart} label="My Chase" onClick={() => setMobileOpen(false)} />
-              <MobileNavLink href="/my-breaks" icon={ClipboardList} label="My Breaks" onClick={() => setMobileOpen(false)} />
-              <MobileNavLink href="/profile" icon={User} label="Profile" onClick={() => setMobileOpen(false)} />
+              <SheetLink href="/chase" icon={Heart} label="My Chase" onClick={() => setMenuOpen(false)} />
+              <SheetLink href="/my-breaks" icon={ClipboardList} label="My Breaks" onClick={() => setMenuOpen(false)} />
+              <SheetLink href="/profile" icon={User} label="Profile" onClick={() => setMenuOpen(false)} />
 
               {isAdmin && (
                 <Link
                   href="/admin"
-                  onClick={() => setMobileOpen(false)}
+                  onClick={() => setMenuOpen(false)}
                   className="flex items-center gap-3 px-3 py-3 rounded-md text-sm font-medium border transition-colors hover:bg-[var(--terminal-surface)] mt-2"
                   style={{ color: 'var(--accent-blue)', borderColor: 'var(--terminal-border)' }}
                 >
@@ -236,7 +156,7 @@ export default function ConsumerNav({ isAdmin }: ConsumerNavProps) {
             </nav>
 
             <div className="p-2 border-t" style={{ borderColor: 'var(--terminal-border)' }}>
-              <SignOutLink onClick={() => setMobileOpen(false)} />
+              <SignOutLink onClick={() => setMenuOpen(false)} />
             </div>
           </div>
         </div>
@@ -245,9 +165,10 @@ export default function ConsumerNav({ isAdmin }: ConsumerNavProps) {
   );
 }
 
-// Mobile-drawer sign-out: same SW-cache-wipe semantics as SignOutButton, but
-// rendered as a full-width row instead of a header chip. Duplicates the cache
-// clear inline because we want the drawer to close before the form submits.
+// Sheet-drawer sign-out: same SW-cache-wipe semantics as SignOutButton,
+// but rendered as a full-width row instead of a header chip. Duplicates
+// the cache clear inline because we want the drawer to close before the
+// form submits.
 async function clearServiceWorkerCaches() {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
   try {
@@ -262,28 +183,7 @@ async function clearServiceWorkerCaches() {
   }
 }
 
-function NavLink({
-  href,
-  icon: Icon,
-  label,
-}: {
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors hover:bg-[var(--terminal-surface)]"
-      style={{ color: 'var(--text-secondary)' }}
-    >
-      <Icon className="w-3 h-3" />
-      <span className="hidden lg:inline">{label}</span>
-    </Link>
-  );
-}
-
-function MobileNavLink({
+function SheetLink({
   href,
   icon: Icon,
   label,

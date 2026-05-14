@@ -74,7 +74,7 @@ export default function BetaBanner({ surface }: BetaBannerProps) {
         Private Beta
       </span>
       <p className="flex-1 text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-        Our model is learning from every break logged. Tell us when our take is off — we&rsquo;re tuning with every flag.
+        Beta — we tune from every flag. Tell us when our take is off.
       </p>
       <button
         onClick={dismiss}
