@@ -10,6 +10,7 @@ import {
   InteractionFlags,
 } from '@/lib/discord';
 import { parseInsights, parseBreakPrice, summarizeUpdate, type ParsedUpdate } from '@/lib/insights-parser';
+import { deriveSourceType } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -728,7 +729,8 @@ async function applyUpdates(args: {
           const payload =
             u.kind === 'asking_price'
               ? {
-                  format: u.format,
+                  composition: u.composition,
+                  source_type: deriveSourceType(u.source),
                   price_low: u.price_low,
                   price_high: u.price_high,
                   source: u.source,
@@ -746,7 +748,8 @@ async function applyUpdates(args: {
                       : {}),
                   }
                 : {
-                    format: u.format,
+                    composition: u.composition,
+                    source_type: deriveSourceType(u.source),
                     observed_odds_per_case: u.observed_odds_per_case,
                     source: u.source,
                     ...(u.scope_type === 'variant' && u.variant_name

@@ -12,14 +12,74 @@
  */
 
 import { supabaseAdmin } from '@/lib/supabase';
+import type { SlotComposition, AskingPriceSource, BreakFormat } from '@/lib/types';
 
-/**
- * Where an asking_price observation came from. CardHedger covers sold comps
- * (reactive); the whole point of capturing observations is the things CH
- * can't see — unsold listings, breaker stream asks, social posts during the
- * release-week window when sold-data is sparse.
- */
-export type AskingPriceSource = 'ebay_listing' | 'stream_ask' | 'social_post' | 'other';
+// Re-export so existing imports of AskingPriceSource from this module
+// keep working without an external rename. Canonical home is lib/types.ts.
+export type { AskingPriceSource } from '@/lib/types';
+
+// Validate a parser-emitted composition map. At least one valid format key,
+// values must be null or a positive integer ≤ 50 (sanity bound). Returns
+// `{ ok, comp }` on success or `{ ok: false, reason }` on validation
+// failure. Used by both parseInsights and parseBreakPrice.
+export function validateComposition(
+  input: unknown,
+): { ok: true; comp: SlotComposition } | { ok: false; reason: string } {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return { ok: false, reason: 'composition not an object' };
+  }
+  const entries = Object.entries(input as Record<string, unknown>);
+  if (entries.length === 0) {
+    return { ok: false, reason: 'composition empty' };
+  }
+  const out: SlotComposition = {};
+  const validKeys: BreakFormat[] = ['hobby', 'bd', 'jumbo'];
+  for (const [key, value] of entries) {
+    if (!validKeys.includes(key as BreakFormat)) {
+      return { ok: false, reason: `composition has unknown key ${key}` };
+    }
+    if (value === null || value === undefined) {
+      out[key as BreakFormat] = null;
+    } else {
+      const n = Number(value);
+      if (!Number.isFinite(n) || n <= 0 || n > 50) {
+        return { ok: false, reason: `composition ${key} value out of bounds: ${value}` };
+      }
+      out[key as BreakFormat] = Math.round(n);
+    }
+  }
+  return { ok: true, comp: out };
+}
+
+// Render a composition into a short human label for proposal previews
+// and admin chips.
+//   { hobby: null }                  → "hobby"
+//   { hobby: 3 }                     → "hobby ×3"
+//   { bd: 20, hobby: 5 }             → "bd 20 + hobby 5"
+//   { bd: null, hobby: null }        → "bd + hobby"
+//   { jumbo: null, bd: 2, hobby: 5 } → "bd 2 + hobby 5 + jumbo" (canonical key order)
+export function renderComposition(comp: SlotComposition): string {
+  const ORDER: BreakFormat[] = ['hobby', 'bd', 'jumbo'];
+  const presentKeys = ORDER.filter(k => comp[k] !== undefined);
+  if (presentKeys.length === 0) return '?';
+
+  // Single-key shortcut — most common case.
+  if (presentKeys.length === 1) {
+    const k = presentKeys[0];
+    const v = comp[k];
+    return v == null ? k : `${k} ×${v}`;
+  }
+
+  // Multi-key: render each segment with or without its count, join with ' + '.
+  // If at least one segment has a numeric count, we still render the null
+  // segments as bare-key (no count) so the asymmetry is preserved.
+  return presentKeys
+    .map(k => {
+      const v = comp[k];
+      return v == null ? k : `${k} ${v}`;
+    })
+    .join(' + ');
+}
 
 export type ParsedUpdate =
   | {
@@ -47,7 +107,10 @@ export type ParsedUpdate =
       scope_team?: string;       // when scope_type='team'
       scope_player_id?: string;  // when scope_type='player' OR 'variant' (variant rolls up to player)
       variant_name?: string;     // when scope_type='variant'
-      format: 'hobby' | 'bd' | 'jumbo';
+      // Slot composition. Single-key with null value = pure-format slot,
+      // ratio not specified. Multi-key = mixed bundle. See SlotComposition
+      // in lib/types.ts for the full rules.
+      composition: SlotComposition;
       price_low: number;
       price_high: number;
       source: AskingPriceSource;
@@ -78,16 +141,17 @@ export type ParsedUpdate =
     }
   | {
       // Field intel: a specific card pulls at a different rate than the
-      // odds sheet says. Variant-level by nature; format-keyed because odds
-      // differ across hobby/jumbo/bd. observed_odds_per_case is "1 in N
-      // cases" — the same shape breakers describe rare hits ("1:80 cases").
+      // odds sheet says. Variant-level by nature. Composition captures the
+      // case mix the contributor was observing when they reported the rate
+      // — "1:80 hobby" → {hobby: null}, "1:80 across a bd+hobby mix" →
+      // {bd: null, hobby: null}. observed_odds_per_case is "1 in N cases".
       kind: 'odds_observation';
       product_id: string;
       product_name: string;
       scope_type: 'variant' | 'player';
       scope_player_id?: string;  // always set (variant rolls up to player too)
       variant_name?: string;     // when scope_type='variant'
-      format: 'hobby' | 'bd' | 'jumbo';
+      composition: SlotComposition;
       observed_odds_per_case: number;  // e.g. 80 for "1 in 80 cases"
       source: AskingPriceSource;
       source_note: string;
@@ -266,11 +330,25 @@ Extract zero or more updates. Each update is one of five kinds:
      "scope_team": "Dallas Mavericks",   // only when scope_type='team'
      "scope_player_id": "...",           // when scope_type='player' OR 'variant' (variants roll up to a player)
      "variant_name": "Orange Refractor /99",  // free-text variant description, only when scope_type='variant'
-     "format": "hobby" | "bd" | "jumbo",
+     "composition": { "hobby": null },   // SLOT COMPOSITION — see rules below
      "price_low": 12000, "price_high": 15000,
      "source": "ebay_listing" | "stream_ask" | "social_post" | "other",
      "source_note": "...", "confidence": 0.85 }
    If only one price was mentioned, set price_low=price_high.
+   COMPOSITION RULES — emit a sparse map of formats involved per slot:
+   - "$45 Diamondbacks" (no format mentioned on a hobby-only stream) → { "hobby": null }
+   - "Bowman hobby per-team"                                          → { "hobby": null }
+   - "Delight slot $300"                                              → { "bd": null }
+   - "Jumbo per-team $800"                                            → { "jumbo": null }
+   - "Delight/hobby — 20 delight 5 hobby per break/slot"              → { "bd": 20, "hobby": 5 }
+   - "Mixed delight + hobby" (no per-slot ratio)                      → { "bd": null, "hobby": null }
+   Rules:
+   - Single-key with null value = "this format, count not specified" (the common case)
+   - Multi-key = the slot covers a bundled mix of formats
+   - null values mean "this format involved, ratio unknown"
+   - Numeric values mean "case count per slot, explicitly stated by the source"
+   - Never emit a "mixed" key — express mixing by including multiple keys
+   - Use "bd" for "delight" / "BD" / "breaker's delight"
    PRICE RULES:
    - Use the LITERAL dollar amount as written. "$700.00" = 700, not 700000. "$1,200" = 1200. "$3.5k" = 3500. "$12k–$15k" = 12000–15000.
    - The "." in "$700.00" is a decimal point (cents). Round to whole dollars: "$700.00" → 700, "$699.99" → 700.
@@ -299,11 +377,11 @@ Extract zero or more updates. Each update is one of five kinds:
      "scope_type": "variant" | "player",
      "scope_player_id": "...",                    // always set
      "variant_name": "Black Prism /1",            // when scope_type='variant'
-     "format": "hobby" | "bd" | "jumbo",
+     "composition": { "hobby": null },            // same shape as asking_price — formats involved
      "observed_odds_per_case": 80,                // "1 in 80 cases" → 80
      "source": "ebay_listing" | "stream_ask" | "social_post" | "other",
      "source_note": "...", "confidence": 0.7 }
-   Use this only when someone explicitly reports a per-case pull rate that contradicts the odds sheet (e.g. "this card is hitting 1 in 80 cases on hobby, way rarer than published"). DO NOT emit this for "X is a chase" or "X is rare" without a number.
+   Use this only when someone explicitly reports a per-case pull rate that contradicts the odds sheet (e.g. "this card is hitting 1 in 80 cases on hobby, way rarer than published"). DO NOT emit this for "X is a chase" or "X is rare" without a number. composition follows the same rules as asking_price.
 
 6. TEAM_SENTIMENT — a take on a whole team across every product they're in. Use for "Royals are stacked this year", "Tigers' farm is loaded", "Cowboys are a sell". Output:
    { "kind": "team_sentiment", "team_name": "Kansas City Royals",
@@ -471,8 +549,9 @@ CRITICAL:
           dropReasons.push(`asking_price: invalid scope_type=${u.scope_type}`);
           continue;
         }
-        if (!['hobby', 'bd', 'jumbo'].includes(u.format)) {
-          dropReasons.push(`asking_price: invalid format=${u.format}`);
+        const compResult = validateComposition((u as { composition: unknown }).composition);
+        if (!compResult.ok) {
+          dropReasons.push(`asking_price: ${compResult.reason}`);
           continue;
         }
         const validSources: AskingPriceSource[] = ['ebay_listing', 'stream_ask', 'social_post', 'other'];
@@ -485,7 +564,7 @@ CRITICAL:
           scope_team: u.scope_team,
           scope_player_id: u.scope_player_id,
           variant_name: u.scope_type === 'variant' ? String(u.variant_name ?? '').slice(0, 120) : undefined,
-          format: u.format,
+          composition: compResult.comp,
           price_low: Math.max(0, Number(u.price_low) || 0),
           price_high: Math.max(0, Number(u.price_high) || 0),
           source,
@@ -541,8 +620,9 @@ CRITICAL:
           dropReasons.push(`odds_observation: invalid scope_type=${u.scope_type}`);
           continue;
         }
-        if (!['hobby', 'bd', 'jumbo'].includes(u.format)) {
-          dropReasons.push(`odds_observation: invalid format=${u.format}`);
+        const compResult = validateComposition((u as { composition: unknown }).composition);
+        if (!compResult.ok) {
+          dropReasons.push(`odds_observation: ${compResult.reason}`);
           continue;
         }
         const obs = Number(u.observed_odds_per_case);
@@ -559,7 +639,7 @@ CRITICAL:
           scope_type: u.scope_type,
           scope_player_id: u.scope_player_id,
           variant_name: u.scope_type === 'variant' ? String(u.variant_name ?? '').slice(0, 120) : undefined,
-          format: u.format,
+          composition: compResult.comp,
           // Cap at 10000 — anything rarer than 1:10000 is almost certainly
           // a misread of "1/1" or per-set numbering. Smallest is 1 (every case).
           observed_odds_per_case: Math.max(1, Math.min(10000, Math.round(obs))),
@@ -680,7 +760,7 @@ export function summarizeUpdate(u: ParsedUpdate): string {
         : u.scope_type === 'player' ? `player slot`
         : `${u.product_name} bundle`;
       const range = u.price_low === u.price_high ? `$${u.price_low}` : `$${u.price_low}–$${u.price_high}`;
-      return `${where} (${u.format}, ${u.source}): asking ${range} — ${u.source_note}`;
+      return `${where} (${renderComposition(u.composition)}, ${u.source}): asking ${range} — ${u.source_note}`;
     }
     case 'hype_tag': {
       const where =
@@ -691,7 +771,7 @@ export function summarizeUpdate(u: ParsedUpdate): string {
       return `${where}: ${u.tag} (strength ${u.strength.toFixed(2)}, decay ${u.decay_days}d)`;
     }
     case 'odds_observation':
-      return `${u.variant_name ?? 'card'} (${u.format}): observed 1:${u.observed_odds_per_case} cases — ${u.source_note}`;
+      return `${u.variant_name ?? 'card'} (${renderComposition(u.composition)}): observed 1:${u.observed_odds_per_case} cases — ${u.source_note}`;
     case 'team_sentiment': {
       const arrow = u.direction === 1 ? '↑' : '↓';
       const tag = u.tag ? ` [${u.tag}]` : '';
@@ -905,7 +985,7 @@ Schema for each asking_price update:
   "scope_team": "<full team name, only when scope_type=team>",
   "scope_player_id": "<player id, only when scope_type=player or variant>",
   "variant_name": "<free text, only when scope_type=variant>",
-  "format": "hobby" | "bd" | "jumbo",
+  "composition": { "hobby": null },   // SLOT COMPOSITION — see rules below
   "price_low": <integer dollars>,
   "price_high": <integer dollars — same as price_low for a single price, different for a range>,
   "source": "stream_ask" | "ebay_listing" | "social_post" | "other",
@@ -916,12 +996,19 @@ Schema for each asking_price update:
 RULES:
 - One asking_price ROW PER DISCRETE SLOT ASK. A screenshot with 18 team rows ("Diamondbacks $625, Red Sox $6000, Cubs $625, …") = 18 separate asking_price updates, one per row. A breaker stream listing four slot prices = four updates.
 - DISTINGUISH a price-sheet (N rows, each is its own slot) from a multi-team BUNDLE (one combined ask spanning multiple teams). A bundle like "Yankees + Red Sox + Dodgers for $2,400" → return empty array (single combined ask not yet supported, see edge-cases doc). A list like "Yankees $800 / Red Sox $750 / Dodgers $850" → three rows.
-- Multi-format bundle ("1 hobby + 2 BD for $5k"): return empty array. Multi-format is not yet supported.
+- COMPOSITION RULES — sparse map of formats involved per slot:
+  · "$45 Diamondbacks" on a hobby-only stream     → { "hobby": null }
+  · "Bowman hobby per-team"                       → { "hobby": null }
+  · "Delight slot $300"                           → { "bd": null }
+  · "Jumbo per-team $800"                         → { "jumbo": null }
+  · "Delight/hobby, 20 delight 5 hobby per slot"  → { "bd": 20, "hobby": 5 }
+  · "Delight + hobby" (no per-slot ratio)         → { "bd": null, "hobby": null }
+  Single-key + null value = pure-format slot, ratio unspecified. Multi-key = bundled mix. Use "bd" for "delight" / "BD" / "breaker's delight". Never emit "mixed" as a key — express mixing via multiple keys.
 - Multi-player bundles inside a one-team slot are FINE — that's still a team slot ask, just with chase cards listed.
-- NARRATIVE + SCREENSHOT INTERACTION: when both are present, treat the narrative as PRODUCT/SOURCE CONTEXT first ("this is for 2026 Bowman, from Dan Reed's IG DM") and per-row OVERRIDES second ("the actual White Sox price was $6500" → use $6500 for the White Sox row, keep the rest as the screenshot shows). The narrative does NOT cap the number of rows you emit. If the screenshot has 18 rows, emit 18 rows even when the narrative only mentions one.
+- NARRATIVE + SCREENSHOT INTERACTION: when both are present, treat the narrative as PRODUCT/SOURCE/COMPOSITION CONTEXT first ("this is for 2026 Bowman, delight/hobby mix 20 delight + 5 hobby per slot, from Dan Reed's IG DM") and per-row OVERRIDES second ("the actual White Sox price was $6500" → use $6500 for the White Sox row, keep the rest as the screenshot shows). The narrative does NOT cap the number of rows you emit. If the screenshot has 18 rows, emit 18 rows even when the narrative only mentions one. If the narrative specifies a composition that applies to all rows, apply it to every emitted row.
 - DO NOT GUESS the product. If you can't match the listing to a product in the list, return empty array. Wrong product attribution is worse than missing data.
 - For source: 'stream_ask' = Whatnot/Fanatics Live/breaker stream. 'ebay_listing' = unsold eBay listing. 'social_post' = Twitter/IG/Discord/DM post. 'other' = anything else.
-- Format defaults to 'hobby' when ambiguous and the platform is a hobby-only stream.
+- Composition defaults to { "hobby": null } when ambiguous and the platform is a hobby-only stream.
 - Team names: use the canonical full name ("Los Angeles Dodgers" not "Dodgers"). If you only see the city/nickname, expand it.
 - price_low and price_high are integer dollars. Strip $ and commas. Use literal values — "$700.00" = 700, not 700000. The "." is a decimal point. Do not scale up because a price seems low.
 - confidence: 0.9+ if every field is unambiguous in the source. Lower for inferred fields.`;
@@ -989,7 +1076,6 @@ RULES:
   const validProductIds = new Set(products.map(p => p.id));
   const productById = new Map(products.map(p => [p.id, p.name]));
   const playerById = new Map(players.map(p => [p.id, p.name]));
-  const validFormats = new Set(['hobby', 'bd', 'jumbo']);
   const validSources = new Set(['stream_ask', 'ebay_listing', 'social_post', 'other']);
   const validScopes = new Set(['team', 'player', 'product', 'variant']);
 
@@ -1007,8 +1093,9 @@ RULES:
     if (!validScopes.has(row.scope_type as string)) {
       dropped.push(`bad scope_type=${row.scope_type}`); continue;
     }
-    if (!validFormats.has(row.format as string)) {
-      dropped.push(`bad format=${row.format}`); continue;
+    const compResult = validateComposition(row.composition);
+    if (!compResult.ok) {
+      dropped.push(compResult.reason); continue;
     }
     if (!validSources.has(row.source as string)) {
       dropped.push(`bad source=${row.source}`); continue;
@@ -1035,7 +1122,7 @@ RULES:
       scope_team: row.scope_team as string | undefined,
       scope_player_id: row.scope_player_id as string | undefined,
       variant_name: row.variant_name as string | undefined,
-      format: row.format as 'hobby' | 'bd' | 'jumbo',
+      composition: compResult.comp,
       price_low: Math.round(lo),
       price_high: Math.round(hi),
       source: row.source as AskingPriceSource,

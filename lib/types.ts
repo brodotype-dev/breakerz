@@ -10,6 +10,54 @@ export type ProductLifecycle = 'pre_release' | 'live' | 'dormant';
 
 export type BreakFormat = 'hobby' | 'bd' | 'jumbo';
 
+// Sparse vector describing the case mix per slot for an asking_price /
+// odds observation. Replaces the old single-`format` field. Keys present
+// are the formats involved. Values are case counts per slot when known,
+// or `null` when the format is involved but the ratio wasn't stated.
+//
+//   "Whatnot stream — $45 Diamondbacks"          → { hobby: null }
+//   "Bowman hobby per-team"                      → { hobby: null }
+//   "delight/hobby, 20 delight 5 hobby per slot" → { bd: 20, hobby: 5 }
+//   "delight/hobby case mix" (no ratio)          → { bd: null, hobby: null }
+//
+// "Mixed" is never a stored value — it's a display computation on top of
+// this shape (`Object.keys(composition).length > 1 ? 'Mixed' : keys[0]`).
+// See docs/plans/2026-05-13-composition-and-observation-driven-verdicts.md.
+export type SlotComposition = Partial<Record<BreakFormat, number | null>>;
+
+// Epistemic kind of an observation. Orthogonal to the existing `source`
+// enum (which captures the *channel* the observation arrived through):
+//
+//   competitor_listing — a price a competitor is asking (Whatnot, eBay,
+//                        social posts of stream-room screenshots)
+//   breaker_estimate   — an SME read on what a slot SHOULD be priced at
+//                        (Dan Reed DMs, breaker friends weighing in)
+//   historical_sale    — a completed sale we captured after the fact
+//
+// Derived deterministically from `source` at apply time — see
+// `deriveSourceType` below. Slice 2a will weight these differently when
+// the calibration aggregator ships.
+export type ObservationSourceType =
+  | 'competitor_listing'
+  | 'breaker_estimate'
+  | 'historical_sale';
+
+export type AskingPriceSource = 'ebay_listing' | 'stream_ask' | 'social_post' | 'other';
+
+// Maps the existing `source` channel to its epistemic kind. Trade-off
+// accepted: not 100% accurate (a `social_post` could be a competitor's
+// tweet, not always an SME estimate), but deterministic + zero-cost
+// classification. If this skews calibration in slice 2a, revisit with
+// an explicit slash-command override.
+export function deriveSourceType(source: AskingPriceSource): ObservationSourceType {
+  switch (source) {
+    case 'stream_ask':   return 'competitor_listing';
+    case 'ebay_listing': return 'competitor_listing';
+    case 'social_post':  return 'breaker_estimate';
+    case 'other':        return 'competitor_listing';
+  }
+}
+
 // Raw market_observations rows surfaced to the consumer pre-release page for
 // chip rendering. The hype tag union mirrors lib/score-modulation.ts.
 export type HypeObsRow = {
@@ -31,10 +79,11 @@ export type AskingPriceObsRow = {
   scope_id: string | null;
   scope_team: string | null;
   payload: {
-    format: BreakFormat;
+    composition: SlotComposition;
     price_low: number;
     price_high: number;
-    source: 'ebay_listing' | 'stream_ask' | 'social_post' | 'other';
+    source: AskingPriceSource;
+    source_type: ObservationSourceType;
     variant_name?: string;
   };
   observed_at: string;

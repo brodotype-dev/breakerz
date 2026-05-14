@@ -5,6 +5,56 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-14 — Composition + observation source type (slice 1 of composition-observation plan)
+
+Replaces single-`format` on `asking_price` + `odds_observation` observations with a sparse-vector `composition` map (the engine's already-existing primitive for bundles) and adds a derived `source_type` enum that captures the epistemic kind of each observation. Slice 1 of three from [docs/plans/2026-05-13-composition-and-observation-driven-verdicts.md](docs/plans/2026-05-13-composition-and-observation-driven-verdicts.md). Slice 2b (verdict narrative enrichment) ships next; slice 2a (calibration aggregator) is deferred.
+
+**Why now.** Dan Reed's `/break-price` IG DM screenshot ("Bowman delight/hobby — 20 delight 5 hobby per slot") parsed as 23 single-format `'hobby'` rows. Market Delta Watch comparing $625 Diamondbacks against a pure-hobby fair value is meaningless when the ask covers a bundled mix. Either we drop the SME data (anti-feedback-loop) or we model composition properly. A first-draft plan proposed adding `'mixed'` to `BreakFormat`, but that's a meta-classification stapled onto an enum — the engine and break-log schemas already use composition vectors, so bringing observations into that shape is the structurally honest fix.
+
+**The new primitive** ([lib/types.ts](lib/types.ts)):
+- `SlotComposition` = `Partial<Record<BreakFormat, number | null>>`. Single key with null value = pure-format slot, ratio unspecified. Multi-key = bundled mix. Values are case counts when explicitly stated, null when "format involved, ratio unknown."
+- `ObservationSourceType` = `'competitor_listing' | 'breaker_estimate' | 'historical_sale'`. Orthogonal to the existing `source` channel.
+- `deriveSourceType(source)` — deterministic mapping from existing `source` enum: `stream_ask` / `ebay_listing` / `other` → `competitor_listing`, `social_post` → `breaker_estimate`. Trade-off accepted per plan section 3: not 100% accurate (a `social_post` could be a competitor's tweet), but deterministic + zero classification cost. Revisit with an explicit slash-command override if slice 2a calibration shows drift.
+- `BreakFormat` stays untouched. "Mixed" is never a stored value — it's a display computation via `renderComposition()` on the few admin surfaces that need a single-token label.
+
+**Parser changes** ([lib/insights-parser.ts](lib/insights-parser.ts)):
+- `asking_price` and `odds_observation` ParsedUpdate types swap `format: BreakFormat` → `composition: SlotComposition`. Other update kinds (sentiment, hype_tag, risk_flag, *_sentiment cascade) untouched.
+- New `validateComposition()` exported helper. Both `parseInsights` and `parseBreakPrice` use it during validation. At least one valid format key, values null or positive integer ≤ 50.
+- New `renderComposition()` exported helper for proposal previews and admin chips. `{hobby: null}` → `"hobby"`, `{hobby: 3}` → `"hobby ×3"`, `{bd: 20, hobby: 5}` → `"bd 20 + hobby 5"`, `{bd: null, hobby: null}` → `"bd + hobby"`.
+- Both prompts get a `COMPOSITION RULES` block with the example mapping table + explicit "use bd for delight" rule.
+- `parseBreakPrice` drops the "multi-format bundle → return empty" rejection rule (~old line 919). Multi-format bundles now emit a single row with multi-key composition. The multi-team bundle drop rule stays — that's a different shape.
+- `summarizeUpdate` renders composition + source channel inline: `Yankees slot (bd 20 + hobby 5, social_post): asking $6,500 — Dan Reed IG`.
+
+**Apply path** ([app/api/discord/interactions/route.ts](app/api/discord/interactions/route.ts)):
+- `applyUpdates` writes `payload.composition` and `payload.source_type = deriveSourceType(source)` for both `asking_price` and `odds_observation`. JSONB column — no schema migration.
+- `payload.format` is no longer written. Legacy rows that still have it get rewritten by the backfill script.
+
+**Backfill script** ([scripts/backfill-composition.mjs](scripts/backfill-composition.mjs)):
+- One-time rewrite of legacy `market_observations` rows: `{format: 'hobby'}` → `{composition: {hobby: null}, source_type: 'competitor_listing'}` + drop `format`. Defaults to dry-run; `--commit` to write. `--reverse` undoes a backfill in emergency.
+- `--clean-dan-reed-mode` deletes the 23 mis-classified Bowman Baseball asking_price rows captured from Dan's IG DM before composition shipped (filter: `observation_type='asking_price'` ∩ product name LIKE `%Bowman%Baseball%` ∩ `source='social_post'` ∩ `observed_at < --dan-cutoff`, default cutoff `2026-05-14T03:00:00Z`). Per plan section 6: delete rather than backfill a guessed composition. Dan re-submits via `/break-price` after deploy.
+
+**Market Delta Watch surface** ([app/admin/market-delta/page.tsx](app/admin/market-delta/page.tsx)):
+- `/break-price captures` panel chips now render composition (`hobby ×3` / `bd 20 + hobby 5`) instead of single format. Mixed compositions render in orange to flag them at a glance.
+- Distribution counter at top of the panel: `N pure-format · M mixed · N_listing listings · N_estimate estimates · N_sale sales` — lets the operator see capture shape distribution without scrolling.
+- Source-type filter pills (All / Listings / Estimates / Sales) wired to `?source_type=…` URL param. Anchor tags so the page stays server-rendered. Legacy rows with no `source_type` field show "—" in the kind column and aren't matched by any of the typed filters.
+
+**Backwards compatibility.** Legacy rows in `market_observations` keep their `payload.format` until the backfill script runs. The admin panel reads composition with a `parseCompositionFromPayload()` helper that falls back to `format` when `composition` is absent — so the panel renders correctly during the rollout window. No consumer surface today reads observations directly, so consumer behavior is unchanged.
+
+**Operational runbook (Slice 1):**
+1. Deploy this PR. New writes from `/insight` + `/break-price` immediately use the new shape; reads tolerate either shape.
+2. Run the backfill dry-run on staging first: `SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… node scripts/backfill-composition.mjs`. Eyeball the planned mutations.
+3. Run live on staging: same command with `--commit`. Verify a sample row in DB now has `composition` + `source_type` and no `format`.
+4. Run live on prod: same command with `--commit`.
+5. Run Dan Reed cleanup: `node scripts/backfill-composition.mjs --commit --clean-dan-reed-mode`. Expect ~23 rows deleted.
+6. Ping Dan to re-submit via `/break-price` so the rows come back with proper `composition: {bd: 20, hobby: 5}`.
+
+**Out of scope (still ahead).**
+- **Slice 2b** (~1-2 days out): AI verdict narrative enrichment via `getRecentObservationsForVerdict()`. Gated behind a new `feature_flags.verdict_observation_context_enabled` toggle so we can A/B with vs. without enrichment during beta.
+- **Slice 2a** (deferred): periodic calibration aggregator that adjusts engine markup constants from observed asks. Don't ship until 2b validates the data quality.
+- **Slice 3** (deferred): structured consumer displays of observations (aggregate range chip on `/break/[slug]`).
+
+---
+
 ## 2026-05-13 — Beta launch messaging PR3: nav restructure + empty-state CTAs + onboarding microcopy + jargon tooltips
 
 PR3 of three — the "polish" PR. Wraps up the beta-launch messaging refresh. PR1 (positioning) and PR2 (feedback loops) shipped earlier today.
