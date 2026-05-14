@@ -4,6 +4,7 @@ import { formatCurrency, computeEffectiveScore, confidenceTier } from '@/lib/eng
 import { IconPlayerBadge, BullishBadge, BearishBadge, HighVolatilityBadge, RiskFlagBadge } from '@/components/breakiq/SocialBadges';
 import ChaseHeartButton, { ChaseSetProvider } from '@/components/breakiq/ChaseHeartButton';
 import PricingFeedback from '@/components/breakiq/PricingFeedback';
+import { InfoTip } from '@/components/breakiq/ds';
 import type { BreakFormat, PlayerWithPricing } from '@/lib/types';
 
 type RiskFlagEntry = { flagType: string; note: string };
@@ -36,16 +37,17 @@ const COLUMNS: Array<{
   label: string;
   align: 'left' | 'center' | 'right';
   hide?: string;
+  tip?: string;
 }> = [
   { key: 'rank',     label: '#',         align: 'left',  hide: HIDE_BELOW_SM },
   { key: 'player',   label: 'Player',    align: 'left'  },
   { key: 'team',     label: 'Team',      align: 'left',  hide: HIDE_BELOW_MD },
   { key: 'sets',     label: 'Sets',      align: 'center',hide: HIDE_BELOW_MD },
-  { key: 'evLow',    label: 'EV Low',    align: 'right', hide: HIDE_BELOW_MD },
-  { key: 'evMid',    label: 'EV Mid',    align: 'right', hide: HIDE_BELOW_SM },
-  { key: 'evHigh',   label: 'EV High',   align: 'right', hide: HIDE_BELOW_MD },
+  { key: 'evLow',    label: 'EV Low',    align: 'right', hide: HIDE_BELOW_MD, tip: 'Estimated value at Raw / Ungraded — what the card sells for ungraded.' },
+  { key: 'evMid',    label: 'EV Mid',    align: 'right', hide: HIDE_BELOW_SM, tip: 'Estimated value at PSA 9 — the most-traded grade for modern cards.' },
+  { key: 'evHigh',   label: 'EV High',   align: 'right', hide: HIDE_BELOW_MD, tip: 'Estimated value at PSA 10 — the upside case if the card grades clean.' },
   { key: 'slotCost', label: 'Slot Cost', align: 'right' },
-  { key: 'maxPay',   label: 'Max Pay',   align: 'right', hide: HIDE_BELOW_SM },
+  { key: 'maxPay',   label: 'Max Pay',   align: 'right', hide: HIDE_BELOW_SM, tip: "Highest price we'd call a fair buy — slot cost × 1.5." },
   { key: 'feedback', label: '',          align: 'right' },
 ];
 
@@ -75,6 +77,7 @@ export default function PlayerTable({ players, fetching = false, viewFormat, ris
                   className={`px-2 sm:px-4 py-2.5 terminal-label whitespace-nowrap text-${col.align} ${col.hide ?? ''}`}
                 >
                   {col.label}
+                  {col.tip && <InfoTip text={col.tip} placement="bottom" />}
                 </th>
               ))}
             </tr>

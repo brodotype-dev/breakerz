@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 import { ClipboardList, Plus, Clock, ArrowLeft, Sparkles, Trophy, Meh, ThumbsDown, ChevronDown, Download, Upload, X, Search, Check } from 'lucide-react';
 import { formatCurrency } from '@/lib/engine';
 import type { Signal, Platform, BreakOutcome, BreakStatus, BreakFormat } from '@/lib/types';
 import TeamChip from '@/components/breakiq/TeamChip';
+import { InfoTip } from '@/components/breakiq/ds';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -177,7 +179,15 @@ function downloadImportTemplate() {
 }
 
 export default function MyBreaksPage() {
-  const [view, setView] = useState<View>('list');
+  // Deep-link support: `?view=new` (primary "Log a Break" nav action) or
+  // `?view=log` lands the user directly on the corresponding form instead
+  // of the list. Falls back to 'list' if the param is absent or unknown.
+  const searchParams = useSearchParams();
+  const initialView = ((): View => {
+    const v = searchParams.get('view');
+    return v === 'new' || v === 'log' ? v : 'list';
+  })();
+  const [view, setView] = useState<View>(initialView);
   const [breaks, setBreaks] = useState<BreakRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
@@ -269,6 +279,7 @@ export default function MyBreaksPage() {
             breaks={breaks}
             products={products}
             onRefresh={refreshBreaks}
+            onStartLog={() => setView('log')}
           />
         )}
         {(view === 'new' || view === 'log') && (
@@ -310,7 +321,17 @@ function getTimeFilterDate(filter: TimeFilter): Date | null {
   return new Date(now.getTime() - ms[filter]);
 }
 
-function BreakList({ breaks, products, onRefresh }: { breaks: BreakRecord[]; products: Product[]; onRefresh: () => void }) {
+function BreakList({
+  breaks,
+  products,
+  onRefresh,
+  onStartLog,
+}: {
+  breaks: BreakRecord[];
+  products: Product[];
+  onRefresh: () => void;
+  onStartLog: () => void;
+}) {
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
   const [platformFilter, setPlatformFilter] = useState<Platform | ''>('');
   const [outcomeFilter, setOutcomeFilter] = useState<BreakOutcome | ''>('');
@@ -332,12 +353,30 @@ function BreakList({ breaks, products, onRefresh }: { breaks: BreakRecord[]; pro
 
   if (breaks.length === 0) {
     return (
-      <div className="rounded-xl border-2 border-dashed p-12 text-center" style={{ borderColor: 'var(--terminal-border)' }}>
+      <div className="rounded-xl border-2 border-dashed p-10 sm:p-12 text-center" style={{ borderColor: 'var(--terminal-border)' }}>
         <ClipboardList className="w-12 h-12 mx-auto mb-4 opacity-20" style={{ color: 'var(--text-secondary)' }} />
         <p className="text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>No breaks logged yet</p>
-        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+        <p className="text-sm mb-6 max-w-md mx-auto" style={{ color: 'var(--text-secondary)' }}>
           Track your breaks to see how your spending compares to actual results over time.
         </p>
+        <div className="flex flex-col sm:flex-row gap-2 justify-center">
+          <Link
+            href="/analysis"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all hover:opacity-90"
+            style={{ background: 'var(--accent-blue)', color: 'white', boxShadow: '0 2px 8px rgba(59,130,246,0.25)' }}
+          >
+            <Sparkles className="w-4 h-4" />
+            Research a break
+          </Link>
+          <button
+            onClick={onStartLog}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors hover:bg-[var(--terminal-surface-hover)]"
+            style={{ backgroundColor: 'var(--terminal-surface)', color: 'var(--text-primary)', border: '1px solid var(--terminal-border)' }}
+          >
+            <ClipboardList className="w-4 h-4" />
+            Log a previous break
+          </button>
+        </div>
       </div>
     );
   }
@@ -967,7 +1006,10 @@ function BreakForm({
           {/* Format mix — three counters, only shown for formats this product supports */}
           {selectedProduct && availableFormats.length > 0 && (
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Format mix</label>
+              <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
+                Format mix
+                <InfoTip text="How many cases of each break type (Hobby / Jumbo / Breaker's Delight)." />
+              </label>
               <div className="grid grid-cols-3 gap-2">
                 {FORMAT_DEFS.map(({ key, label }) => {
                   const cost = effectiveCaseCost(selectedProduct, key);

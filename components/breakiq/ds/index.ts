@@ -4,3 +4,4 @@ export { FormLabel } from './FormLabel';
 export { SegmentedControl } from './SegmentedControl';
 export { CounterInput } from './CounterInput';
 export { LargeCTAButton } from './LargeCTAButton';
+export { InfoTip } from './InfoTip';

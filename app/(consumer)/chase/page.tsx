@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Heart, ExternalLink, Search, X } from 'lucide-react';
 import ChaseHeartButton, { ChaseSetProvider } from '@/components/breakiq/ChaseHeartButton';
 import { IconPlayerBadge, BullishBadge, BearishBadge, RiskFlagBadge } from '@/components/breakiq/SocialBadges';
+import { InfoTip } from '@/components/breakiq/ds';
 import { computeEffectiveScore, formatCurrency } from '@/lib/engine';
 import type { ChaseListEntry } from '@/lib/types';
 
@@ -207,9 +208,16 @@ export default function ChasePage() {
             <div className="rounded-xl border-2 border-dashed p-10 sm:p-12 text-center" style={{ borderColor: 'var(--terminal-border)' }}>
               <Heart className="w-12 h-12 mx-auto mb-4 opacity-20" style={{ color: 'var(--text-secondary)' }} />
               <p className="text-base sm:text-lg font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>No players in your chase list yet</p>
-              <p className="text-xs sm:text-sm max-w-md mx-auto" style={{ color: 'var(--text-secondary)' }}>
+              <p className="text-xs sm:text-sm max-w-md mx-auto mb-6" style={{ color: 'var(--text-secondary)' }}>
                 Search above to find any player in our database, or tap the heart on any player from a break page.
               </p>
+              <Link
+                href="/"
+                className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors hover:bg-[var(--terminal-surface-hover)]"
+                style={{ backgroundColor: 'var(--terminal-surface)', color: 'var(--text-primary)', border: '1px solid var(--terminal-border)' }}
+              >
+                Browse breaks
+              </Link>
             </div>
           )}
 
@@ -275,6 +283,7 @@ function ChaseRow({ entry, onChanged }: { entry: ChaseListEntry; onChanged: () =
           <div className="min-w-0">
             <div className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: 'var(--text-tertiary)' }}>
               Latest EV Mid
+              <InfoTip text="Estimated value at PSA 9 — the most-traded grade for modern cards." placement="top" />
             </div>
             <div className="text-sm font-mono font-bold" style={{ color: 'var(--text-primary)' }}>
               {formatCurrency(entry.market.ev_mid)}
