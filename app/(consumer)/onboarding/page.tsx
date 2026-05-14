@@ -167,6 +167,9 @@ export default function OnboardingPage() {
             {step === 1 && (
               <div className="space-y-6">
                 <div className="text-center">
+                  <p className="text-[11px] leading-relaxed mb-4" style={{ color: 'var(--text-tertiary)' }}>
+                    BreakIQ is your break terminal — research, decide, log, learn. Let&rsquo;s set you up.
+                  </p>
                   <ShieldCheck className="w-10 h-10 mx-auto mb-3" style={{ color: 'var(--accent-blue)' }} />
                   <p className="text-base font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
                     Are you 18 years or older?
@@ -231,6 +234,7 @@ export default function OnboardingPage() {
                 {/* What do you collect */}
                 <div>
                   <Label>What do you collect?</Label>
+                  <Why>We&rsquo;ll highlight breaks for these sports first.</Why>
                   <div className="flex flex-wrap gap-2">
                     {COLLECTING_OPTIONS.map(s => (
                       <Chip key={s} label={s} selected={sports.includes(s)} onClick={() => toggleChip(sports, s, setSports)} />
@@ -251,6 +255,7 @@ export default function OnboardingPage() {
                 {/* Platform */}
                 <div>
                   <Label>Where do you usually break?</Label>
+                  <Why>Drives the default platform when you log a break.</Why>
                   <div className="flex flex-wrap gap-2">
                     {PLATFORM_OPTIONS.map(p => (
                       <Chip key={p.value} label={p.label} selected={platform === p.value} onClick={() => setPlatform(p.value)} />
@@ -261,6 +266,7 @@ export default function OnboardingPage() {
                 {/* Spend */}
                 <div>
                   <Label>Monthly hobby spend</Label>
+                  <Why>Calibrates our BUY/WATCH/PASS thresholds for your range.</Why>
                   <div className="flex flex-wrap gap-2">
                     {SPEND_OPTIONS.map(s => (
                       <Chip key={s.value} label={s.label} selected={spend === s.value} onClick={() => setSpend(s.value)} />
@@ -303,7 +309,8 @@ export default function OnboardingPage() {
 
                 {/* Best pull */}
                 <div>
-                  <Label optional>Best pull you've ever had?</Label>
+                  <Label optional>Best pull you&rsquo;ve ever had?</Label>
+                  <Why>Pure brag bait. Optional.</Why>
                   <input
                     type="text"
                     value={bestPull}
@@ -330,7 +337,7 @@ export default function OnboardingPage() {
                     className="flex-1 py-2.5 rounded-lg text-sm font-bold text-white transition-all hover:opacity-90 disabled:opacity-40 flex items-center justify-center gap-2"
                     style={{ background: 'var(--gradient-blue)' }}
                   >
-                    {submitting ? 'Saving…' : <><Sparkles className="w-4 h-4" /> Let's Go</>}
+                    {submitting ? 'Saving…' : <><Sparkles className="w-4 h-4" /> Show me my dashboard</>}
                   </button>
                 </div>
               </div>
@@ -345,9 +352,19 @@ export default function OnboardingPage() {
 
 function Label({ children, optional }: { children: React.ReactNode; optional?: boolean }) {
   return (
-    <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>
+    <p className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: 'var(--text-tertiary)' }}>
       {children}
       {optional && <span className="font-normal normal-case tracking-normal ml-1" style={{ color: 'var(--text-disabled)' }}>(optional)</span>}
+    </p>
+  );
+}
+
+// One-line "why we ask" microcopy under each Label. Pays the attention cost
+// of onboarding by naming the payoff per question.
+function Why({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="text-[11px] mb-2 leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
+      {children}
     </p>
   );
 }

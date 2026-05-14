@@ -15,7 +15,7 @@ import PreReleaseLayout from '@/components/breakiq/PreReleaseLayout';
 import TeamChip from '@/components/breakiq/TeamChip';
 import AnalysisResultPanel from '@/components/breakiq/AnalysisResultPanel';
 import BetaBanner from '@/components/breakiq/BetaBanner';
-import { SegmentedControl, CounterInput, LargeCTAButton } from '@/components/breakiq/ds';
+import { SegmentedControl, CounterInput, LargeCTAButton, InfoTip } from '@/components/breakiq/ds';
 import { computeSlotPricing, computeTeamSlotPricing, formatCurrency } from '@/lib/engine';
 import { getMarketMarkup } from '@/lib/market-markup';
 import { computeRiskAdjustment, computeHypeAdjustment, type HypeObservation } from '@/lib/score-modulation';
@@ -648,7 +648,10 @@ export default function BreakPage() {
 
               {/* Format mix */}
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Format mix</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>
+                  Format mix
+                  <InfoTip text="How many cases of each break type (Hobby / Jumbo / Breaker's Delight)." />
+                </p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {availableFormats.map(({ key, short }) => {
                     const m = formatMeta[key];

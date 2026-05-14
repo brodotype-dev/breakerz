@@ -5,6 +5,24 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-13 — Beta launch messaging PR3: nav restructure + empty-state CTAs + onboarding microcopy + jargon tooltips
+
+PR3 of three — the "polish" PR. Wraps up the beta-launch messaging refresh. PR1 (positioning) and PR2 (feedback loops) shipped earlier today.
+
+**ConsumerNav restructure** ([app/(consumer)/ConsumerNav.tsx](app/(consumer)/ConsumerNav.tsx)). Desktop nav (md+) now reads the workflow: **Breaks / Research / Slabs** (discovery cluster) → **+ Log a Break** (filled blue primary CTA — the central act of the management-tool frame) → divider → **Chase / My Breaks / Profile** (manage cluster) → admin / sign-out. On `md` the destination labels collapse to icons; on `lg` the full labels are visible. Mobile gets a duplicated **+ Log** pill next to the hamburger so logging is one tap from anywhere even on phone. Mobile sheet groups destinations under "Discover" / "Manage" headers and pins "Log a Break" at the top. Two new helpers (`NavLink`, `MobileNavLink`) factor the repetition.
+
+**My Breaks deep-link** ([app/(consumer)/my-breaks/page.tsx](app/(consumer)/my-breaks/page.tsx)). Reads `?view=new` and `?view=log` from the URL via `useSearchParams` so the primary "Log a Break" CTA lands the user directly on the new-break form. Falls back to the list when the param is absent.
+
+**Empty-state CTAs.** My Breaks empty state gains two buttons: primary **Research a break** → `/analysis` (filled blue), secondary **Log a previous break** → `setView('log')`. Plumbed via a new `onStartLog` prop on `BreakList`. `/chase` empty state gains a **Browse breaks** link to `/`. Both keep the existing explanatory copy.
+
+**Onboarding microcopy** ([app/(consumer)/onboarding/page.tsx](app/(consumer)/onboarding/page.tsx)). New small `<Why>` helper renders a single-line "why we ask" under each Label. Wired up for: *"What do you collect?"* (highlight breaks for these sports first), *"Where do you usually break?"* (drives default platform when logging), *"Monthly hobby spend"* (calibrates BUY/WATCH/PASS thresholds), *"Best pull?"* (pure brag bait). Step 1 gets a one-line workflow preview above the age gate: *"BreakIQ is your break terminal — research, decide, log, learn. Let's set you up."* Step 3 CTA renamed from "Let's Go" → **"Show me my dashboard"** — names the payoff.
+
+**Jargon tooltips.** New [components/breakiq/ds/InfoTip.tsx](components/breakiq/ds/InfoTip.tsx) — small "?" icon with CSS-only hover/focus tooltip. Dropped next to first-mention labels: **Format mix** on `/analysis`, `/break/[slug]`, and `/my-breaks` ("How many cases of each break type."); **EV Low / EV Mid / EV High / Max Pay** on PlayerTable headers; **Latest EV Mid** on `/chase`. EV Mid copy: *"Estimated value at PSA 9 — the most-traded grade for modern cards."*
+
+**Nothing else of consequence.** No DB migrations. No API contract changes. The verdict reframe (PR1), feedback loops (PR2), and now nav + empty states + onboarding + glossary (PR3) finish the messaging-refresh trilogy.
+
+---
+
 ## 2026-05-13 — Parser: /break-price truncation salvage + literal-price rule
 
 Two parser fixes uncovered by a real-world `/break-price` capture: Dan Reed's Bowman Baseball 2026 IG DM screenshot (18 team rows) returned "Couldn't extract a slot ask" with debug `parsedRaw=0, hadImage=true, drops=1, Dropped: no JSON array in response`. Claude was actually parsing every row correctly — the response was being truncated mid-object because `max_tokens: 1024` couldn't hold 18 × ~250-token asking_price rows, the closing `]` never came, and the `/\[[\s\S]*\]/` regex bailed throwing away ~17 valid entries that were sitting in the buffer.

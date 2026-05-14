@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { ChevronDown, Settings, Monitor, User, ClipboardList, Menu, X, LogOut, Heart } from 'lucide-react';
+import { ChevronDown, Settings, Monitor, User, ClipboardList, Menu, X, LogOut, Heart, Home, Sparkles, Search as SearchIcon, Plus } from 'lucide-react';
 import { Logo } from '@/components/Logo';
 import SignOutButton from './SignOutButton';
 import { logout } from './actions';
@@ -51,32 +51,35 @@ export default function ConsumerNav({ isAdmin }: ConsumerNavProps) {
           <Logo variant="lockup" height={32} className="h-8 sm:h-7 w-auto" priority />
         </Link>
 
-        {/* Desktop nav (≥ sm) */}
-        <div className="hidden sm:flex items-center gap-2">
+        {/* Desktop nav (≥ md only — lg+ shows full set; md collapses to icons).
+            Order maps to the workflow: discover (Breaks/Research/Slabs) →
+            ACT (Log a Break primary) → manage (Chase/My Breaks/Profile). */}
+        <div className="hidden md:flex items-center gap-1.5 lg:gap-2">
+          <NavLink href="/" icon={Home} label="Breaks" />
+          <NavLink href="/analysis" icon={Sparkles} label="Research" />
+          <NavLink href="/card-lookup" icon={SearchIcon} label="Slabs" />
+
+          {/* Primary CTA — central act of the management-tool frame should
+              be one tap from every page. Filled blue. Deep-links into the
+              "new break" form via ?view=new. */}
           <Link
-            href="/chase"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors hover:bg-[var(--terminal-surface)]"
-            style={{ color: 'var(--text-secondary)' }}
+            href="/my-breaks?view=new"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all hover:opacity-90"
+            style={{
+              background: 'var(--accent-blue)',
+              color: 'white',
+              boxShadow: '0 0 0 1px rgba(59,130,246,0.4), 0 2px 8px rgba(59,130,246,0.25)',
+            }}
           >
-            <Heart className="w-3 h-3" />
-            Chase
+            <Plus className="w-3 h-3" />
+            Log a Break
           </Link>
-          <Link
-            href="/my-breaks"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors hover:bg-[var(--terminal-surface)]"
-            style={{ color: 'var(--text-secondary)' }}
-          >
-            <ClipboardList className="w-3 h-3" />
-            My Breaks
-          </Link>
-          <Link
-            href="/profile"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors hover:bg-[var(--terminal-surface)]"
-            style={{ color: 'var(--text-secondary)' }}
-          >
-            <User className="w-3 h-3" />
-            Profile
-          </Link>
+
+          <div className="w-px h-5 mx-1" style={{ backgroundColor: 'var(--terminal-border)' }} />
+
+          <NavLink href="/chase" icon={Heart} label="Chase" />
+          <NavLink href="/my-breaks" icon={ClipboardList} label="My Breaks" />
+          <NavLink href="/profile" icon={User} label="Profile" />
 
           {isAdmin && (
             <div className="relative" ref={adminRef}>
@@ -122,17 +125,33 @@ export default function ConsumerNav({ isAdmin }: ConsumerNavProps) {
           <SignOutButton />
         </div>
 
-        {/* Mobile hamburger (< sm) */}
-        <button
-          type="button"
-          aria-label="Open menu"
-          aria-expanded={mobileOpen}
-          onClick={() => setMobileOpen(true)}
-          className="sm:hidden inline-flex items-center justify-center h-10 w-10 rounded-md transition-colors hover:bg-[var(--terminal-surface)]"
-          style={{ color: 'var(--text-secondary)' }}
-        >
-          <Menu className="w-5 h-5" />
-        </button>
+        {/* Mobile: "+ Log" pill + hamburger.
+            Primary CTA visible even on mobile because logging is the
+            central act and shouldn't be one extra tap behind the sheet. */}
+        <div className="md:hidden flex items-center gap-2">
+          <Link
+            href="/my-breaks?view=new"
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-semibold transition-all hover:opacity-90"
+            style={{
+              background: 'var(--accent-blue)',
+              color: 'white',
+              boxShadow: '0 2px 8px rgba(59,130,246,0.25)',
+            }}
+          >
+            <Plus className="w-3 h-3" />
+            Log
+          </Link>
+          <button
+            type="button"
+            aria-label="Open menu"
+            aria-expanded={mobileOpen}
+            onClick={() => setMobileOpen(true)}
+            className="inline-flex items-center justify-center h-10 w-10 rounded-md transition-colors hover:bg-[var(--terminal-surface)]"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+        </div>
       </header>
 
       {/* Mobile sheet — full-height drawer, paints over the page */}
@@ -172,39 +191,42 @@ export default function ConsumerNav({ isAdmin }: ConsumerNavProps) {
             </div>
 
             <nav className="flex flex-col p-2 gap-1 flex-1">
+              {/* Primary CTA — also visible in the header bar, but
+                  duplicated at the top of the sheet so logging is
+                  obviously the central act. */}
               <Link
-                href="/chase"
+                href="/my-breaks?view=new"
                 onClick={() => setMobileOpen(false)}
-                className="flex items-center gap-3 px-3 py-3 rounded-md text-sm font-medium transition-colors hover:bg-[var(--terminal-surface)]"
-                style={{ color: 'var(--text-primary)' }}
+                className="flex items-center gap-3 px-3 py-3 rounded-md text-sm font-semibold transition-all mb-1"
+                style={{
+                  background: 'var(--accent-blue)',
+                  color: 'white',
+                  boxShadow: '0 2px 8px rgba(59,130,246,0.25)',
+                }}
               >
-                <Heart className="w-4 h-4" />
-                Chase
+                <Plus className="w-4 h-4" />
+                Log a Break
               </Link>
-              <Link
-                href="/my-breaks"
-                onClick={() => setMobileOpen(false)}
-                className="flex items-center gap-3 px-3 py-3 rounded-md text-sm font-medium transition-colors hover:bg-[var(--terminal-surface)]"
-                style={{ color: 'var(--text-primary)' }}
-              >
-                <ClipboardList className="w-4 h-4" />
-                My Breaks
-              </Link>
-              <Link
-                href="/profile"
-                onClick={() => setMobileOpen(false)}
-                className="flex items-center gap-3 px-3 py-3 rounded-md text-sm font-medium transition-colors hover:bg-[var(--terminal-surface)]"
-                style={{ color: 'var(--text-primary)' }}
-              >
-                <User className="w-4 h-4" />
-                Profile
-              </Link>
+
+              <div className="text-[10px] uppercase tracking-widest px-3 py-1 mt-2" style={{ color: 'var(--text-tertiary)' }}>
+                Discover
+              </div>
+              <MobileNavLink href="/" icon={Home} label="Breaks" onClick={() => setMobileOpen(false)} />
+              <MobileNavLink href="/analysis" icon={Sparkles} label="Research" onClick={() => setMobileOpen(false)} />
+              <MobileNavLink href="/card-lookup" icon={SearchIcon} label="Slabs" onClick={() => setMobileOpen(false)} />
+
+              <div className="text-[10px] uppercase tracking-widest px-3 py-1 mt-2" style={{ color: 'var(--text-tertiary)' }}>
+                Manage
+              </div>
+              <MobileNavLink href="/chase" icon={Heart} label="My Chase" onClick={() => setMobileOpen(false)} />
+              <MobileNavLink href="/my-breaks" icon={ClipboardList} label="My Breaks" onClick={() => setMobileOpen(false)} />
+              <MobileNavLink href="/profile" icon={User} label="Profile" onClick={() => setMobileOpen(false)} />
 
               {isAdmin && (
                 <Link
                   href="/admin"
                   onClick={() => setMobileOpen(false)}
-                  className="flex items-center gap-3 px-3 py-3 rounded-md text-sm font-medium border transition-colors hover:bg-[var(--terminal-surface)]"
+                  className="flex items-center gap-3 px-3 py-3 rounded-md text-sm font-medium border transition-colors hover:bg-[var(--terminal-surface)] mt-2"
                   style={{ color: 'var(--accent-blue)', borderColor: 'var(--terminal-border)' }}
                 >
                   <Settings className="w-4 h-4" />
@@ -238,6 +260,51 @@ async function clearServiceWorkerCaches() {
   } catch {
     // best-effort
   }
+}
+
+function NavLink({
+  href,
+  icon: Icon,
+  label,
+}: {
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors hover:bg-[var(--terminal-surface)]"
+      style={{ color: 'var(--text-secondary)' }}
+    >
+      <Icon className="w-3 h-3" />
+      <span className="hidden lg:inline">{label}</span>
+    </Link>
+  );
+}
+
+function MobileNavLink({
+  href,
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <Link
+      href={href}
+      onClick={onClick}
+      className="flex items-center gap-3 px-3 py-3 rounded-md text-sm font-medium transition-colors hover:bg-[var(--terminal-surface)]"
+      style={{ color: 'var(--text-primary)' }}
+    >
+      <Icon className="w-4 h-4" />
+      {label}
+    </Link>
+  );
 }
 
 function SignOutLink({ onClick }: { onClick: () => void }) {

@@ -14,6 +14,7 @@ import {
   FormLabel,
   CounterInput,
   LargeCTAButton,
+  InfoTip,
 } from '@/components/breakiq/ds';
 import TeamChip from '@/components/breakiq/TeamChip';
 import AnalysisResultPanel from '@/components/breakiq/AnalysisResultPanel';
@@ -272,7 +273,10 @@ export default function AnalysisPage() {
                 {/* Format mix */}
                 {selectedProduct && (
                   <div>
-                    <FormLabel>Format mix</FormLabel>
+                    <FormLabel>
+                      Format mix
+                      <InfoTip text="How many cases of each break type (Hobby / Jumbo / Breaker's Delight)." />
+                    </FormLabel>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       {FORMAT_DEFS.map(({ key, label }) => {
                         const cost = effectiveCaseCost(selectedProduct, key);
