@@ -159,6 +159,42 @@ function formatProposalSummary(
   return { summary, hiddenCount };
 }
 
+/**
+ * Builds the "Targets" header that surfaces which product(s) the proposed
+ * updates will write to. Critical for review — multiple "2026 Bowman Baseball"
+ * entries can exist in the products table, and contributors need to verify
+ * Claude routed to the right one BEFORE clicking ✅. Shows full UUID so
+ * admins can grep / cross-reference against the products table.
+ *
+ * Walks updates, dedupes by product_id, sorts by descending count so the
+ * most-targeted product appears first. Updates without a product_id
+ * (sentiment global, risk_flag, team_sentiment) are excluded.
+ */
+function buildTargetsHeader(
+  updates: ParsedUpdate[],
+): { header: string; lineCount: number } {
+  const counts = new Map<string, { name: string; count: number }>();
+  for (const u of updates) {
+    const productId = (u as { product_id?: string }).product_id;
+    const productName = (u as { product_name?: string }).product_name;
+    if (!productId || !productName) continue;
+    const entry = counts.get(productId);
+    if (entry) entry.count++;
+    else counts.set(productId, { name: productName, count: 1 });
+  }
+  if (counts.size === 0) return { header: '', lineCount: 0 };
+
+  const sorted = [...counts.entries()].sort((a, b) => b[1].count - a[1].count);
+  if (sorted.length === 1) {
+    const [id, { name }] = sorted[0];
+    return { header: `**Writing to:** ${name} \`${id}\``, lineCount: 1 };
+  }
+  const lines = sorted.map(
+    ([id, { name, count }]) => `• ${name} \`${id}\` (${count})`,
+  );
+  return { header: `**Writing to:**\n${lines.join('\n')}`, lineCount: lines.length + 1 };
+}
+
 function ephemeralReply(content: string) {
   return NextResponse.json({
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -262,8 +298,11 @@ async function handleSlashCommand(interaction: SlashCommandInteraction): Promise
 
       const lines = updates.map((u, i) => `**${i + 1}.** ${summarizeUpdate(u)}`);
       const handle = user.global_name ?? user.username;
+      const { header: targetsHeader } = buildTargetsHeader(updates);
+      const targetsBlock = targetsHeader ? `${targetsHeader}\n\n` : '';
       const wrapping =
         `**Insight from @${handle}:**\n> ${narrative.slice(0, 240)}\n\n` +
+        targetsBlock +
         `**Proposed updates (${updates.length}):**\n\n\n` +
         `Click ✅ to apply, ❌ to discard. Anyone on the allowlist can resolve.`;
       const { summary } = formatProposalSummary(lines, 2000 - wrapping.length);
@@ -271,6 +310,7 @@ async function handleSlashCommand(interaction: SlashCommandInteraction): Promise
       await editInteractionResponse(interaction.application_id, interaction.token, {
         content:
           `**Insight from @${handle}:**\n> ${narrative.slice(0, 240)}\n\n` +
+          targetsBlock +
           `**Proposed updates (${updates.length}):**\n${summary}\n\n` +
           `Click ✅ to apply, ❌ to discard. Anyone on the allowlist can resolve.`,
         components: [
@@ -420,8 +460,11 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
       const sourceLabel = narrative
         ? `> ${narrative.slice(0, 240)}${attachment ? ` _(+ screenshot)_` : ''}`
         : `_(screenshot only: ${attachment?.filename})_`;
+      const { header: targetsHeader } = buildTargetsHeader(updates);
+      const targetsBlock = targetsHeader ? `${targetsHeader}\n\n` : '';
       const wrapping =
         `**Slot ask from @${handle}:**\n${sourceLabel}\n\n` +
+        targetsBlock +
         `**Proposed (${updates.length}):**\n\n\n` +
         `Click ✅ to apply, ❌ to discard.`;
       const { summary } = formatProposalSummary(lines, 2000 - wrapping.length);
@@ -429,6 +472,7 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
       await editInteractionResponse(interaction.application_id, interaction.token, {
         content:
           `**Slot ask from @${handle}:**\n${sourceLabel}\n\n` +
+          targetsBlock +
           `**Proposed (${updates.length}):**\n${summary}\n\n` +
           `Click ✅ to apply, ❌ to discard.`,
         components: [
