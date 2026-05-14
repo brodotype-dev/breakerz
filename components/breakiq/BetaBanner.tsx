@@ -60,7 +60,7 @@ export default function BetaBanner({ surface }: BetaBannerProps) {
 
   return (
     <div
-      className="relative w-full rounded-lg border px-4 py-2.5 flex items-start gap-3"
+      className="relative w-full rounded-lg border px-10 py-2.5 flex items-center justify-center flex-wrap gap-x-3 gap-y-1"
       style={{
         backgroundColor: 'rgba(59,130,246,0.08)',
         borderColor: 'rgba(59,130,246,0.3)',
@@ -68,17 +68,17 @@ export default function BetaBanner({ surface }: BetaBannerProps) {
       role="status"
     >
       <span
-        className="text-[10px] font-bold uppercase tracking-widest shrink-0 mt-0.5 px-1.5 py-0.5 rounded"
+        className="text-[10px] font-bold uppercase tracking-widest shrink-0 px-1.5 py-0.5 rounded"
         style={{ backgroundColor: 'rgba(59,130,246,0.2)', color: 'var(--accent-blue)' }}
       >
         Private Beta
       </span>
-      <p className="flex-1 text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+      <p className="text-xs leading-relaxed text-center" style={{ color: 'var(--text-secondary)' }}>
         Beta — we tune from every flag. Tell us when our take is off.
       </p>
       <button
         onClick={dismiss}
-        className="p-1 rounded transition-colors hover:bg-white/5 shrink-0"
+        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded transition-colors hover:bg-white/5"
         style={{ color: 'var(--text-tertiary)' }}
         aria-label="Dismiss beta banner"
       >
