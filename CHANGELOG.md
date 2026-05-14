@@ -5,6 +5,37 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-14 — Verdict observation enrichment (slice 2b of composition-observation plan)
+
+Splices recent `/break-price` observations into the AI verdict prompt at request time, gated behind a `feature_flags.verdict_observation_context_enabled` admin toggle. Default off — flipping the toggle on `/admin/market-delta` enables enrichment immediately for every subsequent verdict. Slice 2 of three from [docs/plans/2026-05-13-composition-and-observation-driven-verdicts.md](docs/plans/2026-05-13-composition-and-observation-driven-verdicts.md). Slice 1 (composition + source_type primitives) shipped earlier today; slice 2a (calibration aggregator) deferred until 2b validates data quality.
+
+**What changed.**
+
+- **`feature_flags` table** ([supabase/migrations/20260514150000_feature_flags.sql](supabase/migrations/20260514150000_feature_flags.sql)) — generic `(key, enabled, description, updated_at, updated_by)` shape. RLS on, service-role-only. Seeded with the verdict-enrichment row defaulted to `false`. Missing key = disabled, so the absence of the row is also a safe default.
+- **`lib/observation-context.ts`** (new) — `getRecentObservationsForVerdict(productId, targetComposition)` pulls non-superseded `asking_price` observations for the product in the last 30 days, ranks by `compositionSimilarity × recencyWeight`, returns the top 5 plus a prompt-ready text block. Similarity is 1.0 for identical key sets, 0.5 for subset/superset overlap, 0.0 for disjoint — value counts ignored since the engine doesn't need exact ratio match for narrative purposes. Recency is linear decay over the 30-day window. Threshold: when fewer than 3 ranked observations exist, the block is empty and `hasEnough=false` — caller falls back to the unaltered prompt. The rendered block distinguishes listings vs. estimates vs. sales so the narrative can voice them differently.
+- **`runBreakAnalysis`** ([lib/analysis.ts](lib/analysis.ts)) reads the flag at request time. When enabled AND `getRecentObservationsForVerdict` returns ≥3, the observation block + explicit grounding instruction splice into the existing prompt's `${observationSection}` slot. Grounding instruction tells Claude: cite ranges/recency where relevant, never name individuals or platforms, don't invent observations not listed, distinguish listing vs. estimate voice. Flag off → byte-for-byte unchanged from prior behavior. New `observationContext: { enabled, applied, observationCount }` field on `AnalysisResult` carries telemetry for the caller.
+- **`/api/analysis` route** ([app/api/analysis/route.ts](app/api/analysis/route.ts)) — when `result.observationContext.applied` is true and the request is authed, fires the new PostHog event `verdict_observation_context_applied` with `{ product_id, observation_count, signal }`. Best-effort — wrapped in try/catch so analytics never fail the verdict. Useful for A/B-segmenting beta retention with vs. without enrichment.
+- **Admin toggle UI** — new [app/admin/market-delta/VerdictContextToggle.tsx](app/admin/market-delta/VerdictContextToggle.tsx) (client component) rendered above the captures panel on `/admin/market-delta`. Reads initial state server-side, flips via optimistic update + new [app/api/admin/feature-flags/route.ts](app/api/admin/feature-flags/route.ts) GET/PUT (admin-only, allowlisted to the one toggleable key for now). Colocated with captures because that panel is the data the flag governs — eyeballing both at once makes the A/B decision easier.
+- **PostHog taxonomy** ([lib/posthog-events.ts](lib/posthog-events.ts)) — adds `verdict_observation_context_applied` to `PH_EVENTS`.
+
+**Backwards compatibility.** Flag off on deploy → prompt is identical to prior behavior. The observation reader has a fallback path for legacy rows still carrying `payload.format` (defense in depth, since the backfill ran on prod earlier today).
+
+**Operational runbook (Slice 2b):**
+1. Apply migration via Supabase MCP or `supabase db push`.
+2. Deploy this PR. With flag default-off, every verdict is unchanged.
+3. Visit `/admin/market-delta`. New "Verdict observation enrichment" toggle appears above the captures panel — confirm initial state is OFF.
+4. With the toggle OFF, run `/analysis` on any product → verdict narrative is byte-for-byte unchanged from yesterday's behavior. PostHog `verdict_observation_context_applied` should NOT fire.
+5. Flip the toggle ON. Re-run `/analysis` on a Bowman product (where slice 1 observations now exist) — verdict narrative cites a range or pattern naturally, distinguishes listing vs. estimate voice where the data warrants, never names individuals or platforms. PostHog event fires with the observation count.
+6. Adversarial check: run `/analysis` on a product where no recent observations exist — narrative softens (no fabricated ranges). Run on a product where the only recent observation has a wildly different composition — narrative either skips citing it or caveats it explicitly.
+7. Leave the flag on or off depending on what spot-checks reveal. Beta users see the difference immediately on the next verdict; no client deploy needed.
+
+**Out of scope (still ahead).**
+- **Slice 2a**: periodic calibration aggregator that adjusts engine markup constants from observed asks. Don't ship until 2b validates data quality.
+- **Slice 3**: structured consumer displays of observations (aggregate range chip on `/break/[slug]`).
+- Consumer surface change to display observations directly — slice 2b is prompt-only, the verdict still renders identically with just smarter prose.
+
+---
+
 ## 2026-05-14 — Composition + observation source type (slice 1 of composition-observation plan)
 
 Replaces single-`format` on `asking_price` + `odds_observation` observations with a sparse-vector `composition` map (the engine's already-existing primitive for bundles) and adds a derived `source_type` enum that captures the epistemic kind of each observation. Slice 1 of three from [docs/plans/2026-05-13-composition-and-observation-driven-verdicts.md](docs/plans/2026-05-13-composition-and-observation-driven-verdicts.md). Slice 2b (verdict narrative enrichment) ships next; slice 2a (calibration aggregator) is deferred.

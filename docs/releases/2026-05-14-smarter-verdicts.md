@@ -1,11 +1,11 @@
-# BreakIQ update — Verdicts that know the room
+# To the BreakIQ Informants — your intel is now in the room
 
-*Private beta · May 2026*
+*Informants channel · May 2026*
 
-Your BreakIQ verdicts are about to start factoring in **what other breakers are actually asking right now** — not just our math. When experienced collectors and pros in our community drop real-time observations into Discord (competitor asking prices, SME reads on what a slot is worth), that intel now feeds the AI verdict you see the next time you check a break. So instead of *"this bundle reads above fair value,"* you might see *"recent breakers are asking $400–$700 for similar slots — your $725 is at the high end. Watch."* The narrative softens when the data is thin and sharpens when there's enough to speak to.
+The observations you've been dropping into our channel — competitor asking prices on streams, your reads on what slots should cost, mixed-format bundles you catch in DMs — now feed the AI verdicts other BreakIQ beta users see when they check a break. Where before a verdict might've said *"this bundle reads above fair value,"* it can now say *"recent breakers are asking $400–$700 for similar slots — your $725 is at the high end. Watch."* That $400–$700 range came from your channel. Your name doesn't appear; the intel does.
 
-We also fixed two upstream gaps that were quietly corrupting our model. Mixed-format breaks (the "20 delight + 5 hobby per slot" kind) are now captured exactly as they're offered, not mashed into pure-Hobby pricing. And every observation now carries its kind — competitor *listing* versus SME *estimate* — so the verdict narrative weights them appropriately. None of this is visible on screen, but it makes the data behind every verdict cleaner and more honest.
+We also fixed two upstream gaps that were quietly mangling your submissions. Mixed-format breaks (the "20 delight + 5 hobby per slot" kind) are now captured exactly as they were offered, not mashed into pure-Hobby pricing. And every observation now carries its kind — competitor *listing* versus your *estimate* — so the verdict narrative weights them appropriately. Different signals, different voices, finally.
 
-The honest version: in private beta, our model on its own isn't going to be world-class. Our model **plus a network of breakers feeding it real-time observations** is. That's the bet. If you're watching a live break and see a price worth noting, drop it into Discord with `/break-price` — five seconds, straight into the loop. The smarter narrative ships behind a beta flag for now (ask in the Discord to flip it on for your account); the data-quality fixes are on for everyone immediately. The more you contribute, the faster every verdict gets sharper — for you and for everyone.
+The honest version: in private beta, our model on its own isn't going to be world-class. **Our model plus your network is.** That's the bet. The smarter verdict narrative ships behind a beta flag for now while we tune the prompt; the data-quality fixes are live for every verdict already. Keep dropping intel — `/break-price` for live observations, `/insight` for SME reads ahead of release. Every drop tunes the loop, and the loop tunes every verdict. Right now you are the only people in the world who can feed it.
 
 *Stop buying breaks blind.*

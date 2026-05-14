@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { Activity, TrendingUp, TrendingDown, Scale } from 'lucide-react';
+import VerdictContextToggle from './VerdictContextToggle';
 
 // Market Delta Watch — admin-only thesis validation surface.
 //
@@ -129,6 +130,15 @@ export default async function MarketDeltaPage({
     rawFilter === 'competitor_listing' || rawFilter === 'breaker_estimate' || rawFilter === 'historical_sale'
       ? rawFilter
       : 'all';
+
+  // Slice 2b — feature flag for verdict observation enrichment.
+  // Read server-side so the toggle hydrates with the current state.
+  const { data: flagRow } = await supabaseAdmin
+    .from('feature_flags')
+    .select('enabled')
+    .eq('key', 'verdict_observation_context_enabled')
+    .maybeSingle();
+  const verdictEnrichmentEnabled = !!flagRow?.enabled;
   const { data: rows } = await supabaseAdmin
     .from('user_breaks')
     .select(`
@@ -467,6 +477,12 @@ export default async function MarketDeltaPage({
           </div>
         </Section>
       )}
+
+      {/* Slice 2b — admin toggle for verdict observation enrichment.
+          Colocated with the captures panel because the panel is the data
+          feeding the feature. Off by default; flip on to splice recent
+          observations into the AI verdict prompt. */}
+      <VerdictContextToggle initialEnabled={verdictEnrichmentEnabled} />
 
       {/* /break-price captures — observations from the Discord capture path.
           Listed separately because the scope is per-slot, not per-bundle —

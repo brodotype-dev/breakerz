@@ -9,6 +9,7 @@ import {
   computeCascadeAdjustment,
 } from '@/lib/cascading-sentiment';
 import { getMarketMarkup, MARKET_MARKUP_RANGE } from '@/lib/market-markup';
+import { getRecentObservationsForVerdict, configToComposition } from '@/lib/observation-context';
 import type { PlayerWithPricing, BreakConfig, Signal, BreakFormat, PlayerRiskFlag, ProductLifecycle } from '@/lib/types';
 
 const CACHE_TTL_HOURS = 24;
@@ -34,6 +35,16 @@ export interface AnalysisResult {
   formats: { hobby: number; bd: number; jumbo: number };
   riskFlags: Array<{ playerName: string; flagType: string; note: string }>;
   hvPlayers: string[];
+  // Slice 2b — telemetry on whether the verdict prompt was enriched with
+  // recent /break-price observations. `applied` is true only when the
+  // feature flag is on AND ≥3 ranked observations were available. Caller
+  // (analysis API route) fires the verdict_observation_context_applied
+  // PostHog event when this is true.
+  observationContext: {
+    enabled: boolean;          // feature flag state at request time
+    applied: boolean;          // observations spliced into the prompt
+    observationCount: number;  // top-N actually included (≤ 5)
+  };
 }
 
 export interface AnalysisInput {
@@ -428,6 +439,40 @@ export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisRe
       ? `${teams.length} team slot(s)`
       : `${extraPlayers.length} standalone player slot(s)`;
 
+  // Slice 2b — feature-flagged observation context. Reads the flag at
+  // request time so admin toggles take effect on the next verdict. When
+  // enabled AND ≥3 ranked observations exist, splice into the prompt
+  // with explicit grounding instruction. Caller fires the PostHog
+  // verdict_observation_context_applied event when applied=true.
+  const { data: flagRow } = await supabaseAdmin
+    .from('feature_flags')
+    .select('enabled')
+    .eq('key', 'verdict_observation_context_enabled')
+    .maybeSingle();
+  const observationContextEnabled = !!flagRow?.enabled;
+
+  let observationBlock = '';
+  let observationCount = 0;
+  let observationApplied = false;
+  if (observationContextEnabled) {
+    const ctx = await getRecentObservationsForVerdict(productId, configToComposition(formats));
+    if (ctx.hasEnough) {
+      observationBlock = ctx.block;
+      observationCount = ctx.observationCount;
+      observationApplied = true;
+    }
+  }
+
+  const observationSection = observationApplied
+    ? `\n${observationBlock}\n` +
+      `IMPORTANT — observation grounding rules:\n` +
+      `- The observations above are recent market signals for this product. \`listing\` rows are what competitors are asking; \`estimate\` rows are SME reads on what the slot is worth; \`sale\` rows are completed prices.\n` +
+      `- Reference these patterns where relevant — speak to ranges and recency.\n` +
+      `- Never name individuals, breakers, platforms, or sources.\n` +
+      `- Do not invent observations not listed here.\n` +
+      `- Distinguish listing vs estimate voice where the data warrants it.\n`
+    : '';
+
   const prompt = `You are a sports card break analyst at Card Breakerz. A collector is evaluating a bundled break configuration.
 
 Product: ${product.name} (${product.year})
@@ -445,7 +490,7 @@ Signal: ${signal} (${Math.abs(valuePct).toFixed(1)}% ${valuePct >= 0 ? 'below' :
 Top players in bundle:
 ${playerLines}
 
-${rookieNote}${betsSection}${iconSection}${flagSection}${hvSection}
+${rookieNote}${betsSection}${iconSection}${flagSection}${hvSection}${observationSection}
 
 Write a 2–3 sentence analysis explaining whether this bundle is worth buying at this price. Be direct — lead with the signal. Mention the most important player(s) to hit, the rookie upside if applicable, and whether the price justifies the risk. If the bundle mixes teams and standalone players, briefly call out which slot is carrying the value. Use plain conversational language, no bullet points, no markdown.`;
 
@@ -477,5 +522,10 @@ Write a 2–3 sentence analysis explaining whether this bundle is worth buying a
     formats: { hobby: config.hobbyCases, bd: config.bdCases, jumbo: config.jumboCases },
     riskFlags,
     hvPlayers,
+    observationContext: {
+      enabled: observationContextEnabled,
+      applied: observationApplied,
+      observationCount,
+    },
   };
 }
