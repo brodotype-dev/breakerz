@@ -74,6 +74,29 @@ export default async function HomePage() {
   const liveCount = products.filter(p => !isPreRelease(p.release_date)).length;
   const preReleaseCount = products.length - liveCount;
 
+  // Real loop stats for the footer — community contributions surfaced
+  // as social proof. Two parallel queries; both can return 0 in dev or
+  // an empty beta cohort, which the render handles gracefully.
+  const sevenDaysAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const startOfMonth = (() => {
+    const d = new Date();
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString();
+  })();
+  const [breaksThisWeekRes, insightsThisMonthRes] = await Promise.all([
+    supabaseAdmin
+      .from('user_breaks')
+      .select('*', { count: 'exact', head: true })
+      .neq('status', 'abandoned')
+      .gte('created_at', sevenDaysAgo),
+    supabaseAdmin
+      .from('pending_insights')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'applied')
+      .gte('resolved_at', startOfMonth),
+  ]);
+  const breaksThisWeek = breaksThisWeekRes.count ?? 0;
+  const insightsThisMonth = insightsThisMonthRes.count ?? 0;
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--terminal-bg)' }}>
 
@@ -309,7 +332,9 @@ export default async function HomePage() {
         </p>
       </div>
 
-      {/* Footer Stats */}
+      {/* Footer Stats — real loop numbers as social proof for the
+          management-tool framing. liveCount is fact; the other two show
+          community velocity. */}
       <div className="px-6 py-12 border-t" style={{ borderColor: 'var(--terminal-border)' }}>
         <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
           <div>
@@ -326,18 +351,18 @@ export default async function HomePage() {
               className="text-4xl font-bold mb-2"
               style={{ background: 'var(--gradient-green)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
             >
-              AI
+              {breaksThisWeek}
             </div>
-            <div className="terminal-label">Deal Analysis</div>
+            <div className="terminal-label">Breaks Logged · 7d</div>
           </div>
           <div>
             <div
               className="text-4xl font-bold mb-2"
               style={{ background: 'var(--gradient-orange)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
             >
-              24/7
+              {insightsThisMonth}
             </div>
-            <div className="terminal-label">Market Tracking</div>
+            <div className="terminal-label">Community Insights · MTD</div>
           </div>
         </div>
       </div>

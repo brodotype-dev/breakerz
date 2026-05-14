@@ -143,9 +143,10 @@ export default function PricingFeedback({
       <span
         className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider"
         style={{ color: 'var(--text-tertiary)' }}
+        title="You teach. We tune."
       >
         <Check className="w-3 h-3" />
-        Thanks
+        Logged for the next pricing pass
       </span>
     );
   }
@@ -194,6 +195,9 @@ export default function PricingFeedback({
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
+          <p className="text-[10px] mb-2 leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
+            We retrain pricing weekly from breaker reports.
+          </p>
           <form onSubmit={handleSubmitDown} className="space-y-2">
             <select
               value={category}
