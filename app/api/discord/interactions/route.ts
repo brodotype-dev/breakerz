@@ -126,6 +126,39 @@ async function isAllowlisted(discordUserId: string): Promise<boolean> {
   return !!data;
 }
 
+/**
+ * Discord caps message `content` at 2000 chars. A `/break-price` capture from
+ * an 18-team price-sheet screenshot trips that limit easily — 18 rows × ~100
+ * chars per row + wrapping = >2000. Build the proposal summary defensively:
+ * walk rows in order, stop when the next row would push past the budget,
+ * append a "+ N more" note.
+ *
+ * Returns the formatted block ready to drop into the message; the caller is
+ * responsible for budgeting space for any wrapping text (header / source /
+ * buttons hint) and passing that subtracted from 2000.
+ */
+function formatProposalSummary(
+  lines: string[],
+  charBudget: number,
+): { summary: string; hiddenCount: number } {
+  const SAFETY = 60; // small cushion for the "+ N more" footer + newlines
+  const effective = Math.max(0, charBudget - SAFETY);
+  let used = 0;
+  const kept: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const next = (kept.length === 0 ? 0 : 1) + lines[i].length; // +1 for \n
+    if (used + next > effective) break;
+    kept.push(lines[i]);
+    used += next;
+  }
+  const hiddenCount = lines.length - kept.length;
+  let summary = kept.join('\n');
+  if (hiddenCount > 0) {
+    summary += `\n_… and ${hiddenCount} more (full list applies on ✅)_`;
+  }
+  return { summary, hiddenCount };
+}
+
 function ephemeralReply(content: string) {
   return NextResponse.json({
     type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
@@ -227,8 +260,13 @@ async function handleSlashCommand(interaction: SlashCommandInteraction): Promise
         return;
       }
 
-      const summary = updates.map((u, i) => `**${i + 1}.** ${summarizeUpdate(u)}`).join('\n');
+      const lines = updates.map((u, i) => `**${i + 1}.** ${summarizeUpdate(u)}`);
       const handle = user.global_name ?? user.username;
+      const wrapping =
+        `**Insight from @${handle}:**\n> ${narrative.slice(0, 240)}\n\n` +
+        `**Proposed updates (${updates.length}):**\n\n\n` +
+        `Click ✅ to apply, ❌ to discard. Anyone on the allowlist can resolve.`;
+      const { summary } = formatProposalSummary(lines, 2000 - wrapping.length);
 
       await editInteractionResponse(interaction.application_id, interaction.token, {
         content:
@@ -377,11 +415,16 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
         return;
       }
 
-      const summary = updates.map((u, i) => `**${i + 1}.** ${summarizeUpdate(u)}`).join('\n');
+      const lines = updates.map((u, i) => `**${i + 1}.** ${summarizeUpdate(u)}`);
       const handle = user.global_name ?? user.username;
       const sourceLabel = narrative
         ? `> ${narrative.slice(0, 240)}${attachment ? ` _(+ screenshot)_` : ''}`
         : `_(screenshot only: ${attachment?.filename})_`;
+      const wrapping =
+        `**Slot ask from @${handle}:**\n${sourceLabel}\n\n` +
+        `**Proposed (${updates.length}):**\n\n\n` +
+        `Click ✅ to apply, ❌ to discard.`;
+      const { summary } = formatProposalSummary(lines, 2000 - wrapping.length);
 
       await editInteractionResponse(interaction.application_id, interaction.token, {
         content:
