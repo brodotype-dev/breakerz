@@ -60,10 +60,41 @@ const commands = [
         required: false,
         max_length: 500,
       },
+      // Up to 5 screenshot slots. Discord doesn't support array-valued
+      // options, so each image needs its own attachment slot. Mobile users
+      // do N gallery picks (one per slot); desktop users can drag-drop into
+      // each slot. Optional — fill only what you have. Use the "Capture
+      // break-price" message context-menu when you'd rather multi-select N
+      // images on one Discord message; handler routes both to the same
+      // multi-image parser.
       {
         name: 'screenshot',
         description: 'Optional: screenshot of the listing (Whatnot, Fanatics Live, eBay, etc.)',
         type: 11, // ATTACHMENT
+        required: false,
+      },
+      {
+        name: 'screenshot2',
+        description: 'Optional: additional screenshot from the same break',
+        type: 11,
+        required: false,
+      },
+      {
+        name: 'screenshot3',
+        description: 'Optional: additional screenshot from the same break',
+        type: 11,
+        required: false,
+      },
+      {
+        name: 'screenshot4',
+        description: 'Optional: additional screenshot from the same break',
+        type: 11,
+        required: false,
+      },
+      {
+        name: 'screenshot5',
+        description: 'Optional: additional screenshot from the same break',
+        type: 11,
         required: false,
       },
       {

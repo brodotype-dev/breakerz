@@ -401,12 +401,19 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
   const narrative = options.find(o => o.name === 'narrative')?.value?.trim();
   const notes = options.find(o => o.name === 'notes')?.value?.trim();
   const productId = options.find(o => o.name === 'product')?.value?.trim() || undefined;
-  const attachmentId = options.find(o => o.name === 'screenshot')?.value;
-  const attachment = attachmentId
-    ? interaction.data.resolved?.attachments?.[attachmentId]
-    : undefined;
 
-  if (!narrative && !attachment) {
+  // Collect every present screenshot slot. The registrar exposes 5 numbered
+  // slots; users fill what they have. Order is preserved (slot 1 → slot 5)
+  // so Claude sees images in user-intended order.
+  const SCREENSHOT_OPTION_NAMES = ['screenshot', 'screenshot2', 'screenshot3', 'screenshot4', 'screenshot5'];
+  const attachments = SCREENSHOT_OPTION_NAMES
+    .map(name => {
+      const id = options.find(o => o.name === name)?.value;
+      return id ? interaction.data.resolved?.attachments?.[id] : undefined;
+    })
+    .filter((a): a is DiscordAttachment => !!a);
+
+  if (!narrative && attachments.length === 0) {
     return ephemeralReply('Include at least a narrative or a screenshot.');
   }
 
@@ -414,54 +421,55 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
   // seconds and we only have 3s to ack.
   after(async () => {
     try {
-      let imageBase64: string | undefined;
-      let imageMediaType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif' | undefined;
+      // Parallel fetch + per-image sniff. Mirrors the context-menu handler
+      // pattern: one bad image aborts with per-index error reporting so the
+      // proposal is honest rather than partial.
+      const fetched = await Promise.all(
+        attachments.map(async (a, idx) => {
+          const declaredMt = (a.content_type ?? '').split(';')[0].trim();
+          if (declaredMt && !VALID_IMAGE_TYPES.has(declaredMt)) {
+            return { ok: false as const, idx, error: `slot ${idx + 1}: type \`${declaredMt}\` isn't supported` };
+          }
+          const res = await fetch(a.url);
+          if (!res.ok) {
+            return { ok: false as const, idx, error: `slot ${idx + 1}: fetch status ${res.status}` };
+          }
+          const buf = Buffer.from(await res.arrayBuffer());
+          if (buf.byteLength > PER_IMAGE_BYTE_CAP) {
+            return {
+              ok: false as const,
+              idx,
+              error: `slot ${idx + 1}: ${(buf.byteLength / 1024 / 1024).toFixed(1)} MB exceeds 5 MB cap`,
+            };
+          }
+          // Trust bytes, not Discord's declared content_type — iOS often
+          // mis-labels PNGs as JPEGs which Claude rejects on validation.
+          const sniffed = sniffImageMediaType(buf);
+          if (!sniffed) {
+            return {
+              ok: false as const,
+              idx,
+              error: `slot ${idx + 1}: couldn't identify image format from bytes (re-save as PNG/JPEG)`,
+            };
+          }
+          return { ok: true as const, idx, base64: buf.toString('base64'), mediaType: sniffed };
+        }),
+      );
 
-      if (attachment) {
-        const declaredMt = (attachment.content_type ?? '').split(';')[0].trim();
-        // Pre-fetch gate: skip obviously non-image attachments before we
-        // burn a CDN fetch on a PDF. Use the declared type for this filter
-        // since we don't have the bytes yet.
-        if (declaredMt && !VALID_IMAGE_TYPES.has(declaredMt)) {
-          await editInteractionResponse(interaction.application_id, interaction.token, {
-            content: `❓ Attachment type \`${declaredMt}\` isn't supported. Use PNG/JPEG/WebP/GIF.`,
-          });
-          return;
-        }
-        // Discord CDN URLs are time-bound. We need to fetch within ~24h
-        // of the interaction, which we are — this runs in the same request.
-        const imgRes = await fetch(attachment.url);
-        if (!imgRes.ok) {
-          await editInteractionResponse(interaction.application_id, interaction.token, {
-            content: `⚠️ Couldn't fetch the screenshot (status ${imgRes.status}).`,
-          });
-          return;
-        }
-        const buf = Buffer.from(await imgRes.arrayBuffer());
-        // Cap at 5 MB to keep Claude payload sane. Discord allows up to
-        // 25 MB for Nitro users but anything that big is screen-recording
-        // territory, not a screenshot.
-        if (buf.byteLength > 5 * 1024 * 1024) {
-          await editInteractionResponse(interaction.application_id, interaction.token, {
-            content: `⚠️ Screenshot is ${(buf.byteLength / 1024 / 1024).toFixed(1)} MB — please re-share under 5 MB.`,
-          });
-          return;
-        }
-        // Sniff the real format. Discord/iOS often mis-label PNGs as JPEGs
-        // and vice versa, which Claude rejects on validation. Trust the
-        // bytes, not the header.
-        const sniffed = sniffImageMediaType(buf);
-        if (!sniffed) {
-          await editInteractionResponse(interaction.application_id, interaction.token, {
-            content: `❓ Couldn't identify the image format from its bytes. Re-save as PNG or JPEG and try again.`,
-          });
-          return;
-        }
-        imageBase64 = buf.toString('base64');
-        imageMediaType = sniffed;
+      const failed = fetched.filter((f): f is { ok: false; idx: number; error: string } => !f.ok);
+      if (failed.length > 0) {
+        await editInteractionResponse(interaction.application_id, interaction.token, {
+          content: `⚠️ Couldn't load ${failed.length} of ${attachments.length} screenshot${attachments.length === 1 ? '' : 's'}:\n` +
+            failed.map(f => `  • ${f.error}`).join('\n'),
+        });
+        return;
       }
 
-      const { updates, debug } = await parseBreakPrice({ narrative, notes, imageBase64, imageMediaType, productId });
+      const images: BreakPriceImage[] = fetched
+        .filter((f): f is { ok: true; idx: number; base64: string; mediaType: BreakPriceImageMediaType } => f.ok)
+        .map(f => ({ base64: f.base64, mediaType: f.mediaType }));
+
+      const { updates, debug } = await parseBreakPrice({ narrative, notes, images, productId });
 
       if (updates.length === 0) {
         const excerpt = debug.rawResponseExcerpt.replace(/```/g, "'''").slice(0, 500);
@@ -469,7 +477,7 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
           content:
             `❓ Couldn't extract a slot ask.\n` +
             (narrative ? `> ${narrative.slice(0, 200)}\n` : '') +
-            `\n**Debug:** products=${debug.productsCount}, parsedRaw=${debug.parsedRawCount}, hadImage=${debug.hadImage}, drops=${debug.droppedReasons.length}\n` +
+            `\n**Debug:** products=${debug.productsCount}, parsedRaw=${debug.parsedRawCount}, images=${images.length}, drops=${debug.droppedReasons.length}\n` +
             (debug.droppedReasons.length > 0
               ? `**Dropped:** ${debug.droppedReasons.slice(0, 4).join(' | ')}\n\n`
               : '\n') +
@@ -483,7 +491,7 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
         .insert({
           discord_channel_id: interaction.channel_id,
           source_user_id: user.id,
-          source_text: narrative ?? (attachment ? `[screenshot: ${attachment.filename}]` : ''),
+          source_text: narrative ?? (images.length > 0 ? `[${images.length} screenshot${images.length === 1 ? '' : 's'}: ${attachments.map(a => a.filename).join(', ')}]` : ''),
           parsed_updates: updates as unknown as object,
         })
         .select('id')
@@ -498,9 +506,14 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
 
       const lines = updates.map((u, i) => `**${i + 1}.** ${summarizeUpdate(u)}`);
       const handle = user.global_name ?? user.username;
+      const imageSuffix = images.length === 0
+        ? ''
+        : images.length === 1
+          ? ' _(+ screenshot)_'
+          : ` _(+ ${images.length} screenshots)_`;
       const sourceLabel = narrative
-        ? `> ${narrative.slice(0, 240)}${attachment ? ` _(+ screenshot)_` : ''}`
-        : `_(screenshot only: ${attachment?.filename})_`;
+        ? `> ${narrative.slice(0, 240)}${imageSuffix}`
+        : `_(${images.length} screenshot${images.length === 1 ? '' : 's'}: ${attachments.map(a => a.filename).slice(0, 3).join(', ')}${attachments.length > 3 ? '…' : ''})_`;
       const { header: targetsHeader } = buildTargetsHeader(updates);
       const targetsBlock = targetsHeader ? `${targetsHeader}\n\n` : '';
       const wrapping =
