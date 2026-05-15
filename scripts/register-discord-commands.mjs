@@ -76,7 +76,7 @@ const commands = [
     ],
   },
   // Message context-menu — long-press / right-click any message in Discord
-  // and pick Apps → Capture as /break-price. The handler receives the full
+  // and pick Apps → "Capture break-price". The handler receives the full
   // target message including all attachments (up to Discord's 10/message
   // cap, soft-capped at 5 in the handler). Use this when you want to dump
   // multiple screenshots from the same break in one gesture instead of
@@ -84,10 +84,19 @@ const commands = [
   //
   // Type 3 = MESSAGE context menu. Type 2 would be USER context menu. No
   // options allowed on either — the target is implied by data.target_id.
+  //
+  // Name notes: avoiding the slash character — MESSAGE command names
+  // display as-registered and Discord silently dropped the command on
+  // initial registration when the name was "Capture as /break-price",
+  // suspected slash conflict with slash-command name namespace.
+  //
+  // No dm_permission — Discord deprecated dm_permission + default_member_permissions
+  // for the contexts/integration_types pair in 2024. Mixing the old field with
+  // type:3 caused the command to be silently dropped from the bulk PUT response.
+  // Omitting both: Discord defaults to guild-only install (matches our use).
   {
-    name: 'Capture as /break-price',
+    name: 'Capture break-price',
     type: 3,
-    dm_permission: false,
   },
 ];
 
@@ -110,5 +119,25 @@ if (!res.ok) {
 const registered = await res.json();
 console.log(`Registered ${registered.length} command(s) on guild ${DISCORD_GUILD_ID}:`);
 for (const cmd of registered) {
-  console.log(`  /${cmd.name} — ${cmd.description}`);
+  // Type 3 is MESSAGE context menu — no description, no slash prefix.
+  const prefix = cmd.type === 3 ? 'Apps → ' : cmd.type === 2 ? 'User → ' : '/';
+  const tail = cmd.description ? ` — ${cmd.description}` : ' (context menu)';
+  console.log(`  ${prefix}${cmd.name}${tail}`);
+}
+
+// Silent-drop detector. Discord's bulk PUT will return 200 with a SHORTER
+// response array when a single command in the batch was rejected, instead
+// of 400-ing the whole call. Almost burned us on the "Capture as /break-price"
+// registration where the slash in the name silently dropped the command.
+if (registered.length !== commands.length) {
+  const registeredNames = new Set(registered.map(c => c.name));
+  const missing = commands
+    .filter(c => !registeredNames.has(c.name))
+    .map(c => `${c.name} (type=${c.type ?? 1})`);
+  console.error(
+    `\n⚠️  Discord registered ${registered.length} of ${commands.length} commands. Missing:\n` +
+    missing.map(m => `  • ${m}`).join('\n') +
+    `\nLikely causes: invalid characters in name, deprecated fields (dm_permission), or name collision.`,
+  );
+  process.exit(2);
 }

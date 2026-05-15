@@ -255,10 +255,11 @@ interface SlashCommandInteraction {
 }
 
 async function handleSlashCommand(interaction: SlashCommandInteraction): Promise<NextResponse> {
-  // MESSAGE context-menu (right-click / long-press → Apps → "Capture as
-  // /break-price"). data.type === 3 distinguishes it from the slash
-  // command of similar purpose.
-  if (interaction.data.type === 3 && interaction.data.name === 'Capture as /break-price') {
+  // MESSAGE context-menu (right-click / long-press → Apps → "Capture
+  // break-price"). data.type === 3 distinguishes it from the slash command
+  // of similar purpose. Name kept slash-free because Discord silently
+  // dropped "Capture as /break-price" from the bulk command PUT.
+  if (interaction.data.type === 3 && interaction.data.name === 'Capture break-price') {
     return handleBreakPriceFromMessage(interaction);
   }
   if (interaction.data.name === 'break-price') {
