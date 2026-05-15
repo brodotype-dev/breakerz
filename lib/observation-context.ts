@@ -11,10 +11,17 @@
 
 import { supabaseAdmin } from '@/lib/supabase';
 import type { SlotComposition, ObservationSourceType } from '@/lib/types';
+import {
+  OBSERVATION_LOOKBACK_DAYS,
+  compositionSimilarity,
+  recencyWeight,
+  renderComposition,
+  configToComposition as configToCompositionShared,
+} from '@/lib/observation-ranking';
 
 // Hard-coded knobs. Tuned against expected slice-1 volume; revisit when
 // observation volume grows past ~50/product/week.
-const LOOKBACK_DAYS = 30;
+const LOOKBACK_DAYS = OBSERVATION_LOOKBACK_DAYS;
 const MAX_OBSERVATIONS_RETURNED = 5;
 const MIN_OBSERVATIONS_TO_CITE = 3;
 const RAW_FETCH_CAP = 50; // pull the freshest 50 then rank locally
@@ -44,65 +51,12 @@ export interface ObservationContext {
   observations: ObservationForVerdict[];
 }
 
-/**
- * Composition similarity in [0..1].
- *   1.0 = identical key set
- *   0.5 = one is a subset of the other (covers the common case of
- *         "verdict is for hobby-only, observation captured bd+hobby
- *         bundle" — partially relevant, not full match)
- *   0.0 = disjoint key sets
- *
- * Values inside a key set are ignored — case counts vary widely and
- * the engine doesn't need exact ratio match for the narrative.
- */
-function compositionSimilarity(target: SlotComposition, candidate: SlotComposition): number {
-  const tKeys = Object.keys(target).sort();
-  const cKeys = Object.keys(candidate).sort();
-  if (tKeys.length === 0 || cKeys.length === 0) return 0;
-  if (tKeys.join('|') === cKeys.join('|')) return 1.0;
-  const intersection = tKeys.filter(k => cKeys.includes(k));
-  if (intersection.length === 0) return 0;
-  return 0.5;
-}
-
-function recencyWeight(observedAt: string, now: Date = new Date()): number {
-  const t = Date.parse(observedAt);
-  if (!Number.isFinite(t)) return 0;
-  const ageDays = (now.getTime() - t) / 86_400_000;
-  if (ageDays < 0) return 1;          // future-dated, treat as fresh
-  if (ageDays > LOOKBACK_DAYS) return 0;
-  // Linear decay to zero at LOOKBACK_DAYS. Slice 1 has too little data
-  // for an exponential to bite; revisit when volume picks up.
-  return 1 - ageDays / LOOKBACK_DAYS;
-}
-
-function renderComposition(comp: SlotComposition): string {
-  const ORDER: Array<'hobby' | 'bd' | 'jumbo'> = ['hobby', 'bd', 'jumbo'];
-  const present = ORDER.filter(k => comp[k] !== undefined);
-  if (present.length === 0) return '?';
-  if (present.length === 1) {
-    const k = present[0];
-    const v = comp[k];
-    return v == null ? k : `${k} ×${v}`;
-  }
-  return present.map(k => {
-    const v = comp[k];
-    return v == null ? k : `${k} ${v}`;
-  }).join(' + ');
-}
-
-/**
- * Active config for the verdict, distilled into a composition map so we
- * can rank candidates. Mirrors the shape `runBreakAnalysis` already uses
- * for its formats input.
- */
-export function configToComposition(formats: { hobby: number; bd: number; jumbo: number }): SlotComposition {
-  const out: SlotComposition = {};
-  if (formats.hobby > 0) out.hobby = formats.hobby;
-  if (formats.bd > 0)    out.bd    = formats.bd;
-  if (formats.jumbo > 0) out.jumbo = formats.jumbo;
-  return out;
-}
+// Re-export the active-config helper at its original symbol name so existing
+// imports of `configToComposition` from this module keep working. The pure
+// math + rendering helpers (compositionSimilarity, recencyWeight,
+// renderComposition) now live in lib/observation-ranking.ts so the client
+// surfaces can use them without pulling supabaseAdmin.
+export const configToComposition = configToCompositionShared;
 
 export async function getRecentObservationsForVerdict(
   productId: string,

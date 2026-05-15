@@ -26,6 +26,14 @@ export const PH_EVENTS = {
   // ≥3 ranked observations were available. Lets us segment beta retention
   // with vs. without enrichment during the A/B window.
   verdict_observation_context_applied: 'verdict_observation_context_applied',
+
+  // Step #3 — fires when the consumer clicks the "Use $X" pill under a
+  // team row to pre-fill the ask-price input with an observed value.
+  // Property bag: { product_id, team, prefilled_price, observation_count,
+  // source_type }. Drives "did side-by-side comparison change behavior"
+  // segmentation against the existing break_analysis_run + break_logged
+  // events.
+  observed_ask_prefilled: 'observed_ask_prefilled',
 } as const;
 
 export type PHEvent = typeof PH_EVENTS[keyof typeof PH_EVENTS];

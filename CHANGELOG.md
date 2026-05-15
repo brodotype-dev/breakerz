@@ -5,6 +5,51 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-14 — `/break-price` multi-screenshot via message context menu
+
+Adds a Discord MESSAGE context-menu command — "Apps → Capture as /break-price" — that pulls every image attachment off a target message (cap 5) and runs them through `parseBreakPrice` as one batch. Replaces the "fire `/break-price` N times" workflow when an SME is dumping multiple screenshots from the same break. Plan: [docs/plans/2026-05-14-break-price-multi-screenshot.md](docs/plans/2026-05-14-break-price-multi-screenshot.md).
+
+**Why now.** Mobile UX. Picking 5 screenshots through slash-command attachment options means 5 separate gallery dives. Composing one Discord message with 5 attachments is one multi-select. The slash command stays as the single-shot path; context menu is the batch path. Same allowlist, same parser, same staging, same ✅/❌ confirm.
+
+**Mechanics.**
+- New command registered in [scripts/register-discord-commands.mjs](scripts/register-discord-commands.mjs) with `type: 3` (MESSAGE context menu). No options — target message is implied by `data.target_id`.
+- [app/api/discord/interactions/route.ts](app/api/discord/interactions/route.ts) gains a `data.type === 3` branch routing to new `handleBreakPriceFromMessage`. Reads attachments from `data.resolved.messages[target_id].attachments`, filters to valid image MIME types, soft-caps at 5, parallel-fetches with per-image 5 MB byte cap. One failed image aborts the parse with per-index error reporting — partial proposals aren't honest. Narrative comes from the message content text.
+- [lib/insights-parser.ts](lib/insights-parser.ts) `BreakPriceInput` gains an optional `images: BreakPriceImage[]` (each `{ base64, mediaType }`); when set and non-empty, takes precedence over the legacy single-image fields. Loop pushes N `image` content blocks into the Claude call. Prompt addendum tells Claude to treat the images as one capture session and dedupe identical rows (same team + same price + same format = one row).
+
+**Operational rollout.** Re-run `node scripts/register-discord-commands.mjs` after deploy so Discord picks up the new context-menu command. Long-press / right-click any message → Apps → "Capture as /break-price" — bot replies with one combined proposal. The existing `/break-price` slash command stays unchanged for single-shot captures.
+
+**Out of scope.** Numbered-slot slash variant (`screenshot1`, `screenshot2`...). Thread-based collector. Reply-chain capture. Auto-dedupe inside a parse beyond the prompt hint. All deferred per plan.
+
+---
+
+## 2026-05-14 — Side-by-side comparison UI on `/break/[slug]` (execution-roadmap step #3)
+
+Renders observed `/break-price` asks next to our predicted slot fair value, on the consumer surface users already use. The strategic point of BreakIQ — "we say something different from the breaker market" — is now visible in the place the user is making decisions. Plan: [docs/plans/2026-05-14-side-by-side-comparison.md](docs/plans/2026-05-14-side-by-side-comparison.md). Step #3 of [docs/strategy/execution-roadmap.md](docs/strategy/execution-roadmap.md) — flagged as "highest single user-perceived impact in the entire roadmap."
+
+**Slice A — consumer.** TeamSlotsTable rows now show a thin observation sub-row when `/break-price` data exists for that team: range, observation count, source-type split (listings / estimates / sales), recency, composition label when mixed, plus a "Use $X" pre-fill pill that loads the median price into the team's ask input and fires a new `observed_ask_prefilled` PostHog event. When the user has both typed an ask AND there's a ranked observation, a color-coded `vs herd: ±X%` chip appears next to the pill. Composition similarity × recency ranking determines which observations qualify and in what order. Empty teams (no observations) render nothing — clean by default.
+
+**Slice B — admin Δ vs model on captures panel.** New `lib/team-fair-value.ts` exports `getTeamFairValuesForProduct(productId)` and a batched `getTeamFairValuesForProducts(ids[])`. Reads `pricing_cache` + `player_products`, builds PlayerWithPricing-shaped rows, runs the existing `computeSlotPricing` + `computeTeamSlotPricing` from `lib/engine.ts` at a 1-case-of-each reference config, applies lifecycle-aware market markup. `/admin/market-delta` captures panel now has a `Δ vs model` column (color-coded red ≥+20% overcharge / green ≤−20% steal / neutral between) with hover tooltip surfacing the reference fair value. Mixed-composition captures show `—`.
+
+**Refactor surface.** Slice 2b's `lib/observation-context.ts` had three reusable helpers (composition similarity, recency weight, composition rendering) trapped behind a `supabaseAdmin` import. Pulled them into a pure `lib/observation-ranking.ts` so client surfaces can share them. `observation-context.ts` re-imports — zero behavior change for the verdict-enrichment path.
+
+**Wiring.**
+- `app/(consumer)/break/[slug]/page.tsx`: ungated the asking-price observation fetch (was gated to pre-release), added `askObservationsByTeam` + `targetComposition` memos, threaded both as new TeamSlotsTable props.
+- `components/breakiq/TeamSlotsTable.tsx`: new `askObservations` + `targetComposition` props, private `rankObservations` helper for composition-similarity × recency × top-N pricing, per-team observation sub-row with pill + vs-herd chip.
+- `app/admin/market-delta/page.tsx`: captures query now selects `product_id`, one `getTeamFairValuesForProducts` batched call covers every distinct product, new column + hover semantics.
+- `lib/posthog-events.ts`: `observed_ask_prefilled` event.
+
+No DB migrations, no API routes, no schema changes. All on existing reads.
+
+**Data reality.** At ship time, prod has 1 asking_price observation. The feature ships anyway because (a) every new `/break-price` capture surfaces immediately, (b) empty teams render nothing, (c) the per-team fair-value rollup that powers Slice B is reusable for future surfaces.
+
+**What's queued (not this PR).**
+- `/analysis` standalone deal checker + `<AnalysisResultPanel>` observation overlay (slice C — deferred until ≥10 captures exist to validate UX).
+- Composition-aware fair value for mixed-format captures (per-mix engine reference math).
+- Filter captures panel by delta bucket (overcharge/steal/neutral).
+- "Open break" link on each capture row jumping to the consumer page.
+
+---
+
 ## 2026-05-14 — Verdict observation enrichment (slice 2b of composition-observation plan)
 
 Splices recent `/break-price` observations into the AI verdict prompt at request time, gated behind a `feature_flags.verdict_observation_context_enabled` admin toggle. Default off — flipping the toggle on `/admin/market-delta` enables enrichment immediately for every subsequent verdict. Slice 2 of three from [docs/plans/2026-05-13-composition-and-observation-driven-verdicts.md](docs/plans/2026-05-13-composition-and-observation-driven-verdicts.md). Slice 1 (composition + source_type primitives) shipped earlier today; slice 2a (calibration aggregator) deferred until 2b validates data quality.

@@ -2,11 +2,14 @@
 
 import { useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import posthog from 'posthog-js';
 import { formatCurrency, computeSignal, formatPct, computeEffectiveScore } from '@/lib/engine';
 import SignalBadge from '@/components/breakiq/SignalBadge';
 import { IconPlayerBadge, BullishBadge, BearishBadge, HighVolatilityBadge, RiskFlagBadge } from '@/components/breakiq/SocialBadges';
 import PricingFeedback from '@/components/breakiq/PricingFeedback';
-import type { BreakFormat, TeamSlot } from '@/lib/types';
+import { compositionSimilarity, recencyWeight, renderComposition } from '@/lib/observation-ranking';
+import { PH_EVENTS } from '@/lib/posthog-events';
+import type { AskingPriceObsRow, BreakFormat, SlotComposition, TeamSlot } from '@/lib/types';
 
 type RiskFlagEntry = { flagType: string; note: string };
 
@@ -18,6 +21,64 @@ interface Props {
   // Plan B: lifecycle-aware market markup applied to slot cost at display.
   // 1 = no markup. computeSignal is run against the market-adjusted number.
   marketMarkup?: number;
+  // Step #3 — side-by-side comparison. Map keyed by team name to the raw
+  // asking-price observations for this product. Each row gets ranked
+  // against `targetComposition` and renders a sub-line under the team row
+  // when ≥1 ranked observation survives the composition/recency filter.
+  askObservations?: Map<string, AskingPriceObsRow[]>;
+  // Active break-config composition used to rank observations. Pass the
+  // result of `configToComposition({hobby, bd, jumbo})` from the page.
+  targetComposition?: SlotComposition;
+}
+
+// Top-N ranked observations to fold into the displayed range. Beyond 5,
+// the range stops moving meaningfully and the row text starts wrapping.
+const MAX_DISPLAYED_OBSERVATIONS = 5;
+
+// Pure: rank + filter observations for one team. Returns null when no
+// observation survives (composition mismatch / aged out / empty input).
+function rankObservations(
+  rows: AskingPriceObsRow[],
+  target: SlotComposition,
+  now: Date = new Date(),
+) {
+  const ranked = rows
+    .map(r => {
+      const sim = compositionSimilarity(target, r.payload.composition);
+      const rec = recencyWeight(r.observed_at, now);
+      return { row: r, similarity: sim, recency: rec, score: sim * rec };
+    })
+    .filter(x => x.score > 0)
+    .sort((a, b) => b.score - a.score);
+  if (ranked.length === 0) return null;
+  const top = ranked.slice(0, MAX_DISPLAYED_OBSERVATIONS);
+  const prices = top.flatMap(t => [t.row.payload.price_low, t.row.payload.price_high]);
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  // Median price = midpoint of the top-ranked observation. Used for the
+  // "Use $X" prefill pill — the highest-confidence single number we can
+  // surface without faking precision.
+  const topRow = top[0].row;
+  const prefillPrice = Math.round((topRow.payload.price_low + topRow.payload.price_high) / 2);
+  const listings = top.filter(t => t.row.payload.source_type === 'competitor_listing').length;
+  const estimates = top.filter(t => t.row.payload.source_type === 'breaker_estimate').length;
+  const sales = top.filter(t => t.row.payload.source_type === 'historical_sale').length;
+  const mostRecent = top[0].row.observed_at;
+  const ageDays = Math.max(0, Math.floor((now.getTime() - Date.parse(mostRecent)) / 86_400_000));
+  // Distinct composition labels surface when observations span a mix.
+  const compLabels = Array.from(new Set(top.map(t => renderComposition(t.row.payload.composition))));
+  return {
+    count: top.length,
+    min,
+    max,
+    prefillPrice,
+    listings,
+    estimates,
+    sales,
+    ageDays,
+    compLabels,
+    topSourceType: topRow.payload.source_type,
+  };
 }
 
 // `minmax(140px, 1fr)` keeps the Team column from collapsing to 0 when the
@@ -32,7 +93,15 @@ function pickSlot(t: TeamSlot, fmt: BreakFormat) {
     :                      { slot: t.jumboSlotCost, perCase: t.jumboPerCase };
 }
 
-export default function TeamSlotsTable({ teams, viewFormat, riskFlagMap = new Map(), productId = null, marketMarkup = 1 }: Props) {
+export default function TeamSlotsTable({
+  teams,
+  viewFormat,
+  riskFlagMap = new Map(),
+  productId = null,
+  marketMarkup = 1,
+  askObservations,
+  targetComposition,
+}: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [askPrices, setAskPrices] = useState<Record<string, string>>({});
   const showMarketMarkup = marketMarkup !== 1;
@@ -91,6 +160,17 @@ export default function TeamSlotsTable({ teams, viewFormat, riskFlagMap = new Ma
             const hasBearish = minScore < -0.1;
             const hasHV      = row.players.some(p => p.is_high_volatility);
             const teamFlags  = row.players.flatMap(p => riskFlagMap.get(p.id) ?? []);
+
+            // Step #3 — rank observed asks for this team against the
+            // active break-config composition. Null when there are no
+            // observations or none survive the composition/recency filter.
+            const teamObs = askObservations?.get(row.team) ?? [];
+            const ranked = (askObservations && targetComposition && teamObs.length > 0)
+              ? rankObservations(teamObs, targetComposition)
+              : null;
+            const herdDelta = (ranked && askRaw && !isNaN(askNum) && ranked.prefillPrice > 0)
+              ? ((askNum - ranked.prefillPrice) / ranked.prefillPrice) * 100
+              : null;
 
             return (
               <div key={row.team}>
@@ -196,6 +276,89 @@ export default function TeamSlotsTable({ teams, viewFormat, riskFlagMap = new Ma
                     />
                   </div>
                 </div>
+
+                {/* Step #3 — observed-asks sub-row. Only rendered when at
+                    least one observation matched the target composition and
+                    is within the lookback window. Spans the grid; indented
+                    so it visually nests under the team cell. */}
+                {ranked && (
+                  <div
+                    className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-1.5 border-b text-[11px] font-mono"
+                    style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-bg)', color: 'var(--text-t-tertiary)' }}
+                    onClick={e => e.stopPropagation()}
+                  >
+                    <span style={{ color: 'var(--text-t-secondary)' }}>
+                      Breakers asked{' '}
+                      <span style={{ color: 'var(--text-t-primary)' }}>
+                        {ranked.min === ranked.max
+                          ? formatCurrency(ranked.min)
+                          : `${formatCurrency(ranked.min)}–${formatCurrency(ranked.max)}`}
+                      </span>
+                    </span>
+                    <span>·</span>
+                    <span>
+                      {ranked.count} {ranked.count === 1 ? 'obs' : 'obs'}
+                      {(ranked.listings + ranked.estimates + ranked.sales) > 0 && (
+                        <span style={{ color: 'var(--text-t-tertiary)' }}>
+                          {' '}({[
+                            ranked.listings > 0 ? `${ranked.listings} listing${ranked.listings === 1 ? '' : 's'}` : null,
+                            ranked.estimates > 0 ? `${ranked.estimates} estimate${ranked.estimates === 1 ? '' : 's'}` : null,
+                            ranked.sales > 0 ? `${ranked.sales} sale${ranked.sales === 1 ? '' : 's'}` : null,
+                          ].filter(Boolean).join(', ')})
+                        </span>
+                      )}
+                    </span>
+                    <span>·</span>
+                    <span>{ranked.ageDays === 0 ? 'today' : ranked.ageDays === 1 ? '1d ago' : `${ranked.ageDays}d ago`}</span>
+                    {ranked.compLabels.length > 0 && ranked.compLabels.some(l => l.includes('+')) && (
+                      <>
+                        <span>·</span>
+                        <span style={{ color: 'var(--text-t-tertiary)' }}>{ranked.compLabels.join(' / ')}</span>
+                      </>
+                    )}
+                    {/* "Use $X" pre-fill pill — fires PostHog + sets the
+                        team's ask input to the top-ranked observation's
+                        median price. */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAskPrices(prev => ({ ...prev, [row.team]: String(ranked.prefillPrice) }));
+                        try {
+                          posthog.capture(PH_EVENTS.observed_ask_prefilled, {
+                            product_id: productId,
+                            team: row.team,
+                            prefilled_price: ranked.prefillPrice,
+                            observation_count: ranked.count,
+                            source_type: ranked.topSourceType,
+                          });
+                        } catch { /* posthog optional */ }
+                      }}
+                      className="ml-auto px-2 py-0.5 rounded border text-[11px] font-mono transition-colors"
+                      style={{
+                        borderColor: 'var(--terminal-border-hover)',
+                        backgroundColor: 'var(--terminal-surface)',
+                        color: 'var(--accent-blue)',
+                      }}
+                      onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--terminal-surface-hover)')}
+                      onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'var(--terminal-surface)')}
+                    >
+                      Use {formatCurrency(ranked.prefillPrice)}
+                    </button>
+                    {herdDelta !== null && (
+                      <span
+                        className="px-1.5 py-0.5 rounded"
+                        style={{
+                          color: Math.abs(herdDelta) < 5 ? 'var(--text-t-tertiary)'
+                            : herdDelta > 0 ? '#ef4444' : '#22c55e',
+                          backgroundColor: 'var(--terminal-surface)',
+                        }}
+                        title="Your typed ask vs. herd median"
+                      >
+                        vs herd: {formatPct(herdDelta)}
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {/* Expanded player rows */}
                 {isOpen && row.players.map(p => {

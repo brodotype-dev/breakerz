@@ -195,26 +195,26 @@ export default function BreakPage() {
               .gt('expires_at', nowIso)
               .is('superseded_at', null),
           ];
+          // Step #3 — asking-price observations now fetch on every
+          // lifecycle (was previously gated to pre-release). Live products
+          // consume them via the side-by-side comparison in TeamSlotsTable;
+          // pre-release continues to render them as hero chips.
           const askingIdx = fetches.length;
-          if (isPreReleaseProduct) {
-            fetches.push(
-              supabase
-                .from('market_observations')
-                .select('scope_type, scope_id, scope_team, payload, observed_at, source_narrative')
-                .eq('product_id', prod.id)
-                .eq('observation_type', 'asking_price')
-                .gt('expires_at', nowIso)
-                .is('superseded_at', null),
-            );
-          }
+          fetches.push(
+            supabase
+              .from('market_observations')
+              .select('scope_type, scope_id, scope_team, payload, observed_at, source_narrative')
+              .eq('product_id', prod.id)
+              .eq('observation_type', 'asking_price')
+              .gt('expires_at', nowIso)
+              .is('superseded_at', null),
+          );
           const settled = (await Promise.all(fetches)) as Array<{ data: unknown[] | null }>;
           const flagsRes = settled[0] as { data: Array<{ player_product_id: string; flag_type: string; note: string }> | null };
           const obsRes = settled[1] as { data: HypeObsRow[] | null };
           const cascadeProductRes = settled[2] as { data: CascadeObservation[] | null };
           const cascadeGlobalRes = settled[3] as { data: CascadeObservation[] | null };
-          const askRes = isPreReleaseProduct
-            ? (settled[askingIdx] as { data: AskingPriceObsRow[] | null })
-            : undefined;
+          const askRes = settled[askingIdx] as { data: AskingPriceObsRow[] | null };
 
           const fm = new Map<string, Array<{ flagType: string; note: string }>>();
           const riskAdjMap = new Map<string, number>();
@@ -335,6 +335,30 @@ export default function BreakPage() {
   const lifecycle = (product?.lifecycle_status ?? 'live') as 'pre_release' | 'live' | 'dormant';
   const isPreRelease = lifecycle === 'pre_release';
   const isDormant = lifecycle === 'dormant';
+
+  // Step #3 — side-by-side comparison. Bucket the team-scoped asking-price
+  // observations so TeamSlotsTable can render them next to each row, and
+  // distill the active break-config into a composition vector so the
+  // observations get ranked correctly when the user is configuring a mixed
+  // bundle (e.g. 10 hobby + 5 bd matches "delight/hobby" captures more
+  // strongly than pure-hobby ones).
+  const askObservationsByTeam = useMemo(() => {
+    const m = new Map<string, AskingPriceObsRow[]>();
+    for (const o of askingPriceObsRows) {
+      if (o.scope_type !== 'team' || !o.scope_team) continue;
+      const arr = m.get(o.scope_team) ?? [];
+      arr.push(o);
+      m.set(o.scope_team, arr);
+    }
+    return m;
+  }, [askingPriceObsRows]);
+  const targetComposition = useMemo(() => {
+    const out: Partial<Record<BreakFormat, number | null>> = {};
+    if (config.hobbyCases > 0) out.hobby = config.hobbyCases;
+    if (config.bdCases > 0)    out.bd    = config.bdCases;
+    if (config.jumboCases > 0) out.jumbo = config.jumboCases;
+    return out;
+  }, [config.hobbyCases, config.bdCases, config.jumboCases]);
 
   function formatReleaseDate(d: string) {
     return new Date(d + 'T00:00:00').toLocaleDateString('en-US', {
@@ -833,7 +857,7 @@ export default function BreakPage() {
 
         {/* Tab content */}
         <div className="mt-4">
-          {activeTab === 'teams' && <TeamSlotsTable teams={teamSlots} viewFormat={viewFormat} riskFlagMap={riskFlagMap} productId={product?.id ?? null} marketMarkup={getMarketMarkup(lifecycle)} />}
+          {activeTab === 'teams' && <TeamSlotsTable teams={teamSlots} viewFormat={viewFormat} riskFlagMap={riskFlagMap} productId={product?.id ?? null} marketMarkup={getMarketMarkup(lifecycle)} askObservations={askObservationsByTeam} targetComposition={targetComposition} />}
           {activeTab === 'players' && (
             <PlayerTable
               players={players}
