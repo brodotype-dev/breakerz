@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { createProduct, updateProduct, setProductChSetName } from '@/app/admin/products/actions';
+import { groupedForDropdown } from '@/lib/product-lines';
 import type { Sport, Product } from '@/lib/types';
 
 interface CHSetResult { set_name: string; year: string; category: string; thirty_day_sales?: number; }
@@ -139,6 +140,7 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
   const knownMfr = MANUFACTURERS.filter(m => m !== 'Other').includes(existingMfr);
   const [manufacturer, setManufacturer] = useState(knownMfr || !existingMfr ? existingMfr : 'Other');
   const [manufacturerCustom, setManufacturerCustom] = useState(!knownMfr && existingMfr ? existingMfr : '');
+  const [productLine, setProductLine] = useState(product?.product_line ?? '');
   const [year, setYear] = useState(product?.year ?? '');
   const [name, setName] = useState(product?.name ?? '');
   const [slug, setSlug] = useState(product?.slug ?? '');
@@ -247,6 +249,7 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
     const data = {
       sport_id: sportId,
       manufacturer: effectiveManufacturer,
+      product_line: productLine || null,
       year,
       name,
       slug,
@@ -313,6 +316,21 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
               />
             </div>
           )}
+
+          <div className="col-span-2">
+            <FormSelect label="Product Line (optional)" value={productLine} onChange={setProductLine}>
+              <option value="">— None —</option>
+              {groupedForDropdown().map(group => (
+                <optgroup key={group.manufacturer} label={group.manufacturer}>
+                  {group.lines.map(l => (
+                    <option key={l.key} value={l.key}>
+                      {l.label}{l.is_specialty ? ' (specialty)' : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </FormSelect>
+          </div>
 
           <FormInput
             label="Year"

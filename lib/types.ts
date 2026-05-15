@@ -115,6 +115,11 @@ export interface Product {
   // FRESHNESS_PREMIUM decay in lib/market-markup.ts. Backfilled to
   // created_at for products that were already live before Plan C shipped.
   live_since: string | null;
+  // Brand-line taxonomy (bowman_flagship, bowman_chrome, bowman_best,
+  // topps_chrome, panini_prizm, etc.). Canonical list + display labels
+  // live in lib/product-lines.ts. Drives parser context and format
+  // expectations for specialty products.
+  product_line: string | null;
   sport?: Sport;
 }
 

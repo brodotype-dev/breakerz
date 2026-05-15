@@ -9,6 +9,7 @@ export async function createProduct(formData: {
   name: string;
   sport_id: string;
   manufacturer: string;
+  product_line?: string | null;
   year: string;
   hobby_case_cost: number | null;
   bd_case_cost: number | null;
@@ -51,6 +52,7 @@ export async function updateProduct(
   formData: {
     sport_id: string;
     manufacturer: string;
+    product_line?: string | null;
     year: string;
     name: string;
     slug: string;
