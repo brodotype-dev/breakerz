@@ -417,11 +417,13 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
       let imageMediaType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif' | undefined;
 
       if (attachment) {
-        const VALID_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
-        const mt = (attachment.content_type ?? '').split(';')[0].trim();
-        if (!VALID_TYPES.has(mt)) {
+        const declaredMt = (attachment.content_type ?? '').split(';')[0].trim();
+        // Pre-fetch gate: skip obviously non-image attachments before we
+        // burn a CDN fetch on a PDF. Use the declared type for this filter
+        // since we don't have the bytes yet.
+        if (declaredMt && !VALID_IMAGE_TYPES.has(declaredMt)) {
           await editInteractionResponse(interaction.application_id, interaction.token, {
-            content: `❓ Attachment type \`${mt || 'unknown'}\` isn't supported. Use PNG/JPEG/WebP/GIF.`,
+            content: `❓ Attachment type \`${declaredMt}\` isn't supported. Use PNG/JPEG/WebP/GIF.`,
           });
           return;
         }
@@ -444,8 +446,18 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
           });
           return;
         }
+        // Sniff the real format. Discord/iOS often mis-label PNGs as JPEGs
+        // and vice versa, which Claude rejects on validation. Trust the
+        // bytes, not the header.
+        const sniffed = sniffImageMediaType(buf);
+        if (!sniffed) {
+          await editInteractionResponse(interaction.application_id, interaction.token, {
+            content: `❓ Couldn't identify the image format from its bytes. Re-save as PNG or JPEG and try again.`,
+          });
+          return;
+        }
         imageBase64 = buf.toString('base64');
-        imageMediaType = mt as typeof imageMediaType;
+        imageMediaType = sniffed;
       }
 
       const { updates, debug } = await parseBreakPrice({ narrative, notes, imageBase64, imageMediaType, productId });
@@ -554,6 +566,30 @@ const CONTEXT_MENU_IMAGE_CAP = 5;
 const PER_IMAGE_BYTE_CAP = 5 * 1024 * 1024;
 const VALID_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'image/gif']);
 
+/**
+ * Identify an image's real media type by inspecting its magic bytes.
+ * Discord (and iOS in particular) routinely sends `content_type: image/jpeg`
+ * for files whose bytes are actually PNG, which Claude's vision endpoint
+ * rejects with a 400. Always trust the bytes, not the header.
+ * Returns null when the bytes don't match a supported format.
+ */
+function sniffImageMediaType(buf: Buffer): BreakPriceImageMediaType | null {
+  if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) {
+    return 'image/png';
+  }
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
+    return 'image/jpeg';
+  }
+  if (buf.length >= 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') {
+    return 'image/webp';
+  }
+  if (buf.length >= 6) {
+    const head = buf.toString('ascii', 0, 6);
+    if (head === 'GIF87a' || head === 'GIF89a') return 'image/gif';
+  }
+  return null;
+}
+
 async function handleBreakPriceFromMessage(interaction: SlashCommandInteraction): Promise<NextResponse> {
   const user = interaction.member?.user ?? interaction.user;
   if (!user) return ephemeralReply('Could not identify you, sorry.');
@@ -594,7 +630,6 @@ async function handleBreakPriceFromMessage(interaction: SlashCommandInteraction)
       // the parse — keeps the proposal honest rather than partial.
       const fetched = await Promise.all(
         imageAttachments.map(async (a, idx) => {
-          const mt = (a.content_type ?? '').split(';')[0].trim() as BreakPriceImageMediaType;
           const res = await fetch(a.url);
           if (!res.ok) {
             return { ok: false as const, idx, error: `status ${res.status} on ${a.filename}` };
@@ -607,7 +642,17 @@ async function handleBreakPriceFromMessage(interaction: SlashCommandInteraction)
               error: `${a.filename} is ${(buf.byteLength / 1024 / 1024).toFixed(1)} MB (cap 5 MB)`,
             };
           }
-          return { ok: true as const, idx, base64: buf.toString('base64'), mediaType: mt };
+          // Trust bytes, not Discord's content_type header — iOS frequently
+          // mis-labels PNGs as JPEGs which Claude rejects on validation.
+          const sniffed = sniffImageMediaType(buf);
+          if (!sniffed) {
+            return {
+              ok: false as const,
+              idx,
+              error: `couldn't identify ${a.filename}'s format from its bytes`,
+            };
+          }
+          return { ok: true as const, idx, base64: buf.toString('base64'), mediaType: sniffed };
         }),
       );
 
