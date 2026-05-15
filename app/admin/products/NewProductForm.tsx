@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { FileText, BarChart2, LayoutDashboard, CheckCircle, Search } from 'lucide-react';
 import type { Sport } from '@/lib/types';
+import { groupedForDropdown } from '@/lib/product-lines';
 import { createProduct } from './actions';
 
 interface ChSetSearchResult {
@@ -111,6 +112,7 @@ export default function NewProductForm({ sports }: Props) {
     sport_id: sports[0]?.id ?? '',
     manufacturer: '',
     manufacturerCustom: '',
+    product_line: '',
     year: new Date().getFullYear().toString(),
     hobby_case_cost: '',
     bd_case_cost: '',
@@ -185,6 +187,7 @@ export default function NewProductForm({ sports }: Props) {
       name: form.name.trim(),
       sport_id: form.sport_id,
       manufacturer: effectiveManufacturer.trim(),
+      product_line: form.product_line || null,
       year: form.year.trim(),
       hobby_case_cost: parseFloat(form.hobby_case_cost) || 0,
       bd_case_cost: form.bd_case_cost ? parseFloat(form.bd_case_cost) : null,
@@ -319,6 +322,25 @@ export default function NewProductForm({ sports }: Props) {
                 style={{ marginTop: '0.5rem' }}
               />
             )}
+          </div>
+
+          <div className="sm:col-span-2">
+            <label style={labelStyle}>Product Line <span style={{ color: 'var(--text-tertiary)', fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional — drives parser context + format defaults)</span></label>
+            <FocusSelect
+              value={form.product_line}
+              onChange={e => set('product_line', e.target.value)}
+            >
+              <option value="">— None —</option>
+              {groupedForDropdown().map(group => (
+                <optgroup key={group.manufacturer} label={group.manufacturer}>
+                  {group.lines.map(l => (
+                    <option key={l.key} value={l.key}>
+                      {l.label}{l.is_specialty ? ' (specialty)' : ''}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </FocusSelect>
           </div>
 
           <div>

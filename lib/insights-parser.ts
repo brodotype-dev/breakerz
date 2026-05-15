@@ -949,7 +949,7 @@ export async function parseBreakPrice(input: BreakPriceInput): Promise<BreakPric
   // for empty parses ("which Topps Chrome did you mean?").
   let productQuery = supabaseAdmin
     .from('products')
-    .select('id, name, year, lifecycle_status')
+    .select('id, name, year, lifecycle_status, product_line, hobby_case_cost, bd_case_cost, jumbo_case_cost')
     .eq('is_active', true)
     .in('lifecycle_status', ['live', 'pre_release']);
   if (input.productId) {
@@ -985,7 +985,28 @@ export async function parseBreakPrice(input: BreakPriceInput): Promise<BreakPric
     }
   }
 
-  const productLines = products.map(p => `- ${p.year} ${p.name} [id: ${p.id}]`).join('\n');
+  // Each product line ships its known available formats (derived from
+  // *_case_cost nullability) and brand-line taxonomy (specialty products
+  // like Bowman Best are hobby-only by convention). Lets Claude reason
+  // about "JUMBO" titled breaks on hobby-only products without flipping
+  // composition to jumbo when no jumbo SKU exists.
+  const productLines = products.map((p: {
+    id: string;
+    name: string;
+    year: string;
+    product_line: string | null;
+    hobby_case_cost: number | null;
+    bd_case_cost: number | null;
+    jumbo_case_cost: number | null;
+  }) => {
+    const formats: string[] = [];
+    if (p.hobby_case_cost != null) formats.push('hobby');
+    if (p.bd_case_cost != null)    formats.push('bd');
+    if (p.jumbo_case_cost != null) formats.push('jumbo');
+    const lineTag = p.product_line ? ` line=${p.product_line}` : '';
+    const formatsTag = formats.length > 0 ? ` formats=${formats.join(',')}` : '';
+    return `- ${p.year} ${p.name} [id: ${p.id}${lineTag}${formatsTag}]`;
+  }).join('\n');
 
   const productPinned = !!input.productId;
   const prompt = `You are extracting a live-break slot ask price from a sports card market observation.
@@ -1028,11 +1049,13 @@ Schema for each asking_price update:
 RULES:
 - One asking_price ROW PER DISCRETE SLOT ASK. A screenshot with 18 team rows ("Diamondbacks $625, Red Sox $6000, Cubs $625, …") = 18 separate asking_price updates, one per row. A breaker stream listing four slot prices = four updates.
 - DISTINGUISH a price-sheet (N rows, each is its own slot) from a multi-team BUNDLE (one combined ask spanning multiple teams). A bundle like "Yankees + Red Sox + Dodgers for $2,400" → return empty array (single combined ask not yet supported, see edge-cases doc). A list like "Yankees $800 / Red Sox $750 / Dodgers $850" → three rows.
+- AVAILABLE FORMATS PRECEDES TITLE OVERRIDE (highest priority): each product in the list above ships with a "formats=…" tag listing which formats it actually has SKUs for (hobby/bd/jumbo). A composition key MUST be one of the product's available formats. If the title says "JUMBO" but the product's formats tag is just "hobby" (specialty product like Bowman Best, Topps Chrome, Topps Cosmic Chrome, Topps Finest, Pristine, Donruss Optic), the title is describing the BREAK NAME (a half-case sized hobby break), not the product format — emit { "hobby": null } for those rows. Same logic for BD/DELIGHT titles on jumbo-only or hobby-only products. The product's "line=" tag is a soft hint: lines containing "_best", "_chrome", "_cosmic", "_finest", "_pristine", "_optic", "_sapphire", "_platinum" are typically specialty/hobby-only.
 - COMPOSITION RULES — sparse map of formats involved per slot:
-  · TITLE-LEVEL FORMAT OVERRIDE (highest priority): scan the break title, section header, or any text repeated above/around every row in a screenshot. If it contains "JUMBO" (case-insensitive — matches "JUMBO", "Jumbo Box", "HALF CASE JUMBO #2", etc.) and there's no per-row override, classify EVERY emitted row as { "jumbo": null }. Same applies to "BREAKER'S DELIGHT", "DELIGHT", or " BD " as a standalone word → { "bd": null }. The title rule overrides the hobby-only-platform default below. Examples:
-      "HALF CASE JUMBO #2 Random Team auction"   → all rows { "jumbo": null }
-      "Delight RTB Mixer #4"                     → all rows { "bd": null }
-      "Bowman Hobby Random Team"                 → all rows { "hobby": null }
+  · TITLE-LEVEL FORMAT OVERRIDE (second priority, after available-formats check): scan the break title, section header, or any text repeated above/around every row in a screenshot. If it contains "JUMBO" (case-insensitive — matches "JUMBO", "Jumbo Box", "HALF CASE JUMBO #2", etc.) AND the product's formats tag includes jumbo, classify EVERY emitted row as { "jumbo": null }. Same applies to "BREAKER'S DELIGHT", "DELIGHT", or " BD " as a standalone word → { "bd": null } when the product has bd. The title rule overrides the hobby-only-platform default below but is itself overridden by available-formats above. Examples:
+      "HALF CASE JUMBO #2 Random Team auction" + product formats=hobby,bd,jumbo  → all rows { "jumbo": null }
+      "HALF CASE JUMBO #2 Random Team auction" + product formats=hobby           → all rows { "hobby": null } (title describes break name, not format)
+      "Delight RTB Mixer #4" + product formats=hobby,bd                          → all rows { "bd": null }
+      "Bowman Hobby Random Team"                                                 → all rows { "hobby": null }
     When the title says JUMBO and a per-row label ALSO says JUMBO, that's the same fact stated twice — emit one row, not two.
   · Per-row examples (apply only when no title override is present):
       "$45 Diamondbacks" on a hobby-only stream     → { "hobby": null }
