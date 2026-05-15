@@ -5,6 +5,50 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-15 — Product line taxonomy + parser format-availability rules
+
+Adds a `product_line` TEXT column to products ("taxonomy lite" path per the data-model roadmap) and uses it to fix a parser correctness gap surfaced after the previous slice's title-level JUMBO rule shipped. PR [#106](https://github.com/brodotype-dev/breakerz/pull/106).
+
+**Why now.** The 2026-05-15 title-level JUMBO override rule made the parser correctly classify "HALF CASE JUMBO" titled breaks on full-format products (e.g. 2026 Bowman Baseball with hobby + bd + jumbo SKUs) as `{jumbo: null}`. But it would have *over*-corrected on specialty hobby-only products like Bowman's Best — those breaks are sometimes loosely called "JUMBO" by breakers as a break-size descriptor, not a product format, because there is no jumbo SKU. We needed the parser to know the product's available formats and the brand-line family to disambiguate.
+
+**Taxonomy.** New [lib/product-lines.ts](lib/product-lines.ts) ships ~35 canonical brand-line values with `manufacturer`, `family`, and `is_specialty` flags. Topps · Bowman family (`bowman_flagship`, `bowman_chrome`, `bowman_best`, `bowman_cosmic`, `bowman_draft`, `bowman_sapphire`, `bowman_platinum`, `bowman_mega`), Topps flagship + specialty (`topps_flagship`, `topps_chrome`, `topps_cosmic_chrome`, `topps_finest`, `topps_pristine`, `topps_three`, `topps_heritage`, `topps_stadium_club`, `topps_allen_ginter`, `topps_archives`, `topps_dynasty`, `topps_definitive`, `topps_update`), Panini (`panini_prizm`, `panini_donruss`, `panini_donruss_optic`, `panini_select`, `panini_mosaic`, `panini_immaculate`, `panini_national_treasures`, `panini_contenders`, `panini_obsidian`, `panini_one`, `panini_chronicles`, `panini_certified`), Upper Deck (`upper_deck_series`, `upper_deck_artifacts`, `upper_deck_spx`), and `other`. The list lives in code (not a Postgres enum) so new lines = a TypeScript change, not a migration.
+
+**Schema.** Migration [supabase/migrations/20260516000000_product_line_taxonomy.sql](supabase/migrations/20260516000000_product_line_taxonomy.sql) adds the nullable column and backfills all 16 currently-active products by slug. Applied to prod via Supabase MCP at ship time.
+
+**Forms.** Both product forms — [app/admin/products/NewProductForm.tsx](app/admin/products/NewProductForm.tsx) and [components/admin/ProductForm.tsx](components/admin/ProductForm.tsx) — gain a Product Line dropdown with manufacturer-grouped `<optgroup>`s. Optional field; legacy products without one continue to work, parser just operates without the line hint.
+
+**Parser hookup (the load-bearing part).** [lib/insights-parser.ts](lib/insights-parser.ts) `parseBreakPrice` query now selects `product_line` + per-format case_cost nullability. Product list rendered to the prompt as `- 2025 Bowman's Best Baseball [id: … line=bowman_best formats=hobby]`. New AVAILABLE FORMATS rule takes precedence over the title-level JUMBO rule from the previous slice — a "JUMBO" titled break on a hobby-only specialty product correctly classifies as `{hobby: null}` because the title describes the break NAME, not the product format. Lines containing `_best`, `_chrome`, `_cosmic`, `_finest`, `_pristine`, `_optic`, `_sapphire`, `_platinum` are flagged as soft-hint specialty/hobby-only.
+
+**Future-proofing.** The `product_line` keys decompose cleanly into a future three-dimensional taxonomy (manufacturer / brand / specialty) via the existing flags in `lib/product-lines.ts`. Migration path to "taxonomy full" is now a simple two-column expansion when consumer browse or cross-product anchoring demands it — see BACKLOG entry `Full taxonomy expansion (manufacturer/brand/specialty)` (⚪ optional).
+
+---
+
+## 2026-05-15 — Parser: title-level JUMBO/BD format override
+
+Standalone parser-prompt fix. PR [#105](https://github.com/brodotype-dev/breakerz/pull/105). A Whatnot screenshot titled "HALF CASE JUMBO #2 Random Team auction" produced 30 `asking_price` rows all tagged `{composition: {hobby: null}}` instead of `{jumbo: null}`. The parser prompt had per-slot examples ("Jumbo per-team $800") and a default-to-hobby fallback but no rule that elevated a title-level format keyword to a per-break override.
+
+New TITLE-LEVEL FORMAT OVERRIDE rule added as the FIRST composition rule (highest priority at ship time — later superseded by the AVAILABLE FORMATS rule from PR #106): scan the break title / section header / text repeated on every row, and when JUMBO appears (case-insensitive) classify all emitted rows as `{jumbo: null}` unless a per-row override is stated. Same applies to BREAKER'S DELIGHT / DELIGHT / BD → `{bd: null}`. Tightens the hobby fallback so it only fires when no title override AND no per-row label was found. Adds a dedup note so the parser doesn't emit two rows when the title and a per-row label both say JUMBO.
+
+Prompt-only change. No schema, no API, no migration. Both `/break-price` entry points (slash + message context menu) share the same `parseBreakPrice` path so the fix lands on both.
+
+---
+
+## 2026-05-15 — `/break-price` multi-screenshot slots on the slash command
+
+UX-consistency follow-up to the message context menu shipped earlier. PR [#104](https://github.com/brodotype-dev/breakerz/pull/104). Adds `screenshot2` through `screenshot5` attachment slots to the `/break-price` slash command so multi-image capture works through the same slash-command UX users already know from `/insight`. Handler collects whichever slots are present, parallel-fetches with the existing byte-sniff validation (PNG/JPEG/WebP/GIF), aborts on any failed image with per-slot error reporting, and routes through the same `images: BreakPriceImage[]` path the context menu already uses.
+
+**Tradeoff:** mobile UX is 5 separate gallery picks per slot vs. the context menu's one multi-select dialog. We ship both so single-shot via slash matches `/insight`'s muscle memory, and batch dumps via the context menu stay efficient. Both routes converge on the same parser.
+
+---
+
+## 2026-05-15 — Discord context-menu registration fix
+
+PR [#103](https://github.com/brodotype-dev/breakerz/pull/103). The `"Capture as /break-price"` MESSAGE context-menu command silently dropped from Discord's bulk PUT response on initial registration — registrar reported `Registered 2 command(s)` instead of 3 with no HTTP error. Two suspected causes, fixed both: (1) the slash character in the name (renamed to `"Capture break-price"` — MESSAGE command names display as-registered but `/` namespace-collides with slash commands); (2) `dm_permission: false` is deprecated since 2024 (replaced by `contexts` + `integration_types` — dropped, Discord defaults to guild-only install which matches our use).
+
+Also added a silent-drop detector to [scripts/register-discord-commands.mjs](scripts/register-discord-commands.mjs): when the response array is shorter than the request array, it lists the missing commands and exits non-zero. Prevents the next regression from looking like a success.
+
+---
+
 ## 2026-05-14 — `/break-price` multi-screenshot via message context menu
 
 Adds a Discord MESSAGE context-menu command — "Apps → Capture as /break-price" — that pulls every image attachment off a target message (cap 5) and runs them through `parseBreakPrice` as one batch. Replaces the "fire `/break-price` N times" workflow when an SME is dumping multiple screenshots from the same break. Plan: [docs/plans/2026-05-14-break-price-multi-screenshot.md](docs/plans/2026-05-14-break-price-multi-screenshot.md).

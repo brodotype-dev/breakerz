@@ -2,7 +2,7 @@
 
 Consolidated list of known work, organized by priority. Items pulled from the Social Currency PRD, CLAUDE.md known gaps, and open questions surfaced during development.
 
-**Last updated:** 2026-05-11
+**Last updated:** 2026-05-15
 
 ---
 
@@ -579,6 +579,49 @@ When a hit is reported, the relevant player's slot price should reflect the upda
 **Blocker:** True real-time recalculation conflicts with the "No real-time data" constraint. Pragmatic path: treat hit reports as an input to the next scheduled pricing refresh (nightly cron picks them up) rather than an immediate trigger. Revisit if buyer demand for same-session repricing is validated.
 
 **Files:** `hit_reports` table + migration, `app/api/hit-reports/route.ts`, `app/break/[slug]/` (submit form + feed component), optional cron integration in `lib/pricing-refresh.ts`
+
+---
+
+### ⚪ OPTIONAL · Full taxonomy expansion (manufacturer / brand / specialty as separate fields)
+
+**Effort:** ~½ day
+**Status:** Optional. No near-term trigger. The "taxonomy lite" single-column `product_line` shipped 2026-05-15 (PR #106) already drives parser format-availability and product-form UX. Take this on when consumer browse/filter or cross-product anchoring forces the issue.
+
+**Why this is the natural next step.** [lib/product-lines.ts](../lib/product-lines.ts) already decomposes each `product_line` key into `manufacturer`, `family`, and `is_specialty` flags. The data is there; we just don't have separate database columns. Moving to three columns gives us:
+- **Consumer browse** — filter `/` and `/break` by brand (Bowman vs Topps Chrome vs Panini Prizm) without LIKE-querying the name string.
+- **Cross-product anchoring** — express pricing rules like "Bowman Best slot fair value tracks ~30% of Bowman flagship slot fair value" in structured pricing math (today this requires reading the line key as a string).
+- **Pre-release auto-config** — when a new Topps Heritage drops, templatize the format mix (typically hobby + jumbo) from the brand alone.
+- **CH set-name auto-suggestion** — CH naming follows manufacturer/brand/specialty patterns; structured fields could prefill `ch_set_name` better than the current full-name search.
+
+**Shape:**
+1. Migration adds `product_manufacturer`, `product_brand`, `product_specialty` columns (all TEXT, nullable). `product_line` stays as a derived/legacy column.
+2. Backfill from existing `product_line` via the helper table in `lib/product-lines.ts` — every value already decomposes.
+3. Update both product forms ([NewProductForm.tsx](../app/admin/products/NewProductForm.tsx), [components/admin/ProductForm.tsx](../components/admin/ProductForm.tsx)) to use three nested dropdowns (manufacturer → brand → specialty) instead of the single flat one. Preserve the flat option for legacy.
+4. Update [parser](../lib/insights-parser.ts) prompt to ship the three fields instead of (or alongside) the single line key — more granular Claude reasoning.
+5. Eventually drop `product_line` once nothing reads it.
+
+**Triggers to watch for:** (1) a consumer-facing brand filter is requested; (2) a pricing rule needs to fan out across "all Topps Chrome variants" or "all specialty hobby-only products"; (3) Kyle proposes cross-product anchoring (e.g. Bowman Best ≈ 30% of Bowman flagship slot).
+
+**Why not now:** The current single-column approach unblocks every parser case we've actually hit. Splitting into three columns is structurally cleaner but adds form complexity (nested dropdowns are fussier UX than flat) for no immediate user-visible win.
+
+---
+
+### ⚪ OPTIONAL · `/break-price` refine-with-correction flow
+
+**Effort:** ~1-2 hours, ~200 lines
+**Status:** Optional. Discussed 2026-05-14. The 2026-05-15 parser fixes (PR #105 title rule + PR #106 product format awareness) removed the most common reason a refine would be needed today. Ship this when SMEs hit a parse they can't fix by re-firing with better narrative/notes.
+
+**Trigger UX:** third button on the `pending_insights` proposal panel ("✏️ Refine" alongside ✅ Apply / ❌ Discard). Clicking opens a Discord modal with one text field ("What should change?"). Submitting re-parses the original images + narrative + the correction as additional `notes` and replaces `parsed_updates` in place, then edits the original Discord message with the new proposal.
+
+**Architecture sketch (locked in earlier session):**
+1. Migration adds `pending_insights.source_attachments JSONB` storing `[{url, filename, content_type}]` populated at staging time on all three handlers (`handleInsights`, `handleBreakPrice`, `handleBreakPriceFromMessage`).
+2. New `MODAL` Discord response type + `TEXT_INPUT` component type in [lib/discord.ts](../lib/discord.ts) (existing constants don't include these yet — Discord supports response type 9 + component type 4).
+3. Button click handler returns a modal response. Modal submit handler reads the original `pending_insights` row, re-fetches the stored CDN URLs (24h window matches `expires_at`), and calls `parseBreakPrice({ images, narrative, notes: <correction> })`.
+4. If CDN URLs have expired (rare — captures usually get confirmed/discarded within hours), ephemeral reply: "Screenshots have expired, please re-submit."
+
+**Limitation accepted:** the second-pass re-parse is from scratch. Claude could change rows beyond the one the correction mentioned. Could mitigate with a "preserve other rows" instruction in the prompt but adds brittleness. Accept it — re-parsing from scratch is the same operation we already trust on the first pass.
+
+**Why not now:** The two parser fixes shipped 2026-05-15 (title-level format override + product-format-availability rule) handle the highest-frequency mis-classification cases. Other cases (wrong team, wrong price) are typically fixable by re-firing `/break-price` with better narrative context. Watch the discard rate — if SMEs are discarding > ~20% of proposals because the parse is wrong on a single field, ship this.
 
 ---
 
