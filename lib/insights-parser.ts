@@ -1029,18 +1029,24 @@ RULES:
 - One asking_price ROW PER DISCRETE SLOT ASK. A screenshot with 18 team rows ("Diamondbacks $625, Red Sox $6000, Cubs $625, …") = 18 separate asking_price updates, one per row. A breaker stream listing four slot prices = four updates.
 - DISTINGUISH a price-sheet (N rows, each is its own slot) from a multi-team BUNDLE (one combined ask spanning multiple teams). A bundle like "Yankees + Red Sox + Dodgers for $2,400" → return empty array (single combined ask not yet supported, see edge-cases doc). A list like "Yankees $800 / Red Sox $750 / Dodgers $850" → three rows.
 - COMPOSITION RULES — sparse map of formats involved per slot:
-  · "$45 Diamondbacks" on a hobby-only stream     → { "hobby": null }
-  · "Bowman hobby per-team"                       → { "hobby": null }
-  · "Delight slot $300"                           → { "bd": null }
-  · "Jumbo per-team $800"                         → { "jumbo": null }
-  · "Delight/hobby, 20 delight 5 hobby per slot"  → { "bd": 20, "hobby": 5 }
-  · "Delight + hobby" (no per-slot ratio)         → { "bd": null, "hobby": null }
+  · TITLE-LEVEL FORMAT OVERRIDE (highest priority): scan the break title, section header, or any text repeated above/around every row in a screenshot. If it contains "JUMBO" (case-insensitive — matches "JUMBO", "Jumbo Box", "HALF CASE JUMBO #2", etc.) and there's no per-row override, classify EVERY emitted row as { "jumbo": null }. Same applies to "BREAKER'S DELIGHT", "DELIGHT", or " BD " as a standalone word → { "bd": null }. The title rule overrides the hobby-only-platform default below. Examples:
+      "HALF CASE JUMBO #2 Random Team auction"   → all rows { "jumbo": null }
+      "Delight RTB Mixer #4"                     → all rows { "bd": null }
+      "Bowman Hobby Random Team"                 → all rows { "hobby": null }
+    When the title says JUMBO and a per-row label ALSO says JUMBO, that's the same fact stated twice — emit one row, not two.
+  · Per-row examples (apply only when no title override is present):
+      "$45 Diamondbacks" on a hobby-only stream     → { "hobby": null }
+      "Bowman hobby per-team"                       → { "hobby": null }
+      "Delight slot $300"                           → { "bd": null }
+      "Jumbo per-team $800"                         → { "jumbo": null }
+      "Delight/hobby, 20 delight 5 hobby per slot"  → { "bd": 20, "hobby": 5 }
+      "Delight + hobby" (no per-slot ratio)         → { "bd": null, "hobby": null }
   Single-key + null value = pure-format slot, ratio unspecified. Multi-key = bundled mix. Use "bd" for "delight" / "BD" / "breaker's delight". Never emit "mixed" as a key — express mixing via multiple keys.
 - Multi-player bundles inside a one-team slot are FINE — that's still a team slot ask, just with chase cards listed.
 - NARRATIVE + SCREENSHOT INTERACTION: when both are present, treat the narrative as PRODUCT/SOURCE/COMPOSITION CONTEXT first ("this is for 2026 Bowman, delight/hobby mix 20 delight + 5 hobby per slot, from Dan Reed's IG DM") and per-row OVERRIDES second ("the actual White Sox price was $6500" → use $6500 for the White Sox row, keep the rest as the screenshot shows). The narrative does NOT cap the number of rows you emit. If the screenshot has 18 rows, emit 18 rows even when the narrative only mentions one. If the narrative specifies a composition that applies to all rows, apply it to every emitted row.
 - DO NOT GUESS the product. If you can't match the listing to a product in the list, return empty array. Wrong product attribution is worse than missing data.
 - For source: 'stream_ask' = Whatnot/Fanatics Live/breaker stream. 'ebay_listing' = unsold eBay listing. 'social_post' = Twitter/IG/Discord/DM post. 'other' = anything else.
-- Composition defaults to { "hobby": null } when ambiguous and the platform is a hobby-only stream.
+- Composition defaults to { "hobby": null } ONLY when no title-level format override was found AND no per-row format label was stated AND the platform is a hobby-only stream. The title rule above takes precedence over this fallback.
 - Team names: use the canonical full name ("Los Angeles Dodgers" not "Dodgers"). If you only see the city/nickname, expand it.
 - price_low and price_high are integer dollars. Strip $ and commas. Use literal values — "$700.00" = 700, not 700000. The "." is a decimal point. Do not scale up because a price seems low.
 - confidence: 0.9+ if every field is unambiguous in the source. Lower for inferred fields.`;
