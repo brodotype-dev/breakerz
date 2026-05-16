@@ -102,10 +102,28 @@ export function computePlayerAggregates(sections: SectionInput[]): PlayerAggrega
   return Array.from(playersByName.values());
 }
 
-// Multi-player rows ("Skubal / Blanco / Valdez" — League Leaders, dual
-// autographs) are subset cards, not real player entities. Detected by a "/"
-// in the name. Both server and client need this; centralized here so the
-// rule stays in one place.
+// Detect rows that are NOT real player entities and should be flagged
+// `insert_only=true` (excluded from team filters + slot pricing).
+//
+// Two patterns covered:
+//
+// 1. Multi-player rows ("Skubal / Blanco / Valdez" — League Leaders,
+//    dual autographs) — detected by a "/" in the name.
+//
+// 2. Card-subset codes ("B25-AL", "TC25-CS", "BCP-LP" — Bowman's Best
+//    autograph subset prefixes, Topps Chrome insert codes, etc.).
+//    Pattern: 1-3 letter prefix + optional 1-2 digit year + dash + 1-6
+//    letter suffix. These appear when a Topps XLSX/PDF lists subsets as
+//    rows with just the SKU code and no real player name. Conservative
+//    enough to never match real names (no real player has a "-"
+//    sandwiched between short caps groups).
+//
+// Both server (import-checklist route) and client (admin views) need
+// this; centralized here so the rule stays in one place.
+const CARD_SUBSET_CODE_RE = /^[A-Z]{1,3}\d{0,2}-[A-Z]{1,6}$/;
+
 export function isMultiPlayerName(name: string): boolean {
-  return name.includes('/');
+  if (name.includes('/')) return true;
+  if (CARD_SUBSET_CODE_RE.test(name.trim())) return true;
+  return false;
 }
