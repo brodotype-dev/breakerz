@@ -64,6 +64,101 @@ function median(nums: number[]): number {
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 }
 
+// Aggregate stats shared by the bundle thesis (Section 1, from user_breaks)
+// and the slot thesis (Section 2, from market_observations /break-price
+// captures). Pure — takes any row shape that exposes delta_pct, plus a
+// per-product grouping key/name pair. Returns everything the verdict +
+// stat grid + distribution + per-product breakdown components need.
+interface AggregateRow {
+  delta_pct: number;
+  product_key: string;     // grouping key (slug or product_id)
+  product_name: string;
+  product_lifecycle?: string;
+}
+interface Aggregates {
+  total: number;
+  meanDelta: number;
+  medianDelta: number;
+  overchargeCount: number;
+  stealCount: number;
+  fairCount: number;
+  overchargePct: number;
+  stealPct: number;
+  fairPct: number;
+  p90: number;
+  dist: Array<typeof BUCKETS[number] & { count: number }>;
+  distMax: number;
+  productRows: Array<{
+    key: string;
+    name: string;
+    lifecycle: string;
+    n: number;
+    mean: number;
+    median: number;
+    overcharge: number;
+    steal: number;
+  }>;
+}
+function aggregate(rows: AggregateRow[]): Aggregates {
+  const total = rows.length;
+  const meanDelta = total > 0 ? rows.reduce((s, r) => s + r.delta_pct, 0) / total : 0;
+  const medianDelta = median(rows.map(r => r.delta_pct));
+  const overchargeCount = rows.filter(r => r.delta_pct > 20).length;
+  const stealCount = rows.filter(r => r.delta_pct < -20).length;
+  const fairCount = rows.filter(r => Math.abs(r.delta_pct) <= 20).length;
+  const overchargePct = total > 0 ? (overchargeCount / total) * 100 : 0;
+  const stealPct = total > 0 ? (stealCount / total) * 100 : 0;
+  const fairPct = total > 0 ? (fairCount / total) * 100 : 0;
+  const sortedAbs = rows.map(r => Math.abs(r.delta_pct)).sort((a, b) => a - b);
+  const p90 = sortedAbs.length > 0 ? sortedAbs[Math.floor(sortedAbs.length * 0.9)] : 0;
+  const dist = BUCKETS.map(b => ({
+    ...b,
+    count: rows.filter(r => r.delta_pct >= b.min && r.delta_pct < b.max).length,
+  }));
+  const distMax = Math.max(1, ...dist.map(d => d.count));
+  const byProduct = new Map<string, { name: string; lifecycle: string; rows: AggregateRow[] }>();
+  for (const r of rows) {
+    if (!byProduct.has(r.product_key)) {
+      byProduct.set(r.product_key, { name: r.product_name, lifecycle: r.product_lifecycle ?? '', rows: [] });
+    }
+    byProduct.get(r.product_key)!.rows.push(r);
+  }
+  const productRows = Array.from(byProduct.entries())
+    .map(([key, p]) => {
+      const ds = p.rows.map(r => r.delta_pct);
+      return {
+        key,
+        name: p.name,
+        lifecycle: p.lifecycle,
+        n: p.rows.length,
+        mean: ds.reduce((s, d) => s + d, 0) / ds.length,
+        median: median(ds),
+        overcharge: p.rows.filter(r => r.delta_pct > 20).length,
+        steal: p.rows.filter(r => r.delta_pct < -20).length,
+      };
+    })
+    .sort((a, b) => b.n - a.n);
+  return {
+    total, meanDelta, medianDelta, overchargeCount, stealCount, fairCount,
+    overchargePct, stealPct, fairPct, p90, dist, distMax, productRows,
+  };
+}
+
+// Thesis verdict from aggregate p90 + total. Same thresholds across both
+// data sources so the directional read is consistent.
+function verdictFor(agg: Aggregates): { label: string; color: string; detail: string } {
+  if (agg.total < 10) {
+    return { label: 'Sample too thin', color: 'var(--text-tertiary)', detail: `Need at least 10 paired observations to interpret. Currently at ${agg.total}.` };
+  }
+  if (agg.p90 < 15) {
+    return { label: 'Herd is tight — thesis weak', color: '#f97316', detail: `90% of observed asks fall within ±${agg.p90.toFixed(0)}% of our number. If this holds, BreakIQ is close to a CardHedger wrapper.` };
+  }
+  if (agg.p90 < 30) {
+    return { label: 'Material spread — thesis plausible', color: 'var(--accent-blue)', detail: `90% of asks fall within ±${agg.p90.toFixed(0)}% of our number. Worth investing in side-by-side surfacing.` };
+  }
+  return { label: 'Wide spread — thesis confirmed', color: '#22c55e', detail: `90% of asks fall within ±${agg.p90.toFixed(0)}% of our number. Breaker market is systematically mispriced. Ship the comparison UI.` };
+}
+
 type CompositionMap = Partial<Record<'hobby' | 'bd' | 'jumbo', number | null>>;
 
 type BreakPriceCapture = {
@@ -305,59 +400,29 @@ export default async function MarketDeltaPage({
       ? allCaptures
       : allCaptures.filter(c => c.source_type === sourceTypeFilter);
 
-  const total = deltas.length;
-  const meanDelta = total > 0 ? deltas.reduce((s, r) => s + r.delta_pct, 0) / total : 0;
-  const medianDelta = median(deltas.map(r => r.delta_pct));
-  const overchargeCount = deltas.filter(r => r.delta_pct > 20).length;
-  const stealCount = deltas.filter(r => r.delta_pct < -20).length;
-  const fairCount = deltas.filter(r => Math.abs(r.delta_pct) <= 20).length;
-  const overchargePct = total > 0 ? (overchargeCount / total) * 100 : 0;
-  const stealPct = total > 0 ? (stealCount / total) * 100 : 0;
-  const fairPct = total > 0 ? (fairCount / total) * 100 : 0;
+  // Section 1 — Logged-breaks thesis (user-submitted bundle asks via My Breaks).
+  const bundleAgg = aggregate(deltas.map(r => ({
+    delta_pct: r.delta_pct,
+    product_key: r.product_slug || r.product_name,
+    product_name: r.product_name,
+    product_lifecycle: r.product_lifecycle,
+  })));
+  const bundleVerdict = verdictFor(bundleAgg);
 
-  // P90 absolute delta % — robust signal that ignores the long tail
-  const sortedAbs = [...deltas].map(r => Math.abs(r.delta_pct)).sort((a, b) => a - b);
-  const p90 = sortedAbs.length > 0 ? sortedAbs[Math.floor(sortedAbs.length * 0.9)] : 0;
-
-  // Distribution
-  const dist = BUCKETS.map(b => ({
-    ...b,
-    count: deltas.filter(r => r.delta_pct >= b.min && r.delta_pct < b.max).length,
-  }));
-  const distMax = Math.max(1, ...dist.map(d => d.count));
-
-  // Per-product breakdown
-  const byProduct = new Map<string, { name: string; slug: string; lifecycle: string; rows: DeltaRow[] }>();
-  for (const r of deltas) {
-    const key = r.product_slug || r.product_name;
-    if (!byProduct.has(key)) {
-      byProduct.set(key, { name: r.product_name, slug: r.product_slug, lifecycle: r.product_lifecycle, rows: [] });
-    }
-    byProduct.get(key)!.rows.push(r);
-  }
-  const productRows = Array.from(byProduct.values())
-    .map(p => {
-      const ds = p.rows.map(r => r.delta_pct);
-      return {
-        ...p,
-        n: p.rows.length,
-        mean: ds.reduce((s, d) => s + d, 0) / ds.length,
-        median: median(ds),
-        overcharge: p.rows.filter(r => r.delta_pct > 20).length,
-        steal: p.rows.filter(r => r.delta_pct < -20).length,
-      };
-    })
-    .sort((a, b) => b.n - a.n);
-
-  // Verdict — directional read of the thesis
-  const verdict =
-    total < 10
-      ? { label: 'Sample too thin', color: 'var(--text-tertiary)', detail: `Need at least 10 paired observations to interpret. Currently at ${total}.` }
-      : p90 < 15
-      ? { label: 'Herd is tight — thesis weak', color: '#f97316', detail: `90% of observed asks fall within ±${p90.toFixed(0)}% of our number. If this holds, BreakIQ is close to a CardHedger wrapper.` }
-      : p90 < 30
-      ? { label: 'Material spread — thesis plausible', color: 'var(--accent-blue)', detail: `90% of asks fall within ±${p90.toFixed(0)}% of our number. Worth investing in side-by-side surfacing.` }
-      : { label: 'Wide spread — thesis confirmed', color: '#22c55e', detail: `90% of asks fall within ±${p90.toFixed(0)}% of our number. Breaker market is systematically mispriced. Ship the comparison UI.` };
+  // Section 2 — Observed slot-pricing thesis (Discord /break-price captures).
+  // Filter to team-scoped captures with a computable delta_pct (single-format,
+  // product has the relevant SKU). Mixed/legacy captures excluded from the
+  // aggregates; the table below still shows them with "—" delta.
+  const slotDeltaRows = allCaptures
+    .filter(c => c.delta_pct !== null && c.product_id)
+    .map(c => ({
+      delta_pct: c.delta_pct as number,
+      product_key: c.product_id ?? c.product_name,
+      product_name: c.product_name,
+      product_lifecycle: '',
+    }));
+  const slotAgg = aggregate(slotDeltaRows);
+  const slotVerdict = verdictFor(slotAgg);
 
   return (
     <div className="max-w-7xl mx-auto space-y-8">
@@ -381,52 +446,62 @@ export default async function MarketDeltaPage({
             <div>
               <h1 className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>Market Delta Watch</h1>
               <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                (Breaker ask − BreakIQ fair value) ÷ fair value across every logged break. Validates the herd-mispricing thesis.
+                Two thesis views, each at a different unit of measure. <span style={{ color: 'var(--text-primary)' }}>Logged breaks</span> = bundle asks from My Breaks (one row = one whole-break ask vs. our number). <span style={{ color: 'var(--text-primary)' }}>Observed break pricing</span> = slot asks from Discord <code>/break-price</code> captures (one row = one team-slot ask vs. our model). Both validate the herd-mispricing thesis at their own scale.
               </p>
             </div>
           </div>
 
-          {/* Verdict */}
+          {/* Section 1 banner */}
+          <div className="mb-3 flex items-center gap-2">
+            <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent-blue)' }}>
+              Section 1 · Logged breaks
+            </span>
+            <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+              user-submitted bundle asks via /my-breaks
+            </span>
+          </div>
+
+          {/* Verdict (bundle) */}
           <div
             className="rounded-xl p-4 mb-4"
             style={{
               backgroundColor: 'rgba(19, 24, 32, 0.6)',
-              border: `1px solid ${verdict.color}`,
-              boxShadow: `0 0 24px ${verdict.color}22`,
+              border: `1px solid ${bundleVerdict.color}`,
+              boxShadow: `0 0 24px ${bundleVerdict.color}22`,
             }}
           >
             <div className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--text-tertiary)' }}>
-              Thesis verdict
+              Thesis verdict — bundle asks
             </div>
-            <div className="text-lg font-bold mb-1" style={{ color: verdict.color }}>
-              {verdict.label}
+            <div className="text-lg font-bold mb-1" style={{ color: bundleVerdict.color }}>
+              {bundleVerdict.label}
             </div>
             <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-              {verdict.detail}
+              {bundleVerdict.detail}
             </div>
           </div>
 
-          {/* Stat grid */}
+          {/* Stat grid (bundle) */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <StatCard label="Observations" value={String(total)} sub={`since 2026-04-09`} />
-            <StatCard label="Mean delta" value={`${meanDelta >= 0 ? '+' : ''}${meanDelta.toFixed(1)}%`} sub={`median ${medianDelta >= 0 ? '+' : ''}${medianDelta.toFixed(1)}%`} />
-            <StatCard label="Overcharge" value={`${overchargePct.toFixed(0)}%`} sub={`${overchargeCount} of ${total}`} color="#f97316" icon={TrendingUp} />
-            <StatCard label="Steal" value={`${stealPct.toFixed(0)}%`} sub={`${stealCount} of ${total}`} color="#22c55e" icon={TrendingDown} />
+            <StatCard label="Observations" value={String(bundleAgg.total)} sub={`since 2026-04-09`} />
+            <StatCard label="Mean delta" value={`${bundleAgg.meanDelta >= 0 ? '+' : ''}${bundleAgg.meanDelta.toFixed(1)}%`} sub={`median ${bundleAgg.medianDelta >= 0 ? '+' : ''}${bundleAgg.medianDelta.toFixed(1)}%`} />
+            <StatCard label="Overcharge" value={`${bundleAgg.overchargePct.toFixed(0)}%`} sub={`${bundleAgg.overchargeCount} of ${bundleAgg.total}`} color="#f97316" icon={TrendingUp} />
+            <StatCard label="Steal" value={`${bundleAgg.stealPct.toFixed(0)}%`} sub={`${bundleAgg.stealCount} of ${bundleAgg.total}`} color="#22c55e" icon={TrendingDown} />
           </div>
         </div>
       </div>
 
-      {/* Distribution */}
-      <Section title="Delta distribution" subtitle="How asks distribute against our number">
+      {/* Distribution (bundle) */}
+      <Section title="Bundle delta distribution" subtitle="How logged-break asks distribute against our number">
         <div className="space-y-2 px-1">
-          {dist.map(b => (
+          {bundleAgg.dist.map(b => (
             <div key={b.key} className="flex items-center gap-3">
               <div className="w-28 text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>{b.label}</div>
               <div className="flex-1 h-6 rounded overflow-hidden" style={{ backgroundColor: 'var(--terminal-bg)' }}>
                 <div
                   className="h-full transition-all"
                   style={{
-                    width: `${(b.count / distMax) * 100}%`,
+                    width: `${(b.count / bundleAgg.distMax) * 100}%`,
                     backgroundColor: b.color,
                     minWidth: b.count > 0 ? '2px' : '0',
                   }}
@@ -434,19 +509,19 @@ export default async function MarketDeltaPage({
               </div>
               <div className="w-16 text-right text-xs font-mono font-bold" style={{ color: 'var(--text-primary)' }}>{b.count}</div>
               <div className="w-12 text-right text-xs font-mono" style={{ color: 'var(--text-tertiary)' }}>
-                {total > 0 ? `${((b.count / total) * 100).toFixed(0)}%` : '—'}
+                {bundleAgg.total > 0 ? `${((b.count / bundleAgg.total) * 100).toFixed(0)}%` : '—'}
               </div>
             </div>
           ))}
         </div>
         <div className="mt-4 px-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-          Fair = within ±5% · Near = within ±20% · Overcharge/Steal = ±20–40% · ± = {'>'}40%. {fairPct.toFixed(0)}% of asks fall inside ±20% of our number.
+          Fair = within ±5% · Near = within ±20% · Overcharge/Steal = ±20–40% · ± = {'>'}40%. {bundleAgg.fairPct.toFixed(0)}% of asks fall inside ±20% of our number.
         </div>
       </Section>
 
-      {/* Per-product */}
-      {productRows.length > 0 && (
-        <Section title="Per-product breakdown" subtitle="Where the spread is concentrated">
+      {/* Per-product (bundle) */}
+      {bundleAgg.productRows.length > 0 && (
+        <Section title="Bundle per-product breakdown" subtitle="Where the spread is concentrated across logged breaks">
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
             <div
               className="grid grid-cols-12 gap-4 px-6 py-3 border-b text-[10px] font-bold uppercase tracking-widest"
@@ -459,9 +534,9 @@ export default async function MarketDeltaPage({
               <div className="col-span-1 text-right" style={{ color: '#f97316' }}>O</div>
               <div className="col-span-1 text-right" style={{ color: '#22c55e' }}>S</div>
             </div>
-            {productRows.map(p => (
+            {bundleAgg.productRows.map(p => (
               <div
-                key={p.slug || p.name}
+                key={p.key}
                 className="grid grid-cols-12 gap-4 px-6 py-3 border-b last:border-b-0 items-center"
                 style={{ borderColor: 'var(--terminal-border)' }}
               >
@@ -487,9 +562,9 @@ export default async function MarketDeltaPage({
         </Section>
       )}
 
-      {/* Recent rows */}
+      {/* Recent rows (bundle) */}
       {deltas.length > 0 && (
-        <Section title="Recent observations" subtitle="Most recent 50 paired asks">
+        <Section title="Recent bundle observations" subtitle="Most recent 50 paired bundle asks from My Breaks">
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
             <div
               className="grid grid-cols-12 gap-3 px-4 py-2 border-b text-[10px] font-bold uppercase tracking-widest"
@@ -529,19 +604,136 @@ export default async function MarketDeltaPage({
         </Section>
       )}
 
+      {/* ─── Section 2 — Observed break pricing (slot-level captures) ─── */}
+
+      {/* Section 2 banner — visually divides the two thesis views so the
+          unit of measure is obvious at a glance. */}
+      <div
+        className="rounded-2xl px-6 py-5"
+        style={{ background: 'var(--gradient-hero)', border: '1px solid var(--terminal-border)' }}
+      >
+        <div className="mb-3 flex items-center gap-2">
+          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--accent-orange)' }}>
+            Section 2 · Observed break pricing
+          </span>
+          <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+            Discord /break-price slot captures · per-team-slot ask vs. our model
+          </span>
+        </div>
+
+        {/* Verdict (slot) */}
+        <div
+          className="rounded-xl p-4 mb-4"
+          style={{
+            backgroundColor: 'rgba(19, 24, 32, 0.6)',
+            border: `1px solid ${slotVerdict.color}`,
+            boxShadow: `0 0 24px ${slotVerdict.color}22`,
+          }}
+        >
+          <div className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--text-tertiary)' }}>
+            Thesis verdict — slot captures
+          </div>
+          <div className="text-lg font-bold mb-1" style={{ color: slotVerdict.color }}>
+            {slotVerdict.label}
+          </div>
+          <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+            {slotVerdict.detail}
+            {slotAgg.total < totalCaptures && (
+              <span style={{ color: 'var(--text-tertiary)' }}>
+                {' '}({totalCaptures - slotAgg.total} of {totalCaptures} captures excluded — mixed composition or missing per-team fair value.)
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Stat grid (slot) */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <StatCard label="Captures with Δ" value={String(slotAgg.total)} sub={`of ${totalCaptures} total`} />
+          <StatCard label="Mean delta" value={`${slotAgg.meanDelta >= 0 ? '+' : ''}${slotAgg.meanDelta.toFixed(1)}%`} sub={`median ${slotAgg.medianDelta >= 0 ? '+' : ''}${slotAgg.medianDelta.toFixed(1)}%`} />
+          <StatCard label="Overcharge" value={`${slotAgg.overchargePct.toFixed(0)}%`} sub={`${slotAgg.overchargeCount} of ${slotAgg.total}`} color="#f97316" icon={TrendingUp} />
+          <StatCard label="Steal" value={`${slotAgg.stealPct.toFixed(0)}%`} sub={`${slotAgg.stealCount} of ${slotAgg.total}`} color="#22c55e" icon={TrendingDown} />
+        </div>
+      </div>
+
+      {/* Distribution (slot) */}
+      {slotAgg.total > 0 && (
+        <Section title="Slot delta distribution" subtitle="How /break-price slot asks distribute against our model">
+          <div className="space-y-2 px-1">
+            {slotAgg.dist.map(b => (
+              <div key={b.key} className="flex items-center gap-3">
+                <div className="w-28 text-xs font-mono" style={{ color: 'var(--text-secondary)' }}>{b.label}</div>
+                <div className="flex-1 h-6 rounded overflow-hidden" style={{ backgroundColor: 'var(--terminal-bg)' }}>
+                  <div
+                    className="h-full transition-all"
+                    style={{
+                      width: `${(b.count / slotAgg.distMax) * 100}%`,
+                      backgroundColor: b.color,
+                      minWidth: b.count > 0 ? '2px' : '0',
+                    }}
+                  />
+                </div>
+                <div className="w-16 text-right text-xs font-mono font-bold" style={{ color: 'var(--text-primary)' }}>{b.count}</div>
+                <div className="w-12 text-right text-xs font-mono" style={{ color: 'var(--text-tertiary)' }}>
+                  {slotAgg.total > 0 ? `${((b.count / slotAgg.total) * 100).toFixed(0)}%` : '—'}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 px-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+            Same bucket boundaries as the bundle distribution above. {slotAgg.fairPct.toFixed(0)}% of slot asks fall inside ±20% of our model.
+          </div>
+        </Section>
+      )}
+
+      {/* Per-product (slot) */}
+      {slotAgg.productRows.length > 0 && (
+        <Section title="Slot per-product breakdown" subtitle="Where the spread is concentrated across /break-price captures">
+          <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
+            <div
+              className="grid grid-cols-12 gap-4 px-6 py-3 border-b text-[10px] font-bold uppercase tracking-widest"
+              style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface-hover)', color: 'var(--text-tertiary)' }}
+            >
+              <div className="col-span-5">Product</div>
+              <div className="col-span-1 text-right">N</div>
+              <div className="col-span-2 text-right">Mean Δ</div>
+              <div className="col-span-2 text-right">Median Δ</div>
+              <div className="col-span-1 text-right" style={{ color: '#f97316' }}>O</div>
+              <div className="col-span-1 text-right" style={{ color: '#22c55e' }}>S</div>
+            </div>
+            {slotAgg.productRows.map(p => (
+              <div
+                key={p.key}
+                className="grid grid-cols-12 gap-4 px-6 py-3 border-b last:border-b-0 items-center"
+                style={{ borderColor: 'var(--terminal-border)' }}
+              >
+                <div className="col-span-5">
+                  <p className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>{p.name}</p>
+                </div>
+                <div className="col-span-1 text-right font-mono text-sm" style={{ color: 'var(--text-secondary)' }}>{p.n}</div>
+                <div className="col-span-2 text-right font-mono text-sm" style={{ color: p.mean > 5 ? '#f97316' : p.mean < -5 ? '#22c55e' : 'var(--text-primary)' }}>
+                  {p.mean >= 0 ? '+' : ''}{p.mean.toFixed(1)}%
+                </div>
+                <div className="col-span-2 text-right font-mono text-sm" style={{ color: 'var(--text-secondary)' }}>
+                  {p.median >= 0 ? '+' : ''}{p.median.toFixed(1)}%
+                </div>
+                <div className="col-span-1 text-right font-mono text-sm" style={{ color: '#f97316' }}>{p.overcharge}</div>
+                <div className="col-span-1 text-right font-mono text-sm" style={{ color: '#22c55e' }}>{p.steal}</div>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
+
       {/* Slice 2b — admin toggle for verdict observation enrichment.
-          Colocated with the captures panel because the panel is the data
-          feeding the feature. Off by default; flip on to splice recent
-          observations into the AI verdict prompt. */}
+          Lives inside Section 2 because /break-price captures are exactly
+          the data this toggle plumbs into the AI verdict prompt. */}
       <VerdictContextToggle initialEnabled={verdictEnrichmentEnabled} />
 
-      {/* /break-price captures — observations from the Discord capture path.
-          Listed separately because the scope is per-slot, not per-bundle —
-          deltas vs. our number aren't directly comparable to the user_breaks
-          distribution above without a per-team fair-value query, which is a
-          follow-up. */}
+      {/* Recent slot captures — observations from the Discord capture path.
+          Same data as Section 2 aggregates above but rendered as a row-by-row
+          table for spot-checking individual captures. */}
       {totalCaptures > 0 && (
-        <Section title="/break-price captures" subtitle={`${totalCaptures} recent slot asks from Discord`}>
+        <Section title="Recent slot captures" subtitle={`${totalCaptures} most recent /break-price observations`}>
           {/* Distribution counter — shows composition + source-type split
               for the unfiltered set so filter doesn't lie about volume. */}
           <div className="mb-3 flex flex-wrap gap-2 text-[11px]">
@@ -649,11 +841,11 @@ export default async function MarketDeltaPage({
         </Section>
       )}
 
-      {total === 0 && (
+      {bundleAgg.total === 0 && totalCaptures === 0 && (
         <div className="rounded-xl border p-8 text-center" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
           <Scale className="w-8 h-8 mx-auto mb-3" style={{ color: 'var(--text-tertiary)' }} />
           <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-            No paired observations yet. Every break logged through My Breaks with both an ask price and an analysis snapshot will land here.
+            No paired observations yet. Bundle asks land when consumers log a break through My Breaks. Slot captures land when contributors fire /break-price in Discord.
           </p>
         </div>
       )}
