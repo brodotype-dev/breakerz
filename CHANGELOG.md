@@ -5,6 +5,24 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-15 — `/insight` + `/break-price` refine-with-correction flow
+
+Adds a third **✏️ Refine** button to every `pending_insights` proposal panel (next to ✅ Apply / ❌ Discard). Click → Discord modal asks "What should change?" → submission re-parses the original capture with the correction spliced in as additional context → edits the proposal message in place. PR [#108](https://github.com/brodotype-dev/breakerz/pull/108).
+
+**Why now.** Picked up the optional refine flow from the BACKLOG. Even with the 2026-05-15 parser fixes (title-level format override + product format awareness) reducing the most common reasons for a mis-parse, there are still edge cases where the model gets one row wrong, or the screenshot text was hard to OCR, or a per-row override needs to be expressed. Re-firing the slash command means re-uploading screenshots; the refine button gives an in-place correction loop.
+
+**Routing.** Pending row carries a new `source_kind` (`insight` | `break_price`) so the modal-submit handler knows which parser to call. Text-only `/insight` proposals get a `parseInsights` re-run with the original narrative + correction concatenated. `/break-price` proposals get a `parseBreakPrice` re-run with the original narrative + re-fetched images + correction as `notes`. Images are re-fetched from stored CDN URLs (kept in a new `source_attachments JSONB` column) within Discord's ~24h CDN window — matches the existing `pending_insights.expires_at` TTL, so the refine window equals the confirm window.
+
+**Iterable.** The pending row stays `pending` through a refine — ✅/✏️/❌ buttons re-render after each refine so the loop is iterable until the contributor applies or discards. Refine is race-safe (only operates on still-pending rows) and gracefully reports when all CDN URLs have expired.
+
+**Migration.** [supabase/migrations/20260516120000_pending_insights_refine.sql](supabase/migrations/20260516120000_pending_insights_refine.sql) adds `source_attachments JSONB` (nullable) + `source_kind TEXT` with CHECK constraint. Already applied to prod via Supabase MCP. Legacy pending rows default to `source_kind='insight'` — refine falls back to text-only re-parse on those (no stored attachments to re-fetch anyway).
+
+**Mechanics.** New constants in [lib/discord.ts](lib/discord.ts): `InteractionResponseType.MODAL` (9), `ComponentType.TEXT_INPUT` (4), `TextInputStyle` enum. The POST dispatcher in [app/api/discord/interactions/route.ts](app/api/discord/interactions/route.ts) routes `MODAL_SUBMIT` (5) → new `handleRefineModalSubmit`. All three staging sites (`handleInsights`, `handleBreakPrice`, `handleBreakPriceFromMessage`) populate the new columns at insert time. `handleButton` gets a `refine` branch returning the modal directly (no defer — modal is the immediate response).
+
+**Operational.** No registrar re-run needed — the Refine button is just a new component on existing replies, no command schema change. Force-quit + reopen Discord to see the new button on the next proposal.
+
+---
+
 ## 2026-05-15 — Product line taxonomy + parser format-availability rules
 
 Adds a `product_line` TEXT column to products ("taxonomy lite" path per the data-model roadmap) and uses it to fix a parser correctness gap surfaced after the previous slice's title-level JUMBO rule shipped. PR [#106](https://github.com/brodotype-dev/breakerz/pull/106).
