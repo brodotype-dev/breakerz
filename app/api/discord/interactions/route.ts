@@ -7,6 +7,7 @@ import {
   InteractionResponseType,
   ComponentType,
   ButtonStyle,
+  TextInputStyle,
   InteractionFlags,
 } from '@/lib/discord';
 import {
@@ -62,6 +63,12 @@ export async function POST(req: Request) {
   // 4. Autocomplete (typing into an option with autocomplete:true)
   if (interaction.type === InteractionType.APPLICATION_COMMAND_AUTOCOMPLETE) {
     return handleAutocomplete(interaction);
+  }
+
+  // 5. Modal submit — currently only fired by the Refine button on
+  //    pending_insights proposals.
+  if (interaction.type === InteractionType.MODAL_SUBMIT) {
+    return handleRefineModalSubmit(interaction);
   }
 
   return NextResponse.json({ error: 'unsupported interaction' }, { status: 400 });
@@ -314,6 +321,9 @@ async function handleSlashCommand(interaction: SlashCommandInteraction): Promise
           source_user_id: user.id,
           source_text: narrative,
           parsed_updates: updates as unknown as object,
+          source_kind: 'insight',
+          // /insight is text-only — no attachments to preserve for refine.
+          source_attachments: null,
         })
         .select('id')
         .single();
@@ -352,6 +362,13 @@ async function handleSlashCommand(interaction: SlashCommandInteraction): Promise
                 label: 'Apply',
                 custom_id: `confirm:${pending.id}`,
                 emoji: { name: '✅' },
+              },
+              {
+                type: ComponentType.BUTTON,
+                style: ButtonStyle.SECONDARY,
+                label: 'Refine',
+                custom_id: `refine:${pending.id}`,
+                emoji: { name: '✏️' },
               },
               {
                 type: ComponentType.BUTTON,
@@ -493,6 +510,13 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
           source_user_id: user.id,
           source_text: narrative ?? (images.length > 0 ? `[${images.length} screenshot${images.length === 1 ? '' : 's'}: ${attachments.map(a => a.filename).join(', ')}]` : ''),
           parsed_updates: updates as unknown as object,
+          source_kind: 'break_price',
+          // Persist CDN URLs so the Refine flow can re-fetch + re-parse
+          // within Discord's ~24h CDN window. Mirrors pending_insights
+          // expires_at TTL.
+          source_attachments: attachments.length > 0
+            ? attachments.map(a => ({ url: a.url, filename: a.filename, content_type: a.content_type ?? null }))
+            : null,
         })
         .select('id')
         .single();
@@ -539,6 +563,13 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
                 label: 'Apply',
                 custom_id: `confirm:${pending.id}`,
                 emoji: { name: '✅' },
+              },
+              {
+                type: ComponentType.BUTTON,
+                style: ButtonStyle.SECONDARY,
+                label: 'Refine',
+                custom_id: `refine:${pending.id}`,
+                emoji: { name: '✏️' },
               },
               {
                 type: ComponentType.BUTTON,
@@ -709,6 +740,12 @@ async function handleBreakPriceFromMessage(interaction: SlashCommandInteraction)
             narrative ??
             `[message context menu: ${imageAttachments.length} screenshot${imageAttachments.length === 1 ? '' : 's'}]`,
           parsed_updates: updates as unknown as object,
+          source_kind: 'break_price',
+          source_attachments: imageAttachments.map(a => ({
+            url: a.url,
+            filename: a.filename,
+            content_type: a.content_type ?? null,
+          })),
         })
         .select('id')
         .single();
@@ -749,6 +786,13 @@ async function handleBreakPriceFromMessage(interaction: SlashCommandInteraction)
                 label: 'Apply',
                 custom_id: `confirm:${pending.id}`,
                 emoji: { name: '✅' },
+              },
+              {
+                type: ComponentType.BUTTON,
+                style: ButtonStyle.SECONDARY,
+                label: 'Refine',
+                custom_id: `refine:${pending.id}`,
+                emoji: { name: '✏️' },
               },
               {
                 type: ComponentType.BUTTON,
@@ -809,6 +853,36 @@ async function handleButton(interaction: ButtonInteraction): Promise<NextRespons
   }
   if (pending.status !== 'pending') {
     return ephemeralReply(`That insight was already ${pending.status}.`);
+  }
+
+  // Refine — open a Discord modal asking what should change. Submission
+  // arrives via MODAL_SUBMIT and is routed to handleRefineModalSubmit
+  // which re-parses + edits the proposal message in place.
+  if (action === 'refine') {
+    return NextResponse.json({
+      type: InteractionResponseType.MODAL,
+      data: {
+        custom_id: `refine_modal:${pendingId}`,
+        title: 'Refine proposal',
+        components: [
+          {
+            type: ComponentType.ACTION_ROW,
+            components: [
+              {
+                type: ComponentType.TEXT_INPUT,
+                custom_id: 'correction',
+                label: 'What should change?',
+                style: TextInputStyle.PARAGRAPH,
+                min_length: 3,
+                max_length: 500,
+                placeholder: "e.g. 'this is hobby not jumbo' or 'Tigers row should be $200'",
+                required: true,
+              },
+            ],
+          },
+        ],
+      },
+    });
   }
 
   // Both buttons defer their response — applyUpdates can take more than
@@ -873,6 +947,217 @@ async function handleButton(interaction: ButtonInteraction): Promise<NextRespons
   }
 
   return ephemeralReply('Unknown button.');
+}
+
+// ─── Refine modal submit handler ─────────────────────────────────────────
+// Fired when an allowlisted contributor submits the Discord modal opened
+// by clicking the ✏️ Refine button. Re-fetches the original capture
+// (images from Discord CDN within ~24h, original narrative from the
+// pending_insights row), runs the parser again with the correction text
+// spliced in as additional context, and edits the proposal message in
+// place with the new parse. Works for both /insight (text-only) and
+// /break-price (text + images) captures.
+
+interface ModalSubmitInteraction {
+  application_id: string;
+  token: string;
+  channel_id: string;
+  member?: { user: { id: string; username: string; global_name?: string } };
+  user?: { id: string; username: string; global_name?: string };
+  message?: { id: string; content: string };
+  data: {
+    custom_id: string;
+    components: Array<{
+      type: number;
+      components: Array<{ type: number; custom_id: string; value: string }>;
+    }>;
+  };
+}
+
+async function handleRefineModalSubmit(interaction: ModalSubmitInteraction): Promise<NextResponse> {
+  const user = interaction.member?.user ?? interaction.user;
+  if (!user) return ephemeralReply('Could not identify you.');
+
+  if (!(await isAllowlisted(user.id))) {
+    return ephemeralReply('You are not on the BreakIQ contributor allowlist.');
+  }
+
+  const customId = interaction.data.custom_id ?? '';
+  if (!customId.startsWith('refine_modal:')) {
+    return ephemeralReply('Unknown modal.');
+  }
+  const pendingId = customId.slice('refine_modal:'.length);
+
+  // Pull the user's correction out of the modal's flat component tree.
+  const correction = interaction.data.components
+    .flatMap(row => row.components)
+    .find(c => c.custom_id === 'correction')?.value?.trim();
+  if (!correction) {
+    return ephemeralReply('Empty correction — try again with a short description of what should change.');
+  }
+
+  // Race-safe lookup. Refine only operates on still-pending proposals.
+  const { data: pending } = await supabaseAdmin
+    .from('pending_insights')
+    .select('id, source_text, status, source_kind, source_attachments')
+    .eq('id', pendingId)
+    .maybeSingle();
+  if (!pending) {
+    return ephemeralReply('That proposal expired or was already resolved.');
+  }
+  if (pending.status !== 'pending') {
+    return ephemeralReply(`That proposal was already ${pending.status}.`);
+  }
+
+  const handle = user.global_name ?? user.username;
+  const baseContent = interaction.message?.content ?? '';
+
+  // Defer immediately — re-fetching N CDN URLs + running Claude vision
+  // exceeds Discord's 3s budget. DEFERRED_UPDATE_MESSAGE lets us edit
+  // the original proposal message via the modal_submit token afterward.
+  after(async () => {
+    try {
+      const kind = (pending.source_kind ?? 'insight') as 'insight' | 'break_price';
+      let updates: ParsedUpdate[] = [];
+      let debugLine = '';
+
+      if (kind === 'insight') {
+        // Text-only re-parse. Combine the original narrative with the
+        // correction so Claude sees both passes' context.
+        const combined = `${pending.source_text}\n\nRefine note from contributor: ${correction}`;
+        const res = await parseInsights({ narrative: combined });
+        updates = res.updates;
+        debugLine = `rosterSize=${res.debug.rosterSize}, parsedRaw=${res.debug.parsedRawCount}, drops=${res.debug.droppedReasons.length}`;
+      } else {
+        // /break-price re-parse. Re-fetch the stored CDN URLs (24h
+        // window), sniff bytes, send to Claude with the correction as
+        // additional `notes`. If CDN URLs have expired (rare — captures
+        // get resolved within hours), bail with a clear error.
+        const attachments = (pending.source_attachments ?? []) as Array<{ url: string; filename: string; content_type: string | null }>;
+        const images: BreakPriceImage[] = [];
+        const fetchErrors: string[] = [];
+        for (let idx = 0; idx < attachments.length; idx++) {
+          const a = attachments[idx];
+          try {
+            const res = await fetch(a.url);
+            if (!res.ok) {
+              fetchErrors.push(`image ${idx + 1}: HTTP ${res.status}${res.status === 404 ? ' (CDN URL expired — re-submit the capture)' : ''}`);
+              continue;
+            }
+            const buf = Buffer.from(await res.arrayBuffer());
+            if (buf.byteLength > PER_IMAGE_BYTE_CAP) {
+              fetchErrors.push(`image ${idx + 1}: oversized`);
+              continue;
+            }
+            const sniffed = sniffImageMediaType(buf);
+            if (!sniffed) {
+              fetchErrors.push(`image ${idx + 1}: format not recognized`);
+              continue;
+            }
+            images.push({ base64: buf.toString('base64'), mediaType: sniffed });
+          } catch (err) {
+            fetchErrors.push(`image ${idx + 1}: ${err instanceof Error ? err.message : 'fetch failed'}`);
+          }
+        }
+
+        if (attachments.length > 0 && fetchErrors.length === attachments.length) {
+          await editInteractionResponse(interaction.application_id, interaction.token, {
+            content: `${baseContent}\n\n— ✏️ **Refine by @${handle} failed:** every screenshot URL is unreachable (likely expired). Re-submit \`/break-price\` with the screenshots + the corrected narrative.\n${fetchErrors.slice(0, 3).join(' · ')}`,
+          });
+          return;
+        }
+
+        const res = await parseBreakPrice({
+          narrative: pending.source_text,
+          images,
+          notes: correction,
+        });
+        updates = res.updates;
+        debugLine = `products=${res.debug.productsCount}, parsedRaw=${res.debug.parsedRawCount}, images=${images.length}, drops=${res.debug.droppedReasons.length}`;
+        if (fetchErrors.length > 0) {
+          debugLine += `, fetch-errors=${fetchErrors.length}`;
+        }
+      }
+
+      if (updates.length === 0) {
+        await editInteractionResponse(interaction.application_id, interaction.token, {
+          content: `${baseContent}\n\n— ✏️ **Refine by @${handle} produced no updates** (${debugLine}). Original proposal preserved.`,
+        });
+        return;
+      }
+
+      // Replace parsed_updates in place. The pending row itself stays
+      // pending so ✅/❌/✏️ keep working against the same id.
+      const { error: updErr } = await supabaseAdmin
+        .from('pending_insights')
+        .update({ parsed_updates: updates as unknown as object })
+        .eq('id', pendingId)
+        .eq('status', 'pending');
+
+      if (updErr) {
+        await editInteractionResponse(interaction.application_id, interaction.token, {
+          content: `${baseContent}\n\n— ✏️ **Refine by @${handle} couldn't stage:** ${updErr.message}`,
+        });
+        return;
+      }
+
+      // Render the refined proposal panel. Re-uses the same shape as the
+      // original — proposed lines + ✅/✏️/❌ buttons — but with a refine
+      // note at the top so the user sees what changed.
+      const lines = updates.map((u, i) => `**${i + 1}.** ${summarizeUpdate(u)}`);
+      const { header: targetsHeader } = buildTargetsHeader(updates);
+      const targetsBlock = targetsHeader ? `${targetsHeader}\n\n` : '';
+      const wrapping =
+        `**Refined by @${handle}** — _${correction.slice(0, 200)}_\n\n` +
+        targetsBlock +
+        `**Proposed (${updates.length}):**\n\n\n` +
+        `Click ✅ to apply, ✏️ to refine again, ❌ to discard.`;
+      const { summary } = formatProposalSummary(lines, 2000 - wrapping.length);
+
+      await editInteractionResponse(interaction.application_id, interaction.token, {
+        content:
+          `**Refined by @${handle}** — _${correction.slice(0, 200)}_\n\n` +
+          targetsBlock +
+          `**Proposed (${updates.length}):**\n${summary}\n\n` +
+          `Click ✅ to apply, ✏️ to refine again, ❌ to discard.`,
+        components: [
+          {
+            type: ComponentType.ACTION_ROW,
+            components: [
+              {
+                type: ComponentType.BUTTON,
+                style: ButtonStyle.SUCCESS,
+                label: 'Apply',
+                custom_id: `confirm:${pendingId}`,
+                emoji: { name: '✅' },
+              },
+              {
+                type: ComponentType.BUTTON,
+                style: ButtonStyle.SECONDARY,
+                label: 'Refine',
+                custom_id: `refine:${pendingId}`,
+                emoji: { name: '✏️' },
+              },
+              {
+                type: ComponentType.BUTTON,
+                style: ButtonStyle.DANGER,
+                label: 'Discard',
+                custom_id: `discard:${pendingId}`,
+                emoji: { name: '❌' },
+              },
+            ],
+          },
+        ],
+      });
+    } catch (err) {
+      console.error('[discord/refine] re-parse failed', err);
+      await editInteractionResponse(interaction.application_id, interaction.token, {
+        content: `${baseContent}\n\n— ✏️ **Refine by @${handle} errored:** ${err instanceof Error ? err.message : 'unknown'}`,
+      }).catch(() => {});
+    }
+  });
+
+  return NextResponse.json({ type: InteractionResponseType.DEFERRED_UPDATE_MESSAGE });
 }
 
 // ─── Apply staged updates ────────────────────────────────────────────────

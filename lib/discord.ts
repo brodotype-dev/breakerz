@@ -63,11 +63,13 @@ export const InteractionResponseType = {
   DEFERRED_UPDATE_MESSAGE: 6,
   UPDATE_MESSAGE: 7,
   APPLICATION_COMMAND_AUTOCOMPLETE_RESULT: 8,
+  MODAL: 9,
 } as const;
 
 export const ComponentType = {
   ACTION_ROW: 1,
   BUTTON: 2,
+  TEXT_INPUT: 4,
 } as const;
 
 export const ButtonStyle = {
@@ -75,6 +77,11 @@ export const ButtonStyle = {
   SECONDARY: 2,
   SUCCESS: 3,
   DANGER: 4,
+} as const;
+
+export const TextInputStyle = {
+  SHORT: 1,
+  PARAGRAPH: 2,
 } as const;
 
 export const InteractionFlags = {
