@@ -606,22 +606,9 @@ When a hit is reported, the relevant player's slot price should reflect the upda
 
 ---
 
-### ⚪ OPTIONAL · `/break-price` refine-with-correction flow
+### `/break-price` refine-with-correction flow  ✅ SHIPPED 2026-05-15
 
-**Effort:** ~1-2 hours, ~200 lines
-**Status:** Optional. Discussed 2026-05-14. The 2026-05-15 parser fixes (PR #105 title rule + PR #106 product format awareness) removed the most common reason a refine would be needed today. Ship this when SMEs hit a parse they can't fix by re-firing with better narrative/notes.
-
-**Trigger UX:** third button on the `pending_insights` proposal panel ("✏️ Refine" alongside ✅ Apply / ❌ Discard). Clicking opens a Discord modal with one text field ("What should change?"). Submitting re-parses the original images + narrative + the correction as additional `notes` and replaces `parsed_updates` in place, then edits the original Discord message with the new proposal.
-
-**Architecture sketch (locked in earlier session):**
-1. Migration adds `pending_insights.source_attachments JSONB` storing `[{url, filename, content_type}]` populated at staging time on all three handlers (`handleInsights`, `handleBreakPrice`, `handleBreakPriceFromMessage`).
-2. New `MODAL` Discord response type + `TEXT_INPUT` component type in [lib/discord.ts](../lib/discord.ts) (existing constants don't include these yet — Discord supports response type 9 + component type 4).
-3. Button click handler returns a modal response. Modal submit handler reads the original `pending_insights` row, re-fetches the stored CDN URLs (24h window matches `expires_at`), and calls `parseBreakPrice({ images, narrative, notes: <correction> })`.
-4. If CDN URLs have expired (rare — captures usually get confirmed/discarded within hours), ephemeral reply: "Screenshots have expired, please re-submit."
-
-**Limitation accepted:** the second-pass re-parse is from scratch. Claude could change rows beyond the one the correction mentioned. Could mitigate with a "preserve other rows" instruction in the prompt but adds brittleness. Accept it — re-parsing from scratch is the same operation we already trust on the first pass.
-
-**Why not now:** The two parser fixes shipped 2026-05-15 (title-level format override + product-format-availability rule) handle the highest-frequency mis-classification cases. Other cases (wrong team, wrong price) are typically fixable by re-firing `/break-price` with better narrative context. Watch the discard rate — if SMEs are discarding > ~20% of proposals because the parse is wrong on a single field, ship this.
+**Shipped via:** PR [#108](https://github.com/brodotype-dev/breakerz/pull/108). Third **✏️ Refine** button on every `pending_insights` proposal panel — text-only re-parse for `/insight`, full image + narrative + correction re-parse for `/break-price`. Iterable until the contributor applies or discards. Migration `20260516120000_pending_insights_refine.sql` added `source_attachments JSONB` + `source_kind TEXT` to `pending_insights`. New constants in `lib/discord.ts` (MODAL response type, TEXT_INPUT component, TextInputStyle). New `handleRefineModalSubmit` re-fetches stored Discord CDN URLs within their ~24h window and re-runs the parser with the correction spliced in as additional context. Full per-feature breakdown in [CHANGELOG.md](../CHANGELOG.md) entry dated 2026-05-15.
 
 ---
 
