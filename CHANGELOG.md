@@ -5,6 +5,63 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-17 — Refine-flow stabilization: buttons now clear on Apply
+
+PR [#114](https://github.com/brodotype-dev/breakerz/pull/114). Brody reported that clicking Apply on a *refined* proposal didn't clear the ✅/✏️/❌ buttons even though the apply itself succeeded (DB updated to status='applied'; second click correctly returned an "already applied" ephemeral). Made the post-refine UX feel broken.
+
+**Root cause.** Both `handleButton` and `handleRefineModalSubmit` were editing the source proposal message via `editInteractionResponse` → `/webhooks/{appId}/{token}/messages/@original`. For an interaction that deferred with `DEFERRED_UPDATE_MESSAGE` the `@original` endpoint *should* reference the source message — but when a message has already been edited by a PRIOR interaction (the modal-submit's edit during refine), a subsequent interaction's `@original` reference becomes unreliable. Discord silently no-ops the PATCH instead of returning an error, so the apply succeeded everywhere except visually.
+
+**Fix.** Every "edit the source proposal message" call now uses `editChannelMessage(channel_id, message_id, body)` — bot-token PATCH by message id, completely bypassing interaction-token lineage. Deferred response stays as `DEFERRED_UPDATE_MESSAGE` so Discord still acks. Touched sites: `handleButton.discard` + `.confirm` + confirm catch-block, and all five edit calls inside `handleRefineModalSubmit` (fetch-failure, no-updates, staging-failure, success, re-parse-error catch). `ButtonInteraction.message` extended to include `id`. All edit failures now log explicitly instead of silently swallowing — the next failure mode surfaces immediately.
+
+---
+
+## 2026-05-17 — Parser: card-code detector widened (catches `3D-37`-style codes)
+
+PR [#113](https://github.com/brodotype-dev/breakerz/pull/113). Kyle's "Dylan Harper across all products" `/insight` matched to the WRONG player record — `3D-37` instead of `Dylan Harper`. Root cause: 40 Topps 3 Basketball card numbers (`3D-1` through `3D-40`) had crept into the players table as bogus rows during checklist import. The 2026-05-15 fix (PR #111) caught letter-starting codes like `B25-AL` but its regex required starting with letters, so `3D-37` (digit-starting) and `90A-KS` (digits-then-letter-then-dash) slipped through.
+
+**Two layers of defense.** (1) Widened the regex in [lib/checklist-aggregates.ts](lib/checklist-aggregates.ts) to `^[A-Z0-9]{1,5}-[A-Z0-9]{1,6}$` — covers letter-starting, digit-starting, and mixed patterns. Still conservative; no real player name fits the all-caps no-spaces short-hyphenated profile. (2) New `isCardSubsetCode()` export consumed by BOTH parser roster queries (`parseInsights` + `parseBreakPrice`) — filters card-code names out of the Claude-visible roster, so even if a bogus row exists in `players`, the parser can't accidentally match a real narrative to it.
+
+**Prod backfill** — 137 polluting rows flipped via Supabase MCP at commit time. Mostly the 40 Topps 3 Basketball numbers plus stragglers.
+
+---
+
+## 2026-05-17 — Parser: sentiment scope defaults to 'global', forbids hallucinated product_ids
+
+PR [#112](https://github.com/brodotype-dev/breakerz/pull/112). Kyle fired `/insight` on a Schwarber 2014 Bowman Chrome auto price movement. Parser interpreted "2014 Bowman" as a product context, set `scope='product'`, and emitted `product_id='90A-KS'` — actually a card code, not a product id (we don't have a 2014 Bowman product in our roster). Apply dropped with "no player_product for (player, product) — sentiment scope=product cannot apply", net zero applied updates.
+
+**Brody's rule.** When sentiment is fundamentally about a player's market movement (homerun pace, hot/cold streak, post-game buzz), scope should be `'global'` (player-wide), NOT a specific card or product. A single-card sale or price observation is itself a data point on the player's overall market, not a product-specific signal.
+
+**Two tightenings on the SENTIMENT rules block in `parseInsights`:** (1) **Strongly default to 'global'.** Bar for `'product'` is now explicit — narrative must EXPLICITLY contrast the player's value ACROSS products ("his Topps Chrome is hotter than his Bowman"). Simply mentioning a card does NOT meet the bar. The Schwarber-style case is called out as a global example. (2) **Hard rules:** never hallucinate a product_id (fall back to `'global'` when named product isn't in the supplied list), team narratives use `team_sentiment` (not sentiment-with-team-scope), and an explicit note that b-score adjustments are the same as sentiment.
+
+Prompt-only change.
+
+---
+
+## 2026-05-15 — Checklist: card-subset codes flagged as `insert_only` at import
+
+PR [#111](https://github.com/brodotype-dev/breakerz/pull/111). Brody spotted 130 "player" rows on 2025 Bowman's Best Baseball with names like `B25-AL`, `B25-CS`, `B25-BCA` — Bowman autograph subset SKU codes, not players. They were polluting the Player Slots tab.
+
+The 2026-04-29 multi-player detector (`isMultiPlayerName`) only checked for `/` in the name (slash = multi-player insert). Card-subset codes don't have a slash so they slipped through. Extended `isMultiPlayerName` in [lib/checklist-aggregates.ts](lib/checklist-aggregates.ts) to also match `^[A-Z]{1,3}\d{0,2}-[A-Z]{1,6}$`. The import-checklist route already calls this in its `insert_only` derivation, so any future checklist import flags subset codes at the source.
+
+**Prod backfill** — 132 polluting rows already flipped via Supabase MCP at commit time (130 on Bowman's Best + 1 each on Topps Chrome + Sapphire). _Note: superseded by the wider regex in PR #113 two days later, which caught the digit-starting variants this one missed._
+
+---
+
+## 2026-05-15 — Market Delta Watch: dual thesis sections (logged breaks + slot captures)
+
+PR [#110](https://github.com/brodotype-dev/breakerz/pull/110). Brody flagged the top of the Market Delta Watch page looked frozen — "Sample too thin · 1 observation" while the captures panel below showed 50 recent `/break-price` slot asks. Not a bug per se, but visually misleading by omission since the two sections read from different data sources at different units of measure (bundle vs slot).
+
+Split the page into two clearly labeled thesis views, each computed from its own data source:
+
+- **Section 1 · Logged breaks** (blue banner) — bundle asks from `user_breaks` (one row = one whole-break ask vs. our number). Thesis verdict, stat grid, delta distribution, per-product breakdown, recent observations table.
+- **Section 2 · Observed break pricing** (orange banner) — slot captures from Discord `/break-price` via `market_observations` (one row = one team-slot ask vs. our model). Parallel cluster — own thesis verdict, own stat grid, own distribution, own per-product breakdown. Captures table re-labeled "Recent slot captures."
+
+Extracted `aggregate()` and `verdictFor()` pure helpers so both sections share math + thresholds. Verdict observation enrichment toggle moved inside Section 2 since that's exactly the data it plumbs into the AI verdict prompt. Section 2's verdict subtitle calls out how many of the total captures were excluded from the aggregates (mixed-composition or no per-team fair value). Same thesis thresholds across both data sources for consistency.
+
+No DB migrations, no new API routes. Pure server-component read.
+
+---
+
 ## 2026-05-15 — `/insight` + `/break-price` refine-with-correction flow
 
 Adds a third **✏️ Refine** button to every `pending_insights` proposal panel (next to ✅ Apply / ❌ Discard). Click → Discord modal asks "What should change?" → submission re-parses the original capture with the correction spliced in as additional context → edits the proposal message in place. PR [#108](https://github.com/brodotype-dev/breakerz/pull/108).
