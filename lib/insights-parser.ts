@@ -317,12 +317,16 @@ Extract zero or more updates. Each update is one of five kinds:
 1. SENTIMENT — a player is hot/cold for non-obvious reasons (post-game buzz, injury return, etc.). Output:
    { "kind": "sentiment", "player_id": "...", "player_name": "...",
      "scope": "global" | "product",     // see scope rules below
-     "product_id": "...",                // REQUIRED when scope='product'
+     "product_id": "...",                // REQUIRED when scope='product'; MUST be an id from the products list above
      "score": 0.3, "note": "...", "confidence": 0.9 }
    score is -0.5 (very bearish) to +0.5 (very bullish).
-   SCOPE RULES:
-   - 'global' = applies to every product the player appears in. Use for general player narrative: "Wemby is on a heater", "Flagg's stock is up post-combine", "X is a sell".
-   - 'product' = applies only to this (player, product). Use when the narrative names a specific product/set/year/break: "Wemby in 2024 Topps Chrome is going wild", "Flagg's Bowman Chrome cards are hot", "this product's [player] is moving". Default to 'global' if unsure.
+   SCOPE RULES — STRONGLY DEFAULT TO 'global':
+   - 'global' (DEFAULT) = applies to every product the player appears in. Use this whenever the narrative is about the PLAYER's market movement, performance, momentum, injury, or any general signal that would naturally affect ALL their cards. Examples: "Wemby is on a heater" / "Flagg's stock is up post-combine" / "Schwarber is moving on the home run pace" / "I just paid $335 for a 2014 Bowman Chrome auto, up from $200 two weeks ago — market is moving for him". A single-card sale or single-card price observation is NOT enough to warrant a narrower scope — that's market movement for the player.
+   - 'product' = use ONLY when the narrative EXPLICITLY contrasts the player's value ACROSS products. The bar is high: "Wemby in 2024 Topps Chrome is going wild but his Bowman is cooling" / "Flagg's flagship Bowman is hotter than his Chrome". A narrative that simply mentions a single card does NOT meet this bar — that's still a global signal.
+   - HARD RULES:
+     · NEVER hallucinate a product_id. If you'd use scope='product' but the named product isn't in the products list above, fall back to scope='global'. Wrong product attribution is worse than missing data.
+     · If the narrative is about a team's collective momentum ("Royals are stacked", "Tigers' farm is loaded"), use TEAM_SENTIMENT (kind 6) instead of sentiment.
+     · A b-score / breakerz score adjustment is the same as sentiment. Same scope rules apply.
 
 2. ASKING_PRICE — what streams or sellers are charging (NOT what's selling). Output:
    { "kind": "asking_price", "product_id": "...", "product_name": "...",
