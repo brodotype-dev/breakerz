@@ -12,6 +12,7 @@
  */
 
 import { supabaseAdmin } from '@/lib/supabase';
+import { isCardSubsetCode } from '@/lib/checklist-aggregates';
 import type { SlotComposition, AskingPriceSource, BreakFormat } from '@/lib/types';
 
 // Re-export so existing imports of AskingPriceSource from this module
@@ -276,7 +277,12 @@ export async function parseInsights({ narrative, maxPlayers = 5000 }: ParseInput
       players.push(...(data as any));
       if (data.length < PAGE || players.length >= maxPlayers) break;
     }
-    players = players.slice(0, maxPlayers);
+    // Defense in depth: drop card-subset codes (e.g. "3D-37", "B25-AL")
+    // that crept into the players table from buggy checklist imports.
+    // These rows still exist with insert_only=true but the parser should
+    // not consider them as match candidates — Claude has matched real
+    // narratives ("Dylan Harper") to bogus rows ("3D-37") in the past.
+    players = players.filter(p => !isCardSubsetCode(p.name)).slice(0, maxPlayers);
   }
 
   if (!products?.length || !players?.length) {
@@ -987,6 +993,8 @@ export async function parseBreakPrice(input: BreakPriceInput): Promise<BreakPric
       players.push(...data);
       if (data.length < PAGE || players.length >= 5000) break;
     }
+    // Defense in depth: drop card-subset codes (matches parseInsights).
+    players = players.filter(p => !isCardSubsetCode(p.name));
   }
 
   // Each product line ships its known available formats (derived from

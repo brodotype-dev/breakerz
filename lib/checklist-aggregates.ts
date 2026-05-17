@@ -110,20 +110,32 @@ export function computePlayerAggregates(sections: SectionInput[]): PlayerAggrega
 // 1. Multi-player rows ("Skubal / Blanco / Valdez" — League Leaders,
 //    dual autographs) — detected by a "/" in the name.
 //
-// 2. Card-subset codes ("B25-AL", "TC25-CS", "BCP-LP" — Bowman's Best
-//    autograph subset prefixes, Topps Chrome insert codes, etc.).
-//    Pattern: 1-3 letter prefix + optional 1-2 digit year + dash + 1-6
-//    letter suffix. These appear when a Topps XLSX/PDF lists subsets as
-//    rows with just the SKU code and no real player name. Conservative
-//    enough to never match real names (no real player has a "-"
-//    sandwiched between short caps groups).
+// 2. Card-subset codes — short SKU codes that crept into the players
+//    table because a Topps XLSX/PDF listed subset rows with just the
+//    code and no real player name. Cover three shapes:
+//      · "B25-AL", "TC25-CS"   → letters + optional year + dash + letters
+//      · "90A-KS"              → digits + letters + dash + letters
+//      · "3D-37", "BCP-37"     → mixed/short + dash + digits
+//    Generalized as: ≤5 uppercase-alphanumeric chars + dash + ≤6
+//    uppercase-alphanumeric chars, no spaces. Safe regex — no real
+//    player name fits the "all-caps, no spaces, single hyphen, short"
+//    profile (real hyphenated names are mixed case and longer).
 //
-// Both server (import-checklist route) and client (admin views) need
-// this; centralized here so the rule stays in one place.
-const CARD_SUBSET_CODE_RE = /^[A-Z]{1,3}\d{0,2}-[A-Z]{1,6}$/;
+// Both server (import-checklist route) and client (parser roster
+// filter) need this; centralized here so the rule stays in one place.
+const CARD_SUBSET_CODE_RE = /^[A-Z0-9]{1,5}-[A-Z0-9]{1,6}$/;
 
 export function isMultiPlayerName(name: string): boolean {
   if (name.includes('/')) return true;
   if (CARD_SUBSET_CODE_RE.test(name.trim())) return true;
   return false;
+}
+
+/**
+ * Exported for the parser roster filter — same regex, but as a standalone
+ * predicate so the parser doesn't pull in the slash check (that's a
+ * different signal that the parser already handles via prompt rules).
+ */
+export function isCardSubsetCode(name: string): boolean {
+  return CARD_SUBSET_CODE_RE.test(name.trim());
 }
