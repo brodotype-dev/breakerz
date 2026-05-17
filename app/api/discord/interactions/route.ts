@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import {
   verifyDiscordSignature,
   editInteractionResponse,
+  editChannelMessage,
   InteractionType,
   InteractionResponseType,
   ComponentType,
@@ -826,7 +827,7 @@ interface ButtonInteraction {
   channel_id: string;
   member?: { user: { id: string; username: string; global_name?: string } };
   user?: { id: string; username: string; global_name?: string };
-  message: { content: string };
+  message: { id: string; content: string };
   data: { custom_id: string };
 }
 
@@ -892,6 +893,16 @@ async function handleButton(interaction: ButtonInteraction): Promise<NextRespons
   const handle = user.global_name ?? user.username;
   const baseContent = interaction.message.content;
 
+  // Both confirm and discard edit the source message directly via the
+  // channel-message API instead of editInteractionResponse. The webhook
+  // /@original path was failing silently when a message had been edited
+  // by a PRIOR interaction (notably the refine modal-submit) — the
+  // interaction token's "original message" reference becomes unreliable
+  // across multi-interaction lifecycles. Direct channel edit by
+  // message_id sidesteps that entirely and is what Discord's docs
+  // recommend for "edit any message you own."
+  const messageId = interaction.message.id;
+
   if (action === 'discard') {
     after(async () => {
       await supabaseAdmin
@@ -900,10 +911,10 @@ async function handleButton(interaction: ButtonInteraction): Promise<NextRespons
         .eq('id', pendingId)
         .eq('status', 'pending');
 
-      await editInteractionResponse(interaction.application_id, interaction.token, {
+      await editChannelMessage(interaction.channel_id, messageId, {
         content: `${baseContent}\n\n— ❌ **Discarded** by @${handle}`,
         components: [],
-      });
+      }).catch(err => console.error('[discord/discard] message edit failed', err));
     });
 
     return NextResponse.json({ type: InteractionResponseType.DEFERRED_UPDATE_MESSAGE });
@@ -927,7 +938,7 @@ async function handleButton(interaction: ButtonInteraction): Promise<NextRespons
           .eq('id', pendingId)
           .eq('status', 'pending');
 
-        await editInteractionResponse(interaction.application_id, interaction.token, {
+        await editChannelMessage(interaction.channel_id, messageId, {
           content:
             `${baseContent}\n\n— ✅ **Applied** by @${handle}: ` +
             `${result.applied} of ${updates.length} updates committed.` +
@@ -936,10 +947,10 @@ async function handleButton(interaction: ButtonInteraction): Promise<NextRespons
         });
       } catch (err) {
         console.error('[discord/confirm] apply failed', err);
-        await editInteractionResponse(interaction.application_id, interaction.token, {
+        await editChannelMessage(interaction.channel_id, messageId, {
           content: `${baseContent}\n\n— ⚠️ **Apply failed** by @${handle}: ${err instanceof Error ? err.message : 'unknown'}`,
           components: [],
-        }).catch(() => {});
+        }).catch(err2 => console.error('[discord/confirm] message edit failed', err2));
       }
     });
 
@@ -1011,10 +1022,18 @@ async function handleRefineModalSubmit(interaction: ModalSubmitInteraction): Pro
 
   const handle = user.global_name ?? user.username;
   const baseContent = interaction.message?.content ?? '';
+  const messageId = interaction.message?.id;
+
+  if (!messageId) {
+    return ephemeralReply('Could not locate the original proposal message. Try Refine again.');
+  }
 
   // Defer immediately — re-fetching N CDN URLs + running Claude vision
-  // exceeds Discord's 3s budget. DEFERRED_UPDATE_MESSAGE lets us edit
-  // the original proposal message via the modal_submit token afterward.
+  // exceeds Discord's 3s budget. We edit the source message directly via
+  // editChannelMessage (channel-message API) instead of the interaction
+  // webhook because the message was created by an EARLIER interaction
+  // (the original /insight or /break-price), and the modal-submit's
+  // @original-via-token reference is unreliable across that lineage.
   after(async () => {
     try {
       const kind = (pending.source_kind ?? 'insight') as 'insight' | 'break_price';
@@ -1061,9 +1080,9 @@ async function handleRefineModalSubmit(interaction: ModalSubmitInteraction): Pro
         }
 
         if (attachments.length > 0 && fetchErrors.length === attachments.length) {
-          await editInteractionResponse(interaction.application_id, interaction.token, {
+          await editChannelMessage(interaction.channel_id, messageId, {
             content: `${baseContent}\n\n— ✏️ **Refine by @${handle} failed:** every screenshot URL is unreachable (likely expired). Re-submit \`/break-price\` with the screenshots + the corrected narrative.\n${fetchErrors.slice(0, 3).join(' · ')}`,
-          });
+          }).catch(err => console.error('[discord/refine] message edit failed', err));
           return;
         }
 
@@ -1080,9 +1099,9 @@ async function handleRefineModalSubmit(interaction: ModalSubmitInteraction): Pro
       }
 
       if (updates.length === 0) {
-        await editInteractionResponse(interaction.application_id, interaction.token, {
+        await editChannelMessage(interaction.channel_id, messageId, {
           content: `${baseContent}\n\n— ✏️ **Refine by @${handle} produced no updates** (${debugLine}). Original proposal preserved.`,
-        });
+        }).catch(err => console.error('[discord/refine] message edit failed', err));
         return;
       }
 
@@ -1095,9 +1114,9 @@ async function handleRefineModalSubmit(interaction: ModalSubmitInteraction): Pro
         .eq('status', 'pending');
 
       if (updErr) {
-        await editInteractionResponse(interaction.application_id, interaction.token, {
+        await editChannelMessage(interaction.channel_id, messageId, {
           content: `${baseContent}\n\n— ✏️ **Refine by @${handle} couldn't stage:** ${updErr.message}`,
-        });
+        }).catch(err => console.error('[discord/refine] message edit failed', err));
         return;
       }
 
@@ -1114,7 +1133,7 @@ async function handleRefineModalSubmit(interaction: ModalSubmitInteraction): Pro
         `Click ✅ to apply, ✏️ to refine again, ❌ to discard.`;
       const { summary } = formatProposalSummary(lines, 2000 - wrapping.length);
 
-      await editInteractionResponse(interaction.application_id, interaction.token, {
+      await editChannelMessage(interaction.channel_id, messageId, {
         content:
           `**Refined by @${handle}** — _${correction.slice(0, 200)}_\n\n` +
           targetsBlock +
@@ -1151,9 +1170,9 @@ async function handleRefineModalSubmit(interaction: ModalSubmitInteraction): Pro
       });
     } catch (err) {
       console.error('[discord/refine] re-parse failed', err);
-      await editInteractionResponse(interaction.application_id, interaction.token, {
+      await editChannelMessage(interaction.channel_id, messageId, {
         content: `${baseContent}\n\n— ✏️ **Refine by @${handle} errored:** ${err instanceof Error ? err.message : 'unknown'}`,
-      }).catch(() => {});
+      }).catch(err2 => console.error('[discord/refine] error-edit failed', err2));
     }
   });
 
