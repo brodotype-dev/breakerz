@@ -10,6 +10,14 @@
       "headers": {
         "X-API-Key": "${CARDHEDGER_API_KEY}"
       }
+    },
+    "resend": {
+      "command": "npx",
+      "args": ["-y", "resend-mcp"],
+      "env": {
+        "RESEND_API_KEY": "${RESEND_API_KEY}",
+        "SENDER_EMAIL_ADDRESS": "hello@getbreakiq.com"
+      }
     }
   }
 }

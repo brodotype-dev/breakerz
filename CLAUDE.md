@@ -204,6 +204,7 @@ Supabase Vercel integration injects both `NEXT_PUBLIC_SUPABASE_URL` and `SUPABAS
 6. **Stripe SDK types** — v22+ uses `2026-03-25.dahlia` API version. Webhook event data objects cast to local interfaces to avoid SDK type drift.
 7. **Dev mode auth bypass** — consumer API routes (`my-breaks`, `onboarding`) fall back to first profile in dev mode when no auth session. Never deploy with `NODE_ENV=development`.
 8. **Supabase email rate limit** — free tier limits ~4 confirmation emails/hour. Hits during testing but not an issue in production.
+9. **Env-key sprawl** — secrets live in Vercel (source of truth), `.env.local` (pulled from Vercel), and every `.claude/settings.local.json` (one per main repo + each worktree, consumed by Claude Code MCPs at app launch). After rotating any key, the canonical flow is: rotate in Vercel → `vercel env pull .env.local` → `bun run sync-env` (propagates whitelist into every `settings.local.json`) → Cmd+Q + relaunch the Mac app so MCP child processes pick up new env at next spawn. Whitelist of synced keys is hardcoded in [scripts/sync-claude-env.mjs](./scripts/sync-claude-env.mjs). Never hand-edit `.claude/settings.local.json` — it drifts silently. `.env.production.snapshot` and `.env.discord.snapshot` are historical reference files for production-scope secrets (Discord bot creds, Postgres URLs); pull fresh when you need them.
 
 ---
 
