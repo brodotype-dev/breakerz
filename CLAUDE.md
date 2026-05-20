@@ -85,7 +85,7 @@ Live at [getbreakiq.com](https://getbreakiq.com). Private beta — consumer rout
 
 **Onboarding** ✅ 3-step wizard at `/onboarding`: age gate (hard block under 18), about you (experience level, collecting interests including TCGs, eras, platform, monthly spend), quick hits (attribution, best pull). OAuth callback redirects new users to onboarding; returning users skip it.
 
-**Subscriptions** ✅ Stripe integration — Hobby ($9.99/mo, 10 analyses), Pro ($24.99/mo, unlimited). 3 free lifetime analyses as trial. Usage gates on `/api/analysis`, `/api/card-lookup`, `/api/my-breaks`. Promo codes enabled. Webhook handles checkout, invoice, subscription lifecycle.
+**Subscriptions** ✅ Stripe integration — Hobby ($9.99/mo, 10 analyses), Pro ($24.99/mo, unlimited). **5 free lifetime analyses as trial** (bumped from 3 → 5 on 2026-05-20 for private beta breathing room — see `FREE_TIER_ANALYSIS_LIMIT` in [lib/usage.ts](lib/usage.ts), exported so consumer copy in `/subscribe` stays in lockstep with the gate). Usage gates on `/api/analysis`, `/api/card-lookup`, `/api/my-breaks`. Promo codes enabled. Webhook handles checkout, invoice, subscription lifecycle.
 
 **Security** ✅ Pre-beta audit (2026-04-10): auth guards on all admin server actions + API routes, consumer API auth, security headers (X-Frame-Options, CSP, etc.), XSS fix in email, open redirect fix, legacy auth backdoor deleted.
 

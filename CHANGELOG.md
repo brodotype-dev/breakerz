@@ -5,6 +5,14 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-20 — Free-tier analysis limit bumped 3 → 5
+
+Brody + Kyle, 2026-05-20. Private-beta breathing room — three free analyses lifetime was too tight for users to get a real feel for the product before hitting the gate.
+
+Extracted the magic number into `FREE_TIER_ANALYSIS_LIMIT = 5` in [lib/usage.ts](lib/usage.ts), exported and consumed by the `LIMITS` table, the unknown-plan fallback, AND the `/subscribe` consumer copy (both "Start with N free analyses" hero line and "Continue with free trial (N analyses) →" CTA). Single source of truth — bumping the constant in `lib/usage.ts` automatically updates the gate logic AND the marketing copy. No DB migration needed: existing free-tier users who'd already used 3 analyses are immediately allowed 2 more (`3 >= 5` is false), no data backfill.
+
+---
+
 ## 2026-05-20 — `ch_price_cache` write bug: failed chunks no longer nuke good prices
 
 The 2026-05-20 FMV investigation surfaced that 60,150 cache rows (97% of `ch_price_cache`) had ALL THREE price columns null. Spot-probing 5 random cards from that bucket showed 1 of 5 (20%) had genuine CH data via `batch-price-estimate` right now — meaning we were silently nulling real prices, not just observing the long tail of low-trade parallels.

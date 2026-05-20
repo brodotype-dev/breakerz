@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Zap, Check, Crown } from 'lucide-react';
 import posthog from 'posthog-js';
 import { PH_EVENTS } from '@/lib/posthog-events';
+import { FREE_TIER_ANALYSIS_LIMIT } from '@/lib/usage';
 import { Logo } from '@/components/Logo';
 
 export default function SubscribePage() {
@@ -65,7 +66,7 @@ export default function SubscribePage() {
             Choose Your Plan
           </h1>
           <p className="text-base" style={{ color: 'var(--text-secondary)' }}>
-            Every break you buy, in one place. Start with 3 free analyses.
+            Every break you buy, in one place. Start with {FREE_TIER_ANALYSIS_LIMIT} free analyses.
           </p>
           <p className="text-sm mt-2" style={{ color: 'var(--text-tertiary)' }}>
             Beta pricing — locks in for early adopters.
@@ -180,7 +181,7 @@ export default function SubscribePage() {
             className="text-sm font-medium hover:underline"
             style={{ color: 'var(--text-tertiary)' }}
           >
-            Continue with free trial (3 analyses) →
+            Continue with free trial ({FREE_TIER_ANALYSIS_LIMIT} analyses) →
           </button>
         </div>
 

@@ -7,9 +7,14 @@ interface UsageResult {
   upgrade?: boolean;
 }
 
+// Free-tier lifetime allowance. Bumped 3 → 5 on 2026-05-20 for private beta
+// breathing room. Exported so consumer-facing copy in /subscribe (and any
+// future "X analyses left" UI) stays in lockstep with the gate.
+export const FREE_TIER_ANALYSIS_LIMIT = 5;
+
 const LIMITS: Record<string, number> = {
-  free: 3,    // lifetime (not monthly)
-  hobby: 10,  // per billing period
+  free: FREE_TIER_ANALYSIS_LIMIT, // lifetime (not monthly)
+  hobby: 10,                      // per billing period
   // pro: unlimited
 };
 
@@ -62,7 +67,7 @@ export async function checkAndIncrementUsage(userId: string): Promise<UsageResul
     }
   }
 
-  const limit = LIMITS[effectivePlan] ?? 3;
+  const limit = LIMITS[effectivePlan] ?? FREE_TIER_ANALYSIS_LIMIT;
   const used = profile.analyses_used ?? 0;
 
   if (used >= limit) {
