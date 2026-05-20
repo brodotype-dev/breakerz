@@ -27,6 +27,7 @@ Full strategy:
 - [docs/catalog-preload-architecture.md](./docs/catalog-preload-architecture.md) — CH matching v2 (catalog pre-load + tiered local matcher)
 - [docs/cardhedger-questions.md](./docs/cardhedger-questions.md) — running list of questions for the CH team
 - [docs/beta-launch-checklist.md](./docs/beta-launch-checklist.md) — pre-launch todo list
+- [docs/private-beta-scope.md](./docs/private-beta-scope.md) — **which products are active for private beta** + rationale + how to add/remove. Brody + Kyle decided 2026-05-20 to scope to most-recent Bowman per sport; everything else hidden as drafts. Football product still TBD (Bowman doesn't ship football).
 - [docs/cost-analysis.md](./docs/cost-analysis.md) — unit economics, breakeven, service costs
 - [docs/manufacturer-rules/bowman.md](./docs/manufacturer-rules/bowman.md) — Bowman/Topps prefix names, CH naming conventions, match rate history
 - [docs/manufacturer-rules/panini.md](./docs/manufacturer-rules/panini.md) — Panini Master Checklist XLSX format, section model, known gaps (no RC flag, no odds)
@@ -68,7 +69,7 @@ Single-commit fixes / small features only need the CHANGELOG entry.
 
 ## Current State
 
-Live at [getbreakiq.com](https://getbreakiq.com). Private beta — consumer routes require auth; unauthenticated visitors redirected to `/waitlist`.
+Live at [getbreakiq.com](https://getbreakiq.com). Private beta — consumer routes require auth; unauthenticated visitors redirected to `/waitlist`. **Product roster scoped to most-recent Bowman per sport** (2026-05-20 Brody + Kyle decision); everything else stays in catalog as `is_active = false`. Football product still TBD because Bowman doesn't ship football. See [docs/private-beta-scope.md](./docs/private-beta-scope.md) for the full scope + add/remove playbook + open questions.
 
 **Admin pipeline** ✅ Product creation → checklist import (Topps PDF/CSV, Bowman XLSX) → CardHedger matching (Claude Haiku, ~76–90% auto-match) → odds import → readiness dashboard → BreakIQ Bets debrief
 
