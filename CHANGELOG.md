@@ -5,6 +5,21 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-20 — Admin product form: toggle now wins on edit
+
+Brody flagged 2026-05-20 that flipping an active product's "Active" toggle to off and clicking Save (Publish or Save Draft) didn't deactivate it. UI showed "Product updated." but the toggle would re-render as on.
+
+Root cause in [components/admin/ProductForm.tsx](components/admin/ProductForm.tsx) — the submit handler had `is_active: publish ? true : isActive` plus a post-success `if (publish) setIsActive(true)`. So clicking Publish on an existing product ignored the toggle and force-wrote `is_active=true`, then visually snapped the toggle back to on. Net: there was no UI affordance for deactivating a live product, even though the toggle made it look like there was.
+
+Fix carves the behavior on `product` (existence of the edit target):
+- **Editing existing product:** toggle wins, always. Both Publish and Save Draft respect it. The Publish button still runs the "CH set name must be set" guard, but no longer overrides `is_active`.
+- **Creating new product + Publish:** treat as intent to go live — force `is_active=true` so the button name does what it says. Save Draft on a new product still respects whatever the toggle says (defaults off).
+- Post-success: if we changed `is_active` (only happens on the new-product Publish path), sync the toggle UI to match what we just saved.
+
+No DB migration, no schema change. Two-line behavioral fix + comment.
+
+---
+
 ## 2026-05-20 — Free-tier analysis limit bumped 3 → 5
 
 Brody + Kyle, 2026-05-20. Private-beta breathing room — three free analyses lifetime was too tight for users to get a real feel for the product before hitting the gate.

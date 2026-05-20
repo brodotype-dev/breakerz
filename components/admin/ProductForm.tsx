@@ -246,6 +246,15 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
     setSubmitting(true);
     setStatus(null);
 
+    // is_active rules:
+    //   - Editing an existing product: toggle wins, always. The "Publish"
+    //     button no longer overrides — pre-2026-05-20 it forced is_active=true
+    //     regardless of toggle, so flipping a live product back to draft
+    //     silently re-published on save (Brody reported 2026-05-20).
+    //   - Creating a NEW product + clicking "Publish": treat as intent to go
+    //     live (button name does what it says). Save Draft respects the toggle.
+    const targetIsActive = product ? isActive : (publish ? true : isActive);
+
     const data = {
       sport_id: sportId,
       manufacturer: effectiveManufacturer,
@@ -264,7 +273,7 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
       jumbo_autos_per_case: null,
       release_date: releaseDate || null,
       ch_set_name: chSetName || null,
-      is_active: publish ? true : isActive,
+      is_active: targetIsActive,
       lifecycle_status: lifecycleStatus,
     };
 
@@ -275,7 +284,9 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
     if ('error' in result) {
       setStatus({ type: 'error', message: result.error ?? 'Unknown error' });
     } else {
-      if (publish) setIsActive(true);
+      // Sync the toggle to whatever we just saved so the UI reflects truth.
+      // This covers the new-product Publish path where we forced is_active=true.
+      if (targetIsActive !== isActive) setIsActive(targetIsActive);
       setStatus({ type: 'success', message: product ? 'Product updated.' : 'Product created.' });
       if (!product && 'id' in result) onSaved?.(result.id as string);
     }
