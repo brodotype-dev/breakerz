@@ -25,6 +25,23 @@ function fromInvites(): string {
   return v;
 }
 
+// The Resend Node SDK returns { data, error } and DOES NOT throw on API
+// rejections (invalid key, unverified domain, bad recipient). Awaiting
+// `emails.send` and ignoring `error` is exactly how the 2026-04→2026-05
+// silent invite failures happened. Always route through this so a Resend-
+// side rejection becomes a thrown error our callers can catch + observe.
+type ResendResult = { data: { id: string } | null; error: { name?: string; message?: string } | null };
+function unwrap(result: ResendResult, label: string): { id: string } {
+  if (result.error) {
+    const detail = result.error.message ?? result.error.name ?? JSON.stringify(result.error);
+    throw new Error(`${label}: Resend rejected the send — ${detail}`);
+  }
+  if (!result.data) {
+    throw new Error(`${label}: Resend returned neither data nor error`);
+  }
+  return result.data;
+}
+
 const escapeHtml = (s: string) =>
   s.replace(/[<>"'&]/g, c => ({ '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;', '&': '&amp;' }[c] ?? c));
 
@@ -66,7 +83,7 @@ export async function sendInviteEmail({
   const firstName = escapeHtml(fullName?.split(' ')[0] ?? 'there');
   const safeTo = escapeHtml(to);
 
-  await getResend().emails.send({
+  const result = await getResend().emails.send({
     from: fromInvites(),
     to,
     subject: "You're in — BreakIQ Beta",
@@ -90,6 +107,7 @@ export async function sendInviteEmail({
       `,
     }),
   });
+  unwrap(result as ResendResult, 'sendInviteEmail');
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -104,7 +122,7 @@ export async function sendWaitlistConfirmation({
 }) {
   const firstName = escapeHtml(fullName?.split(' ')[0] ?? 'there');
 
-  await getResend().emails.send({
+  const result = await getResend().emails.send({
     from: FROM_HELLO,
     to,
     subject: "You're on the BreakIQ list.",
@@ -122,6 +140,7 @@ export async function sendWaitlistConfirmation({
       `,
     }),
   });
+  unwrap(result as ResendResult, 'sendWaitlistConfirmation');
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -137,7 +156,7 @@ export async function sendWelcomeEmail({
   const base = appBaseUrl();
   const firstName = escapeHtml(firstNameInput ?? 'there');
 
-  await getResend().emails.send({
+  const result = await getResend().emails.send({
     from: FROM_HELLO,
     to,
     subject: 'Welcome to BreakIQ — what to try first.',
@@ -175,4 +194,5 @@ export async function sendWelcomeEmail({
       `,
     }),
   });
+  unwrap(result as ResendResult, 'sendWelcomeEmail');
 }
