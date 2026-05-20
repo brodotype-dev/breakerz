@@ -280,9 +280,12 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
         .map(s => s.status === 'rejected' ? (s.reason instanceof Error ? s.reason.message : String(s.reason)) : null)
         .filter(Boolean);
       console.error(`[pricing-refresh] chunk ${idx} all grades failed (${ms}ms): ${rejections.join(' | ')}`);
-      // Still write null-price cache rows so we don't re-fetch this chunk on
-      // the next firing's first attempt. The 24h TTL means we'll come back.
-      // Without this, a transient CH outage means we re-attempt forever.
+      // We STILL fall through to the upsert below so fetched_at bumps and the
+      // TTL skips this chunk on the next firing (avoiding a re-fetch storm on
+      // transient CH outage). The 2026-05-20 RPC migration makes that safe:
+      // when every grade is null on the new row, the COALESCE upsert leaves
+      // any existing cached prices untouched. Previously this path nuked good
+      // prices for ~20% of the catalog.
     }
 
     const rawMap   = new Map(rawResults?.map(r => [r.card_id, r])   ?? []);
@@ -315,9 +318,14 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
         fetched_at: fetchedAt,
       };
     });
+    // Per-grade COALESCE upsert via RPC (migration 20260520220000). A blind
+    // `.upsert()` here would overwrite previously-good cached prices with
+    // null whenever an individual grade call rejected at the chunk level —
+    // the 2026-05-20 audit found ~20% of cached-null rows had genuine CH
+    // data that was just getting wiped this way. The RPC preserves any
+    // existing column whose new value is null and always bumps fetched_at.
     const { error: cacheWriteErr } = await supabaseAdmin
-      .from('ch_price_cache')
-      .upsert(cachePersistRows, { onConflict: 'cardhedger_card_id' });
+      .rpc('upsert_ch_price_cache_preserving_nulls', { rows: cachePersistRows });
     if (cacheWriteErr) {
       console.warn(`[pricing-refresh] ch_price_cache upsert chunk ${idx} failed: ${cacheWriteErr.message}`);
     } else {

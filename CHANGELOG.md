@@ -5,6 +5,24 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-20 — `ch_price_cache` write bug: failed chunks no longer nuke good prices
+
+The 2026-05-20 FMV investigation surfaced that 60,150 cache rows (97% of `ch_price_cache`) had ALL THREE price columns null. Spot-probing 5 random cards from that bucket showed 1 of 5 (20%) had genuine CH data via `batch-price-estimate` right now — meaning we were silently nulling real prices, not just observing the long tail of low-trade parallels.
+
+**Root cause.** [lib/pricing-refresh.ts](lib/pricing-refresh.ts) `runChunk` ran a blind `.upsert()` per chunk after three parallel `batchPriceEstimate` calls (Raw / PSA 9 / PSA 10). When ANY of those calls rejected at the chunk level — timeout under the 240s deadline, rate limit, transient CH outage — its `*Map` was empty for the entire chunk, every card's `valid*` field collapsed to null, and the upsert wrote `*_price: null` for that grade. The "all grades failed" branch deliberately wrote nulls too (comment said this was to prevent re-fetch storms on transient outage). Net effect: **every chunk-level failure wiped previously-cached good values for every card in the chunk.** Cron logs confirmed per-product workers were routinely running 282–296s — right up against Vercel's 300s kill — so chunk aborts were frequent and the damage accumulated across firings.
+
+**Fix.** Migration [supabase/migrations/20260520220000_ch_price_cache_preserve_nulls_upsert.sql](supabase/migrations/20260520220000_ch_price_cache_preserve_nulls_upsert.sql) adds `upsert_ch_price_cache_preserving_nulls(rows jsonb)` — a Postgres function that does per-grade `COALESCE(EXCLUDED.*, ch_price_cache.*)`. Null new values preserve the existing cached value; non-null new values overwrite. `fetched_at` always bumps so the TTL still skips this card on the next firing (preserving the "no re-fetch storm on transient outage" property the previous blind-upsert was reaching for). Single SQL statement, atomic — no TOCTOU race when concurrent staggered firings overlap on the same card_id (rare but real under 4 in-flight chunks per worker × multiple staggered firings).
+
+[lib/pricing-refresh.ts](lib/pricing-refresh.ts) swap: one line in `runChunk` — `.from('ch_price_cache').upsert(...)` → `.rpc('upsert_ch_price_cache_preserving_nulls', { rows: cachePersistRows })`. Net code delta: zero new app logic, two new comments documenting the contract. The "all grades failed" branch comment rewritten — it still falls through to the upsert because `fetched_at`-only bump is now safe.
+
+**Backfill posture.** Automatic. Next cron firings' successful chunks repopulate prices for previously-nulled cards via the COALESCE-on-overwrite path. Cards CH genuinely doesn't have prices for (the actual long tail) stay null indefinitely — that's correct behavior.
+
+**Verified.** SQL smoke test: seeded a row with raw=$9.99/psa9=$38.50/psa10=$110.00, called RPC with all-null payload → all three prices preserved, fetched_at bumped. Called RPC with raw=$11.11/psa9=null/psa10=null → raw overwrote, psa9 + psa10 preserved.
+
+**Out of scope.** Daily CH-coverage tracker (per-product priced-card-% over time) was scoped during investigation and deferred. Pushing pressure data to River from a contaminated baseline isn't useful — better to wait a few cron cycles for prices to repopulate post-fix, then build the tracker against clean data.
+
+---
+
 ## 2026-05-20 — CH catalog: persist `card_description`, dedup matching on (number, variant) collisions
 
 River (CardHedger co-founder, 2026-05-20 email) flagged that some CH cards share the same (set, number, variant) tuple but are genuinely distinct — e.g. Munetaka Murakami `2026 Bowman Baseball #9 "Base"` is both the regular RC AND the Red Rookie Redemption RC, identical in our catalog cache except for `card_description` ("Munetaka Murakami 2026 Bowman Baseball" vs. "Munetaka Murakami 2026 Bowman Red Rookie Redemption Baseball"). Two pre-existing bugs were silently dropping the second card in every collision pair:
