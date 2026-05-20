@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { captureServer, identifyServer } from '@/lib/posthog-server';
 import { PH_EVENTS, PH_PERSON_PROPS } from '@/lib/posthog-events';
 import { TERMS_VERSION, PRIVACY_VERSION } from '@/lib/legal';
+import { sendWelcomeEmail } from '@/lib/email';
 
 const supabaseUrl =
   process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL!;
@@ -134,6 +135,30 @@ export async function GET(request: NextRequest) {
         email: user.email,
       },
     });
+
+    // Welcome email — best-effort, fires only for first-profile signups. Same
+    // observability shape as the other transactional sends: catch + PostHog
+    // event so a Resend failure shows up in analytics without blocking auth.
+    if (user.email) {
+      const firstName =
+        (user.user_metadata?.full_name ?? user.user_metadata?.name ?? '')
+          .toString()
+          .split(' ')[0] || null;
+      try {
+        await sendWelcomeEmail({ to: user.email, firstName });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error('[auth/callback] welcome email error:', err);
+        await captureServer({
+          distinctId: user.id,
+          event: PH_EVENTS.welcome_email_failed,
+          properties: {
+            email_domain: user.email.split('@')[1] ?? null,
+            error_message: message,
+          },
+        });
+      }
+    }
   }
 
   // Mark the invite as converted (re-fetch to handle the returning-user path that skipped validation)
