@@ -143,6 +143,8 @@ Work through these in order. Each section is a logical group — don't move to t
 
 - [ ] **Confirm `/break/*` and `/analysis/*` are gated** — test in incognito on production
 
+- [ ] **Apply private-beta product scope.** Per [private-beta-scope.md](./private-beta-scope.md) — flip non-Bowman live products to `is_active = false` so the catalog narrows to the most-recent Bowman per sport. Football product still TBD (Bowman doesn't ship football); pick Prizm / Donruss / skip and update the scope doc. The admin product form's Active toggle was broken pre-2026-05-20 (Publish silently re-activated even with toggle off) — fix shipped 2026-05-20, so the UI flip now sticks.
+
 ---
 
 ## Optional (nice to have before wider beta)

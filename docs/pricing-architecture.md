@@ -246,6 +246,52 @@ workers, the middleware between them is part of the call graph and needs
 to be tested. A worker route that "accepts Bearer auth" isn't tested
 end-to-end until you've verified middleware lets it through.
 
+## The 2026-05-20 cache-write null-overwrite incident
+
+A second silent-failure shape surfaced during the FMV experiment work. A
+catalog audit found **60,150 rows in `ch_price_cache` (97% of the table)
+had all three price columns null**. Spot-probing 5 random cards from that
+bucket against CH directly via `batch-price-estimate` showed 1 of 5 (20%)
+had genuine current prices. The other 80% really are CH-empty (the long
+tail of low-trade parallels), but the 20% was a real correctness bug:
+we were silently nulling good prices, not just observing data sparsity.
+
+Root cause: `lib/pricing-refresh.ts` `runChunk` did three parallel
+`batchPriceEstimate` calls (Raw / PSA 9 / PSA 10) and then ran a blind
+`.upsert()` per chunk. When **any** of those calls rejected at the
+chunk level — timeout under the 240s internal deadline, rate limit,
+transient CH outage — its `*Map` was empty for the entire chunk, every
+card's `valid*` field collapsed to null, and the upsert wrote
+`*_price: null` for that grade. Pre-existing good cached values got
+overwritten on the way out.
+
+Cron logs confirmed the magnitude: per-product workers were routinely
+running 282–296s, right up against Vercel's 300s kill, so chunk aborts
+were frequent. Each abort wiped good data for ~100 cards in the chunk.
+
+Fix: new Postgres function `upsert_ch_price_cache_preserving_nulls`
+(migration `20260520220000`) does per-grade `COALESCE(EXCLUDED.*,
+ch_price_cache.*)`. Null new values preserve existing cached values;
+non-null new values overwrite. `fetched_at` always bumps so the TTL
+still skips this card on the next firing (preserving the
+"no re-fetch storm on transient outage" property the original blind
+upsert was reaching for). Single SQL statement, atomic — no TOCTOU
+race when concurrent staggered firings overlap on the same card_id.
+
+App code: one-line change in `runChunk` — `.from('ch_price_cache')
+.upsert(...)` → `.rpc('upsert_ch_price_cache_preserving_nulls', { rows })`.
+
+Backfill is automatic: next cron firings' successful chunks repopulate
+prices for previously-nulled cards via the COALESCE-on-overwrite path.
+
+Lesson: an upsert that includes a column in the payload, blanks it
+out for "no data this run" reasons, and relies on `ON CONFLICT
+DO UPDATE` semantics will silently overwrite earlier good values.
+When the per-write source-of-truth might be incomplete (partial-success
+or all-failed fan-out), prefer COALESCE-on-update over blind replace
+— or use multiple narrower upserts that only touch columns the run
+actually has data for.
+
 ## Related docs
 
 - [cardhedger-matching.md](./cardhedger-matching.md) — how `player_products`

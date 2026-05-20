@@ -2,7 +2,7 @@
 
 Consolidated list of known work, organized by priority. Items pulled from the Social Currency PRD, CLAUDE.md known gaps, and open questions surfaced during development.
 
-**Last updated:** 2026-05-15
+**Last updated:** 2026-05-20
 
 ---
 
@@ -295,17 +295,13 @@ Apple OAuth deferred — requires Apple Developer account ($99/yr).
 
 ---
 
-### Per-player graded comp drilldown
-**Effort:** ~1 day
+### Per-player graded comp drilldown  ✅ SUPERSEDED 2026-05-20 — shipped in a different shape
 
-**Why:** Pricing refresh now uses `batchPriceEstimate` with `grade: 'Raw'` — one HTTP call per 500 variants, no rate limits, fast. Cost of the switch: EV Mid is now based on raw sale prices only. PSA 9 / PSA 10 comps are no longer included in the aggregate. Disclosed to the user via a banner on the break page.
+The original ask: click a player row → side panel fetches PSA 9 / PSA 10 prices on demand via `getAllPrices` (since the aggregate refresh was Raw-only).
 
-Graded pricing still matters for specific decisions (is this slot worth it if I grade the hit?). Don't bring it back to the aggregate refresh — that would reintroduce the per-variant fan-out. Instead: click a player row → side panel fetches graded comps on demand via `getAllPrices` for that player's top variants (base + autos + key parallels).
+What actually shipped 2026-05-20 ([CHANGELOG entry — player drawer per-grade prices](../CHANGELOG.md)): the existing PlayerDetailDrawer's per-grade columns swapped from N parallel `getAllPrices(cardId)` calls to one batched `card-fmv-batch` covering every (card_id × [Raw, PSA 8, PSA 9, PSA 10]). The drilldown surface is the drawer itself, not a separate side panel. Estimated cells render in italic + 65% opacity with a one-line legend so users can tell direct-sale data from model-fallback estimates.
 
-**Files:**
-- `components/breakiq/PlayerTable.tsx` — row click handler + side panel
-- `app/api/pricing/graded-comps/route.ts` (new) — takes `{ playerProductId }`, fetches graded prices for the player's top N variants
-- Copy change on the break page banner once drilldown ships
+The standalone drilldown sidebar is no longer needed — the data lives where users were already clicking.
 
 ---
 

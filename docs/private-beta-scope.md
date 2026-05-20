@@ -45,9 +45,10 @@ As of 2026-05-20, the products to flip from active → inactive are everything c
 ## How to add / remove a product from the beta roster
 
 **Hiding a product (active → draft):**
-1. `UPDATE products SET is_active = false WHERE slug = '<slug>';` via admin or MCP.
-2. Consumer routes immediately stop listing it. Cron skips it on next firing. Discord parser drops it from roster autocomplete on next interaction.
-3. Catalog cache (`ch_set_cache`) + price cache (`ch_price_cache`) rows stay — re-activating later doesn't require a fresh fetch unless data has aged past TTL.
+1. **Via admin UI (recommended):** open the product's edit page → flip the "Active" toggle off → click Publish or Save Draft. The toggle now wins on edit (was broken pre-2026-05-20 — Publish silently re-activated; see CHANGELOG entry for the fix).
+2. **Via SQL/MCP (bulk):** `UPDATE products SET is_active = false WHERE slug IN (...);`
+3. Consumer routes immediately stop listing it. Cron skips it on next firing. Discord parser drops it from roster autocomplete on next interaction.
+4. Catalog cache (`ch_set_cache`) + price cache (`ch_price_cache`) rows stay — re-activating later doesn't require a fresh fetch unless data has aged past TTL.
 
 **Adding a product (draft → active):**
 1. `UPDATE products SET is_active = true WHERE slug = '<slug>';`
@@ -64,6 +65,7 @@ As of 2026-05-20, the products to flip from active → inactive are everything c
 - **Discord SME flows.** `/insight` and `/break-price` parser roster queries already filter to active products (see `lib/insights-parser.ts`). No code change needed on this front.
 - **`/break/[slug]` page coverage.** Hidden products will 404 (consumer route is gated on `is_active`). If we link to a now-hidden product slug anywhere (emails, marketing, old shares), the user lands on a not-found. Worth a quick audit of `lib/email.ts` and any seeded outbound content before flipping.
 - **Pre-release teasers.** Products in `lifecycle_status = 'pre_release'` AND `is_active = true` render the hype layout (countdown + chase cards). If we want to tease an upcoming Bowman release publicly during beta, that's the lever.
+- **Free-tier breathing room.** Bumped 3 → 5 lifetime analyses on 2026-05-20 specifically for private beta — gives new users enough room to feel the product before hitting the paywall. Constant lives at `FREE_TIER_ANALYSIS_LIMIT` in `lib/usage.ts`; bumping it again later auto-updates the `/subscribe` copy.
 
 ---
 

@@ -2,19 +2,26 @@
 
 Refined list for a focused conversation with the CH team. Organized by priority and grouped by theme. Each section includes the business impact so we can triage together.
 
-*Last updated: 2026-05-10*
+*Last updated: 2026-05-20*
 
 **Status legend:**
 - 🟢 **Open** — needs CH input or hasn't been raised yet. These are what to send.
 - ✅ **Answered** — closed-out, kept here as historical context. Don't re-send.
 
-**Quick summary of what's still open as of 2026-05-11:**
+**Quick summary of what's still open as of 2026-05-20:**
 - **P1 — blocking real products today:** Q14 (Topps Baseball Series 1 vs Series 2 vs Update — no catalog split), Q15 (catalog coverage SLA + Draft Sapphire missing)
-- **P1.5 — sales feeds:** Q12 (player-scoped sales feed), Q13 (per-card cross-grade history → enables Grade Ratio Value)
+- **P1.5 — sales feeds:** Q12 (player-scoped sales feed), Q13 (per-card cross-grade history → enables Grade Ratio Value) — **River 2026-05-20 confirmed FMV's `cross_provider_indexed` method does cross-grader inference; `card_interpolation_indexed` is the documented same-card cross-grade path but didn't fire in our 500-card test. Pending River clarification on whether reverse-derivation works (PSA 9 → Raw when Raw is empty).**
 - **P2 — structural:** Q4 (parallel-level card_id coverage), Q5 (multi-player autographs — partial), Q6 (canonical variant naming)
-- **P3 — partnership:** Q8 (webhook), Q9 (test fixture), Q10 (dev channel). Q7 (batch card-search) mostly mooted by Q3.
+- **P3 — partnership:** Q8 (webhook — **answered by `/v1/cards/subscribe-price-updates` shipped sometime before 2026-05-20**), Q9 (test fixture), Q10 (dev channel). Q7 (batch card-search) mostly mooted by Q3.
 
-Q1–Q3 + Q11 are fully closed.
+**Q1–Q3, Q11, plus the three architectural overnight-refresh questions** (push, since-timestamp, daily-dump) **answered by River shipping `/v1/cards/card-fmv-batch` + `/v1/cards/price-updates` + `/v1/cards/subscribe-price-updates` + `/v1/download/daily-price-export/{date}` — see the 2026-05-20 entries in CHANGELOG.md (drawer FMV swap, catalog dedup, cache-write fix).**
+
+**Open thread with River post-2026-05-20:**
+- Why does FMV's `batch-price-estimate` consistently price PSA 9 / PSA 10 ~20% LOWER than `batch-price-estimate`? Same input cards, both fallback methods, 78% directional. Awaiting his read.
+- Does FMV support reverse-derivation — Raw price synthesized from a confident PSA 9 or PSA 10 when Raw is empty? Surfaced in the same email thread.
+- Latency: `card-fmv-batch` runs ~50% slower per chunk than `batch-price-estimate` (10.4s vs 7.1s avg). Expected or warm-up?
+
+**Side note from River (2026-05-20):** "Use `card_description` to identify cards uniquely. Some inserts are only identified in the title (e.g. Red Rookie Redemption)." — Acted on: 2026-05-20 catalog dedup commit persists `card_description` in `ch_set_cache` + uses it in the Claude matcher to disambiguate (number, variant) collisions.
 
 ---
 
