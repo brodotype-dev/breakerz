@@ -85,13 +85,25 @@ function toTopResult(card: CatalogCard, setName: string) {
   };
 }
 
+// Pick a single hit out of a byNumberVariant bucket — but only when there's
+// exactly one candidate. Multiple hits mean (number, variant) is ambiguous
+// (e.g. base RC #9 Base vs. Red Rookie Redemption #9 Base): we deliberately
+// fall through so the Claude tier can disambiguate using `description`.
+// Returning the first hit here was the pre-2026-05-20 behavior that caused
+// the Murakami mis-bind River flagged.
+function pickUnique(bucket: CatalogCard[] | undefined): CatalogCard | null {
+  if (!bucket || bucket.length === 0) return null;
+  if (bucket.length > 1) return null;
+  return bucket[0];
+}
+
 function tierExactVariant(
   index: CatalogIndex,
   number: string,
   cleaned: string,
 ): LocalMatch | null {
   if (!cleaned) return null;
-  const hit = index.byNumberVariant.get(`${number}::${cleaned.toLowerCase()}`);
+  const hit = pickUnique(index.byNumberVariant.get(`${number}::${cleaned.toLowerCase()}`));
   if (!hit) return null;
   return {
     cardId: hit.card_id,
@@ -110,7 +122,7 @@ function tierSynonym(
   if (!cleaned) return null;
   const synonyms = findSynonyms(descriptor, cleaned);
   for (const candidate of synonyms) {
-    const hit = index.byNumberVariant.get(`${number}::${candidate.toLowerCase()}`);
+    const hit = pickUnique(index.byNumberVariant.get(`${number}::${candidate.toLowerCase()}`));
     if (hit) {
       return {
         cardId: hit.card_id,

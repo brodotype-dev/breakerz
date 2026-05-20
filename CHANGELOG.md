@@ -5,6 +5,28 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-20 — CH catalog: persist `card_description`, dedup matching on (number, variant) collisions
+
+River (CardHedger co-founder, 2026-05-20 email) flagged that some CH cards share the same (set, number, variant) tuple but are genuinely distinct — e.g. Munetaka Murakami `2026 Bowman Baseball #9 "Base"` is both the regular RC AND the Red Rookie Redemption RC, identical in our catalog cache except for `card_description` ("Munetaka Murakami 2026 Bowman Baseball" vs. "Munetaka Murakami 2026 Bowman Red Rookie Redemption Baseball"). Two pre-existing bugs were silently dropping the second card in every collision pair:
+
+1. **Catalog write dropped the field.** [lib/cardhedger.ts](lib/cardhedger.ts) `normalizeCard` projected `player_name / set_name / number / variant / category / rookie / year / prices` from CH's `card-search` response but ignored the `description` field that ships alongside. The `raw` jsonb in `ch_set_cache` had the normalized shape — no description anywhere. `getCardsBySet` is what `refreshSetCatalog` populates with, so every cached set across every product was missing it.
+2. **Match index discarded collisions.** [lib/cardhedger-catalog.ts](lib/cardhedger-catalog.ts) `loadCatalogIndex` built `byNumberVariant: Map<string, CatalogCard>` keyed on `"number::variant"` and explicitly kept only the first hit (`if (!byNumberVariant.has(variantKey))`). When two real cards collided on that key, the second was silently overwritten and never bound during checklist import. `tierExactVariant` + `tierSynonym` in [lib/card-knowledge/match.ts](lib/card-knowledge/match.ts) would short-circuit to whichever card won the race, often the wrong one.
+
+**Mechanics.**
+- Migration [supabase/migrations/20260520210000_ch_set_cache_card_description.sql](supabase/migrations/20260520210000_ch_set_cache_card_description.sql) adds nullable `card_description text` column to `ch_set_cache`. Already applied to prod via Supabase MCP. Backfill happens on the next per-product CH catalog refresh (3 AM UTC cron, or admin "Refresh CH Catalog" button) — no manual repop needed.
+- `CardHedgerSearchCard` + `RawCardHedgerCard` types extended with `description`. `normalizeCard` projects `raw.description ?? ''`. `getCardsBySet` therefore carries it through to the catalog refresh path.
+- `refreshSetCatalog` writes `card_description: c.description || null` on insert. `loadCatalogIndex` selects + projects it into `CatalogCard.description`.
+- `byNumberVariant` changed from `Map<string, CatalogCard>` to `Map<string, CatalogCard[]>`. All collision candidates retained, none dropped.
+- New `pickUnique(bucket)` helper in [lib/card-knowledge/match.ts](lib/card-knowledge/match.ts) returns the single hit when there's exactly one and `null` otherwise. `tierExactVariant` + `tierSynonym` use it — collisions deliberately fall through past the deterministic tiers so the Claude tier can disambiguate with `description`.
+- Claude candidate shape in [claudeCardMatchFromCandidates](lib/cardhedger.ts) gains optional `description?: string`. Rendered into the prompt's candidate list when populated. Prompt instruction extended to explicitly call out description as the tie-breaker when (set, number, variant) match across rows.
+- [app/api/admin/match-cardhedger/route.ts](app/api/admin/match-cardhedger/route.ts) Claude-tier candidate construction passes `description` through.
+
+**Backfill posture.** Description is nullable on the column and on `CatalogCard.description` (empty string when missing). Existing cached catalogs continue to work as before — they just can't disambiguate collisions until their next refresh. Match tiers gracefully ignore `description` when absent. The 3 AM UTC cron will repopulate over the next few days; admin can force a per-product refresh via the existing "Refresh CH Catalog" button if a specific product needs immediate accuracy (Murakami fix → run on `2026 Bowman Baseball`).
+
+**Out of scope.** Re-matching variants that were bound to the wrong card_id during previous imports (the Murakami case + however many others share this shape). The fix prevents NEW mis-binds; cleaning up historical ones is a separate operation that needs admin UI to surface "variants whose binding collides with another in the same set" and let an operator rebind them. Tracked as a follow-up.
+
+---
+
 ## 2026-05-20 — Player drawer per-grade prices: swap CardHedger `all-prices-by-card` → `card-fmv-batch`
 
 Fixes the production drawer bug flagged as Use Case 9 in [docs/cardhedger-api-usage.md](docs/cardhedger-api-usage.md): every consumer player drawer in production today renders `—` in PSA 9 and PSA 10 cells for the vast majority of variants, because CardHedger's `/v1/cards/all-prices-by-card` panel only includes grade entries where it has recent direct sales — and graded sales are thin on most cards.

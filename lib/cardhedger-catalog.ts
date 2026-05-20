@@ -27,6 +27,11 @@ export interface CatalogCard {
   year: string;
   category: string;
   rookie: boolean;
+  // Empty string when CH didn't send a description (or when the row
+  // pre-dates the 2026-05-20 catalog refresh that started persisting it).
+  // Used by the matcher to disambiguate (number, variant) collisions —
+  // e.g. base RC #9 Base vs. Red Rookie Redemption #9 Base.
+  description: string;
 }
 
 export interface CatalogIndex {
@@ -34,7 +39,12 @@ export interface CatalogIndex {
   cards: CatalogCard[];
   // Fast lookups — precomputed once per matching run.
   byNumber: Map<string, CatalogCard[]>;                     // "BCP-153" → [Base, Refractor, Gold, ...]
-  byNumberVariant: Map<string, CatalogCard>;                // "BCP-153::base" → card row
+  // "BCP-153::base" → [card, card, ...]. Array (not single card) because CH
+  // occasionally has multiple cards sharing (number, variant) — e.g. base
+  // RC #9 Base + Red Rookie Redemption #9 Base. Matchers should only
+  // short-circuit on length === 1; collisions fall through to Claude with
+  // both candidates so `description` can disambiguate.
+  byNumberVariant: Map<string, CatalogCard[]>;
 }
 
 export interface RefreshResult {
@@ -165,6 +175,7 @@ export async function refreshSetCatalog(
         year: c.year ?? null,
         category: c.category ?? null,
         rookie: c.rookie ?? null,
+        card_description: c.description || null,
         raw: c as unknown as Record<string, unknown>,
       }));
       const { error } = await supabaseAdmin.from('ch_set_cache').insert(slice);
@@ -224,12 +235,13 @@ export async function loadCatalogIndex(setName: string): Promise<CatalogIndex> {
     year: string | null;
     category: string | null;
     rookie: boolean | null;
+    card_description: string | null;
   }> = [];
 
   for (let offset = 0; ; offset += PAGE_SIZE) {
     const { data, error } = await supabaseAdmin
       .from('ch_set_cache')
-      .select('card_id, number, player_name, variant, year, category, rookie')
+      .select('card_id, number, player_name, variant, year, category, rookie, card_description')
       .eq('ch_set_name', setName)
       .range(offset, offset + PAGE_SIZE - 1);
 
@@ -249,10 +261,11 @@ export async function loadCatalogIndex(setName: string): Promise<CatalogIndex> {
     year: r.year ?? '',
     category: r.category ?? '',
     rookie: !!r.rookie,
+    description: r.card_description ?? '',
   }));
 
   const byNumber = new Map<string, CatalogCard[]>();
-  const byNumberVariant = new Map<string, CatalogCard>();
+  const byNumberVariant = new Map<string, CatalogCard[]>();
 
   for (const c of cards) {
     if (!c.number) continue;
@@ -260,10 +273,18 @@ export async function loadCatalogIndex(setName: string): Promise<CatalogIndex> {
     if (bucket) bucket.push(c);
     else byNumber.set(c.number, [c]);
 
+    // Keep ALL hits at this key. Multiple rows sharing (number, variant)
+    // happen when CH has distinct cards that only differ in description
+    // (e.g. base RC vs. Red Rookie Redemption — same set/number/variant
+    // but different inserts). The pre-2026-05-20 implementation kept
+    // only the first hit and silently dropped the rest, which led to
+    // mis-matches on import. Matchers downstream short-circuit only on
+    // length === 1; collisions fall through to Claude with both
+    // candidates so description disambiguates.
     const variantKey = `${c.number}::${c.variant.toLowerCase()}`;
-    // If two rows share (number, variant) — rare, but CH sometimes has duplicate parallels —
-    // keep the first (likely Base/most-canonical). No ranking needed; tie-breakers come later.
-    if (!byNumberVariant.has(variantKey)) byNumberVariant.set(variantKey, c);
+    const variantBucket = byNumberVariant.get(variantKey);
+    if (variantBucket) variantBucket.push(c);
+    else byNumberVariant.set(variantKey, [c]);
   }
 
   return { setName, cards, byNumber, byNumberVariant };

@@ -124,6 +124,11 @@ interface CardHedgerSearchCard {
   category: string;
   rookie: boolean;
   year: string;
+  // Full CH card description — uniquely identifies inserts that share
+  // (set, number, variant) with a base card. River flagged this on
+  // 2026-05-20 as the canonical card-identity field. Empty string when
+  // CH omits it on a given response shape.
+  description: string;
   prices: Array<{ grade: string; price: string }>; // prices come back as strings
 }
 
@@ -165,6 +170,7 @@ function normalizeCard(raw: RawCardHedgerCard): CardHedgerSearchCard {
     category: raw.category ?? '',
     rookie: raw.rookie ?? false,
     year: yearFromSet(raw.set),
+    description: raw.description ?? '',
     prices: raw.prices ?? [],
   };
 }
@@ -648,6 +654,10 @@ export async function claudeCardMatchFromCandidates(
     variant: string;
     number: string;
     rookie: boolean;
+    // Optional — populated since 2026-05-20 so Claude can disambiguate
+    // collision pairs that share (set, number, variant) (e.g. base RC
+    // vs. Red Rookie Redemption RC).
+    description?: string;
   }>,
   context?: string,
 ): Promise<{ card_id: string; confidence: number } | null> {
@@ -666,10 +676,17 @@ async function claudeCardMatch(
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
+  // Render `description` only when populated (older cached catalog rows
+  // pre-2026-05-20 won't have it). When present it uniquely identifies
+  // (number, variant) collisions — e.g. "Munetaka Murakami 2026 Bowman
+  // Baseball" (base RC) vs. "Munetaka Murakami 2026 Bowman Red Rookie
+  // Redemption Baseball" (different insert, same #9 Base in the variant
+  // column). Without it, two candidate rows look identical to Claude.
   const candidateList = cards
-    .map((c, i) =>
-      `${i + 1}. card_id="${c.card_id}" | player="${c.player_name}" | set="${c.set_name}" | year="${c.year}" | variant="${c.variant}" | number="${c.number}" | rookie=${c.rookie}`
-    )
+    .map((c, i) => {
+      const base = `${i + 1}. card_id="${c.card_id}" | player="${c.player_name}" | set="${c.set_name}" | year="${c.year}" | variant="${c.variant}" | number="${c.number}" | rookie=${c.rookie}`;
+      return c.description ? `${base} | description="${c.description}"` : base;
+    })
     .join('\n');
 
   // Manufacturer context is injected between the role line and the query —
@@ -684,6 +701,7 @@ ${candidateList}
 
 Which candidate (if any) is the correct match for this query?
 Consider: player name variations, set name abbreviations, rookie card year alignment, variant synonyms (Auto = Autograph, RC = Rookie Card, etc.).
+When two candidates share the same (set, number, variant), the description field is the tie-breaker — pick the one whose description best fits the query's set/insert context (e.g. "Red Rookie Redemption" in the description means a different insert than the base RC even when the variant column says "Base" on both).
 
 Respond with JSON only — no explanation:
 - If a match exists: {"card_id": "<id>", "confidence": <0.7 to 1.0>}

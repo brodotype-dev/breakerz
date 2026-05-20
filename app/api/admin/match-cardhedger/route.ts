@@ -212,6 +212,13 @@ export async function POST(req: NextRequest) {
                   variant: c.variant,
                   number: c.number,
                   rookie: c.rookie,
+                  // Description disambiguates (set, number, variant) collisions
+                  // — e.g. base RC #9 Base vs. Red Rookie Redemption #9 Base
+                  // — so Claude can pick the right one. Empty string when CH
+                  // didn't send a description for the row (older catalog
+                  // refreshes pre-2026-05-20 won't have it populated until
+                  // the next refresh).
+                  description: c.description,
                 })),
                 descriptor.claudeRules,
               );
