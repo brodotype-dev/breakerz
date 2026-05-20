@@ -34,6 +34,14 @@ export const PH_EVENTS = {
   // segmentation against the existing break_analysis_run + break_logged
   // events.
   observed_ask_prefilled: 'observed_ask_prefilled',
+
+  // Transactional-email observability. These fire from server routes when
+  // a Resend send call rejects — catches the silent-failure shape that
+  // bit the 2026-04 → 2026-05 invite cohort. distinctId is the recipient
+  // email for un-authenticated paths, or the user.id once we have one.
+  invite_email_failed: 'invite_email_failed',
+  waitlist_confirmation_email_failed: 'waitlist_confirmation_email_failed',
+  welcome_email_failed: 'welcome_email_failed',
 } as const;
 
 export type PHEvent = typeof PH_EVENTS[keyof typeof PH_EVENTS];

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { sendInviteEmail } from '@/lib/email';
 import { getCurrentUser, getUserRoles } from '@/lib/auth';
+import { captureServer } from '@/lib/posthog-server';
+import { PH_EVENTS } from '@/lib/posthog-events';
 import { randomBytes } from 'crypto';
 
 export async function POST(
@@ -47,6 +49,13 @@ export async function POST(
     return NextResponse.json({ error: 'Failed to update record.' }, { status: 500 });
   }
 
+  // Email send is best-effort. The DB row is the authoritative state (code is
+  // saved, admin can resend), so a send failure must NOT roll the row back.
+  // BUT — silent failures here are how 2026-04→2026-05 produced 6 "approved"
+  // users who never received their invite. Two safeguards:
+  //   1. PostHog `invite_email_failed` so analytics surfaces the issue.
+  //   2. Response shape carries `emailDelivered` so the admin UI can render
+  //      a visible error state alongside the approval.
   try {
     await sendInviteEmail({
       to: entry.email,
@@ -54,10 +63,23 @@ export async function POST(
       inviteCode,
     });
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     console.error('[waitlist/approve] email error:', err);
-    // Don't fail the request — code is saved, admin can resend manually
-    return NextResponse.json({ ok: true, emailError: true });
+    await captureServer({
+      distinctId: entry.email,
+      event: PH_EVENTS.invite_email_failed,
+      properties: {
+        waitlist_id: entry.id,
+        email_domain: entry.email.split('@')[1] ?? null,
+        error_message: message,
+      },
+    });
+    return NextResponse.json({
+      ok: true,
+      emailDelivered: false,
+      emailError: message,
+    });
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, emailDelivered: true });
 }
