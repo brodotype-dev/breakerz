@@ -225,9 +225,32 @@ export default function PlayerDetailDrawer({ playerProductId, onClose, topOffset
                     </thead>
                     <tbody>
                       {data.variants.map((v, i) => {
-                        const getPrice = (grade: string) => {
+                        // FMV powers per-grade prices (2026-05-20). `direct` and
+                        // `direct_indexed` are real recent-sale aggregates;
+                        // everything else (`segment_fallback_indexed`,
+                        // `anchor_multiplier(_indexed)`, `correlated`, etc.) is
+                        // a model estimate. Estimated cells render dimmed +
+                        // italic so users can tell the difference at a glance.
+                        const isEstimate = (method?: string) =>
+                          !!method && method !== 'direct' && method !== 'direct_indexed';
+                        const getCell = (grade: string) => {
                           const p = v.prices.find(p => p.grade === grade || (grade === 'Raw' && p.grade === 'Ungraded'));
-                          return p && p.price > 0 ? `$${p.price.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '—';
+                          if (!p || p.price <= 0) return { text: '—', estimate: false };
+                          return {
+                            text: `$${p.price.toLocaleString('en-US', { maximumFractionDigits: 0 })}`,
+                            estimate: isEstimate(p.method),
+                          };
+                        };
+                        const cellStyle = (estimate: boolean, color: string) => ({
+                          color,
+                          fontStyle: estimate ? 'italic' as const : 'normal' as const,
+                          opacity: estimate ? 0.65 : 1,
+                        });
+                        const cells = {
+                          raw: getCell('Raw'),
+                          psa8: getCell('PSA 8'),
+                          psa9: getCell('PSA 9'),
+                          psa10: getCell('PSA 10'),
                         };
                         return (
                           <tr
@@ -249,17 +272,17 @@ export default function PlayerDetailDrawer({ playerProductId, onClose, topOffset
                             <td className="px-2 sm:px-3 py-2 text-right font-mono" style={{ color: 'var(--text-tertiary)' }}>
                               {v.hobby_odds ? `1:${v.hobby_odds}` : '—'}
                             </td>
-                            <td className="px-2 sm:px-3 py-2 text-right font-mono text-xs" style={{ color: 'var(--text-tertiary)' }}>
-                              {getPrice('Raw')}
+                            <td className="px-2 sm:px-3 py-2 text-right font-mono text-xs" style={cellStyle(cells.raw.estimate, 'var(--text-tertiary)')}>
+                              {cells.raw.text}
                             </td>
-                            <td className="px-2 sm:px-3 py-2 text-right font-mono" style={{ color: 'var(--text-secondary)' }}>
-                              {getPrice('PSA 8')}
+                            <td className="px-2 sm:px-3 py-2 text-right font-mono" style={cellStyle(cells.psa8.estimate, 'var(--text-secondary)')}>
+                              {cells.psa8.text}
                             </td>
-                            <td className="px-2 sm:px-3 py-2 text-right font-mono font-semibold" style={{ color: 'var(--accent-blue)' }}>
-                              {getPrice('PSA 9')}
+                            <td className="px-2 sm:px-3 py-2 text-right font-mono font-semibold" style={cellStyle(cells.psa9.estimate, 'var(--accent-blue)')}>
+                              {cells.psa9.text}
                             </td>
-                            <td className="px-2 sm:px-3 py-2 text-right font-mono font-bold" style={{ color: '#22c55e' }}>
-                              {getPrice('PSA 10')}
+                            <td className="px-2 sm:px-3 py-2 text-right font-mono font-bold" style={cellStyle(cells.psa10.estimate, '#22c55e')}>
+                              {cells.psa10.text}
                             </td>
                           </tr>
                         );
@@ -267,6 +290,11 @@ export default function PlayerDetailDrawer({ playerProductId, onClose, topOffset
                     </tbody>
                   </table>
                 </div>
+                {data.variants.some(v => v.prices.some(p => p.method && p.method !== 'direct' && p.method !== 'direct_indexed')) && (
+                  <p className="text-[10px] mt-2 px-1" style={{ color: 'var(--text-tertiary)' }}>
+                    <span style={{ fontStyle: 'italic', opacity: 0.65 }}>Italic</span> = model estimate (CardHedger FMV — thin recent-sale data, derived from cross-grade or movement index)
+                  </p>
+                )}
               </div>
 
               {/* Recent comps */}

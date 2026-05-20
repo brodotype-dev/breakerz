@@ -355,7 +355,12 @@ export interface VariantWithPrices {
   hobby_odds: number | null;
   breaker_odds: number | null;
   match_tier: string | null;
-  prices: Array<{ grade: string; price: number }>;
+  // `method` + `confidence` are populated when prices come from CardHedger's
+  // `/v1/cards/card-fmv-batch` (drawer surface, 2026-05-20). `method !== 'direct'`
+  // means the price is a model estimate (segment fallback, anchor multiplier,
+  // cross-grade interpolation, or stale price with movement index applied)
+  // rather than a recent sale aggregate. UI uses this to dim estimated cells.
+  prices: Array<{ grade: string; price: number; method?: string; confidence?: number | null }>;
 }
 
 export interface PlayerCompsResponse {

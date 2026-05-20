@@ -5,6 +5,25 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-20 — Player drawer per-grade prices: swap CardHedger `all-prices-by-card` → `card-fmv-batch`
+
+Fixes the production drawer bug flagged as Use Case 9 in [docs/cardhedger-api-usage.md](docs/cardhedger-api-usage.md): every consumer player drawer in production today renders `—` in PSA 9 and PSA 10 cells for the vast majority of variants, because CardHedger's `/v1/cards/all-prices-by-card` panel only includes grade entries where it has recent direct sales — and graded sales are thin on most cards.
+
+**Why now.** A 2026-05-20 experiment (`scripts/experiment-card-fmv.mjs` + `scripts/experiment-card-fmv-at-scale.mjs`) confirmed CardHedger's new `/v1/cards/card-fmv-batch` endpoint (shipped by River after the 2026-05-15 product call) returns a defensible price for 100% of PSA 9 / PSA 10 requests across a 500-card random sample. The catch: 91% of those graded prices come back via fallback methods (`segment_fallback_indexed`, `anchor_multiplier_indexed`, etc.) — model estimates derived from cross-grade interpolation or movement-indexed raw prices, not direct sale aggregates. Honest swap requires telling users which is which.
+
+**Mechanics.**
+- New [getCardFmvBatch](lib/cardhedger.ts) wrapper next to `batchPriceEstimate`. Same `{ items: [{ card_id, grade }] }` shape, max 100 items per request, returns per-item `{ price, confidence, method, confidence_grade, freshness_days, fmv_sample_count }`. Method semantics: `direct` / `direct_indexed` are real recent-sale aggregates; everything else (`segment_fallback_indexed`, `anchor_multiplier(_indexed)`, `correlated`, `cross_provider(_indexed)`) is a model estimate. `no_data` + `null` price = the row is genuinely empty even for FMV's fallbacks.
+- [app/api/player-comps/route.ts](app/api/player-comps/route.ts) rewires per-grade fetch from N parallel `getAllPrices(cardId)` calls (one per unique card_id) to a single batched FMV call covering every (card_id × [Raw, PSA 8, PSA 9, PSA 10]) the drawer renders. Drawer caps at 15 unique cards × 4 grades = 60 items per call, well under the 100/req FMV cap. `null` / `<= 0` rows dropped at the API layer so `—` rendering still represents "we genuinely don't know" (now including "even FMV's correlated fallback ran out of signal").
+- [components/breakiq/PlayerDetailDrawer.tsx](components/breakiq/PlayerDetailDrawer.tsx) renders estimated cells (`method !== 'direct' && method !== 'direct_indexed'`) in italic + 65% opacity so users can tell a $42 model estimate from a $42 recent-sale aggregate at a glance. New one-line legend appears below the variants table only when at least one estimated cell is present: *"Italic = model estimate (CardHedger FMV — thin recent-sale data, derived from cross-grade or movement index)."* `VariantWithPrices.prices[]` extended with optional `method` + `confidence` (non-breaking; old consumers ignore them).
+- [Recent Sales (Graded) section](components/breakiq/PlayerDetailDrawer.tsx) UNCHANGED — still backed by `getComps` because "no recent graded sales found in the last 180 days" is the honest answer for that surface. FMV would fabricate sale rows that don't exist.
+
+**Out of scope (deliberately).**
+- `app/api/player-profile/route.ts` graded-comps calls (Use Case 9 elsewhere in the pipeline) — same shape, easy follow-on, but kept this swap surgical to the drawer surface only.
+- Pricing refresh (`lib/pricing-refresh.ts`) — at-scale experiment caught FMV pricing PSA 9 / PSA 10 systematically ~18% LOWER than `batch-price-estimate` (84% of cards, median 18%, directional not noise). Swapping cached EV blindly would shift consumer slot prices everywhere. Held until River explains the drift in the 2026-05-20 follow-up email.
+- Per-cell confidence chip in the drawer (e.g., Strong/Solid/Stale/Cold from `lib/engine.ts` `confidenceTier()`). Italic + opacity carries the binary "real vs. estimate" signal; finer-grained tiering deferred until the audit decomposition story lands.
+
+---
+
 ## 2026-05-17 — Refine-flow stabilization: buttons now clear on Apply
 
 PR [#114](https://github.com/brodotype-dev/breakerz/pull/114). Brody reported that clicking Apply on a *refined* proposal didn't clear the ✅/✏️/❌ buttons even though the apply itself succeeded (DB updated to status='applied'; second click correctly returned an "already applied" ephemeral). Made the post-refine UX feel broken.
@@ -121,7 +140,6 @@ UX-consistency follow-up to the message context menu shipped earlier. PR [#104](
 PR [#103](https://github.com/brodotype-dev/breakerz/pull/103). The `"Capture as /break-price"` MESSAGE context-menu command silently dropped from Discord's bulk PUT response on initial registration — registrar reported `Registered 2 command(s)` instead of 3 with no HTTP error. Two suspected causes, fixed both: (1) the slash character in the name (renamed to `"Capture break-price"` — MESSAGE command names display as-registered but `/` namespace-collides with slash commands); (2) `dm_permission: false` is deprecated since 2024 (replaced by `contexts` + `integration_types` — dropped, Discord defaults to guild-only install which matches our use).
 
 Also added a silent-drop detector to [scripts/register-discord-commands.mjs](scripts/register-discord-commands.mjs): when the response array is shorter than the request array, it lists the missing commands and exits non-zero. Prevents the next regression from looking like a success.
-
 ---
 
 ## 2026-05-14 — `/break-price` multi-screenshot via message context menu

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createClient } from '@/lib/supabase-server';
-import { getAllPrices, getComps } from '@/lib/cardhedger';
+import { getCardFmvBatch, getComps } from '@/lib/cardhedger';
 import type { VariantWithPrices } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -45,28 +45,44 @@ export async function GET(req: NextRequest) {
   // Deduplicate card IDs to avoid redundant CH calls
   const uniqueCardIds = [...new Set(
     variants.map(v => v.cardhedger_card_id).filter(Boolean) as string[]
-  )].slice(0, 15); // cap at 15 cards to avoid timeout
+  )].slice(0, 15); // cap at 15 cards: 15 × 4 grades = 60 items, under the 100/req FMV cap
 
-  // Fetch all prices for each unique card in parallel
-  const priceMap = new Map<string, Array<{ grade: string; price: number }>>();
-  await Promise.all(
-    uniqueCardIds.map(async cardId => {
-      try {
-        const result = await getAllPrices(cardId);
-        // Filter to Raw, PSA 8/9/10 grades
-        const gradeWhitelist = new Set(['8', '9', '10', 'PSA 8', 'PSA 9', 'PSA 10', 'Raw', 'Ungraded']);
-        const filtered = (result.prices ?? [])
-          .filter(p => gradeWhitelist.has(p.grade))
-          .map(p => ({
-            grade: p.grade === '8' ? 'PSA 8' : p.grade === '9' ? 'PSA 9' : p.grade === '10' ? 'PSA 10' : p.grade,
-            price: parseFloat(p.price) || 0,
-          }));
-        priceMap.set(cardId, filtered);
-      } catch {
-        priceMap.set(cardId, []);
-      }
-    })
+  // Single batched FMV call covering every (card_id × grade) the drawer renders.
+  // Replaces N parallel `getAllPrices` calls (one per unique card) that the
+  // 2026-05-15 audit flagged as Use Case 9: CH's all-prices-by-card panel
+  // often omits PSA 9 / PSA 10 entries for cards with thin graded sales, so
+  // the drawer rendered '—' even when a defensible model estimate was
+  // available. The 2026-05-20 at-scale experiment confirmed FMV returns a
+  // value (with explicit `method` + `confidence`) for 100% of PSA 9 / PSA 10
+  // requests; `method !== 'direct'` cells get dimmed in the UI to mark
+  // them as model estimates rather than recent-sale aggregates.
+  const FMV_GRADES = ['Raw', 'PSA 8', 'PSA 9', 'PSA 10'] as const;
+  const fmvItems = uniqueCardIds.flatMap(cardId =>
+    FMV_GRADES.map(grade => ({ card_id: cardId, grade })),
   );
+  const priceMap = new Map<string, Array<{ grade: string; price: number; method?: string; confidence?: number | null }>>();
+  if (fmvItems.length > 0) {
+    try {
+      const fmvResults = await getCardFmvBatch(fmvItems);
+      for (const row of fmvResults) {
+        // Drop no_data / null-price rows: render them as '—' just like the old
+        // missing-entry path. Keeps the "we genuinely don't know" honesty when
+        // even FMV's correlated fallback ran out of signal.
+        if (row.price === null || row.price <= 0) continue;
+        const existing = priceMap.get(row.card_id) ?? [];
+        existing.push({
+          grade: row.grade,
+          price: row.price,
+          method: row.method,
+          confidence: row.confidence,
+        });
+        priceMap.set(row.card_id, existing);
+      }
+    } catch {
+      // Leave priceMap empty on full failure; the drawer renders '—' everywhere
+      // and the "no match" / no-cardhedger-card-id branches still work.
+    }
+  }
 
   // Build variant rows
   const variantRows: VariantWithPrices[] = variants.map(v => ({

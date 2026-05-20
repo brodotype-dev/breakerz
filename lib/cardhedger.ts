@@ -412,6 +412,76 @@ export async function getPricesByDay(cardId: string, days = 90) {
 // CH's batch endpoint can take 5-20s per 100-item request under concurrent
 // load. Default `post` timeout (10s) was aborting legit-but-slow chunks and
 // zeroing out 100 variants at a time. Bumped to 30s per chunk here.
+// Per-item Fair Market Value from CardHedger's correlated pricing service.
+//
+// Versus `batchPriceEstimate`, FMV returns a `method` string that explains
+// how the value was derived (`direct` / `direct_indexed` / `correlated` /
+// `segment_fallback_indexed` / `anchor_multiplier(_indexed)` / `no_data`
+// / `cross_provider(_indexed)`), plus a `confidence` (0..1) and an optional
+// `confidence_grade` (A/B/C). The `_indexed` variants mean a movement index
+// was applied to a stale underlying price; methods other than `direct*` are
+// model estimates rather than recent-sale aggregates.
+//
+// Max 100 items per request. Items with no underlying data return a
+// well-formed row with `method: 'no_data'` and `price: null`.
+//
+// Use this anywhere we need to *display* a per-card per-grade price with
+// the option to mark it as an estimate. For cached EV refresh we still
+// favor `batchPriceEstimate` until we understand the ~18% directional
+// drift surfaced by the 2026-05-20 at-scale experiment (see CHANGELOG).
+export interface CardFmvResult {
+  card_id: string;
+  grade: string;
+  price: number | null;
+  price_low: number | null;
+  price_high: number | null;
+  confidence: number | null;
+  method: string;
+  confidence_grade?: string | null;
+  freshness_days?: number | null;
+  fmv_sample_count?: number | null;
+}
+
+export async function getCardFmvBatch(
+  items: Array<{ card_id: string; grade: string }>,
+  options?: { timeoutMs?: number },
+): Promise<CardFmvResult[]> {
+  if (items.length === 0) return [];
+  if (items.length > 100) {
+    throw new Error(`getCardFmvBatch: max 100 items per request (got ${items.length})`);
+  }
+  type RawRow = {
+    card_id: string;
+    grade?: string;
+    price?: number | null;
+    price_low?: number | null;
+    price_high?: number | null;
+    confidence?: number | null;
+    method?: string;
+    confidence_grade?: string | null;
+    freshness_days?: number | null;
+    fmv_sample_count?: number | null;
+    error?: string;
+  };
+  const result = await post<{ results: RawRow[] }>(
+    '/v1/cards/card-fmv-batch',
+    { items },
+    { timeoutMs: options?.timeoutMs ?? 30_000 },
+  );
+  return result.results.map(r => ({
+    card_id: r.card_id,
+    grade: r.grade ?? '',
+    price: r.price ?? null,
+    price_low: r.price_low ?? null,
+    price_high: r.price_high ?? null,
+    confidence: r.confidence ?? null,
+    method: r.method ?? (r.error ? 'error' : 'no_data'),
+    confidence_grade: r.confidence_grade ?? null,
+    freshness_days: r.freshness_days ?? null,
+    fmv_sample_count: r.fmv_sample_count ?? null,
+  }));
+}
+
 export async function batchPriceEstimate(
   items: Array<{ card_id: string; grade: string }>,
   options?: { timeoutMs?: number },
