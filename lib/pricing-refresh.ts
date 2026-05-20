@@ -327,7 +327,15 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     const { error: cacheWriteErr } = await supabaseAdmin
       .rpc('upsert_ch_price_cache_preserving_nulls', { rows: cachePersistRows });
     if (cacheWriteErr) {
-      console.warn(`[pricing-refresh] ch_price_cache upsert chunk ${idx} failed: ${cacheWriteErr.message}`);
+      // Log every field — `cacheWriteErr.message` alone gets truncated in
+      // Vercel runtime logs and we wasted 30 minutes 2026-05-20 trying to
+      // diagnose a PostgREST "function not found" cache-staleness error
+      // that wasn't visible from the truncated message. JSON.stringify
+      // pulls in code/details/hint that Vercel preserves in full.
+      console.warn(
+        `[pricing-refresh] ch_price_cache upsert chunk ${idx} failed:`,
+        JSON.stringify(cacheWriteErr),
+      );
     } else {
       chunksWithCacheWrite++;
     }
