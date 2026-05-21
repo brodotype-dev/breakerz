@@ -11,6 +11,9 @@ import BreakIQBetsDebrief from './BreakIQBetsDebrief';
 import BreakerComparisonPanel from './BreakerComparisonPanel';
 import PricingBreakdownPanel from './PricingBreakdownPanel';
 import ChaseCardsManager from './ChaseCardsManager';
+import ImportFromUrl from './ImportFromUrl';
+import WaxstatPanel from './WaxstatPanel';
+import { getLatestWaxstatSnapshots } from '@/lib/waxstat-importer';
 
 type PageProps = { params: Promise<{ id: string }> };
 
@@ -283,6 +286,13 @@ export default async function ProductDashboardPage({ params }: PageProps) {
   const cachedCount = cachedCountRaw ?? 0;
   const lastFetched = lastFetchedRow?.fetched_at;
 
+  const waxstatSnapshots = await getLatestWaxstatSnapshots(id);
+  const productAny = product as unknown as {
+    waxstat_hobby_url: string | null;
+    waxstat_bd_url: string | null;
+    waxstat_jumbo_url: string | null;
+  };
+
   const autoEligible = autoEligibleCount ?? 0;
   const ppTotalSafe = ppTotal ?? 0;
   const playerStatus = autoEligible > 0 ? 'ok' : 'empty';
@@ -499,6 +509,13 @@ export default async function ProductDashboardPage({ params }: PageProps) {
           </p>
         </Section>
 
+        {/* Upper Deck URL importer — Hockey workflow.
+            Hidden from non-UD products but cheap to mount everywhere; the
+            input is empty by default so it's invisible unless used. */}
+        <Section title="Import from URL (Upper Deck)" accent="linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)">
+          <ImportFromUrl productId={id} />
+        </Section>
+
         {/* Anchor Strategy Configurator (Plan A, 2026-05-11) */}
         <Section title="Pricing Anchor Strategy" accent="linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)">
           <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
@@ -596,6 +613,19 @@ export default async function ProductDashboardPage({ params }: PageProps) {
             </div>
           </Section>
         )}
+
+        {/* WaxStat box pricing — overrides *_am_case_cost weekly */}
+        <Section title="WaxStat Box Pricing" accent="linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)">
+          <WaxstatPanel
+            productId={id}
+            initialUrls={{
+              hobby: productAny.waxstat_hobby_url,
+              bd: productAny.waxstat_bd_url,
+              jumbo: productAny.waxstat_jumbo_url,
+            }}
+            initialSnapshots={waxstatSnapshots}
+          />
+        </Section>
 
         {/* Pricing Audit */}
         <PricingBreakdownPanel

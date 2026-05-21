@@ -5,6 +5,57 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-21 — WaxStat box-pricing scraper + weekly importer
+
+Third commit of today's Firecrawl-foundation arc. Pulls sealed-box pricing from [waxstat.com](https://waxstat.com) — an aggregator that consolidates wax prices across retailers (eBay, Steel City Collectibles, Blowout, etc.) — into our `*_am_case_cost` columns weekly. Closes the gap where breaker-supplied MSRP is stale and admin had to type the AM number in by hand.
+
+**Why this scraper.** WaxStat is the canonical place to see "what is a sealed hobby box of 2025-26 Bowman Basketball actually selling for right now?" — and that number is what `hobby_am_case_cost` represents in our schema (one sealed box = one case for our case-mix math). The break page already prefers AM cost over MSRP when both are set. Until now it was a manual admin task; this commit makes it weekly + automatic.
+
+**Mechanics.**
+- **Schema** is already applied to production via Supabase MCP (from a prior session); [supabase/migrations/20260521120000_waxstat_pricing.sql](./supabase/migrations/20260521120000_waxstat_pricing.sql) is the traceability file with `IF NOT EXISTS` guards. Adds three `waxstat_*_url` columns on `products` + new `waxstat_pricing_snapshots` table (per-fetch time series: `avg_price`, `low_30d`, `high_30d`, `trend_7d`, `error_message`, `fetched_at`).
+- **Scraper** [lib/waxstat.ts](./lib/waxstat.ts) `fetchBoxPanel(url)` — Firecrawl JSON extract with Zod schema, throws on empty or schema mismatch. No plain-fetch fallback (WaxStat is Cloudflare-protected).
+- **Importer** [lib/waxstat-importer.ts](./lib/waxstat-importer.ts) `refreshProductWaxstat(productId)` — reads the three URL columns, fetches in parallel, writes one snapshot row per format (success OR error — so stale ≠ broken in the admin panel), and overwrites the matching `*_am_case_cost` on success. Per-format errors are isolated; a 404 on hobby doesn't tank BD + jumbo.
+- **Cron** [app/api/cron/refresh-waxstat-pricing/route.ts](./app/api/cron/refresh-waxstat-pricing/route.ts) — Sundays 04:00 UTC. Iterates active products with at least one `waxstat_*_url` set, serial per product. `recordCronStart` marker so the admin Cron Status panel sees the run even if Vercel kills the function at `maxDuration=300s`.
+- **Admin panel** [app/admin/products/[id]/WaxstatPanel.tsx](./app/admin/products/%5Bid%5D/WaxstatPanel.tsx) — three URL inputs (hobby / BD / jumbo), "Save URLs" + "Refresh Now" buttons, latest-snapshot summary per format with the error message rendered in red when the most recent fetch failed.
+- **Manual refresh + save** [app/api/admin/products/[id]/waxstat-refresh/route.ts](./app/api/admin/products/%5Bid%5D/waxstat-refresh/route.ts) — POST runs `refreshProductWaxstat`; PUT saves the three URL fields. Admin/contributor only.
+
+**Operational notes.**
+- Re-uses the Firecrawl client singleton pattern from `lib/upper-deck-parser.ts` (lazy, per warm container, throws if `FIRECRAWL_API_KEY` is unset).
+- Snapshot table is service-role-only — no consumer access. Same pattern as `ch_set_refresh_log` + `cron_run_log`.
+- The cron skips products with all three URL columns null, so onboarding a new product is just "paste a URL".
+
+**Out of scope.**
+- Backfilling historical snapshots. The first weekly run starts the time series.
+- Per-retailer breakdown — we take WaxStat's already-aggregated `avg_price`.
+- Discord notifications on material case-price moves.
+
+---
+
+## 2026-05-21 — Upper Deck URL parser: Firecrawl JSON extract + Claude Haiku odds normalization
+
+Adds Hockey to the private-beta sport roster and a new admin path for importing Upper Deck checklists by URL. Builds on the Firecrawl foundation that landed earlier today.
+
+**Why the URL path.** Upper Deck doesn't publish per-product XLSX checklists the way Topps and Panini do — instead each release has a single HTML page at `upperdeck.com/checklist/…` with a per-card table that crams 8 pack formats into one `Stated Odds` column (`"2:1 h, 2:1 e, 2:1 r, 2:1 b, 2:1 mega 5:1 hanger, 2:1 tin, 1:1 dollar"`). Cloudflare-protected, so direct fetch from a Vercel function is unreliable. Firecrawl proxies it cleanly + extracts the table to structured JSON via a Zod-shaped schema.
+
+**Mechanics.**
+- **New parser** [lib/upper-deck-parser.ts](./lib/upper-deck-parser.ts) exports `parseUpperDeckUrl(url)` → `{ checklist: ParsedChecklist, odds: ParsedOdds }`. Firecrawl client is a lazy singleton (one instantiation per Lambda warm container). Module-level `PAGE_CACHE` is an in-memory Map keyed by URL with a 5-minute TTL — back-to-back checklist + odds imports against the same URL only spend one Firecrawl call.
+- **Odds normalization** is done with Claude Haiku (`claude-haiku-4-5-20251001`) in one batched call per import — `normalizeOdds` dedupes the raw odds strings (typical checklist has ~10–20 unique patterns) and sends them all in one prompt that returns `{ results: [{ raw, odds: OddsByFormat }] }`. ~$0.005 per import.
+- **Type extensions** in [lib/types.ts](./lib/types.ts) — new `UpperDeckPackFormat = 'hobby' | 'epack' | 'retail' | 'blaster' | 'mega' | 'hanger' | 'tin' | 'dollar'` and `OddsByFormat = Partial<Record<UpperDeckPackFormat, string>>`. `ParsedOdds.rows[]` in [lib/checklist-parser.ts](./lib/checklist-parser.ts) extended with optional `oddsByFormat` field. Existing apply-odds writer reads `hobbyOdds` and continues to work unchanged.
+- **Two new admin routes** — `POST /api/admin/parse-checklist-url` and `POST /api/admin/parse-odds-url`. Both delegate to `parseUpperDeckUrl`, so they share the per-URL Firecrawl cache. `maxDuration=120` on both.
+- **Inline UI** — new [app/admin/products/[id]/ImportFromUrl.tsx](./app/admin/products/%5Bid%5D/ImportFromUrl.tsx) drops two text inputs + Import buttons into a new "Import from URL (Upper Deck)" Section between Quick Actions and Pricing Anchor Strategy on the product dashboard. Checklist flow forwards the parsed sections to `/api/admin/import-checklist` with default `{ hobbySets: 1, bdSets: 0 }` per section (UD breakers overwhelmingly sell hobby slots; admin can override per-section via the legacy `/admin/import-checklist` wizard if needed). Odds flow forwards to `/api/admin/apply-odds` — same token-overlap matcher Topps and Panini use.
+- **Hockey sport.** Row already existed in `sports` (slug `hockey`) — no migration needed.
+
+**Engine behavior.** Unchanged. Engine reads `hobby_odds` for slot math today; the richer `oddsByFormat` payload is stored but not consumed yet. When we add per-format pool support (e.g. retail / blaster / mega cases), the data is already in the payload.
+
+**Private-beta scope.** [docs/private-beta-scope.md](./docs/private-beta-scope.md) updated — Football row now points at `2025 Topps Chrome Football` (needs to be created in admin before flipping `is_active = true`); Hockey row added pending sub-line decision.
+
+**Out of scope (queued for later):**
+- Auto-discovery of UD URLs by fuzzy-matching product names. Admin pastes URLs directly.
+- Extending `BreakFormat` to include `epack` / `retail` / `blaster` etc. — UD breakers overwhelmingly sell hobby slots; revisit if data ever justifies.
+- Consumer surface for the 8-format odds breakdown. Stored in payload, not rendered to users yet.
+
+---
+
 ## 2026-05-21 — Checklist parser: handle Topps Chrome Football XLSX quirks
 
 Brody hit a clearly-broken import on the new 2025 Topps Chrome Football product — the admin review screen showed sections named `"100 cards"`, `"30 cards"`, `"5 cards"` etc. (raw count-metadata rows mis-promoted to section names) and `"Team Camo Variation"` rendered as a standalone section when it should be a parallel of the Variations section. Blocked the Football product setup for private-beta scope.
