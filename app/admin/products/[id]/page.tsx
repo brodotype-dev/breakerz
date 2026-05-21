@@ -11,6 +11,7 @@ import BreakIQBetsDebrief from './BreakIQBetsDebrief';
 import BreakerComparisonPanel from './BreakerComparisonPanel';
 import PricingBreakdownPanel from './PricingBreakdownPanel';
 import ChaseCardsManager from './ChaseCardsManager';
+import ImportFromUrl from './ImportFromUrl';
 
 type PageProps = { params: Promise<{ id: string }> };
 
@@ -497,6 +498,13 @@ export default async function ProductDashboardPage({ params }: PageProps) {
             </Link>
             . See <code>docs/parser-workflow-legacy.md</code> for steps.
           </p>
+        </Section>
+
+        {/* Upper Deck URL importer — Hockey workflow.
+            Hidden from non-UD products but cheap to mount everywhere; the
+            input is empty by default so it's invisible unless used. */}
+        <Section title="Import from URL (Upper Deck)" accent="linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)">
+          <ImportFromUrl productId={id} />
         </Section>
 
         {/* Anchor Strategy Configurator (Plan A, 2026-05-11) */}

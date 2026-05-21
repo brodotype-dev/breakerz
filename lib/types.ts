@@ -10,6 +10,21 @@ export type ProductLifecycle = 'pre_release' | 'live' | 'dormant';
 
 export type BreakFormat = 'hobby' | 'bd' | 'jumbo';
 
+// Upper Deck encodes 8 pack formats in its checklist `Stated Odds` column
+// (e.g. "2:1 h, 2:1 e, 2:1 r, 2:1 b, 2:1 mega 5:1 hanger, 2:1 tin, 1:1 dollar").
+// We store all of them in the parsed odds payload for future flexibility;
+// the engine only reads `hobby` for slot math today. See lib/upper-deck-parser.ts.
+export type UpperDeckPackFormat =
+  | 'hobby'
+  | 'epack'
+  | 'retail'
+  | 'blaster'
+  | 'mega'
+  | 'hanger'
+  | 'tin'
+  | 'dollar';
+export type OddsByFormat = Partial<Record<UpperDeckPackFormat, string>>;
+
 // Sparse vector describing the case mix per slot for an asking_price /
 // odds observation. Replaces the old single-`format` field. Keys present
 // are the formats involved. Values are case counts per slot when known,

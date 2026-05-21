@@ -21,23 +21,24 @@
 |---|---|---|---|
 | Baseball | 2026 Bowman Baseball | `2026-bowman-baseball` | `bowman_flagship` |
 | Basketball | 2025-26 Bowman Basketball | `2025-26-bowman-basketball` | `bowman_flagship` |
-| Football | **TBD — see open question below** | | |
+| Football | 2025 Topps Chrome Football | `2025-topps-chrome-football` | `topps_chrome` |
+| Hockey | _TBD — most-recent Upper Deck per sub-line._ Driven by the new URL importer (see "Workflows" below). | | `upper_deck_series` |
+
+**Football product** = `2025 Topps Chrome Football`, decided 2026-05-21 (Brody). This product does NOT exist in the DB yet — needs to be created via the admin form before flipping `is_active = true`.
+
+**Hockey** added to the in-scope list 2026-05-21 alongside the Upper Deck URL importer. UD's checklist pages encode 8 pack formats in a single `Stated Odds` column; the new importer reads them via Firecrawl + Claude Haiku normalization. Engine still only reads `hobby` odds for slot math today — the other formats are stored in the parsed-odds payload for future flexibility (see `OddsByFormat` in [lib/types.ts](../lib/types.ts)).
 
 ## Out of scope (hidden draft)
 
 Everything else stays in the catalog with `is_active = false`. Source of truth: `SELECT name, slug FROM products WHERE is_active = false`.
 
-As of 2026-05-20, the products to flip from active → inactive are everything currently `is_active = true` except the two above (and whatever Football product we land on). 13 products to hide: 5 baseball, 6 basketball, 3 football (current).
+As of 2026-05-20, the products to flip from active → inactive are everything currently `is_active = true` except the four rows above. 13 products to hide: 5 baseball, 6 basketball, 3 football (current generation, soon-to-be-replaced by Topps Chrome Football).
 
 ---
 
 ## Open questions
 
-1. **Football coverage.** Bowman doesn't ship football products. Three options:
-   - **(a) Skip football entirely for private beta.** Cleanest, narrowest scope. Football breakers don't get the product. We risk an awkward "is this for baseball/basketball only?" reaction.
-   - **(b) Use the most-recent Panini flagship.** Current candidates: `2025 Panini Prizm Football` (most volume), `2025 Panini Donruss Football`, `2024 Panini Donruss Optic`. Prizm is the canonical answer if we want flagship parity.
-   - **(c) Use the most-recent Topps Chrome equivalent.** Topps does ship football, but not under the Bowman line; the closest analog is Chrome Football (not currently in our catalog).
-   - **Recommendation pending Brody + Kyle.** Default to (b) Prizm Football if we want any football coverage; otherwise (a).
+1. **Hockey product per sub-line.** Upper Deck ships three concurrent product families (Series 1/2, Artifacts, SPx). Pick one or run all three as soon as the URL importer proves out on Series 2?
 2. **Pre-release Bowman.** What happens when next year's Bowman comes out? Auto-rotate to the newer, deactivate the previous, or run both for a transition window? Document the policy here when we hit the first rotation.
 
 ---

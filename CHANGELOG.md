@@ -5,6 +5,31 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-21 — Upper Deck URL parser: Firecrawl JSON extract + Claude Haiku odds normalization
+
+Adds Hockey to the private-beta sport roster and a new admin path for importing Upper Deck checklists by URL. Builds on the Firecrawl foundation that landed earlier today.
+
+**Why the URL path.** Upper Deck doesn't publish per-product XLSX checklists the way Topps and Panini do — instead each release has a single HTML page at `upperdeck.com/checklist/…` with a per-card table that crams 8 pack formats into one `Stated Odds` column (`"2:1 h, 2:1 e, 2:1 r, 2:1 b, 2:1 mega 5:1 hanger, 2:1 tin, 1:1 dollar"`). Cloudflare-protected, so direct fetch from a Vercel function is unreliable. Firecrawl proxies it cleanly + extracts the table to structured JSON via a Zod-shaped schema.
+
+**Mechanics.**
+- **New parser** [lib/upper-deck-parser.ts](./lib/upper-deck-parser.ts) exports `parseUpperDeckUrl(url)` → `{ checklist: ParsedChecklist, odds: ParsedOdds }`. Firecrawl client is a lazy singleton (one instantiation per Lambda warm container). Module-level `PAGE_CACHE` is an in-memory Map keyed by URL with a 5-minute TTL — back-to-back checklist + odds imports against the same URL only spend one Firecrawl call.
+- **Odds normalization** is done with Claude Haiku (`claude-haiku-4-5-20251001`) in one batched call per import — `normalizeOdds` dedupes the raw odds strings (typical checklist has ~10–20 unique patterns) and sends them all in one prompt that returns `{ results: [{ raw, odds: OddsByFormat }] }`. ~$0.005 per import.
+- **Type extensions** in [lib/types.ts](./lib/types.ts) — new `UpperDeckPackFormat = 'hobby' | 'epack' | 'retail' | 'blaster' | 'mega' | 'hanger' | 'tin' | 'dollar'` and `OddsByFormat = Partial<Record<UpperDeckPackFormat, string>>`. `ParsedOdds.rows[]` in [lib/checklist-parser.ts](./lib/checklist-parser.ts) extended with optional `oddsByFormat` field. Existing apply-odds writer reads `hobbyOdds` and continues to work unchanged.
+- **Two new admin routes** — `POST /api/admin/parse-checklist-url` and `POST /api/admin/parse-odds-url`. Both delegate to `parseUpperDeckUrl`, so they share the per-URL Firecrawl cache. `maxDuration=120` on both.
+- **Inline UI** — new [app/admin/products/[id]/ImportFromUrl.tsx](./app/admin/products/%5Bid%5D/ImportFromUrl.tsx) drops two text inputs + Import buttons into a new "Import from URL (Upper Deck)" Section between Quick Actions and Pricing Anchor Strategy on the product dashboard. Checklist flow forwards the parsed sections to `/api/admin/import-checklist` with default `{ hobbySets: 1, bdSets: 0 }` per section (UD breakers overwhelmingly sell hobby slots; admin can override per-section via the legacy `/admin/import-checklist` wizard if needed). Odds flow forwards to `/api/admin/apply-odds` — same token-overlap matcher Topps and Panini use.
+- **Hockey sport.** Row already existed in `sports` (slug `hockey`) — no migration needed.
+
+**Engine behavior.** Unchanged. Engine reads `hobby_odds` for slot math today; the richer `oddsByFormat` payload is stored but not consumed yet. When we add per-format pool support (e.g. retail / blaster / mega cases), the data is already in the payload.
+
+**Private-beta scope.** [docs/private-beta-scope.md](./docs/private-beta-scope.md) updated — Football row now points at `2025 Topps Chrome Football` (needs to be created in admin before flipping `is_active = true`); Hockey row added pending sub-line decision.
+
+**Out of scope (queued for later):**
+- Auto-discovery of UD URLs by fuzzy-matching product names. Admin pastes URLs directly.
+- Extending `BreakFormat` to include `epack` / `retail` / `blaster` etc. — UD breakers overwhelmingly sell hobby slots; revisit if data ever justifies.
+- Consumer surface for the 8-format odds breakdown. Stored in payload, not rendered to users yet.
+
+---
+
 ## 2026-05-21 — Checklist parser: handle Topps Chrome Football XLSX quirks
 
 Brody hit a clearly-broken import on the new 2025 Topps Chrome Football product — the admin review screen showed sections named `"100 cards"`, `"30 cards"`, `"5 cards"` etc. (raw count-metadata rows mis-promoted to section names) and `"Team Camo Variation"` rendered as a standalone section when it should be a parallel of the Variations section. Blocked the Football product setup for private-beta scope.

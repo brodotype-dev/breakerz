@@ -30,8 +30,19 @@ export type ParsedChecklist = {
   sections: ParsedSection[];
 };
 
+// Upper Deck checklist pages publish odds in 8 pack formats (h/e/r/b/mega/
+// hanger/tin/dollar). The legacy Topps/Bowman pipeline only reads hobbyOdds —
+// `oddsByFormat` is an optional richer payload the UD parser produces. See
+// lib/upper-deck-parser.ts.
+import type { OddsByFormat } from './types';
+
 export type ParsedOdds = {
-  rows: Array<{ subsetName: string; hobbyOdds: string; breakerOdds: string | null }>;
+  rows: Array<{
+    subsetName: string;
+    hobbyOdds: string;
+    breakerOdds: string | null;
+    oddsByFormat?: OddsByFormat;
+  }>;
 };
 
 // ---------------------------------------------------------------------------
