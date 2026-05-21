@@ -5,6 +5,36 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-21 — Upper Deck XLSX parser (Beckett "Master Card List" sheet)
+
+Adds a second surface to the Upper Deck / O-Pee-Chee importer alongside the URL scraper that shipped earlier today. Beckett publishes a `<product>-Checklist.xlsx` for every UD release whose `Master Card List` sheet has the exact same 11-column structure (`Set Name | Card | Description | Team City | Team Name | Rookie | Auto | #'d | SPs | Stated Odds | Point`) as the web checklist table. The XLSX is the preferred path when admin has it — no Cloudflare, no JS rendering, no rate limit, one file = checklist + odds.
+
+**Mechanics.**
+- [lib/upper-deck-parser.ts](./lib/upper-deck-parser.ts) refactored to extract a shared `rowsToResult(rows)` transform. Both `parseUpperDeckUrl` and the new `parseUpperDeckXlsx` produce identically-shaped `RawRow[]` and route through the same set-grouping + Claude Haiku odds normalization.
+- `parseUpperDeckXlsx(buffer)` detects the canonical sheet by header signature (not name — Beckett uses both "Master Card List" and "Master Checklist" across files). Lowercases + trims the header row, requires `set name`, `card`, `description`, `stated odds`, builds a column-index map, then walks every subsequent row.
+- New `POST /api/admin/parse-upper-deck-xlsx` — multipart upload, returns `{ checklist, odds }`.
+- [app/admin/products/[id]/ImportFromUrl.tsx](./app/admin/products/%5Bid%5D/ImportFromUrl.tsx) gains a `Beckett XLSX (preferred)` file-upload affordance above the existing URL inputs. One click runs parse → apply checklist → apply odds in a single pass.
+- New [docs/manufacturer-rules/upper-deck.md](./docs/manufacturer-rules/upper-deck.md) — mirrors `bowman.md` / `panini.md` structure. Covers both surfaces, the shared row shape, the 8-format Stated Odds column, and admin workflow.
+
+**Validated against the actual 2025-26 OPC Platinum XLSX:** 112 sections × 6,322 cards × 25 unique odds patterns — byte-identical to the URL-scrape numbers.
+
+**Naming choice.** Lives in the UD manufacturer parser, not a Beckett-specific module. The format may be published BY Beckett but it represents UD product structure (the Bowman/Topps + Panini patterns are both manufacturer-keyed; UD follows suit).
+
+---
+
+## 2026-05-21 — Upper Deck URL parser: scrape markdown + parse table directly
+
+Replaces the earlier Firecrawl JSON-extractor path that landed in PR [#117](https://github.com/brodotype-dev/breakerz/pull/117) and PR [#118](https://github.com/brodotype-dev/breakerz/pull/118). The OPC Platinum import surfaced a real limitation: upperdeck.com checklist pages produce ~810KB of markdown when fully loaded (6,322 rows × 112 sections), which choked Firecrawl's LLM-based JSON extractor (returned `success: true` with no `json` field).
+
+**Pivot.** The table is structurally clean (`|`-delimited markdown with a known header row). Deterministic parsing is faster, cheaper, and more reliable than the LLM path.
+
+- Drop the Zod-schema JSON extraction. Scrape markdown only.
+- Add `proxy: 'stealth'` + `waitFor: 8000` + `onlyMainContent: false` to defeat the Cloudflare anti-bot + GDPR cookie banner + JS-hydrated table without dropping the table along with the banner.
+- New `parseTableFromMarkdown` finds the header row by required-column detection, reads column indices dynamically, walks `|`-rows until table ends.
+- Claude Haiku odds normalization unchanged — still called once per import to normalize multi-format `Stated Odds` strings.
+
+---
+
 ## 2026-05-21 — WaxStat box-pricing scraper + weekly importer
 
 Third commit of today's Firecrawl-foundation arc. Pulls sealed-box pricing from [waxstat.com](https://waxstat.com) — an aggregator that consolidates wax prices across retailers (eBay, Steel City Collectibles, Blowout, etc.) — into our `*_am_case_cost` columns weekly. Closes the gap where breaker-supplied MSRP is stale and admin had to type the AM number in by hand.
