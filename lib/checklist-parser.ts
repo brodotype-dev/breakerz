@@ -633,6 +633,24 @@ export function parseChecklistXlsx(buffer: Buffer): ParsedChecklist {
     return parsePaniniXlsx(wb, XLSX, paniniSheet);
   }
 
+  // Upper Deck / O-Pee-Chee detection: Beckett ships a "Master Card List"
+  // sheet with a `Set Name | Card | Description | Team City | Team Name |
+  // Rookie | Auto | #'d | SPs | Stated Odds | Point` header. That's the
+  // canonical source — the other sheets are descriptive metadata with
+  // UD-specific odds-row layout the Bowman/Topps section parser can't
+  // interpret (rows like "Hobby/e-Pack - 1:2,880 packs" get read as
+  // section names). When detected, bail with a clear pointer to the
+  // dedicated importer on /admin/import-checklist — UD imports use the
+  // async upper-deck parser which needs Claude Haiku for odds
+  // normalization and can't run in this sync code path.
+  if (findUpperDeckMasterSheet(wb, XLSX)) {
+    throw new Error(
+      'This is an Upper Deck / O-Pee-Chee XLSX (detected a "Master Card List" sheet). ' +
+        'Use the cyan "Upper Deck importer" panel at the top of /admin/import-checklist ' +
+        'instead — it reads UD/OPC files in one pass (checklist + odds).',
+    );
+  }
+
   // Each base-section header starts its own ParsedSection. Cards inside carry
   // their own `parallels` list; the importer turns those into variant rows.
   const sectionMap = new Map<string, ParsedSection>();
@@ -824,6 +842,29 @@ function findPaniniMasterSheet(
       return typeof actual === 'string' && actual.trim().toUpperCase() === expected;
     });
     if (matches) return name;
+  }
+  return null;
+}
+
+// Upper Deck / O-Pee-Chee detection: Beckett ships a "Master Card List"
+// sheet with the same column shape the upperdeck.com web table uses. Detect
+// by required header columns (lowercased) rather than sheet name so file
+// variants ("Master Card List" vs "Master Checklist") both match. Mirrors
+// the Panini header-signature pattern.
+const UPPER_DECK_HEADER_REQUIRED = ['set name', 'card', 'description', 'stated odds'];
+
+function findUpperDeckMasterSheet(
+  wb: { Sheets: Record<string, unknown>; SheetNames: string[] },
+  XLSX: { utils: { sheet_to_json: (ws: unknown, opts?: Record<string, unknown>) => unknown[][] } },
+): string | null {
+  for (const name of wb.SheetNames) {
+    const ws = wb.Sheets[name];
+    if (!ws) continue;
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, range: 0, defval: null });
+    const header = rows[0];
+    if (!Array.isArray(header)) continue;
+    const lc = header.map(c => (c == null ? '' : String(c).trim().toLowerCase()));
+    if (UPPER_DECK_HEADER_REQUIRED.every(req => lc.includes(req))) return name;
   }
   return null;
 }
