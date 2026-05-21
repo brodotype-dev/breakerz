@@ -5,6 +5,25 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-21 — Checklist parser: handle Topps Chrome Football XLSX quirks
+
+Brody hit a clearly-broken import on the new 2025 Topps Chrome Football product — the admin review screen showed sections named `"100 cards"`, `"30 cards"`, `"5 cards"` etc. (raw count-metadata rows mis-promoted to section names) and `"Team Camo Variation"` rendered as a standalone section when it should be a parallel of the Variations section. Blocked the Football product setup for private-beta scope.
+
+**Root cause.** [lib/checklist-parser.ts](lib/checklist-parser.ts) `parseChecklistXlsx` relied on a **trailing period** as the bright-line discriminator between section names and prose metadata (e.g. `"350 cards."` skipped, `"Hobby only."` skipped). 2025 Topps Chrome Football authored its count rows WITHOUT periods (`"400 cards"`, `"70 cards"`), so they slipped past the filter and got promoted to section names. Two related quirks in the same XLSX: `"Versions"` sub-label between count and parallels wasn't in `STRUCTURAL_LABEL_RE`, and `"Lightboard Logo Variation"` / `"Team Camo Variation"` are real parallels of the Base Variations section but didn't match `PARALLEL_LABEL_RE` (which expects "Refractor" / color names / "/N" suffix).
+
+**Fix.** Three pattern additions, no architectural change:
+1. New `COUNT_METADATA_RE = /^\d+\s+cards?\.?$/i` — period optional. Wired alongside the existing `.endsWith('.')` skip. Handles all 2025 Topps Chrome count-row variants + remains forward-compatible with the periodic form.
+2. `STRUCTURAL_LABEL_RE` extended to skip `"Versions"` / `"Version"` AND Topps' "Veterans:/Rookies:/Legends: #s X-Y" range qualifiers — sub-labels of the Base sheet that the parser was treating as new sections.
+3. `isParallelLabel()` extended to recognize any label ending in `"Variation"` / `"Variations"` so Topps Chrome's variation labels collect as parallels of the surrounding section instead of becoming their own mis-named sections.
+
+**Before/after on the actual 2025 Topps Chrome Football XLSX.** Before: 24 sections including `"100 cards"`, `"30 cards"`, `"5 cards"`, `"Team Camo Variation"` as the section name with the data. After: 35 sections with real names — `"Chrome Autographs"` (70 cards), `"Rookie PREM1ERE Patch Autographs"` (98 cards), `"Variations"` with `[parallels: Base - Full Set Variations, Lightboard Logo Variation, Team Camo Variation]`, `"Power Players"`, `"Kaiju"`, `"Let's Go"`, etc.
+
+**Regression suite passed** — 2025 Topps Series 1 Baseball (46 sections, zero metadata leakage) and 2025 Panini Prizm Football (316 sections, 34,723 cards) both parse byte-identical to pre-change. The three new patterns are additive — they catch more cases that should have been filtered, never relax a check.
+
+New verifier script at [scripts/verify-tcf-parse.mjs](scripts/verify-tcf-parse.mjs) — runs the parser against the local Topps Chrome Football XLSX and prints sections + parallels. Sister of the existing `verify-topps-series-parser.mjs` and `verify-panini-parser.mjs`.
+
+---
+
 ## 2026-05-21 — Firecrawl foundation: SDK + MCP + env-var plumbing
 
 Foundation commit for the upcoming Upper Deck checklist parser + WaxStat box-pricing scraper, both of which need to fetch from sites behind Cloudflare bot-detection. WebFetch (Anthropic's residential infra) handles those URLs fine, but Vercel functions get blocked frequently — Firecrawl proxies through their own browser-grade infrastructure and is the canonical fix.

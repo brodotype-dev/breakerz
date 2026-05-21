@@ -520,7 +520,14 @@ const XLSX_SKIP_SHEETS = new Set(['Full Checklist', 'NBA Teams', 'College Teams'
 
 // Labels that are structural, not parallel names — ignore as section/parallel names
 // but still use as a signal that we're in the parallels block.
-const STRUCTURAL_LABEL_RE = /^(Parallels?|Base\s*(Set|Cards?)?|Paralles|Breaker'?s\s+Delight.*|\d+\s+per\s+(hobby|breaker'?s?\s+delight)\s+box|Common:\s+#.*|Uncommon:\s+#.*|Rare:\s+#.*|Short\s+Print:\s+#.*)$/i;
+const STRUCTURAL_LABEL_RE = /^(Parallels?|Base\s*(Set|Cards?)?|Paralles|Breaker'?s\s+Delight.*|\d+\s+per\s+(hobby|breaker'?s?\s+delight)\s+box|Common:\s+#.*|Uncommon:\s+#.*|Rare:\s+#.*|Short\s+Print:\s+#.*|Versions?|(Veterans?|Rookies?|Legends?):\s*#?s?\s*\d+\s*[-–]\s*\d+)$/i;
+
+// Count-metadata row, e.g. "400 cards", "70 card", with or without trailing period.
+// 2025 Topps Chrome Football authored these WITHOUT periods, which slipped past the
+// `.endsWith('.')` filter and got promoted to section names. The trailing-period
+// rule still applies for "Hobby only." / "Players may have ..." prose — this regex
+// just adds the unpunctuated count-row case alongside it.
+const COUNT_METADATA_RE = /^\d+\s+cards?\.?$/i;
 
 // Detects "<label> /<number>" (a parallel with print run) or bare parallel labels
 // like "Refractor", "Superfractor", "Gold", "Gold Geometric", "Red/Black Geometric".
@@ -566,7 +573,14 @@ function isParallelLabel(label: string): boolean {
   // Print-run form: "Gold /50", "SuperFractor /1"
   if (PARALLEL_LABEL_RE.test(label)) return true;
   // Plain parallels commonly seen in Topps Finest checklists.
-  return /^(Refractor|X-Fractor|Superfractor|Geometric|Oil\s*Spill|Die[-\s]?Cut|Black|Red|Blue|Green|Gold|Orange|Purple|Yellow|Sky\s*Blue)(\s+.+)?$/i.test(label);
+  if (/^(Refractor|X-Fractor|Superfractor|Geometric|Oil\s*Spill|Die[-\s]?Cut|Black|Red|Blue|Green|Gold|Orange|Purple|Yellow|Sky\s*Blue)(\s+.+)?$/i.test(label)) return true;
+  // Topps Chrome Football "Variations" sheet ships parallels labeled
+  // "Lightboard Logo Variation" / "Team Camo Variation" — no color prefix,
+  // no print run. Catch any label ending in "Variation" or "Variations" so
+  // they collect as parallels of the surrounding section instead of
+  // becoming their own (mis-named) sections.
+  if (/\bVariations?$/i.test(label)) return true;
+  return false;
 }
 
 export function parseChecklistXlsx(buffer: Buffer): ParsedChecklist {
@@ -634,6 +648,10 @@ export function parseChecklistXlsx(buffer: Buffer): ParsedChecklist {
         // "Each card serial-numbered to the player's jersey number.", etc.
         // Real section/parallel labels are titles and never end with a period.
         if (label.endsWith('.')) continue;
+        // 2025 Topps Chrome Football XLSX writes count rows WITHOUT a period
+        // ("400 cards", "70 cards"), so the trailing-period rule misses them
+        // and they get promoted to section names. Skip explicitly.
+        if (COUNT_METADATA_RE.test(label)) continue;
         if (STRUCTURAL_LABEL_RE.test(label)) continue;
 
         if (isParallelLabel(label)) {
