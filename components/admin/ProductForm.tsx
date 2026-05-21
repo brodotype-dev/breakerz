@@ -235,10 +235,15 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
   }, [name, sportId, chSetName]);
 
   async function handleSubmit(publish: boolean) {
-    if (publish && !chSetName) {
+    // CH set name is required to publish a LIVE product (matching + pricing
+    // crons rely on it). Pre-release products legitimately can't have one
+    // yet — CardHedger doesn't catalog products that haven't shipped. The
+    // pre_release → live transition button enforces the same guard later,
+    // so deferring the check costs nothing.
+    if (publish && lifecycleStatus !== 'pre_release' && !chSetName) {
       setStatus({
         type: 'error',
-        message: 'Lock in a CardHedger set name before publishing — matching and pricing rely on it.',
+        message: 'Lock in a CardHedger set name before publishing a live product — matching and pricing rely on it.',
       });
       return;
     }
