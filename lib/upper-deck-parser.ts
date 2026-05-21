@@ -8,20 +8,23 @@
 //   "2:1 h, 2:1 e, 2:1 r, 2:1 b, 2:1 mega 5:1 hanger, 2:1 tin, 1:1 dollar"
 //
 // Strategy:
-//   1. Firecrawl scrape with a JSON-schema extract to pull the table to a
-//      clean row[] (Cloudflare-protected, so direct fetch is unreliable —
-//      we always go through Firecrawl).
-//   2. Normalize each unique `statedOdds` string with Claude Haiku into the
+//   1. Firecrawl scrape with `formats: ['markdown']` (no JSON extractor —
+//      these pages produce 800KB+ of markdown which choked Firecrawl's
+//      LLM extractor; the table is perfectly clean `|`-delimited markdown
+//      and parses deterministically).
+//   2. Parse the table by detecting the header row (`Set Name | Card |
+//      Description | Team City | Team Name | Rookie | Auto | #'d | SPs |
+//      Stated Odds | Point`) and walking subsequent `|...|` rows.
+//   3. Normalize each unique `statedOdds` string with Claude Haiku into the
 //      richer OddsByFormat shape. Cache by raw string so identical odds
-//      across rows only hit Claude once (~10–20 unique patterns / page).
-//   3. Group rows by set name → ParsedSection / ParsedCard, and emit one
-//      ParsedOdds row per unique (setName, hobby odds) tuple. The richer
-//      oddsByFormat lives alongside as an optional payload.
+//      across rows only hit Claude once (~5–20 unique patterns / page).
+//   4. Group rows by set name → ParsedSection / ParsedCard, and emit one
+//      ParsedOdds row per unique (setName, hobby odds) tuple.
 //
-// Result is shape-compatible with the existing checklist-apply + apply-odds
-// flows; downstream code that doesn't know about UD keeps working.
+// Cloudflare-protected, so direct fetch is unreliable — we always go
+// through Firecrawl. Stealth proxy + 8s waitFor cover the JS-rendered
+// table + cookie-consent banner.
 
-import { z } from 'zod';
 import type { ParsedCard, ParsedChecklist, ParsedOdds, ParsedSection } from './checklist-parser';
 import type { OddsByFormat, UpperDeckPackFormat } from './types';
 
@@ -36,26 +39,20 @@ const PACK_KEYS: UpperDeckPackFormat[] = [
   'dollar',
 ];
 
-const ROW_SCHEMA = z.object({
-  setName: z.string().describe('Section / parallel name, e.g. "Young Guns", "Canvas", "UD Portraits"'),
-  cardNumber: z.string().nullable().describe('Card number as printed, e.g. "201", "YG-1", "UDP-50"'),
-  playerName: z.string().describe('Full player name, no trailing punctuation'),
-  teamCity: z.string().nullable(),
-  teamName: z.string().nullable(),
-  isRookie: z.boolean().default(false),
-  hasAuto: z.boolean().default(false),
-  hasMem: z.boolean().default(false),
-  printRun: z.number().nullable().describe('Numeric print run (SP/SSP). Use null if not stated.'),
-  sps: z.number().nullable().describe('Stated print run from the SP column when present, else null'),
-  statedOdds: z.string().nullable().describe('Raw odds string from the Stated Odds column. Preserve exactly as printed.'),
-  point: z.string().nullable().describe('Point value if listed'),
-});
-
-const PAGE_SCHEMA = z.object({
-  rows: z.array(ROW_SCHEMA),
-});
-
-type RawRow = z.infer<typeof ROW_SCHEMA>;
+type RawRow = {
+  setName: string;
+  cardNumber: string | null;
+  playerName: string;
+  teamCity: string | null;
+  teamName: string | null;
+  isRookie: boolean;
+  hasAuto: boolean;
+  hasMem: boolean;
+  printRun: number | null;
+  sps: number | null;
+  statedOdds: string | null;
+  point: string | null;
+};
 
 // Lazy singleton — instantiate the Firecrawl client once per Lambda warm
 // container. Throws at first use if FIRECRAWL_API_KEY isn't configured.
@@ -76,64 +73,128 @@ type CacheEntry = { ts: number; rows: RawRow[] };
 const PAGE_CACHE = new Map<string, CacheEntry>();
 const PAGE_TTL_MS = 5 * 60 * 1000;
 
+// The Upper Deck checklist header row, lowercased + trimmed for matching.
+// We require these specific columns; their order is detected dynamically
+// from the actual header so new columns (or reordered ones) won't shift
+// our parser silently.
+const REQUIRED_HEADERS = ['set name', 'card', 'description', 'stated odds'];
+
+function splitMdRow(line: string): string[] {
+  return line
+    .trim()
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map(c => c.trim());
+}
+
+function parseHeader(line: string): Record<string, number> | null {
+  const cols = splitMdRow(line).map(c => c.toLowerCase());
+  for (const required of REQUIRED_HEADERS) {
+    if (!cols.includes(required)) return null;
+  }
+  const out: Record<string, number> = {};
+  cols.forEach((c, i) => {
+    out[c] = i;
+  });
+  return out;
+}
+
+function parseTableFromMarkdown(md: string): RawRow[] {
+  const lines = md.split('\n');
+  // Find the header row — the first `|...|` line containing all of
+  // REQUIRED_HEADERS. Multiple tables can appear on the page (nav menus,
+  // etc.), so we scan for the one that looks like a checklist.
+  let headerIdx = -1;
+  let cols: Record<string, number> | null = null;
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    if (!l.startsWith('|')) continue;
+    const parsed = parseHeader(l);
+    if (parsed) {
+      headerIdx = i;
+      cols = parsed;
+      break;
+    }
+  }
+  if (headerIdx < 0 || !cols) return [];
+
+  // Skip the separator row (|---|---|---|) and walk rows until we hit a
+  // line that isn't `|...|`.
+  const rows: RawRow[] = [];
+  for (let i = headerIdx + 2; i < lines.length; i++) {
+    const l = lines[i];
+    if (!l.startsWith('|')) break;
+    // Skip header-style separator rows
+    if (/^\|[\s-]+\|/.test(l)) continue;
+    const c = splitMdRow(l);
+    if (c.length < REQUIRED_HEADERS.length) continue;
+
+    const get = (key: string): string => (cols![key] != null ? (c[cols![key]] ?? '') : '');
+    const setName = get('set name');
+    const playerName = get('description');
+    if (!setName || !playerName) continue;
+
+    const rookieRaw = get('rookie');
+    const autoRaw = get('auto');
+    const memRaw = get('memorabilia') || get('mem');
+    const printRunRaw = get(`#'d`) || get(`#d`) || get('numbered');
+    const spsRaw = get('sps') || get('sp');
+    const oddsRaw = get('stated odds');
+    const pointRaw = get('point');
+
+    rows.push({
+      setName,
+      cardNumber: get('card') || null,
+      playerName,
+      teamCity: get('team city') || null,
+      teamName: get('team name') || null,
+      isRookie: /xrc|rookie|rc/i.test(rookieRaw),
+      hasAuto: /auto/i.test(autoRaw),
+      hasMem: /mem|patch|jersey/i.test(memRaw),
+      printRun: printRunRaw && /^\d+$/.test(printRunRaw) ? Number(printRunRaw) : null,
+      sps: spsRaw && /^\d+$/.test(spsRaw) ? Number(spsRaw) : null,
+      statedOdds: oddsRaw || null,
+      point: pointRaw || null,
+    });
+  }
+  return rows;
+}
+
 async function scrapeRows(url: string): Promise<RawRow[]> {
   const cached = PAGE_CACHE.get(url);
   if (cached && Date.now() - cached.ts < PAGE_TTL_MS) return cached.rows;
 
   const fc = await getFirecrawl();
 
-  // Pre-convert Zod → JSON Schema via Zod v4's native exporter. The SDK
-  // tries to auto-convert (`zod-to-json-schema` fallback), but its v4
-  // detection is brittle (looks for `_zod` constructor metadata that
-  // varies across Zod minor versions). On silent conversion failure the
-  // SDK passes the raw Zod object to the API, which can't parse it,
-  // and Firecrawl returns an empty `json` field — which surfaced as
-  // "Firecrawl JSON did not match schema: invalid_type at path: []".
-  const jsonSchema = z.toJSONSchema(PAGE_SCHEMA);
-
-  // Markdown fallback so we can surface a useful error message when
-  // JSON extraction returns nothing (JS-rendered table, bot challenge,
-  // unexpected page shape). The `waitFor` covers Upper Deck pages that
-  // hydrate the table client-side.
+  // Critical knobs (validated against the OPC Platinum page 2026-05-21):
+  //   - onlyMainContent: false  — main-content classifier sometimes drops
+  //     the table along with the cookie banner.
+  //   - waitFor: 8000           — JS-hydrated rows + cookie consent overlay.
+  //   - proxy: 'stealth'        — Cloudflare anti-bot detection.
   const result = await fc.scrape(url, {
-    formats: [
-      {
-        type: 'json',
-        schema: jsonSchema as Record<string, unknown>,
-        prompt:
-          'Extract every checklist row from this Upper Deck checklist page. ' +
-          'Each row maps to ONE card (one parallel × one player). Preserve ' +
-          'the `Stated Odds` column EXACTLY as written, including all per-format ' +
-          'tokens (h/e/r/b/mega/hanger/tin/dollar). If a column is empty, return null. ' +
-          'If you find no per-card table, return {"rows": []}.',
-      },
-      'markdown',
-    ],
-    onlyMainContent: true,
-    waitFor: 5000,
+    formats: ['markdown'],
+    onlyMainContent: false,
+    waitFor: 8000,
+    proxy: 'stealth',
     timeout: 120_000,
   });
 
-  const json = (result as { json?: unknown }).json;
-  if (json == null) {
-    const md = (result as { markdown?: string }).markdown ?? '';
-    const excerpt = md.slice(0, 400).replace(/\s+/g, ' ').trim();
-    throw new Error(
-      `Firecrawl returned no JSON extraction. Page preview: "${excerpt || '(empty)'}"`,
-    );
-  }
-  const parsed = PAGE_SCHEMA.safeParse(json);
-  if (!parsed.success) {
-    throw new Error(
-      `Firecrawl JSON did not match schema: ${parsed.error.message} — got: ${JSON.stringify(json).slice(0, 300)}`,
-    );
-  }
-  if (parsed.data.rows.length === 0) {
-    throw new Error('Firecrawl returned 0 rows — the URL may not be an Upper Deck checklist');
+  const md = (result as { markdown?: string }).markdown ?? '';
+  if (!md) {
+    throw new Error('Firecrawl returned no markdown — URL may be unreachable');
   }
 
-  PAGE_CACHE.set(url, { ts: Date.now(), rows: parsed.data.rows });
-  return parsed.data.rows;
+  const rows = parseTableFromMarkdown(md);
+  if (rows.length === 0) {
+    const excerpt = md.slice(0, 400).replace(/\s+/g, ' ').trim();
+    throw new Error(
+      `Could not find a checklist table on the page. Expected columns: ${REQUIRED_HEADERS.join(', ')}. Page preview: "${excerpt}"`,
+    );
+  }
+
+  PAGE_CACHE.set(url, { ts: Date.now(), rows });
+  return rows;
 }
 
 // Normalize a raw odds string like
