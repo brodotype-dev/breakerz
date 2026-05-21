@@ -81,26 +81,52 @@ async function scrapeRows(url: string): Promise<RawRow[]> {
   if (cached && Date.now() - cached.ts < PAGE_TTL_MS) return cached.rows;
 
   const fc = await getFirecrawl();
+
+  // Pre-convert Zod → JSON Schema via Zod v4's native exporter. The SDK
+  // tries to auto-convert (`zod-to-json-schema` fallback), but its v4
+  // detection is brittle (looks for `_zod` constructor metadata that
+  // varies across Zod minor versions). On silent conversion failure the
+  // SDK passes the raw Zod object to the API, which can't parse it,
+  // and Firecrawl returns an empty `json` field — which surfaced as
+  // "Firecrawl JSON did not match schema: invalid_type at path: []".
+  const jsonSchema = z.toJSONSchema(PAGE_SCHEMA);
+
+  // Markdown fallback so we can surface a useful error message when
+  // JSON extraction returns nothing (JS-rendered table, bot challenge,
+  // unexpected page shape). The `waitFor` covers Upper Deck pages that
+  // hydrate the table client-side.
   const result = await fc.scrape(url, {
     formats: [
       {
         type: 'json',
-        schema: PAGE_SCHEMA,
+        schema: jsonSchema as Record<string, unknown>,
         prompt:
           'Extract every checklist row from this Upper Deck checklist page. ' +
           'Each row maps to ONE card (one parallel × one player). Preserve ' +
           'the `Stated Odds` column EXACTLY as written, including all per-format ' +
-          'tokens (h/e/r/b/mega/hanger/tin/dollar). If a column is empty, return null.',
+          'tokens (h/e/r/b/mega/hanger/tin/dollar). If a column is empty, return null. ' +
+          'If you find no per-card table, return {"rows": []}.',
       },
+      'markdown',
     ],
     onlyMainContent: true,
-    timeout: 90_000,
+    waitFor: 5000,
+    timeout: 120_000,
   });
 
   const json = (result as { json?: unknown }).json;
+  if (json == null) {
+    const md = (result as { markdown?: string }).markdown ?? '';
+    const excerpt = md.slice(0, 400).replace(/\s+/g, ' ').trim();
+    throw new Error(
+      `Firecrawl returned no JSON extraction. Page preview: "${excerpt || '(empty)'}"`,
+    );
+  }
   const parsed = PAGE_SCHEMA.safeParse(json);
   if (!parsed.success) {
-    throw new Error(`Firecrawl JSON did not match schema: ${parsed.error.message}`);
+    throw new Error(
+      `Firecrawl JSON did not match schema: ${parsed.error.message} — got: ${JSON.stringify(json).slice(0, 300)}`,
+    );
   }
   if (parsed.data.rows.length === 0) {
     throw new Error('Firecrawl returned 0 rows — the URL may not be an Upper Deck checklist');
