@@ -12,6 +12,8 @@ import BreakerComparisonPanel from './BreakerComparisonPanel';
 import PricingBreakdownPanel from './PricingBreakdownPanel';
 import ChaseCardsManager from './ChaseCardsManager';
 import ImportFromUrl from './ImportFromUrl';
+import WaxstatPanel from './WaxstatPanel';
+import { getLatestWaxstatSnapshots } from '@/lib/waxstat-importer';
 
 type PageProps = { params: Promise<{ id: string }> };
 
@@ -283,6 +285,13 @@ export default async function ProductDashboardPage({ params }: PageProps) {
 
   const cachedCount = cachedCountRaw ?? 0;
   const lastFetched = lastFetchedRow?.fetched_at;
+
+  const waxstatSnapshots = await getLatestWaxstatSnapshots(id);
+  const productAny = product as unknown as {
+    waxstat_hobby_url: string | null;
+    waxstat_bd_url: string | null;
+    waxstat_jumbo_url: string | null;
+  };
 
   const autoEligible = autoEligibleCount ?? 0;
   const ppTotalSafe = ppTotal ?? 0;
@@ -604,6 +613,19 @@ export default async function ProductDashboardPage({ params }: PageProps) {
             </div>
           </Section>
         )}
+
+        {/* WaxStat box pricing — overrides *_am_case_cost weekly */}
+        <Section title="WaxStat Box Pricing" accent="linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)">
+          <WaxstatPanel
+            productId={id}
+            initialUrls={{
+              hobby: productAny.waxstat_hobby_url,
+              bd: productAny.waxstat_bd_url,
+              jumbo: productAny.waxstat_jumbo_url,
+            }}
+            initialSnapshots={waxstatSnapshots}
+          />
+        </Section>
 
         {/* Pricing Audit */}
         <PricingBreakdownPanel

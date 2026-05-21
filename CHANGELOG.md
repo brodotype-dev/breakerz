@@ -5,6 +5,32 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-21 — WaxStat box-pricing scraper + weekly importer
+
+Third commit of today's Firecrawl-foundation arc. Pulls sealed-box pricing from [waxstat.com](https://waxstat.com) — an aggregator that consolidates wax prices across retailers (eBay, Steel City Collectibles, Blowout, etc.) — into our `*_am_case_cost` columns weekly. Closes the gap where breaker-supplied MSRP is stale and admin had to type the AM number in by hand.
+
+**Why this scraper.** WaxStat is the canonical place to see "what is a sealed hobby box of 2025-26 Bowman Basketball actually selling for right now?" — and that number is what `hobby_am_case_cost` represents in our schema (one sealed box = one case for our case-mix math). The break page already prefers AM cost over MSRP when both are set. Until now it was a manual admin task; this commit makes it weekly + automatic.
+
+**Mechanics.**
+- **Schema** is already applied to production via Supabase MCP (from a prior session); [supabase/migrations/20260521120000_waxstat_pricing.sql](./supabase/migrations/20260521120000_waxstat_pricing.sql) is the traceability file with `IF NOT EXISTS` guards. Adds three `waxstat_*_url` columns on `products` + new `waxstat_pricing_snapshots` table (per-fetch time series: `avg_price`, `low_30d`, `high_30d`, `trend_7d`, `error_message`, `fetched_at`).
+- **Scraper** [lib/waxstat.ts](./lib/waxstat.ts) `fetchBoxPanel(url)` — Firecrawl JSON extract with Zod schema, throws on empty or schema mismatch. No plain-fetch fallback (WaxStat is Cloudflare-protected).
+- **Importer** [lib/waxstat-importer.ts](./lib/waxstat-importer.ts) `refreshProductWaxstat(productId)` — reads the three URL columns, fetches in parallel, writes one snapshot row per format (success OR error — so stale ≠ broken in the admin panel), and overwrites the matching `*_am_case_cost` on success. Per-format errors are isolated; a 404 on hobby doesn't tank BD + jumbo.
+- **Cron** [app/api/cron/refresh-waxstat-pricing/route.ts](./app/api/cron/refresh-waxstat-pricing/route.ts) — Sundays 04:00 UTC. Iterates active products with at least one `waxstat_*_url` set, serial per product. `recordCronStart` marker so the admin Cron Status panel sees the run even if Vercel kills the function at `maxDuration=300s`.
+- **Admin panel** [app/admin/products/[id]/WaxstatPanel.tsx](./app/admin/products/%5Bid%5D/WaxstatPanel.tsx) — three URL inputs (hobby / BD / jumbo), "Save URLs" + "Refresh Now" buttons, latest-snapshot summary per format with the error message rendered in red when the most recent fetch failed.
+- **Manual refresh + save** [app/api/admin/products/[id]/waxstat-refresh/route.ts](./app/api/admin/products/%5Bid%5D/waxstat-refresh/route.ts) — POST runs `refreshProductWaxstat`; PUT saves the three URL fields. Admin/contributor only.
+
+**Operational notes.**
+- Re-uses the Firecrawl client singleton pattern from `lib/upper-deck-parser.ts` (lazy, per warm container, throws if `FIRECRAWL_API_KEY` is unset).
+- Snapshot table is service-role-only — no consumer access. Same pattern as `ch_set_refresh_log` + `cron_run_log`.
+- The cron skips products with all three URL columns null, so onboarding a new product is just "paste a URL".
+
+**Out of scope.**
+- Backfilling historical snapshots. The first weekly run starts the time series.
+- Per-retailer breakdown — we take WaxStat's already-aggregated `avg_price`.
+- Discord notifications on material case-price moves.
+
+---
+
 ## 2026-05-21 — Upper Deck URL parser: Firecrawl JSON extract + Claude Haiku odds normalization
 
 Adds Hockey to the private-beta sport roster and a new admin path for importing Upper Deck checklists by URL. Builds on the Firecrawl foundation that landed earlier today.
