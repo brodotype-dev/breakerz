@@ -527,7 +527,27 @@ export function parseOddsPdf(text: string): ParsedOdds {
 // Sheets skipped: Full Checklist, NBA Teams, College Teams (aggregates/indexes)
 // ---------------------------------------------------------------------------
 
-const XLSX_SKIP_SHEETS = new Set(['Full Checklist', 'NBA Teams', 'College Teams', 'Teams', 'MLB Teams', 'Topps Master Checklist']);
+// Sheets the legacy Bowman/Topps section-based parser must NOT touch:
+//   - Aggregate-flat lists ("Full Checklist", "Teams" variants) that
+//     duplicate the per-sheet data in a layout the section parser can't
+//     reliably interpret.
+//   - Manufacturer-specific denormalized canonical sheets that have their
+//     own dedicated parsers — "Master Checklist" (Panini) is detected
+//     ahead of the per-sheet loop via findPaniniMasterSheet; "Master Card
+//     List" (Beckett/Upper Deck) is handled by parseUpperDeckXlsx. If the
+//     legacy parser sees the Beckett sheet it reads col 0 ("Set Name") as
+//     a card-number column, col 1 (numeric Card) as a player name, and
+//     col 2 (player Description) as a team — producing player records
+//     literally named "1", "10", "OP-1" with team = the real player name.
+const XLSX_SKIP_SHEETS = new Set([
+  'Full Checklist',
+  'NBA Teams',
+  'College Teams',
+  'Teams',
+  'MLB Teams',
+  'Topps Master Checklist',
+  'Master Card List', // Beckett-published UD/OPC canonical sheet — see lib/upper-deck-parser.ts
+]);
 
 // Labels that are structural, not parallel names — ignore as section/parallel names
 // but still use as a signal that we're in the parallels block.
