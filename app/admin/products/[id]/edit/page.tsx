@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { supabaseAdmin } from '@/lib/supabase';
 import Link from 'next/link';
-import { Edit, ArrowLeft } from 'lucide-react';
+import { Edit, ArrowLeft, LayoutDashboard } from 'lucide-react';
 import ProductForm from '@/components/admin/ProductForm';
 import type { Product, Sport } from '@/lib/types';
 
@@ -28,12 +28,16 @@ export default async function EditProductPage({
   return (
     <div className="max-w-4xl mx-auto space-y-6">
 
-      {/* Header with back link */}
+      {/* Header — back arrow on the left jumps to the full products list;
+          the right-side button opens the product dashboard (readiness +
+          pipeline actions + chase cards). Edit and Dashboard are sibling
+          views; the back arrow steps up a level. */}
       <div className="flex items-center gap-4">
         <Link
-          href={`/admin/products/${id}`}
+          href="/admin/products"
           className="flex items-center justify-center w-9 h-9 rounded-lg transition-colors hover:bg-[var(--terminal-surface-hover)]"
           style={{ border: '1px solid var(--terminal-border)', color: 'var(--text-secondary)' }}
+          aria-label="Back to products list"
         >
           <ArrowLeft className="w-4 h-4" />
         </Link>
@@ -53,6 +57,14 @@ export default async function EditProductPage({
             </p>
           </div>
         </div>
+        <Link
+          href={`/admin/products/${id}`}
+          className="ml-auto flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-[var(--terminal-surface-hover)]"
+          style={{ border: '1px solid var(--terminal-border)', color: 'var(--text-secondary)' }}
+        >
+          <LayoutDashboard className="w-4 h-4" />
+          <span>Product Dashboard →</span>
+        </Link>
       </div>
 
       {/* Form */}
