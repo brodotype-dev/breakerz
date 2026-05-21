@@ -1,25 +1,28 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { ParsedChecklist } from '@/lib/checklist-parser';
+import type { ParsedChecklist, ParsedOdds } from '@/lib/checklist-parser';
 import { computePlayerAggregates, type SectionInput } from '@/lib/checklist-aggregates';
 
-// Inline "Import from URL" panel for Upper Deck checklist pages.
+// Inline UD / O-Pee-Chee importer with two surface paths to the same
+// underlying parser:
 //
-// Two side-by-side flows that share a 5-min server cache so back-to-back
-// checklist + odds imports against the same URL only spend one Firecrawl
-// scrape:
+//   1. **XLSX upload (preferred)** — Beckett publishes a one-file XLSX
+//      whose "Master Card List" sheet is the canonical record of every
+//      (parallel × player) row PLUS the multi-format odds. Drop the file
+//      → parser extracts both checklist + odds in one pass → writers
+//      apply them.
 //
-//   1. Import checklist — POST /api/admin/parse-checklist-url, then forward
-//      the ParsedChecklist to /api/admin/import-checklist with default
-//      { hobbySets: 1, bdSets: 0 } per section (UD is hobby-only). Admin
-//      can adjust per-section sets afterward via the legacy wizard if
-//      they need a non-default mix.
+//   2. **URL scrape (fallback)** — for when admin doesn't have the XLSX.
+//      Firecrawl scrapes upperdeck.com/checklist/<slug>/, the parser
+//      reads the same shape, and the 5-min URL cache lets back-to-back
+//      checklist + odds imports against the same URL only spend one
+//      Firecrawl call.
 //
-//   2. Import odds — POST /api/admin/parse-odds-url, then forward the
-//      ParsedOdds to /api/admin/apply-odds (the existing token-overlap
-//      matcher).
+// Both paths land in the same /api/admin/import-checklist +
+// /api/admin/apply-odds writers — defaults to 1 hobby set / 0 BD per
+// section (UD breakers overwhelmingly sell hobby slots).
 
 type ChecklistResult = {
   playersCreated: number;
@@ -34,17 +37,80 @@ type OddsResult = {
   unmatched: string[];
 };
 
+async function applyParsedChecklist(productId: string, checklist: ParsedChecklist): Promise<ChecklistResult> {
+  const sections: SectionInput[] = checklist.sections.map(s => ({
+    sectionName: s.sectionName,
+    hobbySets: 1,
+    bdSets: 0,
+    cards: s.cards,
+  }));
+  const playersOverride = computePlayerAggregates(sections);
+  const res = await fetch('/api/admin/import-checklist', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ productId, sections, playersOverride }),
+  });
+  const json = (await res.json()) as ChecklistResult & { error?: string };
+  if (!res.ok || json.error) throw new Error(json.error ?? `Import failed (${res.status})`);
+  return json;
+}
+
+async function applyParsedOdds(productId: string, odds: ParsedOdds): Promise<OddsResult> {
+  const res = await fetch('/api/admin/apply-odds', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ productId, odds }),
+  });
+  const json = (await res.json()) as OddsResult & { error?: string };
+  if (!res.ok || json.error) throw new Error(json.error ?? `Apply failed (${res.status})`);
+  return json;
+}
+
 export default function ImportFromUrl({ productId }: { productId: string }) {
   const router = useRouter();
+  const fileRef = useRef<HTMLInputElement>(null);
   const [checklistUrl, setChecklistUrl] = useState('');
   const [oddsUrl, setOddsUrl] = useState('');
-  const [busy, setBusy] = useState<'checklist' | 'odds' | null>(null);
+  const [busy, setBusy] = useState<'xlsx' | 'checklist-url' | 'odds-url' | null>(null);
   const [checklistResult, setChecklistResult] = useState<ChecklistResult | null>(null);
   const [oddsResult, setOddsResult] = useState<OddsResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function importChecklist() {
-    setBusy('checklist');
+  async function importXlsx(file: File) {
+    setBusy('xlsx');
+    setError(null);
+    setChecklistResult(null);
+    setOddsResult(null);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const parseRes = await fetch('/api/admin/parse-upper-deck-xlsx', {
+        method: 'POST',
+        body: form,
+      });
+      const parseJson = (await parseRes.json()) as {
+        checklist?: ParsedChecklist;
+        odds?: ParsedOdds;
+        error?: string;
+      };
+      if (!parseRes.ok || parseJson.error || !parseJson.checklist || !parseJson.odds) {
+        throw new Error(parseJson.error ?? `Parse failed (${parseRes.status})`);
+      }
+      const cr = await applyParsedChecklist(productId, parseJson.checklist);
+      setChecklistResult(cr);
+      const or = await applyParsedOdds(productId, parseJson.odds);
+      setOddsResult(or);
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    } finally {
+      setBusy(null);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  }
+
+  async function importChecklistUrl() {
+    setBusy('checklist-url');
     setError(null);
     setChecklistResult(null);
     try {
@@ -57,29 +123,8 @@ export default function ImportFromUrl({ productId }: { productId: string }) {
       if (!parseRes.ok || parseJson.error || !parseJson.checklist) {
         throw new Error(parseJson.error ?? `Parse failed (${parseRes.status})`);
       }
-
-      // Default to 1 hobby set / 0 BD sets per section — UD breakers
-      // overwhelmingly sell hobby slots. Admin can adjust later via the
-      // legacy /admin/import-checklist wizard if needed.
-      const sections: SectionInput[] = parseJson.checklist.sections.map(s => ({
-        sectionName: s.sectionName,
-        hobbySets: 1,
-        bdSets: 0,
-        cards: s.cards,
-      }));
-
-      const playersOverride = computePlayerAggregates(sections);
-
-      const applyRes = await fetch('/api/admin/import-checklist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId, sections, playersOverride }),
-      });
-      const applyJson = (await applyRes.json()) as ChecklistResult & { error?: string };
-      if (!applyRes.ok || applyJson.error) {
-        throw new Error(applyJson.error ?? `Import failed (${applyRes.status})`);
-      }
-      setChecklistResult(applyJson);
+      const cr = await applyParsedChecklist(productId, parseJson.checklist);
+      setChecklistResult(cr);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -88,8 +133,8 @@ export default function ImportFromUrl({ productId }: { productId: string }) {
     }
   }
 
-  async function importOdds() {
-    setBusy('odds');
+  async function importOddsUrl() {
+    setBusy('odds-url');
     setError(null);
     setOddsResult(null);
     try {
@@ -98,20 +143,12 @@ export default function ImportFromUrl({ productId }: { productId: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: oddsUrl.trim() }),
       });
-      const parseJson = (await parseRes.json()) as { odds?: unknown; error?: string };
+      const parseJson = (await parseRes.json()) as { odds?: ParsedOdds; error?: string };
       if (!parseRes.ok || parseJson.error || !parseJson.odds) {
         throw new Error(parseJson.error ?? `Parse failed (${parseRes.status})`);
       }
-      const applyRes = await fetch('/api/admin/apply-odds', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ productId, odds: parseJson.odds }),
-      });
-      const applyJson = (await applyRes.json()) as OddsResult & { error?: string };
-      if (!applyRes.ok || applyJson.error) {
-        throw new Error(applyJson.error ?? `Apply failed (${applyRes.status})`);
-      }
-      setOddsResult(applyJson);
+      const or = await applyParsedOdds(productId, parseJson.odds);
+      setOddsResult(or);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -121,17 +158,55 @@ export default function ImportFromUrl({ productId }: { productId: string }) {
   }
 
   const disabled = busy !== null;
+  const inputStyle = {
+    backgroundColor: 'var(--terminal-surface)',
+    borderColor: 'var(--terminal-border)',
+    color: 'var(--text-primary)',
+  };
+  const btnStyle = { borderColor: 'var(--terminal-border)', color: 'var(--text-secondary)' };
 
   return (
-    <div className="space-y-4">
-      <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-        Upper Deck publishes per-release checklists at <code>upperdeck.com/checklist/…</code>.
-        Paste the URL — Firecrawl scrapes the table, Claude normalizes the multi-format odds
-        column. Back-to-back checklist + odds imports against the same URL only hit Firecrawl
-        once (5-min cache).
-      </p>
+    <div className="space-y-5">
+      {/* XLSX upload — preferred path */}
+      <div className="space-y-2">
+        <div className="flex items-baseline justify-between gap-2">
+          <label className="terminal-label-muted">Beckett XLSX (preferred)</label>
+          <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+            One file → checklist + odds in one pass
+          </span>
+        </div>
+        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+          Drop the Beckett-published <code>2025-26-…-Checklist.xlsx</code>. The parser reads the
+          <code>Master Card List</code> sheet for every (parallel × player) row plus the multi-format
+          odds.
+        </p>
+        <label
+          className="inline-flex items-center gap-2 cursor-pointer rounded border px-3 py-1.5 text-sm font-medium hover:bg-[var(--terminal-surface-hover)]"
+          style={btnStyle}
+        >
+          {busy === 'xlsx' ? 'Importing…' : 'Upload XLSX →'}
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".xlsx,.xls"
+            className="hidden"
+            disabled={disabled}
+            onChange={e => {
+              const file = e.target.files?.[0];
+              if (file) importXlsx(file);
+            }}
+          />
+        </label>
+      </div>
 
-      <div className="space-y-3">
+      <div className="border-t pt-4 space-y-3" style={{ borderColor: 'var(--terminal-border)' }}>
+        <div className="flex items-baseline justify-between gap-2">
+          <label className="terminal-label-muted">Or fall back to URL scraping</label>
+          <span className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+            Scrapes <code>upperdeck.com/checklist/…</code> via Firecrawl
+          </span>
+        </div>
+
         <div>
           <label className="terminal-label-muted block mb-1">Checklist URL</label>
           <div className="flex gap-2">
@@ -141,20 +216,16 @@ export default function ImportFromUrl({ productId }: { productId: string }) {
               onChange={e => setChecklistUrl(e.target.value)}
               placeholder="https://upperdeck.com/checklist/…"
               className="flex-1 rounded border px-3 py-1.5 text-sm font-mono"
-              style={{
-                backgroundColor: 'var(--terminal-surface)',
-                borderColor: 'var(--terminal-border)',
-                color: 'var(--text-primary)',
-              }}
+              style={inputStyle}
               disabled={disabled}
             />
             <button
-              onClick={importChecklist}
+              onClick={importChecklistUrl}
               disabled={disabled || !checklistUrl.trim()}
               className="rounded border px-3 py-1.5 text-sm font-medium disabled:opacity-40 hover:bg-[var(--terminal-surface-hover)]"
-              style={{ borderColor: 'var(--terminal-border)', color: 'var(--text-secondary)' }}
+              style={btnStyle}
             >
-              {busy === 'checklist' ? 'Importing…' : 'Import →'}
+              {busy === 'checklist-url' ? 'Importing…' : 'Import →'}
             </button>
           </div>
         </div>
@@ -168,20 +239,16 @@ export default function ImportFromUrl({ productId }: { productId: string }) {
               onChange={e => setOddsUrl(e.target.value)}
               placeholder="Often the same as Checklist URL"
               className="flex-1 rounded border px-3 py-1.5 text-sm font-mono"
-              style={{
-                backgroundColor: 'var(--terminal-surface)',
-                borderColor: 'var(--terminal-border)',
-                color: 'var(--text-primary)',
-              }}
+              style={inputStyle}
               disabled={disabled}
             />
             <button
-              onClick={importOdds}
+              onClick={importOddsUrl}
               disabled={disabled || !oddsUrl.trim()}
               className="rounded border px-3 py-1.5 text-sm font-medium disabled:opacity-40 hover:bg-[var(--terminal-surface-hover)]"
-              style={{ borderColor: 'var(--terminal-border)', color: 'var(--text-secondary)' }}
+              style={btnStyle}
             >
-              {busy === 'odds' ? 'Applying…' : 'Import →'}
+              {busy === 'odds-url' ? 'Applying…' : 'Import →'}
             </button>
           </div>
         </div>
