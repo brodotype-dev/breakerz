@@ -37,11 +37,16 @@ async function getFirecrawl() {
 
 export async function fetchBoxPanel(url: string): Promise<WaxstatBoxPanel> {
   const fc = await getFirecrawl();
+
+  // Pre-convert Zod → JSON Schema (see lib/upper-deck-parser.ts for why
+  // the SDK's auto-conversion is unreliable on Zod v4).
+  const jsonSchema = z.toJSONSchema(BOX_PANEL_SCHEMA);
+
   const result = await fc.scrape(url, {
     formats: [
       {
         type: 'json',
-        schema: BOX_PANEL_SCHEMA,
+        schema: jsonSchema as Record<string, unknown>,
         prompt:
           'Extract the box-pricing summary from this WaxStat product page. ' +
           '`avgPrice` is the current average sealed-box price across all tracked retailers, ' +
@@ -50,15 +55,26 @@ export async function fetchBoxPanel(url: string): Promise<WaxstatBoxPanel> {
           '"-1.5%"). Use null for any field that is missing or unreadable. Do NOT confuse ' +
           'wax/box prices with single-card prices.',
       },
+      'markdown',
     ],
     onlyMainContent: true,
-    timeout: 60_000,
+    waitFor: 3000,
+    timeout: 90_000,
   });
 
   const json = (result as { json?: unknown }).json;
+  if (json == null) {
+    const md = (result as { markdown?: string }).markdown ?? '';
+    const excerpt = md.slice(0, 400).replace(/\s+/g, ' ').trim();
+    throw new Error(
+      `Firecrawl returned no JSON extraction. Page preview: "${excerpt || '(empty)'}"`,
+    );
+  }
   const parsed = BOX_PANEL_SCHEMA.safeParse(json);
   if (!parsed.success) {
-    throw new Error(`Firecrawl JSON did not match schema: ${parsed.error.message}`);
+    throw new Error(
+      `Firecrawl JSON did not match schema: ${parsed.error.message} — got: ${JSON.stringify(json).slice(0, 300)}`,
+    );
   }
   if (parsed.data.avgPrice == null && parsed.data.low30d == null && parsed.data.high30d == null) {
     throw new Error('Firecrawl returned no pricing fields — URL may not be a WaxStat product page');
