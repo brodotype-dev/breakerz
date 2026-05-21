@@ -27,17 +27,6 @@
 import type { ParsedCard, ParsedChecklist, ParsedOdds, ParsedSection } from './checklist-parser';
 import type { OddsByFormat, UpperDeckPackFormat } from './types';
 
-const PACK_KEYS: UpperDeckPackFormat[] = [
-  'hobby',
-  'epack',
-  'retail',
-  'blaster',
-  'mega',
-  'hanger',
-  'tin',
-  'dollar',
-];
-
 type RawRow = {
   setName: string;
   cardNumber: string | null;
@@ -196,74 +185,79 @@ async function scrapeRows(url: string): Promise<RawRow[]> {
   return rows;
 }
 
+// Token / full-word → format key. Both short tokens (h/e/r/b) and full
+// words (Hobby, e-Pack, Blaster, …) appear interchangeably in Upper Deck's
+// Stated Odds strings.
+const TOKEN_TO_FORMAT: Record<string, UpperDeckPackFormat> = {
+  h: 'hobby',
+  hobby: 'hobby',
+  e: 'epack',
+  epack: 'epack',
+  'e-pack': 'epack',
+  r: 'retail',
+  retail: 'retail',
+  b: 'blaster',
+  blaster: 'blaster',
+  mega: 'mega',
+  hanger: 'hanger',
+  tin: 'tin',
+  tins: 'tin',
+  dollar: 'dollar',
+};
+
+// One occurrence of an odds ratio + format label. Captures:
+//   1 = numerator   2 = denominator   3 = format token / word
+// Examples it matches:
+//   "1:6 h"                 → ['1','6','h']
+//   "6:1 hobby"             → ['6','1','hobby']
+//   "1:576 Hobby"           → ['1','576','Hobby']
+//   "2:1 e-Pack"            → ['2','1','e-Pack']
+const ODDS_TOKEN_RE = /(\d+)\s*:\s*(\d+)\s+([A-Za-z][A-Za-z-]*)/g;
+
+// Deterministically parse an Upper Deck "Stated Odds" string into
+// OddsByFormat. The Beckett-published patterns are highly regular:
+//   "6:1 h, 6:1 e, 2:1 b"
+//   "1:3 Blaster"
+//   "1:9 h, 1:9 e, 1:36 b"
+//   "Random Inserts in Hobby and e-Pack"  (no numeric odds — returns empty)
+//
+// Each `(\d+):(\d+) <token>` becomes one entry. Ratio is normalized to
+// "1:N" form (denominator stored as string), matching the convention the
+// apply-odds writer uses (renders as `1:N`).
+//
+// Unrecognized strings produce an empty result; the caller treats that as
+// "no odds for this section" and the existing fallback path in the engine
+// picks up.
+function parseOddsString(raw: string): OddsByFormat {
+  const out: OddsByFormat = {};
+  ODDS_TOKEN_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = ODDS_TOKEN_RE.exec(raw)) !== null) {
+    const n = Number(m[1]);
+    const d = Number(m[2]);
+    if (!Number.isFinite(n) || !Number.isFinite(d) || n === 0 || d === 0) continue;
+    const formatKey = TOKEN_TO_FORMAT[m[3].toLowerCase()];
+    if (!formatKey) continue;
+    // Normalize to 1:N form. If the source is already 1:N (n=1) the
+    // stored value is d. If it's X:1, the stored value is X. If it's
+    // X:Y, we collapse to the larger side (e.g. 2:1 = 1:0.5, but we
+    // never see fractional UD odds in practice — so the simple
+    // n===1 ? d : n rule covers every real case).
+    const value = n === 1 ? String(d) : String(n);
+    out[formatKey] = value;
+  }
+  return out;
+}
+
 // Normalize a raw odds string like
 //   "2:1 h, 2:1 e, 2:1 r, 2:1 b, 2:1 mega 5:1 hanger, 2:1 tin, 1:1 dollar"
-// into OddsByFormat:
-//   { hobby: '1', epack: '1', retail: '1', blaster: '1', mega: '1',
-//     hanger: '4', tin: '1', dollar: '0' }
-//
-// Values are the DENOMINATOR-1 form ("2:1" → "1" because the existing
-// apply-odds writer renders as "1:N"). Falls back to leaving the format
-// out when no token references it.
+// into OddsByFormat. Deterministic regex pass on every input; no LLM
+// involvement (Claude Haiku used to fail with truncated JSON on 25+
+// patterns, and the format is regular enough that an LLM is overkill).
 async function normalizeOdds(rawList: string[]): Promise<Map<string, OddsByFormat>> {
   const unique = Array.from(new Set(rawList.map(s => s.trim()).filter(Boolean)));
-  if (unique.length === 0) return new Map();
-
-  const { default: Anthropic } = await import('@anthropic-ai/sdk');
-  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-  const numbered = unique.map((s, i) => `${i + 1}. "${s}"`).join('\n');
-
-  const prompt = `Normalize Upper Deck "Stated Odds" strings into structured pack-format odds.
-
-Upper Deck's checklists encode odds per pack format using these single-letter (or short) tokens:
-  h      → hobby
-  e      → epack
-  r      → retail
-  b      → blaster
-  mega   → mega
-  hanger → hanger
-  tin    → tin
-  dollar → dollar
-
-An odds value is written as "X:1", "X:Y" or "1:Y" — we want the value to be the right-hand side
-of "1:N" form. So "2:1 h" → hobby="2" (one card per 2 hobby packs). If a format is absent from
-the string, omit it from the result.
-
-Input strings:
-${numbered}
-
-For each input, return the structured odds with keys from {hobby, epack, retail, blaster, mega, hanger, tin, dollar}.
-Respond with ONLY a JSON object of shape: {"results": [{"raw": "...", "odds": {"hobby":"2","epack":"2",...}}, ...]}
-No prose, no markdown fences.`;
-
-  const response = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
-    max_tokens: 4000,
-    messages: [{ role: 'user', content: prompt }],
-  });
-  const firstBlock = response.content[0] as { type: string; text?: string } | undefined;
-  const text = (firstBlock?.text ?? '').trim();
-
-  // Strip optional markdown fences just in case.
-  const jsonText = text.replace(/^```(?:json)?\s*|\s*```$/g, '').trim();
-  let payload: { results: Array<{ raw: string; odds: OddsByFormat }> };
-  try {
-    payload = JSON.parse(jsonText);
-  } catch (err) {
-    throw new Error(`Claude returned non-JSON for odds normalization: ${err instanceof Error ? err.message : err}`);
-  }
-
   const out = new Map<string, OddsByFormat>();
-  for (const r of payload.results ?? []) {
-    if (!r.raw || !r.odds) continue;
-    const clean: OddsByFormat = {};
-    for (const key of PACK_KEYS) {
-      const v = r.odds[key];
-      if (typeof v === 'string' && v.trim()) clean[key] = v.trim();
-    }
-    out.set(r.raw, clean);
-  }
+  for (const raw of unique) out.set(raw, parseOddsString(raw));
   return out;
 }
 
