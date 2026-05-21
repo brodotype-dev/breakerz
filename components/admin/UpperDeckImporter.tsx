@@ -66,7 +66,7 @@ async function applyParsedOdds(productId: string, odds: ParsedOdds): Promise<Odd
   return json;
 }
 
-export default function ImportFromUrl({ productId }: { productId: string }) {
+export default function UpperDeckImporter({ productId }: { productId: string }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [checklistUrl, setChecklistUrl] = useState('');

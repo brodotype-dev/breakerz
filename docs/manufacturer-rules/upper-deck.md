@@ -74,12 +74,14 @@ The engine reads `hobby_odds` today; the richer `oddsByFormat` payload is stored
 
 ## Admin workflow
 
-1. Open `/admin/products/[id]` for a UD-family product (manufacturer is `Upper Deck` or `O-Pee-Chee`).
-2. The "Import from URL (Upper Deck)" Section renders. Two paths:
+1. Go to `/admin/import-checklist` (or click "Legacy parser workflow" from a product dashboard).
+2. Select a UD-family product from the dropdown (manufacturer is `Upper Deck` or `O-Pee-Chee`).
+3. A cyan-bordered "Upper Deck importer" panel auto-renders inside Step 1 — non-UD products see only the standard PDF/XLSX/CSV upload below.
+4. Two paths inside the panel:
    - **Beckett XLSX (preferred):** click Upload XLSX → pick the `Master Card List`-bearing file. One pass writes checklist + odds.
    - **URL scrape (fallback):** paste the upperdeck.com URL into Checklist URL → Import. Then paste the same URL into Odds URL → Import (5-min cache so the second call is free).
 
-Both paths default to 1 hobby set / 0 BD per section. UD breakers overwhelmingly sell hobby slots; admin can override per-section via the legacy `/admin/import-checklist` wizard if needed.
+Both paths default to 1 hobby set / 0 BD per section. UD breakers overwhelmingly sell hobby slots; admin can override per-section via the legacy wizard's Step 2 review screen if needed.
 
 ---
 
@@ -105,4 +107,4 @@ Products use either `manufacturer: 'Upper Deck'` or `manufacturer: 'O-Pee-Chee'`
 - [`app/api/admin/parse-upper-deck-xlsx/route.ts`](../../app/api/admin/parse-upper-deck-xlsx/route.ts) — multipart XLSX upload
 - [`app/api/admin/parse-checklist-url/route.ts`](../../app/api/admin/parse-checklist-url/route.ts) — JSON URL POST, returns ParsedChecklist
 - [`app/api/admin/parse-odds-url/route.ts`](../../app/api/admin/parse-odds-url/route.ts) — JSON URL POST, returns ParsedOdds (shares the URL cache)
-- [`app/admin/products/[id]/ImportFromUrl.tsx`](../../app/admin/products/%5Bid%5D/ImportFromUrl.tsx) — admin UI for both paths
+- [`components/admin/UpperDeckImporter.tsx`](../../components/admin/UpperDeckImporter.tsx) — admin UI for both paths (XLSX upload + URL fallback); mounted on `/admin/import-checklist` when the selected product is UD-family

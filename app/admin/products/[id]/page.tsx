@@ -11,7 +11,6 @@ import BreakIQBetsDebrief from './BreakIQBetsDebrief';
 import BreakerComparisonPanel from './BreakerComparisonPanel';
 import PricingBreakdownPanel from './PricingBreakdownPanel';
 import ChaseCardsManager from './ChaseCardsManager';
-import ImportFromUrl from './ImportFromUrl';
 import WaxstatPanel from './WaxstatPanel';
 import { getLatestWaxstatSnapshots } from '@/lib/waxstat-importer';
 
@@ -508,15 +507,6 @@ export default async function ProductDashboardPage({ params }: PageProps) {
             . See <code>docs/parser-workflow-legacy.md</code> for steps.
           </p>
         </Section>
-
-        {/* Upper Deck URL importer — only mount on UD-family products.
-            O-Pee-Chee is owned by Upper Deck and ships on the same
-            upperdeck.com/checklist/… domain, so it's in scope. */}
-        {['Upper Deck', 'O-Pee-Chee'].includes(product.manufacturer) && (
-          <Section title="Import from URL (Upper Deck)" accent="linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%)">
-            <ImportFromUrl productId={id} />
-          </Section>
-        )}
 
         {/* Anchor Strategy Configurator (Plan A, 2026-05-11) */}
         <Section title="Pricing Anchor Strategy" accent="linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)">

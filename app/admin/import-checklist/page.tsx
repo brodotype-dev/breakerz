@@ -5,10 +5,17 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import type { ParsedChecklist, ParsedSection } from '@/lib/checklist-parser';
 import { computePlayerAggregates } from '@/lib/checklist-aggregates';
+import UpperDeckImporter from '@/components/admin/UpperDeckImporter';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type Product = { id: string; name: string; slug: string };
+type Product = { id: string; name: string; slug: string; manufacturer: string };
+
+// Upper Deck-family products use a manufacturer-specific importer
+// (Beckett XLSX or upperdeck.com URL scrape) — see
+// docs/manufacturer-rules/upper-deck.md. The legacy Topps/Bowman/Panini
+// wizard stays unchanged for everything else.
+const UD_MANUFACTURERS = new Set(['Upper Deck', 'O-Pee-Chee']);
 
 type SectionConfig = {
   sectionName: string;
@@ -494,6 +501,26 @@ function ImportChecklistInner() {
                   />
                 )}
               </div>
+
+              {/* Upper Deck manufacturer-specific importer — renders only
+                  when the selected product's manufacturer is UD-family. */}
+              {(() => {
+                const selected = products.find(p => p.id === productId);
+                if (!selected || !UD_MANUFACTURERS.has(selected.manufacturer)) return null;
+                return (
+                  <div className="rounded border p-4 space-y-3" style={{ borderColor: 'rgba(6, 182, 212, 0.35)', backgroundColor: 'rgba(6, 182, 212, 0.06)' }}>
+                    <div className="flex items-center justify-between gap-2">
+                      <h3 className="text-xs font-semibold uppercase tracking-widest" style={{ color: '#67e8f9' }}>
+                        Upper Deck importer · {selected.manufacturer}
+                      </h3>
+                      <span className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--text-tertiary)' }}>
+                        Skip Step 1 — applies checklist + odds in one pass
+                      </span>
+                    </div>
+                    <UpperDeckImporter productId={productId} />
+                  </div>
+                );
+              })()}
 
               {/* File input */}
               <div className="space-y-1.5">
