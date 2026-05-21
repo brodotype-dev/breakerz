@@ -18,6 +18,10 @@
         "RESEND_API_KEY": "${RESEND_API_KEY}",
         "SENDER_EMAIL_ADDRESS": "hello@getbreakiq.com"
       }
+    },
+    "firecrawl": {
+      "type": "http",
+      "url": "https://mcp.firecrawl.dev/${FIRECRAWL_API_KEY}/v2/mcp"
     }
   }
 }

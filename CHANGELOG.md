@@ -5,6 +5,27 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-21 — Firecrawl foundation: SDK + MCP + env-var plumbing
+
+Foundation commit for the upcoming Upper Deck checklist parser + WaxStat box-pricing scraper, both of which need to fetch from sites behind Cloudflare bot-detection. WebFetch (Anthropic's residential infra) handles those URLs fine, but Vercel functions get blocked frequently — Firecrawl proxies through their own browser-grade infrastructure and is the canonical fix.
+
+This commit is **zero behavior change**. Future commits add the actual scrapers on top of this foundation.
+
+**Mechanics.**
+- `@mendable/firecrawl-js` v4.24.2 added to dependencies via `npm install --save`.
+- New `FIRECRAWL_API_KEY` env var listed in CLAUDE.md (set in Vercel Production/Preview/Development scopes, mirror to `.env.local` via `vercel env pull`).
+- New `firecrawl` entry in [.mcp.json](.mcp.json) using HTTP remote at `https://mcp.firecrawl.dev/${FIRECRAWL_API_KEY}/v2/mcp`. Matches the existing `card-hedge` / `supabase` HTTP pattern (no Node subprocess to manage). Key never lands in committed code — interpolated from env at MCP-client launch.
+- `FIRECRAWL_API_KEY` added to the whitelist in [scripts/sync-claude-env.mjs](scripts/sync-claude-env.mjs) so it propagates from `.env.local` into every worktree's `.claude/settings.local.json` automatically. The four current `settings.local.json` files (main + 3 worktrees) got placeholder `FIRECRAWL_API_KEY: ''` slots pre-populated so the MCP entry resolves cleanly the moment the real key lands.
+- Stack line in CLAUDE.md updated to mention Firecrawl alongside the other external services.
+
+**Operational follow-on (Brody, before next commit lands real usage).**
+1. Add `FIRECRAWL_API_KEY` to Vercel env (all three scopes).
+2. `vercel env pull .env.local` to bring it down.
+3. `node scripts/sync-claude-env.mjs` to overwrite the empty placeholders with the real value.
+4. Cmd+Q + relaunch Claude Code Mac app so the Firecrawl MCP picks up the key at next spawn.
+
+---
+
 ## 2026-05-20 — Admin product form: toggle now wins on edit
 
 Brody flagged 2026-05-20 that flipping an active product's "Active" toggle to off and clicking Save (Publish or Save Draft) didn't deactivate it. UI showed "Product updated." but the toggle would re-render as on.

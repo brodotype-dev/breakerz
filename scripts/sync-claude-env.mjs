@@ -38,6 +38,7 @@ const KEY_WHITELIST = [
   'ANTHROPIC_API_KEY',
   'CARDHEDGER_API_KEY',
   'RESEND_API_KEY',
+  'FIRECRAWL_API_KEY',
 ];
 
 // Resolve the MAIN repo root even when run from a worktree.
