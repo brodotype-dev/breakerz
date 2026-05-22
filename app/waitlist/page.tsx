@@ -6,6 +6,8 @@ import { Zap, TrendingUp, Search, ChevronRight } from 'lucide-react';
 import posthog from 'posthog-js';
 import { PH_EVENTS } from '@/lib/posthog-events';
 import { Logo } from '@/components/Logo';
+import { DiscordIcon } from '@/components/icons/DiscordIcon';
+import { DISCORD_INVITE_URL, isDiscordInviteConfigured } from '@/lib/community';
 
 type State = 'idle' | 'loading' | 'success' | 'already' | 'error';
 
@@ -61,6 +63,27 @@ export default function WaitlistPage() {
               ? "We already have your email. We'll send you next steps when your private beta spot is ready."
               : "We'll email you with next steps when your private beta spot is ready."}
           </p>
+          {isDiscordInviteConfigured() && (
+            <div className="pt-2">
+              <a
+                href={DISCORD_INVITE_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-md text-sm font-semibold transition-colors hover:bg-[var(--terminal-surface-hover)]"
+                style={{
+                  border: '1px solid var(--terminal-border)',
+                  color: 'var(--text-primary)',
+                  backgroundColor: 'var(--terminal-surface)',
+                }}
+              >
+                <DiscordIcon className="text-[#5865F2]" size={16} />
+                Join our Discord while you wait
+              </a>
+              <p className="text-xs mt-2" style={{ color: 'var(--text-tertiary)' }}>
+                Chat with other beta hopefuls + see what we&apos;re building.
+              </p>
+            </div>
+          )}
         </div>
       </div>
     );
