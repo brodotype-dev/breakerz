@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import Link from 'next/link';
 import { Edit, ArrowLeft, LayoutDashboard } from 'lucide-react';
 import ProductForm from '@/components/admin/ProductForm';
+import DangerZone from './DangerZone';
 import type { Product, Sport } from '@/lib/types';
 
 async function getProduct(id: string): Promise<Product | null> {
@@ -77,6 +78,11 @@ export default async function EditProductPage({
           <ProductForm sports={sports} product={product} />
         </div>
       </div>
+
+      {/* Danger zone — permanent product deletion. Visually isolated
+          + type-to-confirm so admin can't fat-finger it. Hard-blocked
+          when consumer breaks reference this product. */}
+      <DangerZone productId={id} productName={product.name} />
     </div>
   );
 }

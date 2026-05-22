@@ -230,14 +230,137 @@ export async function clearPlayerRiskFlag(
   return {};
 }
 
-export async function deleteProduct(productId: string): Promise<{ error?: string }> {
-  await requireRole('admin');
-  const { error } = await supabaseAdmin
-    .from('products')
-    .delete()
-    .eq('id', productId);
+// Pre-flight summary for product deletion — the admin UI surfaces these
+// counts so admin sees exactly what cascades before they confirm. Also
+// reports whether the delete is hard-blocked by consumer data.
+//
+// Cascade map (per DB FK rules verified 2026-05-22):
+//   player_products          → CASCADE  (drags variants / pricing_cache /
+//                                       risk_flags / sentiment_history)
+//   market_observations      → CASCADE
+//   product_chase_cards      → CASCADE
+//   waxstat_pricing_snapshots → CASCADE
+//   ch_set_refresh_log       → SET NULL (audit row kept)
+//   pricing_feedback         → SET NULL (consumer feedback kept, unlinked)
+//   user_breaks              → NO ACTION → DB refuses delete if any exist
+export type ProductDeletionPreview = {
+  productName: string;
+  counts: {
+    playerProducts: number;
+    variants: number;
+    marketObservations: number;
+    pricingFeedback: number;
+    chaseCards: number;
+    userBreaks: number;
+  };
+  // When set, the delete button must stay disabled. Currently fires only
+  // for `user_breaks > 0` — consumers logged breaks against this product
+  // and we won't quietly nuke their history.
+  blockReason: string | null;
+};
 
+export async function getProductDeletionPreview(
+  productId: string,
+): Promise<{ preview?: ProductDeletionPreview; error?: string }> {
+  await requireRole('admin');
+
+  const { data: product, error: prodErr } = await supabaseAdmin
+    .from('products')
+    .select('name')
+    .eq('id', productId)
+    .maybeSingle();
+  if (prodErr) return { error: prodErr.message };
+  if (!product) return { error: 'Product not found' };
+
+  // Counts in parallel — all head:true so no rows leave the DB.
+  const [pp, variants, obs, feedback, chase, breaks] = await Promise.all([
+    supabaseAdmin
+      .from('player_products')
+      .select('id', { count: 'exact', head: true })
+      .eq('product_id', productId),
+    supabaseAdmin
+      .from('player_product_variants')
+      .select('id, player_products!inner(product_id)', { count: 'exact', head: true })
+      .eq('player_products.product_id', productId),
+    supabaseAdmin
+      .from('market_observations')
+      .select('id', { count: 'exact', head: true })
+      .eq('product_id', productId),
+    supabaseAdmin
+      .from('pricing_feedback')
+      .select('id', { count: 'exact', head: true })
+      .eq('product_id', productId),
+    supabaseAdmin
+      .from('product_chase_cards')
+      .select('id', { count: 'exact', head: true })
+      .eq('product_id', productId),
+    supabaseAdmin
+      .from('user_breaks')
+      .select('id', { count: 'exact', head: true })
+      .eq('product_id', productId),
+  ]);
+
+  const userBreaks = breaks.count ?? 0;
+
+  return {
+    preview: {
+      productName: product.name,
+      counts: {
+        playerProducts: pp.count ?? 0,
+        variants: variants.count ?? 0,
+        marketObservations: obs.count ?? 0,
+        pricingFeedback: feedback.count ?? 0,
+        chaseCards: chase.count ?? 0,
+        userBreaks,
+      },
+      blockReason:
+        userBreaks > 0
+          ? `${userBreaks} consumer break log${userBreaks === 1 ? '' : 's'} reference this product. ` +
+            `Deactivate it instead (toggle Active off) — deleting would orphan their history.`
+          : null,
+    },
+  };
+}
+
+export async function deleteProduct(
+  productId: string,
+  expectedName: string,
+): Promise<{ error?: string }> {
+  await requireRole('admin');
+
+  // Re-verify name match server-side so a tampered client can't trigger
+  // a delete by passing any string. Belt-and-suspenders for a destructive
+  // op — the UI already requires typing it.
+  const { data: product, error: prodErr } = await supabaseAdmin
+    .from('products')
+    .select('name')
+    .eq('id', productId)
+    .maybeSingle();
+  if (prodErr) return { error: prodErr.message };
+  if (!product) return { error: 'Product not found' };
+  if (product.name !== expectedName) {
+    return {
+      error: `Confirmation name mismatch (expected "${product.name}"). Aborting delete.`,
+    };
+  }
+
+  // Re-check the user_breaks guard server-side — preview is stale by the
+  // time the admin confirms, and we never want to silently cascade-delete
+  // consumer history.
+  const { count: breakCount } = await supabaseAdmin
+    .from('user_breaks')
+    .select('id', { count: 'exact', head: true })
+    .eq('product_id', productId);
+  if ((breakCount ?? 0) > 0) {
+    return {
+      error: `Cannot delete: ${breakCount} consumer break log(s) reference this product. ` +
+        `Deactivate it instead.`,
+    };
+  }
+
+  const { error } = await supabaseAdmin.from('products').delete().eq('id', productId);
   if (error) return { error: error.message };
+
   revalidatePath('/admin');
   revalidatePath('/admin/products');
   return {};
