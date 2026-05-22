@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { User, Calendar, Heart, Save, CheckCircle, FileText, AlertTriangle } from 'lucide-react';
+import { User, Calendar, Heart, Save, CheckCircle, FileText, AlertTriangle, Users } from 'lucide-react';
 import { TERMS_VERSION, PRIVACY_VERSION, TERMS_PATH, PRIVACY_PATH, isCurrent } from '@/lib/legal';
+import { DiscordIcon } from '@/components/icons/DiscordIcon';
+import { DISCORD_INVITE_URL, isDiscordInviteConfigured } from '@/lib/community';
 
 interface ProfileData {
   first_name: string;
@@ -348,6 +350,44 @@ export default function ProfilePage() {
             />
           </div>
         </section>
+
+        {/* Community — small Discord CTA. Hidden if DISCORD_INVITE_URL
+            isn't configured yet so we never ship a dead link. */}
+        {isDiscordInviteConfigured() && (
+          <section
+            className="rounded-xl border p-5"
+            style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <Users className="w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
+              <h2 className="text-sm font-semibold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>
+                Community
+              </h2>
+            </div>
+            <a
+              href={DISCORD_INVITE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between gap-3 rounded-lg border px-4 py-3 transition-colors hover:bg-[var(--terminal-bg)]"
+              style={{ borderColor: 'var(--terminal-border)' }}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <DiscordIcon className="text-[#5865F2] shrink-0" size={24} />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    Join the BreakIQ Discord
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                    Chat with other beta users, share pulls, and shape what we build next.
+                  </p>
+                </div>
+              </div>
+              <span className="text-xs font-bold uppercase tracking-wide shrink-0" style={{ color: 'var(--accent-blue)' }}>
+                Join →
+              </span>
+            </a>
+          </section>
+        )}
 
         {/* Save */}
         {error && (

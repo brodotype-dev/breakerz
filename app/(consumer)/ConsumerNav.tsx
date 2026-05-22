@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Settings, User, ClipboardList, Menu, X, LogOut, Heart, Home, Sparkles, Search as SearchIcon, Plus } from 'lucide-react';
 import { Logo } from '@/components/Logo';
+import { DiscordIcon } from '@/components/icons/DiscordIcon';
+import { DISCORD_INVITE_URL, isDiscordInviteConfigured } from '@/lib/community';
 import { logout } from './actions';
 
 interface ConsumerNavProps {
@@ -141,6 +143,28 @@ export default function ConsumerNav({ isAdmin }: ConsumerNavProps) {
               <SheetLink href="/chase" icon={Heart} label="My Chase" onClick={() => setMenuOpen(false)} />
               <SheetLink href="/my-breaks" icon={ClipboardList} label="My Breaks" onClick={() => setMenuOpen(false)} />
               <SheetLink href="/profile" icon={User} label="Profile" onClick={() => setMenuOpen(false)} />
+
+              {isDiscordInviteConfigured() && (
+                <>
+                  <div className="text-[10px] uppercase tracking-widest px-3 py-1 mt-2" style={{ color: 'var(--text-tertiary)' }}>
+                    Community
+                  </div>
+                  <a
+                    href={DISCORD_INVITE_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => setMenuOpen(false)}
+                    className="flex items-center gap-3 px-3 py-3 rounded-md text-sm font-medium transition-colors hover:bg-[var(--terminal-surface)]"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
+                    <DiscordIcon className="text-[#5865F2]" size={18} />
+                    <span className="flex-1">Join Discord</span>
+                    <span className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--text-tertiary)' }}>
+                      ↗
+                    </span>
+                  </a>
+                </>
+              )}
 
               {isAdmin && (
                 <Link
