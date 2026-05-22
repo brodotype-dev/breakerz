@@ -331,6 +331,34 @@ Cheap, non-blocking. Pure UI.
 
 ---
 
+### CardHedger data-health dashboard
+**Effort:** ~1 day  
+**Why:** Surfaced 2026-05-22 by Brody, originally deferred from the 2026-05-20 `ch_price_cache` null-overwrite incident (see CHANGELOG entry + CLAUDE.md line 188). Today we have no admin-facing view of how much CH actually knows about our active products. We discovered the cache bug only because of a tangential FMV experiment; without a routine "is the data we depend on actually there?" surface, the next CH-side coverage regression (or a model-fallback drift like the FMV PSA 9/10 -18% bias) will sit invisible until a consumer complains.
+
+This is the operational dashboard we promised ourselves after that incident.
+
+**Build:**
+- New admin route `/admin/data-health` (or similar) reachable from the admin nav. One row per active product with:
+  - **Cards in catalog** — total rows in `ch_set_cache` matching this product's `ch_set_name`
+  - **Cards with sales** — rows where the most recent `ch_price_cache` lookup had `method='direct'` or `'direct_indexed'` (real recent-sale aggregates)
+  - **Cards with inferred pricing only** — rows whose only price came from `segment_fallback_indexed` / `anchor_multiplier` / `correlated` / `cross_provider*` (model fallbacks). High inferred ratio = thin sales pool, less trustworthy slot pricing.
+  - **Cards with no pricing at all** — `ch_price_cache` rows where all three grade prices are null after a recent fetch attempt (post-2026-05-20 these are honest "CH genuinely doesn't know" rows, not our null-wipe bug)
+  - **Players with any sales signal** — count of `player_products` where at least one variant has a non-null cached price
+  - **Average confidence** — mean of `pricing_cache.confidence` across the product's player_products
+  - **Stale price coverage** — `pricing_cache` rows whose `fetched_at` is past the 24h TTL (cron is falling behind)
+- Each row links to the product dashboard for drill-down.
+- Sortable by every metric so admin can spot the most-affected products at a glance.
+- Optional sparkline column: 7-day trend of "cards with sales" so a CH-side regression shows as a visible drop instead of a static number.
+- Pure read across `ch_set_cache` / `ch_price_cache` / `pricing_cache` / `player_products` — no new schema. Counts in parallel head-only queries (same pattern as the product dashboard).
+
+**Why P1 (not deferred indefinitely):** The 2026-05-20 incident took ~30 min to detect via a side experiment + ~hours to backfill. The same regression with a coverage dashboard up would be a single glance — "Donruss Optic dropped from 4,200 cards-with-sales to 2,100 overnight, investigate." Tactical signal that catches both our bugs AND CH's data shifts.
+
+**Sequencing:** Should land after a few cron cycles have repopulated post-fix prices (per the deferral note in CLAUDE.md) so the dashboard measures CH coverage and not our own cache bug. As of 2026-05-22 the cron has been running with the COALESCE-preserving upsert for ~2 days — coverage should be representative by the time this builds.
+
+**Files:** new `app/admin/data-health/page.tsx`, new query helper in `lib/ch-coverage.ts`, nav entry in `app/admin/AdminNav.tsx`.
+
+---
+
 ## Priority 2 — High value, external dependency or more effort
 
 ### 9. Confidence bands in UI (variance-honesty surface)
