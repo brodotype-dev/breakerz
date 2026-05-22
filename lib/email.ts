@@ -49,8 +49,13 @@ function appBaseUrl(): string {
   return process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.getbreakiq.com';
 }
 
-// Shared email-body shell. Dark theme, single 480px container, brand wordmark
+// Shared email-body shell. Dark theme, 600px content table, brand wordmark
 // at the top. Centralized so subject/CTA are the only per-email decisions.
+//
+// Why nested tables and not <div>s: email clients (Outlook in particular) are
+// inconsistent about CSS background propagation on <div>s. The outer table
+// gets a full-bleed dark background so Gmail/desktop renders the email as a
+// dark email, not a dark card floating on Gmail's white container.
 function emailShell({
   bodyHtml,
   preheader,
@@ -59,10 +64,20 @@ function emailShell({
   const safePre = preheader ? escapeHtml(preheader) : '';
   return `
     ${preheader ? `<div style="display:none;max-height:0;overflow:hidden">${safePre}</div>` : ''}
-    <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; color: #e2e8f0; background: #0a0e1a; padding: 40px 32px; border-radius: 12px;">
-      <img src="${base}/brand/wordmark-email.png" alt="BreakIQ" width="120" height="30" style="display: block; margin: 0 0 24px; height: 30px; width: auto;" />
-      ${bodyHtml}
-    </div>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background: #0a0e1a;">
+      <tr>
+        <td align="center" style="padding: 40px 16px;">
+          <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; width: 100%;">
+            <tr>
+              <td style="font-family: -apple-system, sans-serif; color: #e2e8f0; background: #0a0e1a; padding: 40px 32px;">
+                <img src="${base}/brand/wordmark-email.png" alt="BreakIQ" width="120" height="30" style="display: block; margin: 0 0 24px; height: 30px; width: auto;" />
+                ${bodyHtml}
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
   `;
 }
 
