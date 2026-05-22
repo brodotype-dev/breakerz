@@ -25,6 +25,8 @@ const STATUS_COLORS: Record<string, string> = {
 export default function WaitlistTable({ entries }: { entries: WaitlistEntry[] }) {
   const [tab, setTab] = useState<Tab>('pending');
   const [approving, setApproving] = useState<string | null>(null);
+  const [rejecting, setRejecting] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
   const [localEntries, setLocalEntries] = useState(entries);
   // Per-row sticky error state. Banner stays visible after page-render until
   // the row scrolls off the active tab — alert() popups were dismissable and
@@ -57,6 +59,32 @@ export default function WaitlistTable({ entries }: { entries: WaitlistEntry[] })
       alert(`Failed to approve: ${error}`);
     }
     setApproving(null);
+  }
+
+  async function handleReject(id: string, email: string) {
+    if (!confirm(`Reject "${email}"? They'll move to the Rejected tab (kept for audit).`)) return;
+    setRejecting(id);
+    const res = await fetch(`/api/admin/waitlist/${id}/reject`, { method: 'POST' });
+    if (res.ok) {
+      setLocalEntries(prev => prev.map(e => (e.id === id ? { ...e, status: 'rejected' } : e)));
+    } else {
+      const { error } = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      alert(`Failed to reject: ${error}`);
+    }
+    setRejecting(null);
+  }
+
+  async function handleDelete(id: string, email: string) {
+    if (!confirm(`Permanently delete "${email}"? This removes the waitlist row entirely (no audit trail).`)) return;
+    setDeleting(id);
+    const res = await fetch(`/api/admin/waitlist/${id}`, { method: 'DELETE' });
+    if (res.ok) {
+      setLocalEntries(prev => prev.filter(e => e.id !== id));
+    } else {
+      const { error } = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      alert(`Failed to delete: ${error}`);
+    }
+    setDeleting(null);
   }
 
   return (
@@ -98,12 +126,12 @@ export default function WaitlistTable({ entries }: { entries: WaitlistEntry[] })
               <th className="text-left px-4 py-2.5 text-xs font-bold uppercase tracking-wider">Use Case</th>
               <th className="text-left px-4 py-2.5 text-xs font-bold uppercase tracking-wider">Joined</th>
               <th className="text-left px-4 py-2.5 text-xs font-bold uppercase tracking-wider">Status</th>
-              {tab === 'pending' && <th className="px-4 py-2.5" />}
+              <th className="px-4 py-2.5" />
             </tr>
           </thead>
           <tbody className="divide-y" style={{ borderColor: 'var(--terminal-border)' }}>
             {filtered.map(entry => {
-              const colSpan = tab === 'pending' ? 5 : 4;
+              const colSpan = 5;
               const emailErr = emailErrors[entry.id];
               return (
                 <React.Fragment key={entry.id}>
@@ -132,22 +160,52 @@ export default function WaitlistTable({ entries }: { entries: WaitlistEntry[] })
                         </p>
                       )}
                     </td>
-                    {tab === 'pending' && (
-                      <td className="px-4 py-3 text-right">
-                        <button
-                          onClick={() => handleApprove(entry.id)}
-                          disabled={approving === entry.id}
-                          className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
-                          style={{
-                            backgroundColor: 'rgba(59,130,246,0.15)',
-                            color: 'var(--accent-blue)',
-                            border: '1px solid rgba(59,130,246,0.3)',
-                          }}
-                        >
-                          {approving === entry.id ? 'Sending…' : 'Approve + Invite →'}
-                        </button>
-                      </td>
-                    )}
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <div className="inline-flex items-center gap-2">
+                        {tab === 'pending' && (
+                          <>
+                            <button
+                              onClick={() => handleApprove(entry.id)}
+                              disabled={approving === entry.id || rejecting === entry.id || deleting === entry.id}
+                              className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
+                              style={{
+                                backgroundColor: 'rgba(59,130,246,0.15)',
+                                color: 'var(--accent-blue)',
+                                border: '1px solid rgba(59,130,246,0.3)',
+                              }}
+                            >
+                              {approving === entry.id ? 'Sending…' : 'Approve + Invite →'}
+                            </button>
+                            <button
+                              onClick={() => handleReject(entry.id, entry.email)}
+                              disabled={approving === entry.id || rejecting === entry.id || deleting === entry.id}
+                              className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all disabled:opacity-50 hover:bg-[var(--terminal-surface-hover)]"
+                              style={{
+                                border: '1px solid var(--terminal-border)',
+                                color: 'var(--text-secondary)',
+                              }}
+                            >
+                              {rejecting === entry.id ? 'Rejecting…' : 'Reject'}
+                            </button>
+                          </>
+                        )}
+                        {entry.status !== 'converted' && (
+                          <button
+                            onClick={() => handleDelete(entry.id, entry.email)}
+                            disabled={approving === entry.id || rejecting === entry.id || deleting === entry.id}
+                            className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
+                            style={{
+                              backgroundColor: 'rgba(239,68,68,0.10)',
+                              color: '#fca5a5',
+                              border: '1px solid rgba(239,68,68,0.35)',
+                            }}
+                            title="Permanently delete this row"
+                          >
+                            {deleting === entry.id ? 'Deleting…' : 'Delete'}
+                          </button>
+                        )}
+                      </div>
+                    </td>
                   </tr>
                   {emailErr && (
                     <tr>
