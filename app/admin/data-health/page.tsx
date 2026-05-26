@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { getCHCoverageForActiveProducts, type CHCoverageRow } from '@/lib/ch-coverage';
 import { AlertTriangle, CheckCircle2, Database, ExternalLink } from 'lucide-react';
+import ProbeCHButton from './ProbeCHButton';
 
 // CardHedger data-health dashboard. One row per active product, surfacing
 // the kind of signals that would have caught the 2026-05-20 ch_price_cache
@@ -72,6 +73,7 @@ export default async function DataHealthPage() {
                   <Th rightAlign>Pricing fresh</Th>
                   <Th rightAlign>Avg confidence</Th>
                   <Th>Last priced</Th>
+                  <Th>CH live probe</Th>
                   <Th />
                 </tr>
               </thead>
@@ -156,6 +158,9 @@ function Row({ r }: { r: CHCoverageRow }) {
       </td>
       <td className="px-3 py-2 font-mono text-xs" title={r.lastPriced ?? ''}>
         {formatLastPriced(r.lastPriced)}
+      </td>
+      <td className="px-3 py-2">
+        <ProbeCHButton productId={r.productId} />
       </td>
       <td className="px-3 py-2 text-right">
         <Link
@@ -245,6 +250,12 @@ function Legend() {
         <li>
           Watch for sudden drops in <strong>With prices</strong> on a product that was previously
           green — that&apos;s the canary for a CH-side regression or one of our cache bugs.
+        </li>
+        <li>
+          <strong>CH live probe</strong> is button-triggered (1 small CH call) — it asks CH&apos;s
+          card-search how many cards exist in this product&apos;s set and compares to our{' '}
+          <code>ch_set_cache</code>. Match = healthy. <em>CH +N</em> = CH grew, run Refresh CH Catalog
+          on the product. <em>CH returned 0</em> = bad <code>ch_set_name</code> or CH outage.
         </li>
       </ul>
       <div className="pt-2 flex items-center gap-1.5" style={{ color: 'var(--text-secondary)' }}>
