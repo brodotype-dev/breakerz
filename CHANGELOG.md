@@ -5,6 +5,87 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-26 — FMV `price_explanation` surfaced in player drawer tooltips
+
+River's 2026-05-23/24 FMV revamp added a per-row `price_explanation` field — human-readable narrative of how each price was derived. We pipe it through to the player drawer as a native browser tooltip on every per-grade cell. Hover any price → see CH's full derivation in plain English.
+
+**Examples of what now shows on hover:**
+- *"Used 7d FMV ($2.29, Winsorized median of 7 daily prints) in place of latest_price $1.70. Fresh (0d) — no movement adjustment applied."*
+- *"Estimated PSA 10 from the Raw price ($2.29, 0d old), translated Raw→PSA 10 via Raw multiplier (×11.07)."*
+- *"Estimated PSA 9 from the 2026|Baseball segment baseline ($27.29 at reference grade PSA 9), used directly — no grade adjustment applied. Stale (365d) → applied the player-level movement index for Jacob Wilson -45.4% — damped to 75% of the raw -55.4% move (10,534 samples, τ-damped)."*
+
+**Plumbing.** `CardFmvResult` + raw row type gain `price_explanation` (lib/cardhedger.ts); `app/api/player-comps/route.ts` captures it in per-card priceMap; `VariantWithPrices.prices[]` extends with the optional field (lib/types.ts); `PlayerDetailDrawer.tsx` per-grade `<td>`s get a `title=` attribute composed from grade + method + explanation. Cursor becomes `help` so the affordance is discoverable. Legend updated.
+
+**Why not also persist into `ch_price_cache`?** FMV is called live on every drawer open already, so the explanation flows through without persistence. A future PR can ingest into the cache if we want to surface explanations on slot pricing / audit-trail card / other surfaces.
+
+**Why not also swap the slot-pricing engine to FMV?** Today's 500-card at-scale re-experiment showed drift vs `batch-price-estimate` narrowed from ~18% (May 20 baseline) to ~7% on PSA 9/10. The bias persists, so we're not swapping yet. This PR is the trust + transparency layer that makes admins comfortable comparing both prices side-by-side until we ground-truth them against actual sales.
+
+PR [#143](https://github.com/brodotype-dev/breakerz/pull/143).
+
+---
+
+## 2026-05-26 — Insights parser: roster scope + refine = authoritative + nickname rules
+
+Three coordinated fixes for the Discord `/insight` + `/break-price` parsers after a real Wemby-misattribution incident this morning (3+ refines kept landing on the wrong player — Luka Doncic, Alex Sarr, Cooper Flagg).
+
+**Root cause (the real one, found via `pending_insights.parsed_updates` inspection):** the roster query pulled `from('players')` unfiltered, alphabetically ordered, capped at 5,000. The players table has grown to 6,666 solo entries (legends accumulated from historical product imports). **Victor Wembanyama (V/W region) was getting cut off below the cap.** Cooper Flagg (C), Alex Sarr (A), Luka (L) all survived. The model semantically extracted "Wemby" → "Wembanyama" in its freeform `note` field but couldn't find a roster match, so fell back to picking an alphabetically-earlier auto-eligible basketball rookie that was in its slice.
+
+**Three fixes (chronological, three PRs):**
+
+1. **PR [#140](https://github.com/brodotype-dev/breakerz/pull/140) — `parseInsights` refine correction = authoritative override.** `ParseInput` gains optional `refineCorrection` field. When present, prompt renders a dedicated "CONTRIBUTOR CORRECTION (authoritative)" section with explicit override language. Previously the refine handler was concatenating the correction onto the narrative and re-running the parser — the model treated both passes as equal context. Also hardened the CRITICAL nickname rule with a concrete table (Wemby, Luka, CJ Stroud, Tua, Shedeur, Flagg, Ohtani, Soto, Schwarber, etc.) and explicit "NEVER substitute" language. `handleRefineModalSubmit` in app/api/discord/interactions/route.ts now passes correction as structured `refineCorrection` instead of mashing onto narrative.
+
+2. **PR [#141](https://github.com/brodotype-dev/breakerz/pull/141) — `parseBreakPrice` refine correction = authoritative override (mirror).** Same structural fix for the break-price refine path. `BreakPriceInput.refineCorrection` is distinct from `notes` (which is original-call user input). Nickname mapping line added to the CRITICAL section for chase-card sub-rows.
+
+3. **PR [#142](https://github.com/brodotype-dev/breakerz/pull/142) — Scope roster to active-product players (the real fix).** The refine fixes alone weren't enough — even after #140 + #141 deployed, Brody's refines kept landing on Cooper Flagg because Wembanyama wasn't IN the roster slice. Both parsers now use `player_products!inner(products!inner(is_active))` to scope the roster to ~2,889 distinct players in active products (down from 6,666). Comfortably under the 5,000 cap with every match candidate represented. Dedupe in-process via Set since PostgREST can't express DISTINCT on a joined query.
+
+The #140 / #141 prompt fixes still earn their keep — they protect the refine flow once the model finds the right roster entry. #142 made the lookup correct in the first place.
+
+---
+
+## 2026-05-26 — CardHedger data-health dashboard + live probe
+
+Two PRs delivering the dashboard we promised ourselves after the 2026-05-20 `ch_price_cache` null-overwrite incident and the 2026-05-25 Kong-URL-cap regression. Both went undetected for days because we had no routine "is the data we depend on actually there?" surface.
+
+**PR [#138](https://github.com/brodotype-dev/breakerz/pull/138) — Data-Health dashboard.** New admin route `/admin/data-health` reachable from the admin nav. One row per active product surfacing:
+
+- Distinct cards (denominator: `cardhedger_card_id`s OUR matched variants reference, not full ch_set_cache)
+- With prices / All-null / Never fetched (sums to distinct cards). With-prices tinted green ≥60%, yellow 25-60%, red <25%. Pre-release products tinted neutral.
+- Cache fresh vs stale (24h TTL split)
+- Priced players (`pricing_cache` rows / total auto-eligible player_products)
+- Avg confidence (CH's sales-weighted confidence averaged across player_products)
+- Last priced (relative time)
+
+New `lib/ch-coverage.ts` runs counts in parallel per product. `ch_price_cache` reads scoped via 200-UUID `.in()` chunks (CLAUDE.md gotcha #11). PostgREST 1000-row cap handled by pagination on the distinct-card-ids query. Pure read, no new schema. Server-rendered, non-interactive for v1.
+
+**PR [#139](https://github.com/brodotype-dev/breakerz/pull/139) — CH live-probe button.** Closes the "does it also hit the MCP to see what actually exists directly from CH" question. The dashboard's default render is cache-only (cheap). New per-row "Probe CH" button hits `getCardsBySet(ch_set_name, 1, 1)` — the response's `count` field tells us CH's view of the set size. Compare to our `ch_set_cache` rows and render a diagnosis badge:
+
+| Result | Color | Meaning |
+|---|---|---|
+| match (delta = 0) | 🟢 green | CH and our mirror agree |
+| CH +N | 🟡 yellow | CH grew, run Refresh CH Catalog |
+| Ours +N | gray | We have more than CH (rare) |
+| CH 0 / Ours >0 | 🔴 red | Bad `ch_set_name` OR CH outage |
+
+Button-triggered so the dashboard render stays cheap. Admin clicks per-product on demand.
+
+Watch the **With prices** column over time — a sudden drop on a previously-green product is the canary for a CH-side regression or one of our cache bugs. Would have flagged the 2026-05-22 Kong-cap issue within hours instead of 3 days.
+
+---
+
+## 2026-05-25 → 2026-05-26 — Pricing-refresh cron arc: three sequential fixes
+
+The pricing-refresh cron had been silently broken since 2026-05-22 04:30 UTC. Three products (2025-26 Topps Chrome BB, 2026 Bowman BB, 2025-26 Topps Cosmic Chrome BB) timing out on every firing. Diagnosed + fixed in three PRs.
+
+**PR [#135](https://github.com/brodotype-dev/breakerz/pull/135) — Cache-read chunk size 1000 → 200 (Kong URL cap).** Worker logs showed repeating `[pricing-refresh] ch_price_cache read failed (degrading to live fetch)` warnings. The `.in('cardhedger_card_id', slice)` cache lookup had `CACHE_LOOKUP_CHUNK = 1000` — UUIDs encode at 37 chars each, so 1000 UUIDs = 37 KB request URL, way past Kong/PostgREST's ~8 KB cap. Kong rejected the request outright. The worker logged + swallowed, fell through to "treat everything as stale," and tried to live-fetch every card via batchPriceEstimate × 3 grades. 30k cards × 3 grades / 100 per chunk ≈ 900 batches. 300s isn't close. Worked silently for two weeks because no product had >1,000 distinct CH cards until basketball products got fully hydrated. Every other `.in()` chunk in the codebase already uses 200. Added CLAUDE.md Known Gotcha #11 ("when in doubt, use 200").
+
+**PR [#136](https://github.com/brodotype-dev/breakerz/pull/136) — Skip refetching fresh-but-all-null cached rows.** After #135 fixed the cache READ, the worker still timed out on big products. Root cause: 2026 Bowman BB has 4,257 fresh-under-24h cached rows, but **3,469 of those are all-null** (CH genuinely has no data for the card_id). Line 217's skip kept them out of `pricesOnly`, but `staleCardIds = allVariantCardIds.filter(id => !pricesOnly.has(id))` STILL included them — so we live-refetched every all-null card on every firing. CH responded "no data" again, the COALESCE upsert kept the row all-null, and we burned 6+ minutes of CH bandwidth on data we already had. For thin-coverage products (Topps Chrome BB: 28,014 / 29,936 all-null = 94%) this dominated runtime. Fix: track `freshAllNullIds: Set<string>` alongside `pricesOnly` during the cache read pass; exclude both from `staleCardIds`. After 24h the all-null rows fall out of the freshness window and we retry. New `variantsSkippedAllNull` counter surfaced in `RefreshSummary` + terminal log.
+
+**PR [#137](https://github.com/brodotype-dev/breakerz/pull/137) — Worker AbortController so we never hit Vercel's 300s kill.** Brody hit `FUNCTION_INVOCATION_TIMEOUT` on the manual refresh even after #135 + #136 — our graceful 280s/295s deadlines only prevent NEW chunks from starting; in-flight CH calls and their 3-retry × 10s × backoff chain could ride past the deadline and blow Vercel's 300s function `maxDuration`. Fix: `lib/cardhedger.ts` `post()` accepts optional `signal: AbortSignal`. Combined with the per-call 10s timeout via `AbortSignal.any` (Node 20+). Retry loop checks the caller signal at entry + after each backoff and bails immediately if aborted. Backoff sleeps short-circuit via new `sleepUnlessAborted` helper. `batchPriceEstimate` forwards the signal. `lib/pricing-refresh.ts` creates a worker-level `AbortController` that fires at `HARD_DEADLINE_MS - 5_000` (290s). At 290s every in-flight CH call aborts, every retry chain short-circuits, and the function body returns within the ~5s buffer with a structured `partial: true` `RefreshSummary` instead of being Vercel-killed.
+
+**Recovery scheduled.** A one-shot task fires 2026-05-26 09:00 ET to verify all three products produced `/done` markers overnight + check for `aborted by caller signal` warnings (expected, proves the AbortController is doing its job).
+
+---
+
 ## 2026-05-21 — Upper Deck XLSX parser (Beckett "Master Card List" sheet)
 
 Adds a second surface to the Upper Deck / O-Pee-Chee importer alongside the URL scraper that shipped earlier today. Beckett publishes a `<product>-Checklist.xlsx` for every UD release whose `Master Card List` sheet has the exact same 11-column structure (`Set Name | Card | Description | Team City | Team Name | Rookie | Auto | #'d | SPs | Stated Odds | Point`) as the web checklist table. The XLSX is the preferred path when admin has it — no Cloudflare, no JS rendering, no rate limit, one file = checklist + odds.
