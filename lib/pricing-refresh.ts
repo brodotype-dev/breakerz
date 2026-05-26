@@ -75,6 +75,19 @@ export interface RefreshSummary {
 export async function refreshProductPricing(productId: string): Promise<RefreshSummary> {
   const started = Date.now();
 
+  // Worker-level abort signal. Fires 5s before HARD_DEADLINE_MS so any
+  // in-flight CH calls — including the retry chain inside post() — abort
+  // immediately rather than riding their per-call 10s timeout × 3-retry
+  // backoff past Vercel's 300s function kill. Without this an unlucky
+  // hung CH fetch right before the deadline can blow past 300s and we
+  // get FUNCTION_INVOCATION_TIMEOUT (raw Vercel error, no structured
+  // partial response). Bit us 2026-05-26 on the manual refresh of 2026
+  // Bowman BB. Threaded through batchPriceEstimate → post() via the
+  // `signal` option on each.
+  const workerAbort = new AbortController();
+  const ABORT_AT_MS = HARD_DEADLINE_MS - 5_000; // 290s
+  const abortTimer = setTimeout(() => workerAbort.abort(), ABORT_AT_MS);
+
   const { data: product } = await supabaseAdmin
     .from('products')
     .select('name, year, anchor_strategy, anchor_variant_patterns, lifecycle_status, live_since')
@@ -116,6 +129,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
 
   if (error) throw error;
   if (!playerProducts?.length) {
+    clearTimeout(abortTimer);
     return {
       productId,
       productName: product?.name ?? null,
@@ -302,9 +316,9 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     // continue WITHOUT writing anything. That left ch_price_cache empty after
     // 50 "completed" chunks for Donruss Optic.
     const settled = await Promise.allSettled([
-      batchPriceEstimate(chunk.map(card_id => ({ card_id, grade: 'Raw' }))),
-      batchPriceEstimate(chunk.map(card_id => ({ card_id, grade: 'PSA 9' }))),
-      batchPriceEstimate(chunk.map(card_id => ({ card_id, grade: 'PSA 10' }))),
+      batchPriceEstimate(chunk.map(card_id => ({ card_id, grade: 'Raw' })),    { signal: workerAbort.signal }),
+      batchPriceEstimate(chunk.map(card_id => ({ card_id, grade: 'PSA 9' })),  { signal: workerAbort.signal }),
+      batchPriceEstimate(chunk.map(card_id => ({ card_id, grade: 'PSA 10' })), { signal: workerAbort.signal }),
     ]);
     const rawResults   = settled[0].status === 'fulfilled' ? settled[0].value : null;
     const psa9Results  = settled[1].status === 'fulfilled' ? settled[1].value : null;
@@ -737,6 +751,11 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     `lifecycle=${lifecycleStatus} mult=${lifecycleMultiplier.toFixed(3)} ` +
     `total=${totalDurationMs}ms${partial ? ' PARTIAL' : ''}`,
   );
+
+  // Cancel the worker deadline — function returning normally well before
+  // the 290s mark. Without this clearTimeout the abort fires after we've
+  // returned, which is harmless but noisy on warm Lambda containers.
+  clearTimeout(abortTimer);
 
   return {
     productId,
