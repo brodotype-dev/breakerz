@@ -233,18 +233,36 @@ export default function PlayerDetailDrawer({ playerProductId, onClose, topOffset
                         // italic so users can tell the difference at a glance.
                         const isEstimate = (method?: string) =>
                           !!method && method !== 'direct' && method !== 'direct_indexed';
+                        // Render the per-grade cell with an inline tooltip
+                        // (`title` attr) that exposes CardHedger's
+                        // `price_explanation` narrative. Hover shows the full
+                        // derivation — "Used 7d FMV ($2.29, Winsorized median
+                        // of 7 daily prints)" or "Estimated PSA 10 from the
+                        // Raw price ($2.29, 0d old), translated Raw→PSA 10
+                        // via Raw multiplier (×11.07)". Falls back to a brief
+                        // method-name hint when CH didn't return an
+                        // explanation (older cached calls).
                         const getCell = (grade: string) => {
                           const p = v.prices.find(p => p.grade === grade || (grade === 'Raw' && p.grade === 'Ungraded'));
-                          if (!p || p.price <= 0) return { text: '—', estimate: false };
+                          if (!p || p.price <= 0) return { text: '—', estimate: false, tooltip: '' };
+                          const method = p.method ?? '';
+                          const explanation = p.price_explanation?.trim() ?? '';
+                          const tooltip = explanation
+                            ? `${grade} · ${method}\n\n${explanation}`
+                            : method
+                              ? `${grade} · method: ${method}`
+                              : '';
                           return {
                             text: `$${p.price.toLocaleString('en-US', { maximumFractionDigits: 0 })}`,
                             estimate: isEstimate(p.method),
+                            tooltip,
                           };
                         };
                         const cellStyle = (estimate: boolean, color: string) => ({
                           color,
                           fontStyle: estimate ? 'italic' as const : 'normal' as const,
                           opacity: estimate ? 0.65 : 1,
+                          cursor: 'help' as const,
                         });
                         const cells = {
                           raw: getCell('Raw'),
@@ -272,16 +290,32 @@ export default function PlayerDetailDrawer({ playerProductId, onClose, topOffset
                             <td className="px-2 sm:px-3 py-2 text-right font-mono" style={{ color: 'var(--text-tertiary)' }}>
                               {v.hobby_odds ? `1:${v.hobby_odds}` : '—'}
                             </td>
-                            <td className="px-2 sm:px-3 py-2 text-right font-mono text-xs" style={cellStyle(cells.raw.estimate, 'var(--text-tertiary)')}>
+                            <td
+                              className="px-2 sm:px-3 py-2 text-right font-mono text-xs"
+                              style={cellStyle(cells.raw.estimate, 'var(--text-tertiary)')}
+                              title={cells.raw.tooltip || undefined}
+                            >
                               {cells.raw.text}
                             </td>
-                            <td className="px-2 sm:px-3 py-2 text-right font-mono" style={cellStyle(cells.psa8.estimate, 'var(--text-secondary)')}>
+                            <td
+                              className="px-2 sm:px-3 py-2 text-right font-mono"
+                              style={cellStyle(cells.psa8.estimate, 'var(--text-secondary)')}
+                              title={cells.psa8.tooltip || undefined}
+                            >
                               {cells.psa8.text}
                             </td>
-                            <td className="px-2 sm:px-3 py-2 text-right font-mono font-semibold" style={cellStyle(cells.psa9.estimate, 'var(--accent-blue)')}>
+                            <td
+                              className="px-2 sm:px-3 py-2 text-right font-mono font-semibold"
+                              style={cellStyle(cells.psa9.estimate, 'var(--accent-blue)')}
+                              title={cells.psa9.tooltip || undefined}
+                            >
                               {cells.psa9.text}
                             </td>
-                            <td className="px-2 sm:px-3 py-2 text-right font-mono font-bold" style={cellStyle(cells.psa10.estimate, '#22c55e')}>
+                            <td
+                              className="px-2 sm:px-3 py-2 text-right font-mono font-bold"
+                              style={cellStyle(cells.psa10.estimate, '#22c55e')}
+                              title={cells.psa10.tooltip || undefined}
+                            >
                               {cells.psa10.text}
                             </td>
                           </tr>
@@ -292,7 +326,8 @@ export default function PlayerDetailDrawer({ playerProductId, onClose, topOffset
                 </div>
                 {data.variants.some(v => v.prices.some(p => p.method && p.method !== 'direct' && p.method !== 'direct_indexed')) && (
                   <p className="text-[10px] mt-2 px-1" style={{ color: 'var(--text-tertiary)' }}>
-                    <span style={{ fontStyle: 'italic', opacity: 0.65 }}>Italic</span> = model estimate (CardHedger FMV — thin recent-sale data, derived from cross-grade or movement index)
+                    <span style={{ fontStyle: 'italic', opacity: 0.65 }}>Italic</span> = model estimate (CardHedger FMV — thin recent-sale data, derived from cross-grade or movement index).{' '}
+                    <span style={{ color: 'var(--text-secondary)' }}>Hover any price for CH&apos;s derivation narrative.</span>
                   </p>
                 )}
               </div>

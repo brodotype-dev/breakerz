@@ -60,7 +60,19 @@ export async function GET(req: NextRequest) {
   const fmvItems = uniqueCardIds.flatMap(cardId =>
     FMV_GRADES.map(grade => ({ card_id: cardId, grade })),
   );
-  const priceMap = new Map<string, Array<{ grade: string; price: number; method?: string; confidence?: number | null }>>();
+  const priceMap = new Map<
+    string,
+    Array<{
+      grade: string;
+      price: number;
+      method?: string;
+      confidence?: number | null;
+      // Human-readable narrative from FMV — passed through to the drawer
+      // tooltip so admin can see how the model arrived at the price.
+      // Added 2026-05-26 alongside River's FMV revamp.
+      price_explanation?: string | null;
+    }>
+  >();
   if (fmvItems.length > 0) {
     try {
       const fmvResults = await getCardFmvBatch(fmvItems);
@@ -75,6 +87,7 @@ export async function GET(req: NextRequest) {
           price: row.price,
           method: row.method,
           confidence: row.confidence,
+          price_explanation: row.price_explanation,
         });
         priceMap.set(row.card_id, existing);
       }

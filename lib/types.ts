@@ -375,7 +375,19 @@ export interface VariantWithPrices {
   // means the price is a model estimate (segment fallback, anchor multiplier,
   // cross-grade interpolation, or stale price with movement index applied)
   // rather than a recent sale aggregate. UI uses this to dim estimated cells.
-  prices: Array<{ grade: string; price: number; method?: string; confidence?: number | null }>;
+  //
+  // `price_explanation` is the human-readable narrative River added in the
+  // 2026-05-23/24 FMV revamp — e.g. "Used 7d FMV ($2.29, Winsorized median
+  // of 7 daily prints)" or "Estimated PSA 10 from the Raw price ($2.29, 0d
+  // old), translated Raw→PSA 10 via Raw multiplier (×11.07)". Surfaced in
+  // the drawer as a hover tooltip on the per-grade cell.
+  prices: Array<{
+    grade: string;
+    price: number;
+    method?: string;
+    confidence?: number | null;
+    price_explanation?: string | null;
+  }>;
 }
 
 export interface PlayerCompsResponse {
