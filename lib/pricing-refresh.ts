@@ -194,7 +194,17 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
   const cacheCutoff = new Date(Date.now() - CH_PRICE_CACHE_TTL_HOURS * 3_600_000).toISOString();
   let variantsFromCache = 0;
   if (allVariantCardIds.length > 0) {
-    const CACHE_LOOKUP_CHUNK = 1000; // supabase .in() works fine well past this; 1k is comfy
+    // 200 UUIDs keeps the URL well under Kong/PostgREST's ~8KB cap (same
+    // rationale as app/api/admin/apply-odds/route.ts and other .in()
+    // chunks in this file). The previous 1000 worked silently until the
+    // basketball products hit ~30k distinct CH cards on 2026-05-22 —
+    // 1000 UUIDs × 37 chars/UUID = 37 KB of URL, which Kong rejected
+    // outright. The read failed, the worker fell through to the "treat
+    // everything as stale" path, and 300s wasn't close to enough time
+    // to live-fetch 30k cards × 3 grades. Every refresh-pricing firing
+    // since 04:30 UTC 2026-05-22 timed out on the 3 affected products
+    // (Topps Chrome BB, 2026 Bowman BB, Topps Cosmic Chrome BB).
+    const CACHE_LOOKUP_CHUNK = 200;
     for (let i = 0; i < allVariantCardIds.length; i += CACHE_LOOKUP_CHUNK) {
       const slice = allVariantCardIds.slice(i, i + CACHE_LOOKUP_CHUNK);
       const { data: cachedRows, error: cacheReadErr } = await supabaseAdmin
