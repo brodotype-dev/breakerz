@@ -918,8 +918,20 @@ export interface BreakPriceInput {
    * = one parse pass = one proposal. Cap enforced by the caller.
    */
   images?: BreakPriceImage[];
-  /** Optional context to add to the prompt. */
+  /** Optional context to add to the prompt. User-supplied at the
+   * original /break-price slash command — treated as "additional
+   * context," NOT as authoritative override. For refine-time
+   * corrections, use `refineCorrection` below instead. */
   notes?: string;
+  /**
+   * Authoritative correction supplied by the contributor via the
+   * refine flow. Rendered as a dedicated "CONTRIBUTOR CORRECTION
+   * (authoritative)" section with override language. Mirrors the
+   * same field on parseInsights — disambiguates "more user context
+   * at original-parse time" (notes) from "the user is telling you
+   * the previous proposal was wrong" (refineCorrection).
+   */
+  refineCorrection?: string;
   /**
    * Optional explicit product id (picked from Discord autocomplete). When
    * supplied, the parser scopes the candidate-products roster to just this
@@ -1060,7 +1072,14 @@ ${
       : 'No narrative provided — extract from the image only.'
   }
 ${input.notes?.trim() ? `\nAdditional context:\n"""\n${input.notes.trim()}\n"""` : ''}
-${hadImage
+${input.refineCorrection?.trim() ? `
+CONTRIBUTOR CORRECTION (authoritative — overrides ANY conflicting interpretation of the narrative / image above):
+"""
+${input.refineCorrection.trim()}
+"""
+
+The contributor saw your prior attempt and is telling you what to fix. When the correction names a specific product, team, player, price, format, or composition, USE THAT — do not second-guess it. If the correction names a player by nickname or with a typo (e.g. "Webanyama" → "Victor Wembanyama"), match to the canonical roster entry. If you previously picked Player/Team/Product A and the correction says "this is Player/Team/Product B," the answer is B and only B.
+` : ''}${hadImage
     ? imageCount === 1
       ? '\nA screenshot is attached. Read it carefully — Whatnot, Fanatics Live, eBay listings, and Discord stream embeds all encode the product / team / price / format / platform in their UI.'
       : `\n${imageCount} screenshots are attached, in order. Treat them as ONE capture session from the same break — extract every distinct slot ask across all images, and DEDUPE identical rows that appear in multiple shots (same team + same price + same format = one row, not two). Read each carefully — Whatnot, Fanatics Live, eBay listings, and Discord stream embeds all encode the product / team / price / format / platform in their UI.`
@@ -1110,6 +1129,7 @@ RULES:
 - For source: 'stream_ask' = Whatnot/Fanatics Live/breaker stream. 'ebay_listing' = unsold eBay listing. 'social_post' = Twitter/IG/Discord/DM post. 'other' = anything else.
 - Composition defaults to { "hobby": null } ONLY when no title-level format override was found AND no per-row format label was stated AND the platform is a hobby-only stream. The title rule above takes precedence over this fallback.
 - Team names: use the canonical full name ("Los Angeles Dodgers" not "Dodgers"). If you only see the city/nickname, expand it.
+- Player names (chase-card sub-rows): famous nicknames map to canonical roster entries — Wemby → Victor Wembanyama, Luka → Luka Dončić, CJ Stroud → C.J. Stroud, Tua → Tua Tagovailoa, Flagg → Cooper Flagg, Schwarber → Kyle Schwarber, Ohtani → Shohei Ohtani, Soto → Juan Soto. NEVER substitute a different player just because their name shares a syllable. If the name in the narrative / screenshot isn't in the roster and isn't a recognized nickname for someone who is, drop the chase row.
 - price_low and price_high are integer dollars. Strip $ and commas. Use literal values — "$700.00" = 700, not 700000. The "." is a decimal point. Do not scale up because a price seems low.
 - confidence: 0.9+ if every field is unambiguous in the source. Lower for inferred fields.`;
 
