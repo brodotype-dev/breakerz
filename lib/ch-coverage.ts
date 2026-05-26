@@ -12,6 +12,7 @@
 // have data for" — independent of catalog rows for cards we don't track.
 
 import { supabaseAdmin } from '@/lib/supabase';
+import { getCardsBySet } from '@/lib/cardhedger';
 
 export type CHCoverageRow = {
   productId: string;
@@ -185,6 +186,66 @@ async function buildOneRow(
     pricingCacheStale,
     avgConfidence,
     lastPriced,
+  };
+}
+
+// One-shot live-CH probe for a single product. Hits CH's card-search
+// endpoint with `set=<ch_set_name>` page_size=1 — the response includes
+// a `count` field with the total number of cards CH knows about in
+// that set, which we compare to our `ch_set_cache` row count.
+//
+// Cheap (1 small CH call), but live — so this is a button-triggered
+// action, not a per-page-load query. Answers "what does CH actually
+// see for this product right now," independent of our cache state.
+//
+// Detects:
+//   - CH added new cards we haven't ingested yet (cardsDelta > 0)
+//   - CH renamed or restructured the set (chCount === 0 && ourCount > 0)
+//   - Our ch_set_name is wrong / typo / stale (chCount === 0 across the
+//     board, or chCount matches a different magnitude than our catalog)
+//   - CH is unreachable (throws, caller renders error)
+export type CHProbeResult = {
+  productId: string;
+  productName: string;
+  chSetName: string | null;
+  chCount: number;         // CH's view (response.count)
+  ourCount: number;        // ch_set_cache rows for this set name
+  cardsDelta: number;      // chCount - ourCount (positive = CH grew)
+  probedAt: string;        // ISO timestamp
+};
+
+export async function probeCHForProduct(productId: string): Promise<CHProbeResult> {
+  const { data: product, error: prodErr } = await supabaseAdmin
+    .from('products')
+    .select('id, name, ch_set_name')
+    .eq('id', productId)
+    .maybeSingle();
+  if (prodErr) throw prodErr;
+  if (!product) throw new Error('Product not found');
+  if (!product.ch_set_name) {
+    throw new Error('Product has no ch_set_name — set one via Find on CH before probing.');
+  }
+
+  // CH's count is the authoritative ground truth. page_size=1 keeps the
+  // response payload tiny (we only care about the `count` field).
+  const chResponse = await getCardsBySet(product.ch_set_name, 1, 1, { timeoutMs: 15_000 });
+  const chCount = (chResponse as { count?: number }).count ?? 0;
+
+  // Our mirror — count rows in ch_set_cache matching this set name.
+  const { count: ourCount, error: cacheErr } = await supabaseAdmin
+    .from('ch_set_cache')
+    .select('cardhedger_card_id', { count: 'exact', head: true })
+    .eq('ch_set_name', product.ch_set_name);
+  if (cacheErr) throw cacheErr;
+
+  return {
+    productId,
+    productName: product.name,
+    chSetName: product.ch_set_name,
+    chCount,
+    ourCount: ourCount ?? 0,
+    cardsDelta: chCount - (ourCount ?? 0),
+    probedAt: new Date().toISOString(),
   };
 }
 
