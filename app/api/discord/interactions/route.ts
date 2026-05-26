@@ -1098,7 +1098,13 @@ async function handleRefineModalSubmit(interaction: ModalSubmitInteraction): Pro
         const res = await parseBreakPrice({
           narrative: pending.source_text,
           images,
-          notes: correction,
+          // Authoritative override — see parseInsights / route.ts
+          // refine branch for the same fix. Previously this was
+          // passed as `notes`, which the prompt treats as "additional
+          // context" alongside any user-supplied notes from the
+          // original slash command — the model didn't know to prefer
+          // the correction over the original interpretation.
+          refineCorrection: correction,
         });
         updates = res.updates;
         debugLine = `products=${res.debug.productsCount}, parsedRaw=${res.debug.parsedRawCount}, images=${images.length}, drops=${res.debug.droppedReasons.length}`;
