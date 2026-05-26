@@ -51,6 +51,7 @@ export interface RefreshSummary {
   variantsTotal: number;
   variantsFromCache: number;     // pulled from ch_price_cache (fresh, no CH call)
   variantsNewlyFetched: number;  // freshly fetched from CH this run
+  variantsSkippedAllNull: number; // fresh-but-all-null in cache, skipped from refetch
   chunksWithCacheWrite: number;  // chunks whose ch_price_cache upsert ran successfully
   chunksAllGradesFailed: number; // chunks where every CH call (Raw/PSA 9/PSA 10) rejected
   batchChunkCount: number;
@@ -121,7 +122,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
       totalPlayers: 0,
       livePriced: 0, crossPriced: 0, searchPriced: 0, defaultPriced: 0,
       variantsFetched: 0, variantsTotal: 0,
-      variantsFromCache: 0, variantsNewlyFetched: 0,
+      variantsFromCache: 0, variantsNewlyFetched: 0, variantsSkippedAllNull: 0,
       chunksWithCacheWrite: 0, chunksAllGradesFailed: 0,
       batchChunkCount: 0, batchChunksCompleted: 0, batchDurationMs: 0,
       totalDurationMs: Date.now() - started,
@@ -193,6 +194,17 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
   // remaining stale cards.
   const cacheCutoff = new Date(Date.now() - CH_PRICE_CACHE_TTL_HOURS * 3_600_000).toISOString();
   let variantsFromCache = 0;
+  // Cards we know CH has no data on AS OF THE CURRENT TTL WINDOW. Once a
+  // refetch returns all-null, the COALESCE upsert keeps the row all-null
+  // and bumps fetched_at, so it's "fresh" but useless. Without this skip
+  // set we'd refetch every all-null card on every firing — for products
+  // with thin CH coverage (Topps Chrome BB: 28,014 / 29,936 all-null,
+  // 2026 Bowman BB: 19,779 / 20,422) that's tens of thousands of wasted
+  // CH calls per refresh and the 300s worker budget never makes it past
+  // the live-fetch phase. After 24h the rows fall out of the freshness
+  // window and we retry — that's the "give CH another chance" cadence.
+  let variantsSkippedAllNull = 0;
+  const freshAllNullIds = new Set<string>();
   if (allVariantCardIds.length > 0) {
     // 200 UUIDs keeps the URL well under Kong/PostgREST's ~8KB cap (same
     // rationale as app/api/admin/apply-odds/route.ts and other .in()
@@ -224,7 +236,15 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
         const rawPrice  = r.raw_price   != null && r.raw_price   > 0 ? r.raw_price   : null;
         const midPrice  = r.psa9_price  != null && r.psa9_price  > 0 ? r.psa9_price  : rawPrice;
         const highPrice = r.psa10_price != null && r.psa10_price > 0 ? r.psa10_price : null;
-        if (!rawPrice && !midPrice && !highPrice) continue;
+        if (!rawPrice && !midPrice && !highPrice) {
+          // Fresh row, but CH has no real prices for this card — track
+          // so we skip re-fetching it for the rest of this run. Falls out
+          // of the freshness window after CH_PRICE_CACHE_TTL_HOURS, at
+          // which point the next refresh picks it up again.
+          freshAllNullIds.add(r.cardhedger_card_id);
+          variantsSkippedAllNull++;
+          continue;
+        }
         const evMid  = midPrice ?? 0;
         const evLow  = rawPrice ?? Math.round(evMid * 0.35);
         const evHigh = highPrice ?? Math.round(evMid * 2.5);
@@ -239,8 +259,15 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     }
   }
 
-  // Build chunks from card_ids that DIDN'T hit the cache (i.e., stale or never-fetched).
-  const staleCardIds = allVariantCardIds.filter(id => !pricesOnly.has(id));
+  // Build chunks from card_ids that DIDN'T hit the cache. "Hit" means
+  // either (a) we got real prices into pricesOnly, or (b) we have a
+  // fresh-but-all-null row tracking that CH has no data for this card
+  // within the current TTL window — refetching it would just waste a
+  // CH call and the COALESCE-preserving upsert would write the same
+  // all-null row back.
+  const staleCardIds = allVariantCardIds.filter(
+    id => !pricesOnly.has(id) && !freshAllNullIds.has(id),
+  );
 
   const PRICE_CHUNK = 100; // CH endpoint hard cap
   // 2026-05-11: dropped from 12 → 4 after a week of refresh failures on
@@ -703,7 +730,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     `live=${livePriced} cross=${crossPriced} search=${searchPriced} default=${defaultPriced} ` +
     `cache_written=${cacheRowsWritten} ` +
     `variants=${pricesOnly.size}/${allVariantCardIds.length} ` +
-    `(cache=${variantsFromCache} new=${variantsNewlyFetched}) ` +
+    `(cache=${variantsFromCache} skip_null=${variantsSkippedAllNull} new=${variantsNewlyFetched}) ` +
     `chunks=${chunksCompleted}/${priceChunks.length} batch=${batchDurationMs}ms ` +
     `anchor=${anchorStrategy}${anchorFellBackCount > 0 ? ` fellBack=${anchorFellBackCount}` : ''}` +
     ` matchedAvg=${anchorMatchedAvg.toFixed(1)} ` +
@@ -720,6 +747,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     variantsTotal: allVariantCardIds.length,
     variantsFromCache,
     variantsNewlyFetched,
+    variantsSkippedAllNull,
     chunksWithCacheWrite,
     chunksAllGradesFailed,
     batchChunkCount: priceChunks.length,
