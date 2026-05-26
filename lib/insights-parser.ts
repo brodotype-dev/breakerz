@@ -241,18 +241,25 @@ export async function parseInsights({ narrative, maxPlayers = 5000, refineCorrec
     };
   }
 
-  // Roster is "every solo player in our DB" — including players who only
-  // appear on insert subsets in active products (C.J. Stroud, Wemby on
-  // SP-only sets, etc.). Earlier we restricted to slot-eligible players
-  // only, but that excluded entities the user actually wanted to talk
-  // about, and Claude responded by substituting "the closest match it
-  // could find" (CJ Stroud → Shedeur Sanders). Including everyone keeps
-  // matches honest; the prompt below tells Claude to OMIT rather than
-  // substitute when no match exists.
+  // Roster = every solo player appearing in an active product
+  // (live or pre_release). Includes players who only appear on insert
+  // subsets (C.J. Stroud, Wemby on SP-only sets) — the prompt tells
+  // Claude to OMIT rather than substitute when no match exists.
   //
-  // We do exclude multi-player concatenated rows ("Skubal / Blanco")
-  // since those aren't real entities and would let Claude attach
-  // sentiment to a meaningless aggregate.
+  // Previously this pulled `from('players')` directly with no product
+  // filter, ordered alphabetically, capped at 5000. As the legends-
+  // imported-during-historical-products tail grew to 6,666 solo
+  // players, Victor Wembanyama (V/W region) started getting cut off
+  // by the 5000 cap. The parser then mismapped narrative mentions of
+  // "Wemby" to alphabetically-earlier auto-eligible basketball
+  // rookies — Alex Sarr, Cooper Flagg, Luka — because they survived
+  // the slice. Scoping to active-product players cuts us to ~2,900
+  // distinct entities, comfortably under the cap with every match
+  // candidate represented (verified 2026-05-26).
+  //
+  // Multi-player concatenated rows ("Skubal / Blanco") still
+  // excluded — they aren't real entities and would let Claude
+  // attach sentiment to a meaningless aggregate.
   const { data: products, error: prodErr } = await supabaseAdmin
     .from('products')
     .select('id, name, year, lifecycle_status')
@@ -269,11 +276,18 @@ export async function parseInsights({ narrative, maxPlayers = 5000, refineCorrec
 
   let players: Array<{ id: string; name: string; team: string; sport: { name: string } | null }> = [];
   {
+    // Page through `player_products!inner(product_id)` joined back to
+    // active products. The inner-join filter is the gate — players only
+    // surface if they have at least one row in an active-product
+    // player_products. Dedupe by id in-process since PostgREST can't
+    // express DISTINCT on a joined query.
+    const seen = new Set<string>();
     const PAGE = 1000;
     for (let from = 0; ; from += PAGE) {
       const { data, error: plErr } = await supabaseAdmin
         .from('players')
-        .select('id, name, team, sport:sports(name)')
+        .select('id, name, team, sport:sports(name), player_products!inner(products!inner(is_active))')
+        .eq('player_products.products.is_active', true)
         .not('name', 'like', '%/%')
         .order('name')
         .range(from, from + PAGE - 1);
@@ -282,7 +296,14 @@ export async function parseInsights({ narrative, maxPlayers = 5000, refineCorrec
         break;
       }
       if (!data || data.length === 0) break;
-      players.push(...(data as any));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const row of data as any[]) {
+        if (seen.has(row.id)) continue;
+        seen.add(row.id);
+        // sport comes back as array or object depending on cardinality; normalize
+        const sportObj = Array.isArray(row.sport) ? (row.sport[0] ?? null) : (row.sport ?? null);
+        players.push({ id: row.id, name: row.name, team: row.team, sport: sportObj });
+      }
       if (data.length < PAGE || players.length >= maxPlayers) break;
     }
     // Defense in depth: drop card-subset codes (e.g. "3D-37", "B25-AL")
@@ -1020,16 +1041,28 @@ export async function parseBreakPrice(input: BreakPriceInput): Promise<BreakPric
 
   let players: Array<{ id: string; name: string; team: string }> = [];
   {
+    // Scope to players in active products (any insert_only flag) —
+    // same fix as parseInsights. The full players table now has 6,666
+    // solo entries and alphabetical sort + 5000 cap was silently
+    // dropping Victor Wembanyama (V/W) below the cut. See parseInsights
+    // for the full incident write-up. Inner-join filter + in-process
+    // dedupe.
+    const seen = new Set<string>();
     const PAGE = 1000;
     for (let from = 0; ; from += PAGE) {
       const { data } = await supabaseAdmin
         .from('players')
-        .select('id, name, team')
+        .select('id, name, team, player_products!inner(products!inner(is_active))')
+        .eq('player_products.products.is_active', true)
         .not('name', 'like', '%/%')
         .order('name')
         .range(from, from + PAGE - 1);
       if (!data || data.length === 0) break;
-      players.push(...data);
+      for (const row of data as Array<{ id: string; name: string; team: string }>) {
+        if (seen.has(row.id)) continue;
+        seen.add(row.id);
+        players.push(row);
+      }
       if (data.length < PAGE || players.length >= 5000) break;
     }
     // Defense in depth: drop card-subset codes (matches parseInsights).
