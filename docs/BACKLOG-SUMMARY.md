@@ -45,8 +45,8 @@ Generated 2026-05-22.
 - **Confidence display — bucket 0..1 into named tiers**
   Card Ladder shows a 5-bucket confidence rating; we have raw `confidence` 0..1 in cache. Partial shipped (Strong / Solid / Stale / Cold tiers); chip needs to render in every surface (currently drawer only).
 
-- **CardHedger data-health dashboard** _(new, added 2026-05-22)_
-  Admin view of per-product CH coverage: cards with direct sales, cards with inferred-only pricing, cards with no pricing, players with sales signal, avg confidence, stale-price %. Catches CH-side regressions + our own cache bugs at a glance.
+- ~~**CardHedger data-health dashboard**~~ ✅ Shipped 2026-05-26 (PRs #138 + #139).
+  `/admin/data-health` route with per-product coverage rows + per-row "Probe CH" live button. See Recently Shipped below.
 
 ---
 
@@ -167,7 +167,25 @@ For full descriptions see CHANGELOG.md.
 
 ---
 
-## ✅ Today's ship (2026-05-21 → 2026-05-22)
+## ✅ 2026-05-25 → 2026-05-26 ship — pricing-cron arc + parser fixes + data-health + FMV
+
+Pricing-refresh cron recovery, /insight + /break-price parser hardening, CH data-health dashboard with live probe, and FMV `price_explanation` surfaced in the player drawer.
+
+- **#135** Cache-read chunk 1000 → 200 (Kong URL cap — pricing cron was timing out for 3 days)
+- **#136** Skip refetching fresh-but-all-null cached rows (saved tens of thousands of wasted CH calls per firing)
+- **#137** Worker `AbortController` so we never hit Vercel's 300s kill — always return structured `partial` summary
+- **#138** CardHedger data-health dashboard at `/admin/data-health`
+- **#139** Per-row "Probe CH" live button on the dashboard
+- **#140** `/insight` refine correction = authoritative override + nickname table
+- **#141** `/break-price` same shape applied
+- **#142** Scope insights roster to active-product players (real fix for Wemby misattribution — 6,666 → 2,889)
+- **#143** FMV `price_explanation` tooltip on player drawer per-grade cells
+
+Scheduled task `check-pricing-cron-aborts` fires 2026-05-26 09:00 ET to verify overnight cron firings recovered.
+
+---
+
+## ✅ Earlier ship (2026-05-21 → 2026-05-22)
 
 UD/OPC importer arc + UX polish + waitlist admin + delete-product + Discord CTA. See PRs #117–#133.
 
@@ -185,4 +203,4 @@ UD/OPC importer arc + UX polish + waitlist admin + delete-product + Discord CTA.
 - **#128** Products table sortable columns + Release column + newest-first default
 - **#130 / #131** Discord CTA scaffolding + live invite URL
 - **#132** Product Delete with Danger Zone + type-to-confirm
-- **#133** This: CH data-health dashboard added to P1 backlog
+- **#133** CH data-health dashboard added to P1 backlog (shipped 2026-05-26 as #138/#139)
