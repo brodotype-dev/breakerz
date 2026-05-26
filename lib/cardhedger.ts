@@ -493,6 +493,14 @@ export interface CardFmvResult {
   confidence_grade?: string | null;
   freshness_days?: number | null;
   fmv_sample_count?: number | null;
+  // Human-readable narrative explaining how the price was derived
+  // (e.g. "Used 7d FMV ($2.29, Winsorized median of 7 daily prints)"
+  // or "Estimated PSA 10 from the Raw price ($2.29, 0d old), translated
+  // Raw→PSA 10 via Raw multiplier (×11.07)"). Added by CardHedger River
+  // in the 2026-05-23/24 FMV revamp. Surfaced in the player drawer
+  // tooltip on estimated cells so admin can see the model's reasoning
+  // without leaving the page.
+  price_explanation?: string | null;
 }
 
 export async function getCardFmvBatch(
@@ -514,6 +522,7 @@ export async function getCardFmvBatch(
     confidence_grade?: string | null;
     freshness_days?: number | null;
     fmv_sample_count?: number | null;
+    price_explanation?: string | null;
     error?: string;
   };
   const result = await post<{ results: RawRow[] }>(
@@ -532,6 +541,7 @@ export async function getCardFmvBatch(
     confidence_grade: r.confidence_grade ?? null,
     freshness_days: r.freshness_days ?? null,
     fmv_sample_count: r.fmv_sample_count ?? null,
+    price_explanation: r.price_explanation ?? null,
   }));
 }
 
