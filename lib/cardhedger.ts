@@ -58,14 +58,35 @@ const RETRY_BACKOFF_MS = [500, 1500, 4500];
 async function post<T>(
   path: string,
   body: Record<string, unknown>,
-  options?: { timeoutMs?: number; retry?: boolean },
+  // `signal` is a caller-owned AbortSignal used to bound the total time of
+  // this call across all retries — e.g. the pricing-refresh worker passes
+  // a signal that fires near its 295s graceful deadline so in-flight CH
+  // calls (and their retry backoffs) abort instead of bleeding past the
+  // function's 300s maxDuration. Combined with the per-call timeout via
+  // `AbortSignal.any()` so whichever fires first wins.
+  options?: { timeoutMs?: number; retry?: boolean; signal?: AbortSignal },
 ): Promise<T> {
   const shouldRetry = options?.retry !== false;
   const maxAttempts = shouldRetry ? RETRY_BACKOFF_MS.length + 1 : 1;
+  const callerSignal = options?.signal;
   let lastErr: unknown;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    // Bail before issuing the request if the caller's deadline fired during
+    // a previous backoff — no point burning another 10s timeout window when
+    // we've already been told to stop.
+    if (callerSignal?.aborted) {
+      throw new Error(`CardHedger ${path} aborted by caller signal`);
+    }
+
     try {
+      // AbortSignal.any (Node 20+; Vercel default is Node 24) combines
+      // both signals — whichever fires first cancels the fetch.
+      const perCallTimeout = AbortSignal.timeout(options?.timeoutMs ?? 10_000);
+      const combined = callerSignal
+        ? AbortSignal.any([perCallTimeout, callerSignal])
+        : perCallTimeout;
+
       const res = await fetch(`${BASE_URL}${path}`, {
         method: 'POST',
         headers: {
@@ -74,7 +95,7 @@ async function post<T>(
         },
         body: JSON.stringify(body),
         next: { revalidate: 0 },
-        signal: AbortSignal.timeout(options?.timeoutMs ?? 10_000),
+        signal: combined,
       });
 
       if (!res.ok) {
@@ -84,7 +105,9 @@ async function post<T>(
           console.warn(
             `[cardhedger] retry ${attempt + 1}/${RETRY_BACKOFF_MS.length} on ${path}: ${res.status}`,
           );
-          await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS[attempt]));
+          // Respect caller deadline during backoff sleep — abort the wait
+          // immediately rather than padding the worker timeline.
+          await sleepUnlessAborted(RETRY_BACKOFF_MS[attempt], callerSignal);
           lastErr = err;
           continue;
         }
@@ -98,12 +121,18 @@ async function post<T>(
       // branch above without becoming retryable.
       const isAbort = err instanceof Error && err.name === 'AbortError';
       const isNetwork = err instanceof TypeError;
+      // If the caller's deadline fired, treat as final — no point retrying
+      // when we've explicitly been told to stop. Differentiates "CH timed
+      // out on us, try again" from "the worker is shutting down."
+      if (callerSignal?.aborted) {
+        throw new Error(`CardHedger ${path} aborted by caller signal`);
+      }
       const isRetryable = isAbort || isNetwork;
       if (isRetryable && attempt + 1 < maxAttempts) {
         console.warn(
           `[cardhedger] retry ${attempt + 1}/${RETRY_BACKOFF_MS.length} on ${path}: ${(err as Error).message}`,
         );
-        await new Promise(r => setTimeout(r, RETRY_BACKOFF_MS[attempt]));
+        await sleepUnlessAborted(RETRY_BACKOFF_MS[attempt], callerSignal);
         lastErr = err;
         continue;
       }
@@ -112,6 +141,24 @@ async function post<T>(
   }
 
   throw lastErr ?? new Error(`CardHedger ${path}: exhausted retries`);
+}
+
+// setTimeout that resolves on the timeout OR rejects immediately when the
+// caller's signal aborts. Lets backoff sleeps short-circuit when the worker
+// deadline fires mid-retry.
+function sleepUnlessAborted(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(new Error('aborted'));
+    const t = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    function onAbort() {
+      clearTimeout(t);
+      reject(new Error('aborted'));
+    }
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 // Search response card shape from the API
@@ -490,7 +537,12 @@ export async function getCardFmvBatch(
 
 export async function batchPriceEstimate(
   items: Array<{ card_id: string; grade: string }>,
-  options?: { timeoutMs?: number },
+  // `signal` is forwarded to the underlying CH POST + retry chain so a
+  // caller-level deadline (e.g. the pricing-refresh worker's 290s
+  // guardrail) aborts every in-flight CH call immediately rather than
+  // riding out the 10s-per-attempt × 3-retry chain past Vercel's 300s
+  // function kill. See lib/pricing-refresh.ts.
+  options?: { timeoutMs?: number; signal?: AbortSignal },
 ): Promise<Array<{ card_id: string; price: number; price_low: number; price_high: number; confidence: number; success: boolean }>> {
   const result = await post<{
     results: Array<{
@@ -501,7 +553,11 @@ export async function batchPriceEstimate(
       confidence?: number;
       error?: string;
     }>;
-  }>('/v1/cards/batch-price-estimate', { items }, { timeoutMs: options?.timeoutMs ?? 30_000 });
+  }>(
+    '/v1/cards/batch-price-estimate',
+    { items },
+    { timeoutMs: options?.timeoutMs ?? 30_000, signal: options?.signal },
+  );
 
   return result.results.map(r => ({
     card_id: r.card_id,
