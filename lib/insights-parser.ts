@@ -210,6 +210,14 @@ export interface ParseInput {
   // slot-eligible players (insert_only=false) — multi-player insert rows
   // and retired-legend subset cards aren't real targets for sentiment.
   maxPlayers?: number;
+  // Authoritative correction supplied by the contributor via the
+  // refine flow. When present we render it in a dedicated section of
+  // the prompt and tell the model it OVERRIDES any conflicting
+  // interpretation of the narrative. Previously the refine handler
+  // just concatenated this onto the narrative, which let the model
+  // re-roll wrong (Wemby insight got re-mapped to Alex Sarr after
+  // a refine that literally said "Victor Webanyama - not Donic").
+  refineCorrection?: string;
 }
 
 export interface ParseResult {
@@ -225,7 +233,7 @@ export interface ParseResult {
   };
 }
 
-export async function parseInsights({ narrative, maxPlayers = 5000 }: ParseInput): Promise<ParseResult> {
+export async function parseInsights({ narrative, maxPlayers = 5000, refineCorrection }: ParseInput): Promise<ParseResult> {
   if (!narrative.trim()) {
     return {
       updates: [],
@@ -317,7 +325,14 @@ Narrative:
 """
 ${narrative.trim()}
 """
+${refineCorrection?.trim() ? `
+CONTRIBUTOR CORRECTION (authoritative — overrides ANY conflicting interpretation of the narrative above):
+"""
+${refineCorrection.trim()}
+"""
 
+The contributor saw your prior attempt and is telling you what to fix. When the correction names a specific player, product, score, or scope, USE THAT — do not second-guess it. If the correction names a player by nickname or with a typo (e.g. "Webanyama" → "Victor Wembanyama"), match to the canonical roster entry. If you previously picked Player A and the correction says "this is for Player B," the answer is Player B and only Player B.
+` : ''}
 Extract zero or more updates. Each update is one of five kinds:
 
 1. SENTIMENT — a player is hot/cold for non-obvious reasons (post-game buzz, injury return, etc.). Output:
@@ -424,9 +439,21 @@ Return JSON ONLY — a JSON array of update objects. No markdown, no explanation
 
 CRITICAL:
 - Use exact ids from the roster lines above — never invent or guess ids.
-- For player_name / product_name fields, copy the exact name from the matching roster line so we can verify your match. Common nicknames are fine (Wemby → Victor Wembanyama) — match to the canonical roster name.
+- For player_name / product_name fields, copy the exact name from the matching roster line so we can verify your match.
+- **Nickname matching is mandatory, not optional.** Famous nicknames ALWAYS resolve to the canonical player. Examples (non-exhaustive):
+    Wemby / Wembyana / Webanyama → Victor Wembanyama
+    Luka / Donc / Doncic → Luka Dončić
+    CJ Stroud / C.J. Stroud → C.J. Stroud
+    Tua → Tua Tagovailoa
+    Shedeur → Shedeur Sanders
+    Cooper Flagg / Flagg → Cooper Flagg
+    Concan → Paul Skenes (sometimes), or Roki Sasaki — use context
+    Schwarber → Kyle Schwarber
+    Ohtani / Shohei → Shohei Ohtani
+    Soto → Juan Soto
+  If the narrative names a famous player by nickname or short form, and that player IS in the roster, match to them. If a nickname is genuinely ambiguous (multiple players go by it), choose the most contextually likely one (e.g. NBA player for a basketball card narrative, MLB player for a baseball narrative). NEVER substitute a different player just because their name shares a syllable or position — wrong attributions are worse than missing ones.
 - One narrative can produce multiple updates of different kinds.
-- DO NOT SUBSTITUTE. If a named player or product isn't in the roster, OMIT that update entirely. Do not pick "the closest match" — wrong attributions are worse than missing ones. Example: if the narrative mentions "Joe Smith" and Joe Smith is not in the roster, drop that update — do not pick John Smith or any other Joe.
+- DO NOT SUBSTITUTE. If a named player or product isn't in the roster AND the name isn't a recognized nickname for someone who IS, OMIT that update entirely. Example: if the narrative mentions "Joe Smith" and no Joe Smith / J. Smith / no obvious nickname for Joe is in the roster, drop the update — do not pick John Smith.
 - variant_name is free text — copy it verbatim from the narrative ("Orange Refractor /99", "Black Prism /1"). We don't have a variant roster yet, so don't try to match against one.
 - It is fine to return fewer updates than the narrative implies, or even an empty array, if you can't make confident matches.`;
 

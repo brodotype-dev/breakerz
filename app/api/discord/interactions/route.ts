@@ -1041,10 +1041,19 @@ async function handleRefineModalSubmit(interaction: ModalSubmitInteraction): Pro
       let debugLine = '';
 
       if (kind === 'insight') {
-        // Text-only re-parse. Combine the original narrative with the
-        // correction so Claude sees both passes' context.
-        const combined = `${pending.source_text}\n\nRefine note from contributor: ${correction}`;
-        const res = await parseInsights({ narrative: combined });
+        // Text-only re-parse. Pass the correction as a STRUCTURED
+        // parameter rather than concatenating it onto the narrative —
+        // parseInsights renders refineCorrection in a dedicated
+        // "CONTRIBUTOR CORRECTION (authoritative)" section with prompt
+        // language that tells the model to treat it as an override.
+        // Previously the concat-into-narrative approach let the model
+        // re-roll wrong: the Wemby insight got re-mapped to Alex Sarr
+        // after a refine that literally said "this is for Victor
+        // Webanyama - not Donic" (2026-05-26).
+        const res = await parseInsights({
+          narrative: pending.source_text,
+          refineCorrection: correction,
+        });
         updates = res.updates;
         debugLine = `rosterSize=${res.debug.rosterSize}, parsedRaw=${res.debug.parsedRawCount}, drops=${res.debug.droppedReasons.length}`;
       } else {
