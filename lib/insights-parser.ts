@@ -385,7 +385,7 @@ ${productLines}
 Available players (use player ids exactly):
 ${playerLines}
 
-${hadImage ? `Screenshots: ${imageList.length} image${imageList.length === 1 ? '' : 's'} attached above this prompt. They may be stream overlays, tweets, IG / Discord screenshots, news clippings, chat captures — anything the contributor thinks carries market signal. Extract updates from text visible in the images using the same rules below. When narrative and screenshots conflict on a detail, prefer the screenshot for prices / odds / proper nouns (it's the primary source) and the narrative for contributor-supplied context (product / scope / "this is just from a DM"). The screenshot is NOT required to be about asking price — sentiment, hype, risk, odds observations, and team/product takes are all fair game.
+${hadImage ? `Screenshots: ${imageList.length} image${imageList.length === 1 ? '' : 's'} attached above this prompt. They may be stream overlays, tweets, IG / Discord screenshots, news clippings, chat captures — anything the contributor is sharing as a market input. Extract updates from text visible in the images using the per-kind rules below. When narrative and screenshots conflict on a detail, prefer the screenshot for prices / odds / proper nouns (it's the primary source) and the narrative for contributor-supplied context (product / scope / "this is just from a DM"). All eight update kinds are fair game — pricing, sentiment, hype, RISK_FLAG, odds observations, and team/product takes. **Note the explicit RISK_FLAG rule below: news articles, official statements, and event screenshots are themselves the signal — do NOT additionally require market reaction or breaker discussion to emit a risk_flag.**
 ` : ''}Narrative:
 """
 ${narrativeText || '(no narrative — see screenshots)'}
@@ -466,6 +466,8 @@ Extract zero or more updates. Each update is one of five kinds:
 4. RISK_FLAG — injury, suspension, trade, retirement, legal, off_field. Output:
    { "kind": "risk_flag", "player_id": "...", "player_name": "...",
      "flag_type": "injury", "note": "...", "confidence": 0.9 }
+   RISK FLAGS ARE LEADING INDICATORS. Emit on the EVENT itself — a news article showing arrest / injury / trade / suspension / retirement is enough. DO NOT gatekeep on "is the market reacting yet?" or "is this generating breaker discussion?" The whole point of risk_flag is to capture the event BEFORE the market reacts so our score modulation can pre-adjust prices. Player name + flag_type + a factual note from the source is sufficient. Confidence reflects how clearly the event is established (high for news articles / official statements / verified reports; lower for unsourced rumors).
+   Other update kinds (sentiment, hype_tag, asking_price, odds_observation, team/product sentiment) still need market context — but RISK_FLAG is the explicit exception.
 
 5. ODDS_OBSERVATION — a specific card pulls at a different rate than the published odds. Output:
    { "kind": "odds_observation", "product_id": "...", "product_name": "...",
