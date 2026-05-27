@@ -42,8 +42,25 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  // Refresh the session (required — do not remove)
-  const { data: { user } } = await supabase.auth.getUser();
+  // Read session from the signed JWT cookie WITHOUT a network round-trip
+  // to Supabase Auth. The middleware only needs to know whether a session
+  // is present for path-protection redirects — the cookie is signed
+  // (HMAC), so the client can't forge it to gain access. API routes that
+  // mutate data still call `getUser()` to verify against the server
+  // before any state change.
+  //
+  // Previously this called `supabase.auth.getUser()` which round-trips
+  // to `https://*.supabase.co/auth/v1/user` (~100-300ms) on EVERY
+  // consumer + admin request. Combined with `getCurrentUser()` in the
+  // consumer layout, every page nav was eating 2-3 auth round-trips
+  // before any data fetched. `getSession()` still triggers the
+  // @supabase/ssr cookie-refresh side effect via cookies.setAll above,
+  // so session lifecycle is preserved.
+  //
+  // See lib/auth.ts → `getCurrentUserFromSession()` for the same
+  // pattern applied to the consumer layout.
+  const { data: { session } } = await supabase.auth.getSession();
+  const user = session?.user ?? null;
 
   const { pathname } = request.nextUrl;
 
