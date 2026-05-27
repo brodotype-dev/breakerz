@@ -5,6 +5,23 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-26 — `/insight` Discord command accepts screenshots
+
+Brings `/insight` to full parity with `/break-price` for image capture. `/insight` was text-only since the original 2026-04-29 ship; SMEs who wanted to share a stream overlay, a tweet, an IG / Discord screenshot, or a news clipping with sentiment / hype / risk signal had to type the narrative themselves. Now they can attach.
+
+**What changed:**
+- **`/insight` slash command** — `narrative` is now optional; new optional `screenshot` / `screenshot2..5` attachment slots + `notes` string. At-least-one of narrative / screenshot enforced server-side (Discord schema can't express it). Mirrors `/break-price` exactly.
+- **New `Capture insight` MESSAGE context-menu command** — long-press / right-click any Discord message → Apps → "Capture insight" pulls every image attachment (soft cap 5) and runs them + the message text through `parseInsights` as one batch. Same allowlist, same staging, same ✅/✏️/❌ proposal flow.
+- **`parseInsights`** — `ParseInput` extended with optional `images: BreakPriceImage[]` + `notes`. When images present, the Claude call switches to image content blocks (Haiku 4.5 vision), `max_tokens` bumped to 8192 (vision responses run wider — same reason `parseBreakPrice` runs at 8192). Prompt grows a "Screenshots" section explaining the screenshot may carry signal for any of the 8 update kinds, not just asking prices. Text-only `/insight` calls byte-for-byte unchanged in cost + behavior.
+- **Refine flow** — `kind === 'insight'` branch in `handleRefineModalSubmit` now re-fetches `source_attachments` CDN URLs (same 24h window as `/break-price` refines), sniffs bytes, and re-sends to `parseInsights` alongside the correction. Mirror of the break-price refine path that already existed.
+- **Image fetch hardening reused** — Same `sniffImageMediaType` magic-byte path + 5 MB per-image cap + `VALID_IMAGE_TYPES` set as `/break-price`. Trust bytes not Discord's content_type (iOS routinely mis-labels PNGs as JPEGs).
+
+**Files:** [scripts/register-discord-commands.mjs](scripts/register-discord-commands.mjs), [lib/insights-parser.ts](lib/insights-parser.ts), [app/api/discord/interactions/route.ts](app/api/discord/interactions/route.ts).
+
+**Operational:** re-run `node scripts/register-discord-commands.mjs` post-deploy so the new screenshot slots + `Capture insight` menu show up in Discord. Existing `/insight` callers (narrative-only) keep working — `narrative` becoming optional is a contract relaxation, not a break.
+
+---
+
 ## 2026-05-26 — FMV `price_explanation` surfaced in player drawer tooltips
 
 River's 2026-05-23/24 FMV revamp added a per-row `price_explanation` field — human-readable narrative of how each price was derived. We pipe it through to the player drawer as a native browser tooltip on every per-grade cell. Hover any price → see CH's full derivation in plain English.

@@ -30,10 +30,53 @@ const commands = [
     options: [
       {
         name: 'narrative',
-        description: 'Free-form: "Wemby hot after playoffs, Flagg PYP 12-15k on streams, Bowman Concan cooled"',
+        description: 'Optional: "Wemby hot after playoffs, Flagg PYP 12-15k on streams" — at least one of narrative/screenshot required',
         type: 3, // STRING
-        required: true,
+        required: false,
         max_length: 2000,
+      },
+      // Up to 5 screenshot slots — same shape as /break-price. Mobile users
+      // do N gallery picks; desktop users can drag-drop into each slot.
+      // Optional — fill only what you have. Use the "Capture insight"
+      // message context-menu when you'd rather multi-select N images
+      // on one existing Discord message; handler routes both to the same
+      // multi-image parser path.
+      {
+        name: 'screenshot',
+        description: 'Optional: screenshot (stream overlay, tweet, IG/Discord cap, news clipping)',
+        type: 11, // ATTACHMENT
+        required: false,
+      },
+      {
+        name: 'screenshot2',
+        description: 'Optional: additional screenshot',
+        type: 11,
+        required: false,
+      },
+      {
+        name: 'screenshot3',
+        description: 'Optional: additional screenshot',
+        type: 11,
+        required: false,
+      },
+      {
+        name: 'screenshot4',
+        description: 'Optional: additional screenshot',
+        type: 11,
+        required: false,
+      },
+      {
+        name: 'screenshot5',
+        description: 'Optional: additional screenshot',
+        type: 11,
+        required: false,
+      },
+      {
+        name: 'notes',
+        description: 'Optional context for Claude — "screenshot is from a DM, not public"',
+        type: 3, // STRING
+        required: false,
+        max_length: 500,
       },
     ],
   },
@@ -127,6 +170,17 @@ const commands = [
   // Omitting both: Discord defaults to guild-only install (matches our use).
   {
     name: 'Capture break-price',
+    type: 3,
+  },
+  // Sibling MESSAGE context-menu for /insight. Long-press / right-click any
+  // message → Apps → "Capture insight" → handler pulls every image attachment
+  // off the target message and hands them to parseInsights as one batch.
+  // Same name conventions as Capture break-price: no slash character, no
+  // dm_permission, no default_member_permissions (Discord defaults to
+  // guild-only install, matches our use). Re-run this registrar after
+  // adding it so the entry shows up in the Apps submenu.
+  {
+    name: 'Capture insight',
     type: 3,
   },
 ];
