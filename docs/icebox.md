@@ -4,6 +4,24 @@ Long-running tracking doc for ideas that aren't urgent enough to plan now but ar
 
 ---
 
+## Upgrade Supabase to Pro at public-beta launch
+
+We're on the Free plan (500 MB DB, 2 GB bandwidth/mo, 50k MAU). Several features we currently can't use because they're Pro-only:
+
+- **HaveIBeenPwned leaked-password protection** — auto-rejects signups using passwords known to be in breach databases. Surfaced as the `auth_leaked_password_protection` advisor lint that we can't fix on Free (2026-05-27). Mitigation in private beta: every signup is admin-vetted via the waitlist flow, so practical risk is low.
+- **Custom SMTP** — auth emails (invite, magic link, password reset) currently go through Supabase's shared sender. Pro lets us send via Resend / our own domain. Today this just looks unbranded; not a hard blocker.
+- **Daily DB backups + 7-day point-in-time recovery** — on Free we'd need to run our own backup process if we wanted recovery for anything older than rough-edge support. Risk grows with user data accumulation.
+
+**Trigger to upgrade:** flip to Pro ($25/mo, same order as Vercel Pro we already use) when ANY of these hit:
+- Public beta opens / waitlist disabled → leaked-password protection becomes meaningful at scale
+- DB usage approaches 400 MB (80% of Free cap) — buys headroom before we hit the cliff
+- We move auth emails to a custom domain for branding
+- A pricing-cache regression makes us wish we had point-in-time recovery
+
+**Until then:** stay on Free, accept the `auth_leaked_password_protection` advisor lint as known-and-tolerated, keep manual signup gating via the waitlist.
+
+---
+
 ## Per-sale time-weighted pricing (deferred Plan C / Path 2)
 
 CH's `batch-price-estimate` only returns 90-day aggregates per card. The multiplier approach in [docs/plans/2026-05-11-release-freshness-decay.md](plans/2026-05-11-release-freshness-decay.md) is a coarse first pass. A more rigorous model would:
