@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { unstable_cache } from 'next/cache';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createClient } from '@/lib/supabase-server';
 import { getCardFmvBatch, getComps } from '@/lib/cardhedger';
@@ -7,30 +8,39 @@ import type { VariantWithPrices } from '@/lib/types';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 30;
 
-// GET /api/player-comps?playerProductId=xxx
-// Returns all variants for a player+product with CH prices (grades 8/9/10) + recent PSA 10 comps
-export async function GET(req: NextRequest) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user && process.env.NODE_ENV !== 'development') {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+// 10-minute cache for the heavy CH work (FMV batch + 3 parallel getComps).
+// CardHedger price data updates a few times per day; 10 min is conservative
+// for drawer re-opens within a single session while still surfacing fresh
+// data on natural expiry. Same pattern as /api/pricing (#152). The
+// dominant savings come from the "compare players side by side" flow:
+// open A → close → open B → close → re-open A. The first opens pay
+// ~1-3s of CH latency; re-opens within the window are ~50ms.
+//
+// Auth check stays per-request (outside the cache) — we don't want to
+// cache 401 responses for unauthed users.
+const COMPS_CACHE_TTL_S = 600;
 
-  const playerProductId = req.nextUrl.searchParams.get('playerProductId');
-  if (!playerProductId) {
-    return NextResponse.json({ error: 'playerProductId required' }, { status: 400 });
-  }
+interface PlayerCompsPayload {
+  player_id: string | null;
+  player_name: string;
+  team: string;
+  is_rookie: boolean;
+  is_icon: boolean;
+  variants: VariantWithPrices[];
+  recentComps: Array<{ sale_price: number; sale_date: string; grade: string; platform: string }>;
+}
 
-  // Fetch player info + variants
+// All the expensive work — DB lookup + FMV batch + comps — gated by
+// playerProductId. Returns null if the player isn't found so the caller
+// can render a 404 without polluting the cache with an error.
+async function loadPlayerCompsRaw(playerProductId: string): Promise<PlayerCompsPayload | null> {
   const { data: playerProduct } = await supabaseAdmin
     .from('player_products')
     .select('id, player:players(id, name, team, is_rookie, is_icon), player_product_variants(id, variant_name, card_number, cardhedger_card_id, hobby_odds, breaker_odds, match_tier)')
     .eq('id', playerProductId)
     .single();
 
-  if (!playerProduct) {
-    return NextResponse.json({ error: 'Player not found' }, { status: 404 });
-  }
+  if (!playerProduct) return null;
 
   const variants = (playerProduct.player_product_variants ?? []) as Array<{
     id: string;
@@ -145,7 +155,7 @@ export async function GET(req: NextRequest) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const player = playerProduct.player as any;
 
-  return NextResponse.json({
+  return {
     player_id: player?.id ?? null,
     player_name: player?.name ?? '',
     team: player?.team ?? '',
@@ -153,5 +163,38 @@ export async function GET(req: NextRequest) {
     is_icon: player?.is_icon ?? false,
     variants: variantRows,
     recentComps,
-  });
+  };
+}
+
+// Cache the whole payload by playerProductId, 10-min TTL. Tag is per-player
+// so a future invalidation hook (admin "Refresh CH Catalog" / "Refresh
+// Pricing" actions) can bust the cache via `revalidateTag` if we ever wire
+// that up. Same shape as the /api/pricing cache wrapper (#152).
+async function loadPlayerComps(playerProductId: string) {
+  return unstable_cache(
+    () => loadPlayerCompsRaw(playerProductId),
+    ['player-comps', playerProductId],
+    { revalidate: COMPS_CACHE_TTL_S, tags: [`player-comps-${playerProductId}`] },
+  )();
+}
+
+// GET /api/player-comps?playerProductId=xxx
+// Returns all variants for a player+product with CH prices (grades 8/9/10) + recent PSA 10 comps
+export async function GET(req: NextRequest) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user && process.env.NODE_ENV !== 'development') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const playerProductId = req.nextUrl.searchParams.get('playerProductId');
+  if (!playerProductId) {
+    return NextResponse.json({ error: 'playerProductId required' }, { status: 400 });
+  }
+
+  const result = await loadPlayerComps(playerProductId);
+  if (!result) {
+    return NextResponse.json({ error: 'Player not found' }, { status: 404 });
+  }
+  return NextResponse.json(result);
 }
