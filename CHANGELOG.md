@@ -5,20 +5,49 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
-## 2026-05-26 — `/insight` Discord command accepts screenshots
+## 2026-05-26 → 2026-05-27 — `/insight` screenshots arc (5 PRs)
 
-Brings `/insight` to full parity with `/break-price` for image capture. `/insight` was text-only since the original 2026-04-29 ship; SMEs who wanted to share a stream overlay, a tweet, an IG / Discord screenshot, or a news clipping with sentiment / hype / risk signal had to type the narrative themselves. Now they can attach.
+Brings `/insight` to full parity with `/break-price` for image capture, plus a wider RISK_FLAG roster so we can flag events for players who aren't on a current Bowman checklist. Original ship was PR [#145](https://github.com/brodotype-dev/breakerz/pull/145), followed by four real-time-discovered fixes during live testing the same evening.
 
-**What changed:**
+### Initial ship — PR [#145](https://github.com/brodotype-dev/breakerz/pull/145)
+
 - **`/insight` slash command** — `narrative` is now optional; new optional `screenshot` / `screenshot2..5` attachment slots + `notes` string. At-least-one of narrative / screenshot enforced server-side (Discord schema can't express it). Mirrors `/break-price` exactly.
 - **New `Capture insight` MESSAGE context-menu command** — long-press / right-click any Discord message → Apps → "Capture insight" pulls every image attachment (soft cap 5) and runs them + the message text through `parseInsights` as one batch. Same allowlist, same staging, same ✅/✏️/❌ proposal flow.
-- **`parseInsights`** — `ParseInput` extended with optional `images: BreakPriceImage[]` + `notes`. When images present, the Claude call switches to image content blocks (Haiku 4.5 vision), `max_tokens` bumped to 8192 (vision responses run wider — same reason `parseBreakPrice` runs at 8192). Prompt grows a "Screenshots" section explaining the screenshot may carry signal for any of the 8 update kinds, not just asking prices. Text-only `/insight` calls byte-for-byte unchanged in cost + behavior.
-- **Refine flow** — `kind === 'insight'` branch in `handleRefineModalSubmit` now re-fetches `source_attachments` CDN URLs (same 24h window as `/break-price` refines), sniffs bytes, and re-sends to `parseInsights` alongside the correction. Mirror of the break-price refine path that already existed.
+- **`parseInsights`** — `ParseInput` extended with optional `images: BreakPriceImage[]` + `notes`. When images present, the Claude call switches to image content blocks (Haiku 4.5 vision), `max_tokens` bumped to 8192 (vision responses run wider — same reason `parseBreakPrice` runs at 8192). Text-only `/insight` calls byte-for-byte unchanged in cost + behavior.
+- **Refine flow** — `kind === 'insight'` branch in `handleRefineModalSubmit` re-fetches `source_attachments` CDN URLs (24h window) and re-sends to `parseInsights` alongside the correction. Mirror of the break-price refine path.
 - **Image fetch hardening reused** — Same `sniffImageMediaType` magic-byte path + 5 MB per-image cap + `VALID_IMAGE_TYPES` set as `/break-price`. Trust bytes not Discord's content_type (iOS routinely mis-labels PNGs as JPEGs).
 
-**Files:** [scripts/register-discord-commands.mjs](scripts/register-discord-commands.mjs), [lib/insights-parser.ts](lib/insights-parser.ts), [app/api/discord/interactions/route.ts](app/api/discord/interactions/route.ts).
+### Discord description length fix — PR [#146](https://github.com/brodotype-dev/breakerz/pull/146)
 
-**Operational:** re-run `node scripts/register-discord-commands.mjs` post-deploy so the new screenshot slots + `Capture insight` menu show up in Discord. Existing `/insight` callers (narrative-only) keep working — `narrative` becoming optional is a contract relaxation, not a break.
+#145 set the `/insight` narrative description to 116 chars. Discord caps option descriptions at 100 and rejects the bulk PUT with `BASE_TYPE_BAD_LENGTH` 50035. Found during the post-deploy `register-discord-commands.mjs` run — only 3 of 4 commands were registering. Trimmed the description to 84 chars (dropped the second example phrase from the registration script).
+
+### RISK_FLAG leading-indicator rule — PR [#147](https://github.com/brodotype-dev/breakerz/pull/147)
+
+First live screenshot test (Josh Jacobs arrest news article) returned `[]` with scratch reasoning explaining *"no sports card market context, pricing, sentiment, or product mention"*. The model was correctly applying the prompt as written — but the prompt was wrong for risk_flag specifically. Risk flags exist to capture events BEFORE the market reacts (see `lib/score-modulation.ts`: legal −0.40, off_field −0.25, retirement −0.80, etc.). Waiting for observable market signal forfeits the whole timing advantage. Added an explicit "LEADING INDICATORS" clause to the RISK_FLAG rule and retuned the screenshots-section opener so news articles / event reports are explicitly named as valid inputs.
+
+### Empty-narrative rendering bug + RISK_FLAG emit-by-default — PR [#148](https://github.com/brodotype-dev/breakerz/pull/148)
+
+After #147 deployed, Josh Jacobs STILL returned `[]` (this time silently, no scratch reasoning). Root cause was a rendering bug introduced by #145 that was only exposed once screenshot-only calls became routine: when narrative was empty, `parseInsights` was rendering `Narrative:\n"""\n(no narrative — see screenshots)\n"""` — putting the placeholder string INSIDE the triple-quoted narrative block. The model was reading that placeholder as the actual narrative content and returning `[]` because the string carried no signal. `parseBreakPrice` had a clean conditional that drops the entire `Narrative:` block when empty; `parseInsights` didn't. Mirrored the pattern, plus added a CRITICAL-section RISK_FLAG EMIT-BY-DEFAULT rule with a concrete Josh Jacobs example as the template. **This was the actual root cause.** #147 alone wasn't enough.
+
+### Two-tier roster for RISK_FLAG — PR [#149](https://github.com/brodotype-dev/breakerz/pull/149)
+
+Brandon Marsh (Phillies OF) injury screenshot couldn't get a risk_flag because he isn't in any active Bowman product. Active-product-only roster scope (PR #142) was the right call to fix the Wemby cap bug for SENTIMENT / ASKING_PRICE / etc. — but too narrow for RISK_FLAG, which is a leading indicator we want to capture even for players whose cards aren't currently in rotation. New two-tier roster: default-tier (~2,900 active-product players, valid for every kind) + `*risk-only` tier (filling remaining `maxPlayers` budget with any-product players, valid for RISK_FLAG only). Total capped at 5000 with primary filling first so no Wemby regression. Prompt explains the marker; RISK_FLAG rule extended with ROSTER SCOPE clause.
+
+### Files touched across the arc
+
+- [scripts/register-discord-commands.mjs](scripts/register-discord-commands.mjs) — screenshot slots, `Capture insight` MESSAGE command, description-length fix
+- [lib/insights-parser.ts](lib/insights-parser.ts) — `ParseInput.images` + `notes`, two-tier roster, RISK_FLAG carve-out, screenshot prompt section, empty-narrative rendering fix
+- [app/api/discord/interactions/route.ts](app/api/discord/interactions/route.ts) — `handleInsight` extracted from inline dispatcher, new `handleInsightFromMessage`, refine flow re-fetches insight attachments
+
+### Operational
+
+Re-ran `scripts/register-discord-commands.mjs` against the prod guild after #146 deployed — 4 commands now registered (`/insight`, `/break-price`, `Capture break-price`, `Capture insight`). Force-quit + reopen Discord on mobile to pick up the new schema.
+
+### Lessons logged
+
+1. **Discord option descriptions cap at 100 chars** — easy to forget when example narratives feel too short
+2. **When mirroring a prompt-handling pattern across parsers, mirror the empty-state path too** — #145's prompt template inherited from a text-only world and broke on the new screenshot-only path
+3. **Prompt-only fixes for "model returned []" need to verify the model's scratch reasoning shows the new rule firing** — #147 was correct in intent but invisible in effect because #145's rendering bug was eating the input upstream
 
 ---
 
