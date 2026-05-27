@@ -264,19 +264,35 @@ interface SlashCommandInteraction {
 
 async function handleSlashCommand(interaction: SlashCommandInteraction): Promise<NextResponse> {
   // MESSAGE context-menu (right-click / long-press → Apps → "Capture
-  // break-price"). data.type === 3 distinguishes it from the slash command
-  // of similar purpose. Name kept slash-free because Discord silently
-  // dropped "Capture as /break-price" from the bulk command PUT.
-  if (interaction.data.type === 3 && interaction.data.name === 'Capture break-price') {
-    return handleBreakPriceFromMessage(interaction);
+  // break-price" / "Capture insight"). data.type === 3 distinguishes
+  // these from the slash commands of similar purpose. Names kept slash-
+  // free because Discord silently dropped "Capture as /break-price" from
+  // the bulk command PUT on initial registration.
+  if (interaction.data.type === 3) {
+    if (interaction.data.name === 'Capture break-price') {
+      return handleBreakPriceFromMessage(interaction);
+    }
+    if (interaction.data.name === 'Capture insight') {
+      return handleInsightFromMessage(interaction);
+    }
+    return ephemeralReply('Unknown command.');
   }
   if (interaction.data.name === 'break-price') {
     return handleBreakPrice(interaction);
   }
-  if (interaction.data.name !== 'insight') {
-    return ephemeralReply('Unknown command.');
+  if (interaction.data.name === 'insight') {
+    return handleInsight(interaction);
   }
+  return ephemeralReply('Unknown command.');
+}
 
+// ─── /insight slash command handler ──────────────────────────────────────
+// Free-form market debrief → parseInsights → ✅/✏️/❌ proposal panel.
+// As of 2026-05-26, /insight accepts up to 5 screenshot attachments + an
+// optional notes string, mirroring /break-price exactly. At least one of
+// narrative / screenshot is required (Discord can't express that as a
+// schema constraint, so the handler validates).
+async function handleInsight(interaction: SlashCommandInteraction): Promise<NextResponse> {
   const user = interaction.member?.user ?? interaction.user;
   if (!user) return ephemeralReply('Could not identify you, sorry.');
 
@@ -286,14 +302,77 @@ async function handleSlashCommand(interaction: SlashCommandInteraction): Promise
     );
   }
 
-  const narrative = interaction.data.options?.find(o => o.name === 'narrative')?.value?.trim();
-  if (!narrative) return ephemeralReply('You have to include the narrative.');
+  const options = interaction.data.options ?? [];
+  const narrative = options.find(o => o.name === 'narrative')?.value?.trim();
+  const notes = options.find(o => o.name === 'notes')?.value?.trim();
+
+  // Collect every present screenshot slot. The registrar exposes 5 numbered
+  // slots; users fill what they have. Order is preserved (slot 1 → slot 5)
+  // so Claude sees images in user-intended order.
+  const SCREENSHOT_OPTION_NAMES = ['screenshot', 'screenshot2', 'screenshot3', 'screenshot4', 'screenshot5'];
+  const attachments = SCREENSHOT_OPTION_NAMES
+    .map(name => {
+      const id = options.find(o => o.name === name)?.value;
+      return id ? interaction.data.resolved?.attachments?.[id] : undefined;
+    })
+    .filter((a): a is DiscordAttachment => !!a);
+
+  if (!narrative && attachments.length === 0) {
+    return ephemeralReply('Include at least a narrative or a screenshot.');
+  }
 
   // Defer immediately so Discord doesn't time out — we have ~15 minutes
   // to follow up via the interaction token.
   after(async () => {
     try {
-      const { updates, debug } = await parseInsights({ narrative });
+      // Parallel fetch + per-image magic-byte sniff. Same pattern as
+      // handleBreakPrice — Discord (especially iOS) routinely mis-labels
+      // PNGs as JPEGs in content_type, which Claude's vision endpoint
+      // rejects with a 400. Trust the bytes.
+      const fetched = await Promise.all(
+        attachments.map(async (a, idx) => {
+          const declaredMt = (a.content_type ?? '').split(';')[0].trim();
+          if (declaredMt && !VALID_IMAGE_TYPES.has(declaredMt)) {
+            return { ok: false as const, idx, error: `slot ${idx + 1}: type \`${declaredMt}\` isn't supported` };
+          }
+          const res = await fetch(a.url);
+          if (!res.ok) {
+            return { ok: false as const, idx, error: `slot ${idx + 1}: fetch status ${res.status}` };
+          }
+          const buf = Buffer.from(await res.arrayBuffer());
+          if (buf.byteLength > PER_IMAGE_BYTE_CAP) {
+            return {
+              ok: false as const,
+              idx,
+              error: `slot ${idx + 1}: ${(buf.byteLength / 1024 / 1024).toFixed(1)} MB exceeds 5 MB cap`,
+            };
+          }
+          const sniffed = sniffImageMediaType(buf);
+          if (!sniffed) {
+            return {
+              ok: false as const,
+              idx,
+              error: `slot ${idx + 1}: couldn't identify image format from bytes (re-save as PNG/JPEG)`,
+            };
+          }
+          return { ok: true as const, idx, base64: buf.toString('base64'), mediaType: sniffed };
+        }),
+      );
+
+      const failed = fetched.filter((f): f is { ok: false; idx: number; error: string } => !f.ok);
+      if (failed.length > 0) {
+        await editInteractionResponse(interaction.application_id, interaction.token, {
+          content: `⚠️ Couldn't load ${failed.length} of ${attachments.length} screenshot${attachments.length === 1 ? '' : 's'}:\n` +
+            failed.map(f => `  • ${f.error}`).join('\n'),
+        });
+        return;
+      }
+
+      const images: BreakPriceImage[] = fetched
+        .filter((f): f is { ok: true; idx: number; base64: string; mediaType: BreakPriceImageMediaType } => f.ok)
+        .map(f => ({ base64: f.base64, mediaType: f.mediaType }));
+
+      const { updates, debug } = await parseInsights({ narrative, notes, images });
 
       if (updates.length === 0) {
         // Surface why we got 0 updates so we don't have to read Vercel
@@ -304,8 +383,9 @@ async function handleSlashCommand(interaction: SlashCommandInteraction): Promise
           .slice(0, 700);
         await editInteractionResponse(interaction.application_id, interaction.token, {
           content:
-            `❓ I couldn't extract any structured updates from:\n> ${narrative.slice(0, 200)}\n\n` +
-            `**Debug:** roster=${debug.rosterSize}, products=${debug.productsCount}, parsedRaw=${debug.parsedRawCount}, drops=${debug.droppedReasons.length}\n` +
+            `❓ Couldn't extract any structured updates.\n` +
+            (narrative ? `> ${narrative.slice(0, 200)}\n` : '') +
+            `\n**Debug:** roster=${debug.rosterSize}, products=${debug.productsCount}, parsedRaw=${debug.parsedRawCount}, images=${images.length}, drops=${debug.droppedReasons.length}\n` +
             (debug.droppedReasons.length > 0
               ? `**Dropped reasons:** ${debug.droppedReasons.slice(0, 5).join(' | ')}\n\n`
               : '\n') +
@@ -315,16 +395,19 @@ async function handleSlashCommand(interaction: SlashCommandInteraction): Promise
       }
 
       // Stage the proposed updates so the ✅ button can apply them later.
+      // Persist CDN URLs so the Refine flow can re-fetch + re-parse within
+      // Discord's ~24h CDN window. Mirrors pending_insights expires_at TTL.
       const { data: pending, error: pendErr } = await supabaseAdmin
         .from('pending_insights')
         .insert({
           discord_channel_id: interaction.channel_id,
           source_user_id: user.id,
-          source_text: narrative,
+          source_text: narrative ?? (images.length > 0 ? `[${images.length} screenshot${images.length === 1 ? '' : 's'}: ${attachments.map(a => a.filename).join(', ')}]` : ''),
           parsed_updates: updates as unknown as object,
           source_kind: 'insight',
-          // /insight is text-only — no attachments to preserve for refine.
-          source_attachments: null,
+          source_attachments: attachments.length > 0
+            ? attachments.map(a => ({ url: a.url, filename: a.filename, content_type: a.content_type ?? null }))
+            : null,
         })
         .select('id')
         .single();
@@ -338,10 +421,18 @@ async function handleSlashCommand(interaction: SlashCommandInteraction): Promise
 
       const lines = updates.map((u, i) => `**${i + 1}.** ${summarizeUpdate(u)}`);
       const handle = user.global_name ?? user.username;
+      const imageSuffix = images.length === 0
+        ? ''
+        : images.length === 1
+          ? ' _(+ screenshot)_'
+          : ` _(+ ${images.length} screenshots)_`;
+      const sourceLabel = narrative
+        ? `> ${narrative.slice(0, 240)}${imageSuffix}`
+        : `_(${images.length} screenshot${images.length === 1 ? '' : 's'}: ${attachments.map(a => a.filename).slice(0, 3).join(', ')}${attachments.length > 3 ? '…' : ''})_`;
       const { header: targetsHeader } = buildTargetsHeader(updates);
       const targetsBlock = targetsHeader ? `${targetsHeader}\n\n` : '';
       const wrapping =
-        `**Insight from @${handle}:**\n> ${narrative.slice(0, 240)}\n\n` +
+        `**Insight from @${handle}:**\n${sourceLabel}\n\n` +
         targetsBlock +
         `**Proposed updates (${updates.length}):**\n\n\n` +
         `Click ✅ to apply, ❌ to discard. Anyone on the allowlist can resolve.`;
@@ -349,7 +440,7 @@ async function handleSlashCommand(interaction: SlashCommandInteraction): Promise
 
       await editInteractionResponse(interaction.application_id, interaction.token, {
         content:
-          `**Insight from @${handle}:**\n> ${narrative.slice(0, 240)}\n\n` +
+          `**Insight from @${handle}:**\n${sourceLabel}\n\n` +
           targetsBlock +
           `**Proposed updates (${updates.length}):**\n${summary}\n\n` +
           `Click ✅ to apply, ❌ to discard. Anyone on the allowlist can resolve.`,
@@ -819,6 +910,207 @@ async function handleBreakPriceFromMessage(interaction: SlashCommandInteraction)
   });
 }
 
+// ─── /insight message context-menu handler ──────────────────────────────
+// Triggered when an allowlisted contributor long-presses (mobile) or
+// right-clicks (desktop) any message in Discord and picks
+// Apps → "Capture insight". Receives the full target message, pulls every
+// image attachment on it (soft-capped at 5), and hands them to
+// parseInsights as a single batch alongside the target message's text.
+//
+// Mirrors handleBreakPriceFromMessage downstream — same parser type, same
+// allowlist, same pending_insights staging, same ✅/✏️/❌ buttons — only the
+// parser entrypoint and proposal label change. The duplication is
+// intentional: each surface owns its own user-facing copy + debug line.
+
+async function handleInsightFromMessage(interaction: SlashCommandInteraction): Promise<NextResponse> {
+  const user = interaction.member?.user ?? interaction.user;
+  if (!user) return ephemeralReply('Could not identify you, sorry.');
+
+  if (!(await isAllowlisted(user.id))) {
+    return ephemeralReply(
+      'You are not on the BreakIQ contributor allowlist. Ping Brody to get added.',
+    );
+  }
+
+  const targetId = interaction.data.target_id;
+  const target = targetId ? interaction.data.resolved?.messages?.[targetId] : undefined;
+  if (!target) {
+    return ephemeralReply('Discord didn\'t send the target message. Try again, or fire `/insight` directly.');
+  }
+
+  const allAttachments = target.attachments ?? [];
+  const imageAttachments = allAttachments.filter(a => {
+    const mt = (a.content_type ?? '').split(';')[0].trim();
+    return VALID_IMAGE_TYPES.has(mt);
+  });
+
+  const narrative = target.content?.trim() || undefined;
+
+  // Insight context-menu is more permissive than break-price's: if a
+  // contributor right-clicks a text-only message ("Wemby just dropped 60")
+  // we still parse it through parseInsights — text alone is a valid /insight.
+  // Only bail when there's nothing at all.
+  if (imageAttachments.length === 0 && !narrative) {
+    return ephemeralReply('That message has no text and no image attachments. Pick a message with at least one.');
+  }
+
+  if (imageAttachments.length > CONTEXT_MENU_IMAGE_CAP) {
+    return ephemeralReply(
+      `Pick a message with ≤${CONTEXT_MENU_IMAGE_CAP} screenshots — found ${imageAttachments.length}. Bigger batches risk truncation in the proposal preview.`,
+    );
+  }
+
+  after(async () => {
+    try {
+      // Parallel fetch. One bad image is reported by index and aborts
+      // the parse — keeps the proposal honest rather than partial.
+      const fetched = await Promise.all(
+        imageAttachments.map(async (a, idx) => {
+          const res = await fetch(a.url);
+          if (!res.ok) {
+            return { ok: false as const, idx, error: `status ${res.status} on ${a.filename}` };
+          }
+          const buf = Buffer.from(await res.arrayBuffer());
+          if (buf.byteLength > PER_IMAGE_BYTE_CAP) {
+            return {
+              ok: false as const,
+              idx,
+              error: `${a.filename} is ${(buf.byteLength / 1024 / 1024).toFixed(1)} MB (cap 5 MB)`,
+            };
+          }
+          // Trust bytes, not Discord's content_type header — iOS frequently
+          // mis-labels PNGs as JPEGs which Claude rejects on validation.
+          const sniffed = sniffImageMediaType(buf);
+          if (!sniffed) {
+            return {
+              ok: false as const,
+              idx,
+              error: `couldn't identify ${a.filename}'s format from its bytes`,
+            };
+          }
+          return { ok: true as const, idx, base64: buf.toString('base64'), mediaType: sniffed };
+        }),
+      );
+
+      const failed = fetched.filter((f): f is { ok: false; idx: number; error: string } => !f.ok);
+      if (failed.length > 0) {
+        await editInteractionResponse(interaction.application_id, interaction.token, {
+          content: `⚠️ Couldn't load ${failed.length} of ${imageAttachments.length} screenshots:\n` +
+            failed.map(f => `  • image ${f.idx + 1}: ${f.error}`).join('\n'),
+        });
+        return;
+      }
+
+      const images: BreakPriceImage[] = fetched
+        .filter((f): f is { ok: true; idx: number; base64: string; mediaType: BreakPriceImageMediaType } => f.ok)
+        .map(f => ({ base64: f.base64, mediaType: f.mediaType }));
+
+      const { updates, debug } = await parseInsights({ narrative, images });
+
+      if (updates.length === 0) {
+        const excerpt = debug.rawResponseExcerpt.replace(/```/g, "'''").slice(0, 500);
+        await editInteractionResponse(interaction.application_id, interaction.token, {
+          content:
+            `❓ Couldn't extract any structured updates from ${images.length} screenshot${images.length === 1 ? '' : 's'}.\n` +
+            (narrative ? `> ${narrative.slice(0, 200)}\n` : '') +
+            `\n**Debug:** roster=${debug.rosterSize}, products=${debug.productsCount}, parsedRaw=${debug.parsedRawCount}, drops=${debug.droppedReasons.length}\n` +
+            (debug.droppedReasons.length > 0
+              ? `**Dropped:** ${debug.droppedReasons.slice(0, 4).join(' | ')}\n\n`
+              : '\n') +
+            (excerpt ? `**Claude raw (first 500):**\n\`\`\`${excerpt}\`\`\`` : ''),
+        });
+        return;
+      }
+
+      const { data: pending, error: pendErr } = await supabaseAdmin
+        .from('pending_insights')
+        .insert({
+          discord_channel_id: interaction.channel_id,
+          source_user_id: user.id,
+          source_text:
+            narrative ??
+            `[message context menu: ${imageAttachments.length} screenshot${imageAttachments.length === 1 ? '' : 's'}]`,
+          parsed_updates: updates as unknown as object,
+          source_kind: 'insight',
+          source_attachments: imageAttachments.length > 0
+            ? imageAttachments.map(a => ({ url: a.url, filename: a.filename, content_type: a.content_type ?? null }))
+            : null,
+        })
+        .select('id')
+        .single();
+
+      if (pendErr || !pending) {
+        await editInteractionResponse(interaction.application_id, interaction.token, {
+          content: `⚠️ Parsed ${updates.length} update${updates.length === 1 ? '' : 's'} but couldn't stage them: ${pendErr?.message ?? 'unknown error'}`,
+        });
+        return;
+      }
+
+      const lines = updates.map((u, i) => `**${i + 1}.** ${summarizeUpdate(u)}`);
+      const handle = user.global_name ?? user.username;
+      const imageNote = imageAttachments.length === 0
+        ? ''
+        : `_(message context menu · ${imageAttachments.length} screenshot${imageAttachments.length === 1 ? '' : 's'})_`;
+      const sourceLabel = narrative
+        ? `> ${narrative.slice(0, 240)}${imageNote ? `\n${imageNote}` : ''}`
+        : (imageNote || '_(message context menu)_');
+      const { header: targetsHeader } = buildTargetsHeader(updates);
+      const targetsBlock = targetsHeader ? `${targetsHeader}\n\n` : '';
+      const wrapping =
+        `**Insight from @${handle}:**\n${sourceLabel}\n\n` +
+        targetsBlock +
+        `**Proposed updates (${updates.length}):**\n\n\n` +
+        `Click ✅ to apply, ❌ to discard. Anyone on the allowlist can resolve.`;
+      const { summary } = formatProposalSummary(lines, 2000 - wrapping.length);
+
+      await editInteractionResponse(interaction.application_id, interaction.token, {
+        content:
+          `**Insight from @${handle}:**\n${sourceLabel}\n\n` +
+          targetsBlock +
+          `**Proposed updates (${updates.length}):**\n${summary}\n\n` +
+          `Click ✅ to apply, ❌ to discard. Anyone on the allowlist can resolve.`,
+        components: [
+          {
+            type: ComponentType.ACTION_ROW,
+            components: [
+              {
+                type: ComponentType.BUTTON,
+                style: ButtonStyle.SUCCESS,
+                label: 'Apply',
+                custom_id: `confirm:${pending.id}`,
+                emoji: { name: '✅' },
+              },
+              {
+                type: ComponentType.BUTTON,
+                style: ButtonStyle.SECONDARY,
+                label: 'Refine',
+                custom_id: `refine:${pending.id}`,
+                emoji: { name: '✏️' },
+              },
+              {
+                type: ComponentType.BUTTON,
+                style: ButtonStyle.DANGER,
+                label: 'Discard',
+                custom_id: `discard:${pending.id}`,
+                emoji: { name: '❌' },
+              },
+            ],
+          },
+        ],
+      });
+    } catch (err) {
+      console.error('[discord/insight-ctx] parse failed', err);
+      await editInteractionResponse(interaction.application_id, interaction.token, {
+        content: `⚠️ Parser error: ${err instanceof Error ? err.message : 'unknown'}`,
+      }).catch(() => {});
+    }
+  });
+
+  return NextResponse.json({
+    type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+  });
+}
+
 // ─── Button handler ──────────────────────────────────────────────────────
 
 interface ButtonInteraction {
@@ -1041,21 +1333,60 @@ async function handleRefineModalSubmit(interaction: ModalSubmitInteraction): Pro
       let debugLine = '';
 
       if (kind === 'insight') {
-        // Text-only re-parse. Pass the correction as a STRUCTURED
-        // parameter rather than concatenating it onto the narrative —
-        // parseInsights renders refineCorrection in a dedicated
-        // "CONTRIBUTOR CORRECTION (authoritative)" section with prompt
-        // language that tells the model to treat it as an override.
-        // Previously the concat-into-narrative approach let the model
-        // re-roll wrong: the Wemby insight got re-mapped to Alex Sarr
-        // after a refine that literally said "this is for Victor
-        // Webanyama - not Donic" (2026-05-26).
+        // Re-parse with the correction as a STRUCTURED parameter rather
+        // than concatenating it onto the narrative — parseInsights renders
+        // refineCorrection in a dedicated "CONTRIBUTOR CORRECTION
+        // (authoritative)" section with prompt language that tells the
+        // model to treat it as an override. Previously the concat-into-
+        // narrative approach let the model re-roll wrong: the Wemby
+        // insight got re-mapped to Alex Sarr after a refine that
+        // literally said "this is for Victor Webanyama - not Donic"
+        // (2026-05-26).
+        //
+        // As of 2026-05-26 /insight also accepts screenshots, so the
+        // refine path re-fetches stored CDN URLs (24h window) and re-
+        // sends them alongside the corrected text. Mirrors the
+        // break_price branch below. If every URL has expired (rare —
+        // captures get resolved within hours), the model still gets the
+        // narrative + correction and we surface fetch errors in the
+        // debug line.
+        const attachments = (pending.source_attachments ?? []) as Array<{ url: string; filename: string; content_type: string | null }>;
+        const images: BreakPriceImage[] = [];
+        const fetchErrors: string[] = [];
+        for (let idx = 0; idx < attachments.length; idx++) {
+          const a = attachments[idx];
+          try {
+            const res = await fetch(a.url);
+            if (!res.ok) {
+              fetchErrors.push(`image ${idx + 1}: HTTP ${res.status}${res.status === 404 ? ' (CDN URL expired)' : ''}`);
+              continue;
+            }
+            const buf = Buffer.from(await res.arrayBuffer());
+            if (buf.byteLength > PER_IMAGE_BYTE_CAP) {
+              fetchErrors.push(`image ${idx + 1}: oversized`);
+              continue;
+            }
+            const sniffed = sniffImageMediaType(buf);
+            if (!sniffed) {
+              fetchErrors.push(`image ${idx + 1}: format not recognized`);
+              continue;
+            }
+            images.push({ base64: buf.toString('base64'), mediaType: sniffed });
+          } catch (err) {
+            fetchErrors.push(`image ${idx + 1}: ${err instanceof Error ? err.message : 'fetch failed'}`);
+          }
+        }
+
         const res = await parseInsights({
           narrative: pending.source_text,
+          images,
           refineCorrection: correction,
         });
         updates = res.updates;
-        debugLine = `rosterSize=${res.debug.rosterSize}, parsedRaw=${res.debug.parsedRawCount}, drops=${res.debug.droppedReasons.length}`;
+        debugLine = `rosterSize=${res.debug.rosterSize}, parsedRaw=${res.debug.parsedRawCount}, images=${images.length}, drops=${res.debug.droppedReasons.length}`;
+        if (fetchErrors.length > 0) {
+          debugLine += `, fetch-errors=${fetchErrors.length}`;
+        }
       } else {
         // /break-price re-parse. Re-fetch the stored CDN URLs (24h
         // window), sniff bytes, send to Claude with the correction as

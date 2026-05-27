@@ -203,7 +203,27 @@ export type ParsedUpdate =
     };
 
 export interface ParseInput {
-  narrative: string;
+  /**
+   * Free-form market debrief. Optional only when at least one image is
+   * supplied — the parser short-circuits with an empty result when both
+   * narrative and images are absent.
+   */
+  narrative?: string;
+  /**
+   * Optional screenshots (stream overlays, tweets, IG posts, chat caps,
+   * news clippings). When set and non-empty, each image is sent to Claude
+   * as a content block in supplied order alongside the text prompt.
+   * Mirrors the path parseBreakPrice has used since 2026-05-13 — same
+   * BreakPriceImage type to keep the route handlers cookie-cutter.
+   */
+  images?: BreakPriceImage[];
+  /**
+   * Optional contributor context — "this is from Kyle's stream" /
+   * "screenshot is a DM, not a public post". Rendered as supplementary
+   * context, NOT as authoritative override. For refine-time corrections
+   * use `refineCorrection` instead.
+   */
+  notes?: string;
   // Soft cap on roster size sent to Claude. The full prod catalog is ~3k
   // players which fits easily in Haiku's 200k context (~75k tokens worth).
   // We cap at 5000 as a guard against future growth, and prefer
@@ -230,14 +250,35 @@ export interface ParseResult {
     rawResponseExcerpt: string;
     parsedRawCount: number;
     droppedReasons: string[];
+    hadImage: boolean;
+    hadNarrative: boolean;
   };
 }
 
-export async function parseInsights({ narrative, maxPlayers = 5000, refineCorrection }: ParseInput): Promise<ParseResult> {
-  if (!narrative.trim()) {
+export async function parseInsights({
+  narrative,
+  images,
+  notes,
+  maxPlayers = 5000,
+  refineCorrection,
+}: ParseInput): Promise<ParseResult> {
+  const narrativeText = narrative?.trim() ?? '';
+  const imageList = images ?? [];
+  const hadNarrative = narrativeText.length > 0;
+  const hadImage = imageList.length > 0;
+
+  if (!hadNarrative && !hadImage) {
     return {
       updates: [],
-      debug: { rosterSize: 0, productsCount: 0, rawResponseExcerpt: 'empty narrative', parsedRawCount: 0, droppedReasons: [] },
+      debug: {
+        rosterSize: 0,
+        productsCount: 0,
+        rawResponseExcerpt: 'no input',
+        parsedRawCount: 0,
+        droppedReasons: [],
+        hadImage,
+        hadNarrative,
+      },
     };
   }
 
@@ -270,7 +311,7 @@ export async function parseInsights({ narrative, maxPlayers = 5000, refineCorrec
     console.error('[insights-parser] products query failed:', prodErr);
     return {
       updates: [],
-      debug: { rosterSize: 0, productsCount: 0, rawResponseExcerpt: `products query: ${prodErr.message}`, parsedRawCount: 0, droppedReasons: [] },
+      debug: { rosterSize: 0, productsCount: 0, rawResponseExcerpt: `products query: ${prodErr.message}`, parsedRawCount: 0, droppedReasons: [], hadImage, hadNarrative },
     };
   }
 
@@ -323,6 +364,8 @@ export async function parseInsights({ narrative, maxPlayers = 5000, refineCorrec
         rawResponseExcerpt: 'no roster fetched',
         parsedRawCount: 0,
         droppedReasons: [],
+        hadImage,
+        hadNarrative,
       },
     };
   }
@@ -342,11 +385,17 @@ ${productLines}
 Available players (use player ids exactly):
 ${playerLines}
 
-Narrative:
+${hadImage ? `Screenshots: ${imageList.length} image${imageList.length === 1 ? '' : 's'} attached above this prompt. They may be stream overlays, tweets, IG / Discord screenshots, news clippings, chat captures — anything the contributor thinks carries market signal. Extract updates from text visible in the images using the same rules below. When narrative and screenshots conflict on a detail, prefer the screenshot for prices / odds / proper nouns (it's the primary source) and the narrative for contributor-supplied context (product / scope / "this is just from a DM"). The screenshot is NOT required to be about asking price — sentiment, hype, risk, odds observations, and team/product takes are all fair game.
+` : ''}Narrative:
 """
-${narrative.trim()}
+${narrativeText || '(no narrative — see screenshots)'}
 """
-${refineCorrection?.trim() ? `
+${notes?.trim() ? `
+Contributor notes (supplementary context, NOT authoritative override):
+"""
+${notes.trim()}
+"""
+` : ''}${refineCorrection?.trim() ? `
 CONTRIBUTOR CORRECTION (authoritative — overrides ANY conflicting interpretation of the narrative above):
 """
 ${refineCorrection.trim()}
@@ -478,26 +527,60 @@ CRITICAL:
 - variant_name is free text — copy it verbatim from the narrative ("Orange Refractor /99", "Black Prism /1"). We don't have a variant roster yet, so don't try to match against one.
 - It is fine to return fewer updates than the narrative implies, or even an empty array, if you can't make confident matches.`;
 
+  // Build content blocks — N image blocks (in supplied order) + text prompt.
+  // Mirrors the parseBreakPrice path so route handlers can stay cookie-cutter.
+  // Skip the image path entirely when no images so we keep the cheaper text-
+  // only Claude call (and avoid wrapping a single-text message in an array).
+  type ImageMediaType = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
+  const userContent:
+    | string
+    | Array<
+        | { type: 'text'; text: string }
+        | { type: 'image'; source: { type: 'base64'; media_type: ImageMediaType; data: string } }
+      > = hadImage
+    ? (() => {
+        const blocks: Array<
+          | { type: 'text'; text: string }
+          | { type: 'image'; source: { type: 'base64'; media_type: ImageMediaType; data: string } }
+        > = [];
+        for (const img of imageList) {
+          blocks.push({
+            type: 'image',
+            source: { type: 'base64', media_type: img.mediaType, data: img.base64 },
+          });
+        }
+        blocks.push({ type: 'text', text: prompt });
+        return blocks;
+      })()
+    : prompt;
+
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   const message = await client.messages.create(
     {
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 2048,
-      messages: [{ role: 'user', content: prompt }],
+      // Vision responses run wider (multiple players + sentiments per screenshot
+      // are routine); 2048 was the silent failure mode for parseBreakPrice
+      // before May 14. Match the 8192 ceiling there for parity. Text-only
+      // /insight calls don't pay for the extra ceiling — max_tokens is an
+      // upper bound, not a billed amount.
+      max_tokens: hadImage ? 8192 : 2048,
+      messages: [{ role: 'user', content: userContent }],
     },
-    { timeout: 25_000 },
+    { timeout: hadImage ? 30_000 : 25_000 },
   );
 
   const raw = (message.content[0] as { type: string; text: string }).text.trim();
-  console.log(`[insights-parser] roster=${players.length} products=${products.length} narrative_chars=${narrative.length} raw_response_chars=${raw.length}`);
+  console.log(`[insights-parser] roster=${players.length} products=${products.length} narrative_chars=${narrativeText.length} images=${imageList.length} raw_response_chars=${raw.length}`);
   console.log(`[insights-parser] raw response (first 800): ${raw.slice(0, 800)}`);
 
   const debugBase = {
     rosterSize: players.length,
     productsCount: products.length,
     rawResponseExcerpt: raw.slice(0, 600),
+    hadImage,
+    hadNarrative,
   };
 
   const arrayMatch = raw.match(/\[[\s\S]*\]/);
