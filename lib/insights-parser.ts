@@ -282,25 +282,32 @@ export async function parseInsights({
     };
   }
 
-  // Roster = every solo player appearing in an active product
-  // (live or pre_release). Includes players who only appear on insert
-  // subsets (C.J. Stroud, Wemby on SP-only sets) — the prompt tells
-  // Claude to OMIT rather than substitute when no match exists.
+  // Roster = TWO tiers:
   //
-  // Previously this pulled `from('players')` directly with no product
-  // filter, ordered alphabetically, capped at 5000. As the legends-
-  // imported-during-historical-products tail grew to 6,666 solo
-  // players, Victor Wembanyama (V/W region) started getting cut off
-  // by the 5000 cap. The parser then mismapped narrative mentions of
-  // "Wemby" to alphabetically-earlier auto-eligible basketball
-  // rookies — Alex Sarr, Cooper Flagg, Luka — because they survived
-  // the slice. Scoping to active-product players cuts us to ~2,900
-  // distinct entities, comfortably under the cap with every match
-  // candidate represented (verified 2026-05-26).
+  // PRIMARY (active-tier): every solo player appearing in an active product
+  // (live or pre_release). Valid match candidates for every update kind.
+  // ~2,900 players as of 2026-05-26.
   //
-  // Multi-player concatenated rows ("Skubal / Blanco") still
-  // excluded — they aren't real entities and would let Claude
-  // attach sentiment to a meaningless aggregate.
+  // SECONDARY (risk-only tier): every other solo player in the `players`
+  // table with at least one player_product row (regardless of product
+  // active status). Valid match candidates for RISK_FLAG ONLY. We added
+  // this 2026-05-26 after Brandon Marsh (Phillies OF, not on any active
+  // Bowman product) couldn't be flagged with a hand injury — he WILL
+  // appear on a future Topps Flagship onboarding, so capturing his risk
+  // event today and keeping the record longitudinal is worth the prompt
+  // budget. The original active-only scope was too narrow for risk_flag
+  // specifically — risk flags are leading indicators and orphaned-from-
+  // product capture is still valuable.
+  //
+  // Why two tiers and not one big roster: bringing the full ~6,666-player
+  // table back as the primary roster reintroduced the Wemby cap bug
+  // (#142) — alphabetical capping at 5,000 was dropping V/W region. By
+  // capping primary first and filling secondary to the remaining budget,
+  // we keep every active player findable and add as many risk-only
+  // candidates as fit.
+  //
+  // Multi-player concatenated rows ("Skubal / Blanco") and card-subset
+  // codes ("3D-37", "B25-AL") still excluded in BOTH tiers.
   const { data: products, error: prodErr } = await supabaseAdmin
     .from('products')
     .select('id, name, year, lifecycle_status')
@@ -315,14 +322,12 @@ export async function parseInsights({
     };
   }
 
-  let players: Array<{ id: string; name: string; team: string; sport: { name: string } | null }> = [];
+  type RosterPlayer = { id: string; name: string; team: string; sport: { name: string } | null; tier: 'active' | 'risk_only' };
+  let players: RosterPlayer[] = [];
+  const activeIds = new Set<string>();
   {
-    // Page through `player_products!inner(product_id)` joined back to
-    // active products. The inner-join filter is the gate — players only
-    // surface if they have at least one row in an active-product
-    // player_products. Dedupe by id in-process since PostgREST can't
-    // express DISTINCT on a joined query.
-    const seen = new Set<string>();
+    // PRIMARY tier — page through active-product players. Same inner-join
+    // gate as before #149.
     const PAGE = 1000;
     for (let from = 0; ; from += PAGE) {
       const { data, error: plErr } = await supabaseAdmin
@@ -333,26 +338,56 @@ export async function parseInsights({
         .order('name')
         .range(from, from + PAGE - 1);
       if (plErr) {
-        console.error('[insights-parser] players query failed:', plErr);
+        console.error('[insights-parser] players (active) query failed:', plErr);
         break;
       }
       if (!data || data.length === 0) break;
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       for (const row of data as any[]) {
-        if (seen.has(row.id)) continue;
-        seen.add(row.id);
-        // sport comes back as array or object depending on cardinality; normalize
+        if (activeIds.has(row.id)) continue;
+        activeIds.add(row.id);
         const sportObj = Array.isArray(row.sport) ? (row.sport[0] ?? null) : (row.sport ?? null);
-        players.push({ id: row.id, name: row.name, team: row.team, sport: sportObj });
+        players.push({ id: row.id, name: row.name, team: row.team, sport: sportObj, tier: 'active' });
       }
       if (data.length < PAGE || players.length >= maxPlayers) break;
     }
-    // Defense in depth: drop card-subset codes (e.g. "3D-37", "B25-AL")
-    // that crept into the players table from buggy checklist imports.
-    // These rows still exist with insert_only=true but the parser should
-    // not consider them as match candidates — Claude has matched real
-    // narratives ("Dylan Harper") to bogus rows ("3D-37") in the past.
-    players = players.filter(p => !isCardSubsetCode(p.name)).slice(0, maxPlayers);
+    players = players.filter(p => !isCardSubsetCode(p.name));
+  }
+
+  // SECONDARY tier — fill remaining roster budget with any-product players
+  // not already in primary. Inner-join on player_products only (no active
+  // filter), exclude IDs already captured. Cap to remaining budget so the
+  // total roster stays within maxPlayers and prompt stays Haiku-safe.
+  const remainingBudget = Math.max(0, maxPlayers - players.length);
+  if (remainingBudget > 0) {
+    const PAGE = 1000;
+    const seenSecondary = new Set<string>();
+    let added = 0;
+    for (let from = 0; added < remainingBudget; from += PAGE) {
+      const { data, error: plErr } = await supabaseAdmin
+        .from('players')
+        .select('id, name, team, sport:sports(name), player_products!inner(id)')
+        .not('name', 'like', '%/%')
+        .order('name')
+        .range(from, from + PAGE - 1);
+      if (plErr) {
+        console.error('[insights-parser] players (risk-only) query failed:', plErr);
+        break;
+      }
+      if (!data || data.length === 0) break;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const row of data as any[]) {
+        if (activeIds.has(row.id)) continue; // already in primary
+        if (seenSecondary.has(row.id)) continue;
+        if (isCardSubsetCode(row.name)) continue;
+        seenSecondary.add(row.id);
+        const sportObj = Array.isArray(row.sport) ? (row.sport[0] ?? null) : (row.sport ?? null);
+        players.push({ id: row.id, name: row.name, team: row.team, sport: sportObj, tier: 'risk_only' });
+        added++;
+        if (added >= remainingBudget) break;
+      }
+      if (data.length < PAGE) break;
+    }
   }
 
   if (!products?.length || !players?.length) {
@@ -374,8 +409,12 @@ export async function parseInsights({
     .map(p => `- ${p.year} ${p.name} [id: ${p.id}]`)
     .join('\n');
   const playerLines = players
-    .map((p: any) => `- ${p.name} (${p.team || 'N/A'}, ${(p.sport as any)?.name ?? ''}) [id: ${p.id}]`)
+    .map((p) => {
+      const base = `- ${p.name} (${p.team || 'N/A'}, ${p.sport?.name ?? ''}) [id: ${p.id}]`;
+      return p.tier === 'risk_only' ? `${base} *risk-only` : base;
+    })
     .join('\n');
+  const riskOnlyCount = players.filter(p => p.tier === 'risk_only').length;
 
   const prompt = `You are parsing a sports card market debrief into structured updates for BreakIQ.
 
@@ -384,6 +423,13 @@ ${productLines}
 
 Available players (use player ids exactly):
 ${playerLines}
+${riskOnlyCount > 0 ? `
+TWO-TIER ROSTER:
+- Default tier (no marker): the player is in at least one currently active product. Valid match candidate for EVERY update kind.
+- \`*risk-only\` tier: the player has card history but is NOT in any currently active product. Valid match candidate for RISK_FLAG ONLY. For sentiment / asking_price / hype_tag / odds_observation / team_product_sentiment, OMIT updates targeting *risk-only players.
+
+Why: risk flags are leading indicators (see RISK_FLAG rule below). We want event capture for players whose cards aren't currently in rotation but might be soon. The other update kinds need a current product_product row to land, so they stay scoped tight.
+` : ''}
 
 ${hadImage ? `Screenshots: ${imageList.length} image${imageList.length === 1 ? '' : 's'} attached above this prompt. They may be stream overlays, tweets, IG / Discord screenshots, NEWS ARTICLES / EVENT REPORTS, chat captures — any source the contributor is using to feed BreakIQ. The contributor's act of capturing the screenshot is itself the signal that this is worth processing. Extract updates from text visible in the images using the per-kind rules below. When narrative and screenshots conflict on a detail, prefer the screenshot for prices / odds / proper nouns (it's the primary source) and the narrative for contributor-supplied context. All eight update kinds are fair game — pricing, sentiment, hype, RISK_FLAG, odds observations, and team/product takes. **Note the explicit RISK_FLAG rule below: news articles, official statements, and event reports about arrests / injuries / trades / suspensions / retirements ARE themselves the trigger — emit a risk_flag without requiring additional market reaction or breaker discussion in the screenshot.**
 ` : ''}${hadNarrative ? `Narrative:\n"""\n${narrativeText}\n"""` : 'No narrative provided — extract from the screenshot(s) only.'}
@@ -464,7 +510,8 @@ Extract zero or more updates. Each update is one of five kinds:
    { "kind": "risk_flag", "player_id": "...", "player_name": "...",
      "flag_type": "injury", "note": "...", "confidence": 0.9 }
    RISK FLAGS ARE LEADING INDICATORS. Emit on the EVENT itself — a news article showing arrest / injury / trade / suspension / retirement is enough. DO NOT gatekeep on "is the market reacting yet?" or "is this generating breaker discussion?" The whole point of risk_flag is to capture the event BEFORE the market reacts so our score modulation can pre-adjust prices. Player name + flag_type + a factual note from the source is sufficient. Confidence reflects how clearly the event is established (high for news articles / official statements / verified reports; lower for unsourced rumors).
-   Other update kinds (sentiment, hype_tag, asking_price, odds_observation, team/product sentiment) still need market context — but RISK_FLAG is the explicit exception.
+   ROSTER SCOPE: RISK_FLAG can match against BOTH tiers — default-tier active-product players AND \`*risk-only\` players. This is the explicit exception to the rule that other update kinds only match the default tier.
+   Other update kinds (sentiment, hype_tag, asking_price, odds_observation, team/product sentiment) still need market context AND a default-tier match — but RISK_FLAG is the explicit exception on both.
 
 5. ODDS_OBSERVATION — a specific card pulls at a different rate than the published odds. Output:
    { "kind": "odds_observation", "product_id": "...", "product_name": "...",
