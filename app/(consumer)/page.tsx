@@ -6,6 +6,21 @@ import { Logo } from '@/components/Logo';
 import ActiveProductsBrowser, { type ProductSignal } from './ActiveProductsBrowser';
 import BetaBanner from '@/components/breakiq/BetaBanner';
 
+// ISR — regenerate the home page at most every 60s. The home page is
+// IDENTICAL for every logged-in user (same products, same hype tags,
+// same activity stats); per-user gating happens in middleware via
+// auth-cookie redirect, so caching the rendered HTML is safe.
+//
+// Admin product mutations already invalidate this page via
+// revalidatePath('/') in app/admin/products/actions.ts, so changes still
+// surface immediately on save. The 60s ceiling covers the
+// activity/hype-stat reads which don't need to be fresh-every-nav.
+//
+// Before this: every nav re-executed 5 Supabase queries against the
+// live DB. After: one set of queries per minute, cached HTML served
+// from edge for the next ~60 navigations within that window.
+export const revalidate = 60;
+
 const POSITIVE_HYPE_TAGS = new Set(['release_premium', 'underhyped']);
 
 async function getProducts(): Promise<{ products: (Product & { sport: Sport })[]; signals: Record<string, ProductSignal> }> {

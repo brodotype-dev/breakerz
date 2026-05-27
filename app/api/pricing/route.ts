@@ -14,13 +14,23 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { unstable_cache } from 'next/cache';
 import { supabaseAdmin } from '@/lib/supabase';
 import { createClient } from '@/lib/supabase-server';
 import type { PlayerWithPricing } from '@/lib/types';
 
-export const dynamic = 'force-dynamic';
+// `dynamic = 'force-dynamic'` was dropping us out of any caching layer
+// even though the response is functionally the same for every user
+// holding the same productId. Pricing data only changes when the cron
+// or admin "Refresh Pricing" button rewrites pricing_cache rows (~6h
+// cadence). Pulling the bulk DB read into `unstable_cache` with a 30s
+// revalidate gives us in-memory cache hits across nearby requests
+// without compromising fresh-pricing on actual updates.
+//
+// Auth check stays per-request — we don't want to cache 401 responses
+// for unauthed users.
 
-async function loadCached(productId: string) {
+async function loadCachedRaw(productId: string) {
   const { data: playerProducts, error } = await supabaseAdmin
     .from('player_products')
     .select('*, player:players(*), buzz_score, breakerz_score, is_high_volatility, c_score')
@@ -66,6 +76,19 @@ async function loadCached(productId: string) {
   });
 
   return players;
+}
+
+// Per-productId 30s cache. Key includes productId so different products
+// don't collide. Tags allow targeted invalidation if we ever want to
+// pop the cache after an admin pricing refresh (not wired up yet —
+// 30s natural revalidation is acceptable; the admin button user
+// already accepts a small wait).
+async function loadCached(productId: string) {
+  return unstable_cache(
+    () => loadCachedRaw(productId),
+    ['pricing-cache-read', productId],
+    { revalidate: 30, tags: [`pricing-${productId}`] },
+  )();
 }
 
 async function checkAuth(req: NextRequest) {
