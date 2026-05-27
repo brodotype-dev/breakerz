@@ -252,6 +252,21 @@ Supabase Vercel integration injects both `NEXT_PUBLIC_SUPABASE_URL` and `SUPABAS
 10. **PostgREST schema cache after new functions** — when a migration adds a new Postgres function AND app code is shipped to call it in the same window, the `.rpc()` calls will fail with cryptic "function not found" / 500 errors until PostgREST reloads its in-memory schema cache. Cost us ~30 min on 2026-05-20 with `upsert_ch_price_cache_preserving_nulls` — the function landed in Postgres at commit time but PostgREST's snapshot was from before. The fix is one SQL statement: `NOTIFY pgrst, 'reload schema';` — run it via Supabase MCP or the SQL editor after applying any function-adding migration. **Append `NOTIFY pgrst, 'reload schema';` to the bottom of every function-adding migration file** going forward so this never bites again. Doesn't apply to table/column migrations — only ones that create or modify functions.
 11. **Supabase `.in()` chunk size cap** — Kong (PostgREST's HTTP front-end) rejects requests whose URL exceeds ~8KB. A `.in('uuid_col', slice)` filter encodes each UUID as 36 chars + comma = 37 chars in the query string; **200 UUIDs is the safe ceiling** (~7.4 KB + headers ~= just under 8 KB). Anything more silently fails — the query returns an error that we usually log + swallow, then the caller continues with a broken assumption (e.g. "every card is stale → live-fetch them all"). Bit us 2026-05-25 on `lib/pricing-refresh.ts` `CACHE_LOOKUP_CHUNK = 1000` once basketball products hit 30K+ distinct CH cards — the ch_price_cache read failed, the worker fell through to live-fetching every card, and the 300s budget wasn't close to enough. Three products (Topps Chrome BB, 2026 Bowman BB, Topps Cosmic Chrome BB) had stale pricing for 3+ days before we noticed. **When in doubt, use 200**. Every other `.in()` chunk in the codebase already uses 200 (see `app/api/admin/apply-odds/route.ts`, the cross-product fallback in `lib/pricing-refresh.ts`, etc.) — the 1000 was the outlier and it was just biding its time.
 
+12. **Data API exposure is a per-table decision** — Supabase auto-grants the anon + authenticated roles `SELECT/INSERT/UPDATE/DELETE` on every new `public` table created today, which is what makes `supabase.from('table').select(...)` work from the browser. **From Oct 30, 2026 this default flips** — new tables won't be exposed to PostgREST unless we explicitly `GRANT`. Either path needs an explicit decision per table:
+
+    | Table type | Pattern | Example |
+    |---|---|---|
+    | Consumer-facing read (RLS-gated) | `GRANT SELECT TO authenticated;` + add RLS policy | `user_breaks`, `pricing_cache` |
+    | Consumer-facing write (RLS-gated) | `GRANT SELECT, INSERT, UPDATE TO authenticated;` + RLS policies | `user_chase_list`, `pricing_feedback` |
+    | Public form (unauth submit) | `GRANT INSERT TO anon;` + RLS `WITH CHECK (true)` | `waitlist` |
+    | **Admin-only / internal** | `REVOKE ALL FROM anon, authenticated;` — only `supabaseAdmin` accesses | `cron_run_log`, `feature_flags`, `pending_insights`, `ch_set_cache`, `discord_contributors`, etc. |
+
+    Every migration that creates a new table MUST end with one of the four patterns above. Default-default (do nothing) was OK pre-Oct-30; post-Oct-30 it means the table is invisible to PostgREST and `supabase.from(...)` will 404.
+
+    `SECURITY DEFINER` functions also need attention: PostgreSQL grants `EXECUTE TO PUBLIC` by default, which exposes them via `POST /rest/v1/rpc/<name>`. **Always `REVOKE EXECUTE FROM PUBLIC, anon, authenticated`** unless the function is genuinely meant to be callable by clients (rare). Also pin `search_path = public, pg_temp` so a tampered session can't redirect table references inside the function. Bit us 2026-05-20 → 2026-05-27: `upsert_ch_price_cache_preserving_nulls` was callable by any anon API key holder for a week before we caught it in the Data API hardening audit (migration `20260527140000_data_api_hardening.sql`).
+
+    Don't forget `NOTIFY pgrst, 'reload schema';` at the bottom of any migration that adds functions OR changes grants — see gotcha #10.
+
 ---
 
 ## Key Files

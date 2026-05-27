@@ -5,6 +5,26 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-27 — Data API hardening (preempting Supabase's Oct 30 default flip)
+
+Triggered by Supabase's 2026-05-26 email announcing that on **Oct 30, 2026**, new `public` tables in existing projects will no longer be auto-exposed to the Data API unless explicitly `GRANT`ed. While auditing exposure, the Security Advisor surfaced three pre-existing WARN-level findings worth fixing now — separate from the email but related to the same theme.
+
+**Fixes shipped in [migration `20260527140000_data_api_hardening.sql`](supabase/migrations/20260527140000_data_api_hardening.sql):**
+
+1. **🔴 Real bug — `upsert_ch_price_cache_preserving_nulls` was publicly callable.** This `SECURITY DEFINER` function (added 2026-05-20) lacked a `REVOKE`, so PostgreSQL's default `EXECUTE TO PUBLIC` left it callable by anyone with the anon API key via `POST /rest/v1/rpc/upsert_ch_price_cache_preserving_nulls`. The function is meant to be called only by `lib/pricing-refresh.ts` (which uses service role and bypasses GRANTs anyway). Anyone could have injected pricing rows by hand. Fix: `REVOKE EXECUTE FROM PUBLIC, anon, authenticated` + pin `search_path = public, pg_temp` to prevent search-path hijacking on the SECURITY DEFINER body.
+
+2. **🟡 Data API surface reduction.** Seven admin-only tables (`breakerz_sentiment_history`, `ch_set_cache`, `ch_set_refresh_log`, `cron_run_log`, `discord_contributors`, `feature_flags`, `pending_insights`) plus the unused-but-not-yet-dropped `kv_store_bb185425` had RLS enabled with no policies — clients couldn't read/write rows, but the tables were still listed in `/rest/v1/`. Verified every access in app code uses `supabaseAdmin` (service role), so `REVOKE ALL FROM anon, authenticated` is safe and closes unnecessary attack surface.
+
+3. **🟡 CLAUDE.md gotcha #12.** New "Data API exposure is a per-table decision" gotcha with a 4-pattern decision table (consumer-read RLS-gated / consumer-write RLS-gated / public-form unauth submit / admin-only). Future migrations have a clear template to follow before Oct 30 hits.
+
+**What this isn't:** the Oct 30 deadline isn't an emergency for us. Existing tables keep working unchanged. This PR is preemptive — it (a) fixes the real public-RPC bug found during the audit and (b) updates our migration playbook so we don't create a broken table after Oct 30 by accident.
+
+**Out of scope (Brody handles via dashboard):** enable HaveIBeenPwned leaked-password protection in Supabase Auth settings. Free toggle.
+
+**Open question for future cleanup:** `kv_store_bb185425` contains 2 rows of legacy JSON from the pre-relational-schema prototype era (`products` + `teamSlots:...` keys). Zero code refs. Likely safe to `DROP TABLE` entirely, but skipped from this migration since "REVOKE on the 8 admin-only tables" was what was authorized; full drop is deferred pending an explicit teardown decision.
+
+---
+
 ## 2026-05-26 → 2026-05-27 — `/insight` screenshots arc (5 PRs)
 
 Brings `/insight` to full parity with `/break-price` for image capture, plus a wider RISK_FLAG roster so we can flag events for players who aren't on a current Bowman checklist. Original ship was PR [#145](https://github.com/brodotype-dev/breakerz/pull/145), followed by four real-time-discovered fixes during live testing the same evening.
