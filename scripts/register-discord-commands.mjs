@@ -30,7 +30,7 @@ const commands = [
     options: [
       {
         name: 'narrative',
-        description: 'Optional: "Wemby hot after playoffs, Flagg PYP 12-15k on streams" — at least one of narrative/screenshot required',
+        description: 'Optional: "Wemby hot after playoffs" — at least one of narrative/screenshot required',
         type: 3, // STRING
         required: false,
         max_length: 2000,
