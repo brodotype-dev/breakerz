@@ -385,11 +385,8 @@ ${productLines}
 Available players (use player ids exactly):
 ${playerLines}
 
-${hadImage ? `Screenshots: ${imageList.length} image${imageList.length === 1 ? '' : 's'} attached above this prompt. They may be stream overlays, tweets, IG / Discord screenshots, news clippings, chat captures — anything the contributor is sharing as a market input. Extract updates from text visible in the images using the per-kind rules below. When narrative and screenshots conflict on a detail, prefer the screenshot for prices / odds / proper nouns (it's the primary source) and the narrative for contributor-supplied context (product / scope / "this is just from a DM"). All eight update kinds are fair game — pricing, sentiment, hype, RISK_FLAG, odds observations, and team/product takes. **Note the explicit RISK_FLAG rule below: news articles, official statements, and event screenshots are themselves the signal — do NOT additionally require market reaction or breaker discussion to emit a risk_flag.**
-` : ''}Narrative:
-"""
-${narrativeText || '(no narrative — see screenshots)'}
-"""
+${hadImage ? `Screenshots: ${imageList.length} image${imageList.length === 1 ? '' : 's'} attached above this prompt. They may be stream overlays, tweets, IG / Discord screenshots, NEWS ARTICLES / EVENT REPORTS, chat captures — any source the contributor is using to feed BreakIQ. The contributor's act of capturing the screenshot is itself the signal that this is worth processing. Extract updates from text visible in the images using the per-kind rules below. When narrative and screenshots conflict on a detail, prefer the screenshot for prices / odds / proper nouns (it's the primary source) and the narrative for contributor-supplied context. All eight update kinds are fair game — pricing, sentiment, hype, RISK_FLAG, odds observations, and team/product takes. **Note the explicit RISK_FLAG rule below: news articles, official statements, and event reports about arrests / injuries / trades / suspensions / retirements ARE themselves the trigger — emit a risk_flag without requiring additional market reaction or breaker discussion in the screenshot.**
+` : ''}${hadNarrative ? `Narrative:\n"""\n${narrativeText}\n"""` : 'No narrative provided — extract from the screenshot(s) only.'}
 ${notes?.trim() ? `
 Contributor notes (supplementary context, NOT authoritative override):
 """
@@ -527,7 +524,8 @@ CRITICAL:
 - One narrative can produce multiple updates of different kinds.
 - DO NOT SUBSTITUTE. If a named player or product isn't in the roster AND the name isn't a recognized nickname for someone who IS, OMIT that update entirely. Example: if the narrative mentions "Joe Smith" and no Joe Smith / J. Smith / no obvious nickname for Joe is in the roster, drop the update — do not pick John Smith.
 - variant_name is free text — copy it verbatim from the narrative ("Orange Refractor /99", "Black Prism /1"). We don't have a variant roster yet, so don't try to match against one.
-- It is fine to return fewer updates than the narrative implies, or even an empty array, if you can't make confident matches.`;
+- It is fine to return fewer updates than the narrative implies, or even an empty array, if you can't make confident matches. EXCEPTION: see RISK_FLAG rule below — risk flags should be emitted whenever a clear factual event (arrest, injury, trade, suspension, retirement) is shown, regardless of market context.
+- RISK_FLAG EMIT-BY-DEFAULT: if the screenshot or narrative shows a clear factual event about a player who IS in the roster, EMIT THE RISK_FLAG. Example: a news article showing "Josh Jacobs was arrested and booked on domestic violence charges" → emit { kind: 'risk_flag', player_id: <Josh Jacobs id>, flag_type: 'legal' or 'off_field', note: '<one-line factual summary>', confidence: 0.9 }. The fact that it's a news article (not a sports card market post) is NOT a reason to skip — risk flags exist precisely to capture events that haven't yet moved the market.`;
 
   // Build content blocks — N image blocks (in supplied order) + text prompt.
   // Mirrors the parseBreakPrice path so route handlers can stay cookie-cutter.
