@@ -100,7 +100,7 @@ Live at [getbreakiq.com](https://getbreakiq.com). Private beta — consumer rout
 
 **Security** ✅ RLS enabled on all 11 tables. Auth guards on all admin actions and API routes. Security headers. See security section in BACKLOG for remaining items (rate limiting, file validation).
 
-**After-Market Case Pricing** ✅ (2026-04-23) Admin can set `hobby_am_case_cost` / `bd_am_case_cost` separate from MSRP. Consumer break page defaults to AM price when available. `DashboardConfig` shows MSRP · Market reference row. Phase 2 (Breaker identity + crowdsourced pricing) backlogged — see `docs/breaker-identity-prd.md`.
+**After-Market Case Pricing** ✅ (2026-04-23) Admin can set `hobby_am_case_cost` / `bd_am_case_cost` separate from MSRP. Consumer break page defaults to AM price when available; MSRP · Market reference row is rendered inline on `/break/[slug]`. Phase 2 (Breaker identity + crowdsourced pricing) backlogged — see `docs/breaker-identity-prd.md`.
 
 **Product Lifecycle** ✅ (2026-04-27) Three-state lifecycle (`pre_release` / `live` / `dormant`) on products, orthogonal to `is_active`. Drives admin UX, cron behavior, and consumer rendering. Pre-release products skip all daily crons and render a hype layout (countdown + chase cards + 90-day player historical comps); live products run the full pipeline; dormant products skip daily crons but get a biweekly pricing refresh (1st + 15th, `/api/cron/refresh-dormant-pricing`). Admin transitions via confirm-dialog buttons; `pre_release → live` blocks unless `ch_set_name` is set. See `docs/product-lifecycle.md`.
 
