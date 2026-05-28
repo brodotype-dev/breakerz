@@ -5,6 +5,7 @@ import type { Product, Sport } from '@/lib/types';
 import OddsUpload from './OddsUpload';
 import RefreshCatalogButton from './RefreshCatalogButton';
 import RefreshPricingButton from './RefreshPricingButton';
+import ScrapeMlbPipelineButton from './ScrapeMlbPipelineButton';
 import HydrateVariantsButton from './HydrateVariantsButton';
 import LifecycleTransitionButton from './LifecycleTransitionButton';
 import BreakIQBetsDebrief from './BreakIQBetsDebrief';
@@ -507,6 +508,23 @@ export default async function ProductDashboardPage({ params }: PageProps) {
             . See <code>docs/parser-workflow-legacy.md</code> for steps.
           </p>
         </Section>
+
+        {/* Track A — prospect-rank scraper (web-sourced-intel Slice 1).
+            Baseball-only for now: MLB Pipeline is the only source wired up.
+            Writes directly to prospect_rankings; engine reads gated behind
+            feature_flags.prospect_rank_enabled (off). */}
+        {product.sport?.slug === 'baseball' && (
+          <Section title="Prospect Rankings (Track A)" accent="linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)">
+            <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
+              Scrape MLB Pipeline&apos;s Top 100 and write matched prospects to{' '}
+              <code style={{ color: 'var(--text-primary)' }}>prospect_rankings</code>. Sport-wide source —
+              matches the entire baseball roster, not just this product. The engine does not use these
+              rankings yet (gated behind <code style={{ color: 'var(--text-primary)' }}>prospect_rank_enabled</code>);
+              this is Slice 1 groundwork. Manual trigger only.
+            </p>
+            <ScrapeMlbPipelineButton />
+          </Section>
+        )}
 
         {/* Anchor Strategy Configurator (Plan A, 2026-05-11) */}
         <Section title="Pricing Anchor Strategy" accent="linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)">
