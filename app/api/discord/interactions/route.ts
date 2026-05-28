@@ -20,6 +20,8 @@ import {
   type ParsedUpdate,
 } from '@/lib/insights-parser';
 import { deriveSourceType } from '@/lib/types';
+import { scrapeEditorial } from '@/lib/scrapers/editorial';
+import { computeStopAt, computeNextScrapeAt, isOneShot } from '@/lib/tracked-sources';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -283,6 +285,9 @@ async function handleSlashCommand(interaction: SlashCommandInteraction): Promise
   if (interaction.data.name === 'insight') {
     return handleInsight(interaction);
   }
+  if (interaction.data.name === 'url-source') {
+    return handleUrlSource(interaction);
+  }
   return ephemeralReply('Unknown command.');
 }
 
@@ -482,6 +487,163 @@ async function handleInsight(interaction: SlashCommandInteraction): Promise<Next
   });
 
   // Synchronous ack — the final reply will land via the after() block above.
+  return NextResponse.json({
+    type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
+  });
+}
+
+// ─── /url-source handler ──────────────────────────────────────────────────
+// Slice 4a. An allowlisted SME points us at any URL with a cadence +
+// stop_after. We record it in tracked_sources (the nightly cron in Slice 4b
+// re-scrapes recurring rows) AND run the first scrape immediately: scrape
+// the page → parseInsights on its markdown → stage a pending_insights
+// proposal with source_kind='tracked_source_scrape' and the URL as
+// source_text → reply with the same ✅/✏️/❌ panel as /insight. Apply reuses
+// the existing applyUpdates path; refine re-scrapes the stored URL.
+
+async function handleUrlSource(interaction: SlashCommandInteraction): Promise<NextResponse> {
+  const user = interaction.member?.user ?? interaction.user;
+  if (!user) return ephemeralReply('Could not identify you, sorry.');
+
+  if (!(await isAllowlisted(user.id))) {
+    return ephemeralReply(
+      'You are not on the BreakIQ contributor allowlist. Ping Brody to get added.',
+    );
+  }
+
+  const options = interaction.data.options ?? [];
+  const url = options.find(o => o.name === 'url')?.value?.trim();
+  const cadence = options.find(o => o.name === 'cadence')?.value?.trim() ?? 'one_off';
+  const stopAfter = options.find(o => o.name === 'stop_after')?.value?.trim() ?? 'immediately';
+  const scope = options.find(o => o.name === 'scope')?.value?.trim() || null;
+  const note = options.find(o => o.name === 'note')?.value?.trim() || null;
+
+  if (!url || !/^https?:\/\//i.test(url)) {
+    return ephemeralReply('Provide a valid http(s) URL.');
+  }
+
+  after(async () => {
+    try {
+      // 1. Record the source so the cron can pick it up (Slice 4b). One-shot
+      //    sources (one_off cadence or immediate stop) are marked done now —
+      //    the first scrape below is their only scrape.
+      const oneShot = isOneShot(cadence, stopAfter);
+      const now = new Date();
+      const stopAt = oneShot ? null : computeStopAt(stopAfter, now);
+      const nextScrapeAt = oneShot ? null : computeNextScrapeAt(cadence, now);
+      const { data: tracked, error: trackErr } = await supabaseAdmin
+        .from('tracked_sources')
+        .insert({
+          url,
+          cadence,
+          scope,
+          note,
+          stop_at: stopAt?.toISOString() ?? null,
+          status: oneShot ? 'done' : 'active',
+          submitted_by: user.id,
+          last_scraped_at: now.toISOString(),
+          next_scrape_at: nextScrapeAt?.toISOString() ?? null,
+        })
+        .select('id')
+        .single();
+      if (trackErr) {
+        await editInteractionResponse(interaction.application_id, interaction.token, {
+          content: `⚠️ Couldn't record the source: ${trackErr.message}`,
+        });
+        return;
+      }
+
+      // 2. First scrape — fetch markdown + extract. parseInsights' narrative
+      //    becomes the page content; the optional note is threaded as
+      //    contributor context.
+      let markdown: string;
+      try {
+        const page = await scrapeEditorial(url);
+        markdown = note ? `${page.markdown}\n\n[contributor note: ${note}]` : page.markdown;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'scrape failed';
+        await supabaseAdmin.from('tracked_sources').update({ last_error: msg }).eq('id', tracked.id);
+        await editInteractionResponse(interaction.application_id, interaction.token, {
+          content: `⚠️ Tracked the source, but the first scrape failed: ${msg}\n${url}`,
+        });
+        return;
+      }
+
+      const { updates, debug } = await parseInsights({ narrative: markdown });
+      const scheduleLine = oneShot
+        ? 'one-off'
+        : `${cadence}${stopAt ? ` · stops ${stopAt.toLocaleDateString('en-US')}` : ''}`;
+
+      if (updates.length === 0) {
+        const excerpt = debug.rawResponseExcerpt.replace(/```/g, "'''").slice(0, 500);
+        await editInteractionResponse(interaction.application_id, interaction.token, {
+          content:
+            `📎 Tracking **${url}** (${scheduleLine}). First scrape extracted no structured updates.\n` +
+            `**Debug:** roster=${debug.rosterSize}, products=${debug.productsCount}, parsedRaw=${debug.parsedRawCount}, drops=${debug.droppedReasons.length}\n` +
+            (excerpt ? `**Claude raw (first 500):**\n\`\`\`${excerpt}\`\`\`` : ''),
+        });
+        return;
+      }
+
+      // 3. Stage a proposal. source_text = the URL so the refine flow can
+      //    re-scrape it; source_kind distinguishes it for refine routing.
+      const { data: pending, error: pendErr } = await supabaseAdmin
+        .from('pending_insights')
+        .insert({
+          discord_channel_id: interaction.channel_id,
+          source_user_id: user.id,
+          source_text: url,
+          parsed_updates: updates as unknown as object,
+          source_kind: 'tracked_source_scrape',
+          source_attachments: null,
+        })
+        .select('id')
+        .single();
+
+      if (pendErr || !pending) {
+        await editInteractionResponse(interaction.application_id, interaction.token, {
+          content: `⚠️ Parsed ${updates.length} updates but couldn't stage them: ${pendErr?.message ?? 'unknown error'}`,
+        });
+        return;
+      }
+
+      const lines = updates.map((u, i) => `**${i + 1}.** ${summarizeUpdate(u)}`);
+      const handle = user.global_name ?? user.username;
+      const { header: targetsHeader } = buildTargetsHeader(updates);
+      const targetsBlock = targetsHeader ? `${targetsHeader}\n\n` : '';
+      const sourceLabel = `> 📎 ${url}\n_(${scheduleLine}, via @${handle})_`;
+      const wrapping =
+        `**URL source:**\n${sourceLabel}\n\n` +
+        targetsBlock +
+        `**Proposed updates (${updates.length}):**\n\n\n` +
+        `Click ✅ to apply, ❌ to discard. Anyone on the allowlist can resolve.`;
+      const { summary } = formatProposalSummary(lines, 2000 - wrapping.length);
+
+      await editInteractionResponse(interaction.application_id, interaction.token, {
+        content:
+          `**URL source:**\n${sourceLabel}\n\n` +
+          targetsBlock +
+          `**Proposed updates (${updates.length}):**\n${summary}\n\n` +
+          `Click ✅ to apply, ❌ to discard. Anyone on the allowlist can resolve.`,
+        components: [
+          {
+            type: ComponentType.ACTION_ROW,
+            components: [
+              { type: ComponentType.BUTTON, style: ButtonStyle.SUCCESS, label: 'Apply', custom_id: `confirm:${pending.id}`, emoji: { name: '✅' } },
+              { type: ComponentType.BUTTON, style: ButtonStyle.SECONDARY, label: 'Refine', custom_id: `refine:${pending.id}`, emoji: { name: '✏️' } },
+              { type: ComponentType.BUTTON, style: ButtonStyle.DANGER, label: 'Discard', custom_id: `discard:${pending.id}`, emoji: { name: '❌' } },
+            ],
+          },
+        ],
+      });
+    } catch (err) {
+      console.error('[discord/url-source] failed', err);
+      await editInteractionResponse(interaction.application_id, interaction.token, {
+        content: `⚠️ Error: ${err instanceof Error ? err.message : 'unknown'}`,
+      }).catch(() => {});
+    }
+  });
+
   return NextResponse.json({
     type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
   });
@@ -1328,11 +1490,30 @@ async function handleRefineModalSubmit(interaction: ModalSubmitInteraction): Pro
   // @original-via-token reference is unreliable across that lineage.
   after(async () => {
     try {
-      const kind = (pending.source_kind ?? 'insight') as 'insight' | 'break_price';
+      const kind = (pending.source_kind ?? 'insight') as 'insight' | 'break_price' | 'tracked_source_scrape';
       let updates: ParsedUpdate[] = [];
       let debugLine = '';
 
-      if (kind === 'insight') {
+      if (kind === 'tracked_source_scrape') {
+        // source_text holds the URL. Re-scrape it fresh and re-parse with
+        // the correction as an authoritative override (same pattern as the
+        // /insight refine branch). If the page is unreachable now, surface
+        // it rather than silently producing nothing.
+        try {
+          const page = await scrapeEditorial(pending.source_text);
+          const res = await parseInsights({
+            narrative: page.markdown,
+            refineCorrection: correction,
+          });
+          updates = res.updates;
+          debugLine = `rosterSize=${res.debug.rosterSize}, parsedRaw=${res.debug.parsedRawCount}, drops=${res.debug.droppedReasons.length}`;
+        } catch (err) {
+          await editChannelMessage(interaction.channel_id, messageId, {
+            content: `${baseContent}\n\n— ✏️ **Refine by @${handle} failed:** couldn't re-scrape ${pending.source_text} (${err instanceof Error ? err.message : 'error'}).`,
+          }).catch(e => console.error('[discord/refine] message edit failed', e));
+          return;
+        }
+      } else if (kind === 'insight') {
         // Re-parse with the correction as a STRUCTURED parameter rather
         // than concatenating it onto the narrative — parseInsights renders
         // refineCorrection in a dedicated "CONTRIBUTOR CORRECTION
