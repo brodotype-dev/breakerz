@@ -397,6 +397,21 @@ export interface PlayerCompsResponse {
   recentComps: Array<{ sale_price: number; sale_date: string; grade: string; platform: string }>;
 }
 
+// Track A — objective player rankings scraped from external sources.
+// One row per (player, source, scrape) in the prospect_rankings table.
+// Service-role only; engine reads gated behind prospect_rank_enabled.
+// See web-sourced-intel brainstorm (Bucket B).
+export interface ProspectRanking {
+  id: string;
+  player_id: string;
+  source: string;        // 'mlb_pipeline' | 'espn_big_board' | ...
+  rank_value: number;    // 1 = top of the source's list
+  rank_scope: string;    // 'overall' | 'positional' | 'draft_board' | ...
+  source_url: string | null;
+  captured_at: string;
+  created_at: string;
+}
+
 // My Chase / Players Hub — see docs/my-chase.md
 export interface ChaseListEntry {
   player_id: string;
