@@ -238,6 +238,15 @@ export interface ParseInput {
   // re-roll wrong (Wemby insight got re-mapped to Alex Sarr after
   // a refine that literally said "Victor Webanyama - not Donic").
   refineCorrection?: string;
+  /**
+   * When true, frames the input as a long-form SCRAPED WEB SOURCE (article,
+   * blog post, forum thread, beat-writer column, rankings page) rather than
+   * a terse SME debrief. Such sources discuss MANY players / teams /
+   * products at once, so the prompt tells the model to extract every
+   * distinct grounded signal, and max_tokens is raised to 8192 to fit the
+   * larger output. Used by /url-source (web-sourced-intel Slice 4).
+   */
+  webSource?: boolean;
 }
 
 export interface ParseResult {
@@ -261,6 +270,7 @@ export async function parseInsights({
   notes,
   maxPlayers = 5000,
   refineCorrection,
+  webSource = false,
 }: ParseInput): Promise<ParseResult> {
   const narrativeText = narrative?.trim() ?? '';
   const imageList = images ?? [];
@@ -416,7 +426,9 @@ export async function parseInsights({
     .join('\n');
   const riskOnlyCount = players.filter(p => p.tier === 'risk_only').length;
 
-  const prompt = `You are parsing a sports card market debrief into structured updates for BreakIQ.
+  const prompt = `${webSource
+    ? `You are extracting market signals from a SCRAPED WEB SOURCE for BreakIQ — an article, blog post, forum thread, beat-writer column, or rankings page (NOT a terse note). It likely discusses MANY different players, teams, and products. Read the whole thing and extract EVERY distinct, well-grounded signal — a long piece can legitimately produce a dozen-plus updates across different entities. Do not stop after the first few. Each claim still has to be grounded in the text and match the roster below; ignore navigation, ads, and boilerplate.`
+    : `You are parsing a sports card market debrief into structured updates for BreakIQ.`}
 
 Available products (use product ids exactly):
 ${productLines}
@@ -609,13 +621,14 @@ CRITICAL:
       model: 'claude-haiku-4-5-20251001',
       // Vision responses run wider (multiple players + sentiments per screenshot
       // are routine); 2048 was the silent failure mode for parseBreakPrice
-      // before May 14. Match the 8192 ceiling there for parity. Text-only
-      // /insight calls don't pay for the extra ceiling — max_tokens is an
-      // upper bound, not a billed amount.
-      max_tokens: hadImage ? 8192 : 2048,
+      // before May 14. Match the 8192 ceiling there for parity. Web sources
+      // (long articles / feeds) also run wide — a dense page can yield a
+      // dozen-plus updates, so they get 8192 too. Text-only /insight calls
+      // stay at 2048 — max_tokens is an upper bound, not a billed amount.
+      max_tokens: hadImage || webSource ? 8192 : 2048,
       messages: [{ role: 'user', content: userContent }],
     },
-    { timeout: hadImage ? 30_000 : 25_000 },
+    { timeout: hadImage || webSource ? 30_000 : 25_000 },
   );
 
   const raw = (message.content[0] as { type: string; text: string }).text.trim();
