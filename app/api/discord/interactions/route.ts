@@ -569,7 +569,7 @@ async function handleUrlSource(interaction: SlashCommandInteraction): Promise<Ne
         return;
       }
 
-      const { updates, debug } = await parseInsights({ narrative: markdown });
+      const { updates, debug } = await parseInsights({ narrative: markdown, webSource: true });
       const scheduleLine = oneShot
         ? 'one-off'
         : `${cadence}${stopAt ? ` · stops ${stopAt.toLocaleDateString('en-US')}` : ''}`;
@@ -1504,6 +1504,7 @@ async function handleRefineModalSubmit(interaction: ModalSubmitInteraction): Pro
           const res = await parseInsights({
             narrative: page.markdown,
             refineCorrection: correction,
+            webSource: true,
           });
           updates = res.updates;
           debugLine = `rosterSize=${res.debug.rosterSize}, parsedRaw=${res.debug.parsedRawCount}, drops=${res.debug.droppedReasons.length}`;
