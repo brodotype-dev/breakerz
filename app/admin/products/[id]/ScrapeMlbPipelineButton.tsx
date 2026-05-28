@@ -3,10 +3,19 @@
 import { useState } from 'react';
 import { errText } from '@/lib/format-error';
 
+interface Diff {
+  comparedAgainst: string | null;
+  riserCount: number;
+  fallerCount: number;
+  newCount: number;
+  droppedCount: number;
+  moves: string[];
+}
+
 type Status =
   | { kind: 'idle' }
   | { kind: 'running' }
-  | { kind: 'ok'; scraped: number; matched: number; written: number; unmatchedNames: string[] }
+  | { kind: 'ok'; scraped: number; matched: number; written: number; unmatchedNames: string[]; diff: Diff | null }
   | { kind: 'error'; msg: string };
 
 /**
@@ -41,6 +50,7 @@ export default function ScrapeMlbPipelineButton() {
         matched: json.matched,
         written: json.written,
         unmatchedNames: Array.isArray(json.unmatchedNames) ? json.unmatchedNames : [],
+        diff: json.diff ?? null,
       });
     } catch (err) {
       setStatus({ kind: 'error', msg: err instanceof Error ? err.message : String(err) });
@@ -65,6 +75,32 @@ export default function ScrapeMlbPipelineButton() {
         )}
         {status.kind === 'error' && <span className="text-xs text-red-500">{status.msg}</span>}
       </div>
+
+      {/* Material rank moves vs the prior scrape (Slice 2a, report-only).
+          First-ever scrape has no prior → comparedAgainst is null and we
+          show a baseline note instead. */}
+      {status.kind === 'ok' && status.diff && (
+        status.diff.comparedAgainst === null ? (
+          <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+            Baseline scrape — no prior snapshot to diff against yet. Re-scrape later to see movers.
+          </p>
+        ) : (
+          <details className="text-xs" style={{ color: 'var(--text-tertiary)' }} open>
+            <summary className="cursor-pointer select-none">
+              {status.diff.riserCount} risers · {status.diff.fallerCount} fallers ·{' '}
+              {status.diff.newCount} new · {status.diff.droppedCount} dropped (since last scrape)
+            </summary>
+            {status.diff.moves.length > 0 && (
+              <ul className="mt-1 space-y-0.5 leading-relaxed">
+                {status.diff.moves.map((m, i) => (
+                  <li key={i}>{m}</li>
+                ))}
+              </ul>
+            )}
+          </details>
+        )
+      )}
+
       {/* Unmatched names — surfaced so we can tell genuinely-not-carried
           prospects from name-normalization misses (e.g. an accented or
           Jr./Sr. name that should have matched). Most are expected

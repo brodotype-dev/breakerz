@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { checkRole } from '@/lib/auth';
 import { scrapeMlbPipelineTop100, MLB_PIPELINE_TOP100_URL } from '@/lib/scrapers/mlb-pipeline';
 import { importMlbPipelineRankings } from '@/lib/prospect-rankings-import';
+import { computeProspectDiff, describeMove } from '@/lib/prospect-rankings-diff';
 
 export const dynamic = 'force-dynamic';
 // Firecrawl scrape (waitFor 3s + render) + roster match + chunked inserts.
@@ -36,7 +37,26 @@ export async function POST(req: NextRequest) {
   try {
     const rows = await scrapeMlbPipelineTop100(url);
     const summary = await importMlbPipelineRankings(rows, url);
-    return NextResponse.json(summary);
+
+    // Slice 2a — compute material rank moves vs the prior scrape and
+    // surface them in the response. This is report-only; turning approved
+    // moves into derived signals (Slice 2b) is a separate decision.
+    const diff = await computeProspectDiff(summary.source, summary.capturedAt);
+
+    return NextResponse.json({
+      ...summary,
+      diff: {
+        comparedAgainst: diff.comparedAgainst,
+        riserCount: diff.riserCount,
+        fallerCount: diff.fallerCount,
+        newCount: diff.newCount,
+        droppedCount: diff.droppedCount,
+        // Cap the rendered list — a first-vs-second scrape can have many
+        // moves; the admin UI shows the headline movers, full set is in
+        // prospect_rankings.
+        moves: diff.moves.slice(0, 40).map(m => describeMove(m, summary.source)),
+      },
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'MLB Pipeline scrape failed';
     return NextResponse.json({ error: msg }, { status: 500 });
