@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { errText } from '@/lib/format-error';
 
 type SkippedPlayer = { playerName: string; catalogRows: number };
 
@@ -53,9 +54,9 @@ export default function HydrateVariantsButton({ productId }: { productId: string
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ productId }),
       });
-      const json = await res.json();
-      if (!res.ok || json.error) {
-        setStatus({ kind: 'error', msg: json.error ?? `HTTP ${res.status}` });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json || json.error) {
+        setStatus({ kind: 'error', msg: errText(json?.error, `HTTP ${res.status}`) });
         return;
       }
       setStatus({
