@@ -51,10 +51,20 @@ export async function POST(req: NextRequest) {
         fallerCount: diff.fallerCount,
         newCount: diff.newCount,
         droppedCount: diff.droppedCount,
-        // Cap the rendered list — a first-vs-second scrape can have many
-        // moves; the admin UI shows the headline movers, full set is in
-        // prospect_rankings.
-        moves: diff.moves.slice(0, 40).map(m => describeMove(m, summary.source)),
+        // Structured + capped at 40 so the admin UI can render a
+        // selectable checklist (player_id + ranks) for inline endorsement
+        // → /api/admin/apply-prospect-moves. Full set lives in
+        // prospect_rankings regardless.
+        moves: diff.moves.slice(0, 40).map(m => ({
+          playerId: m.playerId,
+          playerName: m.playerName,
+          source: summary.source,
+          kind: m.kind,
+          priorRank: m.priorRank,
+          newRank: m.newRank,
+          delta: m.delta,
+          description: describeMove(m, summary.source),
+        })),
       },
     });
   } catch (err) {
