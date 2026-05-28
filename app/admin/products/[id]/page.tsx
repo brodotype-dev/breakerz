@@ -6,6 +6,7 @@ import OddsUpload from './OddsUpload';
 import RefreshCatalogButton from './RefreshCatalogButton';
 import RefreshPricingButton from './RefreshPricingButton';
 import ScrapeMlbPipelineButton from './ScrapeMlbPipelineButton';
+import EditorialPanel from './EditorialPanel';
 import HydrateVariantsButton from './HydrateVariantsButton';
 import LifecycleTransitionButton from './LifecycleTransitionButton';
 import BreakIQBetsDebrief from './BreakIQBetsDebrief';
@@ -525,6 +526,16 @@ export default async function ProductDashboardPage({ params }: PageProps) {
             <ScrapeMlbPipelineButton />
           </Section>
         )}
+
+        {/* Editorial URLs — Bucket A (web-sourced-intel Slice 3). Scrape
+            Beckett/Topps/break-preview pages into product/player-scope
+            market_observations. */}
+        <Section title="Editorial Sources (Bucket A)" accent="linear-gradient(135deg, #14b8a6 0%, #3b82f6 100%)">
+          <EditorialPanel
+            productId={id}
+            initialUrls={(product as { editorial_urls?: string[] | null }).editorial_urls ?? []}
+          />
+        </Section>
 
         {/* Anchor Strategy Configurator (Plan A, 2026-05-11) */}
         <Section title="Pricing Anchor Strategy" accent="linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)">
