@@ -5,6 +5,77 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-28 — Web-sourced intel arc: Track A prospect rankings + editorial + open-ended URL ingestion (11 PRs, #159–#169)
+
+Fills the non-CardHedger data gap. Two unmet needs drove it: (1) pre-release hype was model-output, not editorial reality; (2) the Track A prospect-attribute layer was designed in the 2026-05-12 plan but never fed. Solution: scrape the open web, admin-curated like `/insight`, reusing existing sinks (`market_observations`, `pending_insights`, the ✅/✏️/❌ proposal flow).
+
+**Everything shipped this arc is feature-flag-gated or admin-only — nothing touches the pricing engine or consumer pricing yet.** Engine activation is Slice 6 (not started), held behind `feature_flags.prospect_rank_enabled` (seeded `false`) for shadow-mode-first rollout.
+
+Full handoff with resume steps: [docs/plans/2026-05-28-web-sourced-intel-handoff.md](docs/plans/2026-05-28-web-sourced-intel-handoff.md).
+
+### Three ingestion shapes
+
+- **Track A / Bucket B structured** — dedicated scrapers (MLB Pipeline first) write objective rankings to `prospect_rankings`; material moves get endorsed into observations.
+- **Bucket A editorial (Shape 1)** — per-product `editorial_urls`, admin-curated, scraped on demand into product/team/player-scope `market_observations`. No Discord.
+- **Open-ended (Shape 2)** — `/url-source` Discord command: any URL + cadence + stop_after → `tracked_sources` → scrape → `pending_insights` proposal. First scrape now; recurring cron is Slice 4b (not started).
+
+### Slice 1 — `prospect_rankings` + MLB Pipeline scraper — PR [#159](https://github.com/brodotype-dev/breakerz/pull/159)
+
+Operationalizes the prospect-rank layer the 2026-05-12 plan designed but never built — scraping MLB Pipeline instead of CSV imports. **Direct-write architecture** (rank position is objective fact, so scraped rankings write straight to `prospect_rankings` — no Discord proposal). Migration `20260528094702_prospect_rankings.sql` (applied to prod): time-series table (one row per player/source/scrape), composite indexes for the Slice 2 "most recent per (player, source)" diff query, admin-only per gotcha #12 (RLS enabled, no policies, `REVOKE ALL FROM anon, authenticated`), `feature_flags.prospect_rank_enabled` seeded `false`. `lib/scrapers/mlb-pipeline.ts` (Firecrawl JSON extract, `waxstat.ts` singleton pattern, Zod→JSON schema, no plain-fetch fallback). `lib/prospect-rankings-import.ts` (normalized name-match — lowercase, strip accents/suffixes/punctuation — against the baseball roster of players with ≥1 player_product; unmatched dropped + reported; chunked inserts at 200). `app/api/admin/scrape-mlb-pipeline/route.ts` + baseball-only `ScrapeMlbPipelineButton`. **Verified on prod: 100 scraped, 76 matched.**
+
+### Slice 1 fixes — PRs [#160](https://github.com/brodotype-dev/breakerz/pull/160), [#161](https://github.com/brodotype-dev/breakerz/pull/161), [#162](https://github.com/brodotype-dev/breakerz/pull/162), [#163](https://github.com/brodotype-dev/breakerz/pull/163)
+
+- **#160** — the scrape button crashed the whole admin page with **React error #31**. Root cause: a long-running scrape can hit a Vercel **platform** error (timeout/500) whose JSON body shapes `error` as an **object** (`{code, message, …}`), not the plain string our route returns; rendering that object as a React child threw, and with no error boundary the Next.js global overlay replaced the document. Fix: new `errText()` helper coerces any error shape to a renderable string + guard `res.json()` against non-JSON bodies.
+- **#161** — the MLB Pipeline URL was the hub page (`/prospects` → 5 featured players), not the ranked table (`/prospects/stats/top-prospects` → 100). Plus an `errText` sweep onto `RefreshCatalogButton` + `HydrateVariantsButton` (same latent footgun).
+- **#162** — the ranked page lists some players in two sections (risers highlight + main table), so the raw scrape contained 12 dupes within one `captured_at`, breaking the "one rank per player per scrape" invariant. Importer now dedupes per player, keeping best rank.
+- **#163** — surface the unmatched prospect names (not just the count) in an expandable `<details>` so name-normalization misses are distinguishable from genuinely-not-carried prospects. Codified **CLAUDE.md gotcha #13** (the `errText` convention).
+
+### Slice 2a — prospect rank diff engine + admin movers report — PR [#164](https://github.com/brodotype-dev/breakerz/pull/164)
+
+`lib/prospect-rankings-diff.ts`: `computeProspectDiff()` compares the latest scrape against the most-recent prior. Material = a move of ≥ `PROSPECT_RANK_MATERIAL_DELTA` (3) spots, a new entry, or a drop-off. First-ever scrape returns empty (baseline only, no flood). `describeMove()` renders the one-liner (`"Jesus Made ↑12 (#13→#1) on MLB Pipeline"`). Button shows risers/fallers/new/dropped counts. Report-only; no engine change. **Not yet exercised — needs two scrapes with a rank change.**
+
+### Slice 2b — endorse moves as `prospect_rank_move` observations — PR [#165](https://github.com/brodotype-dev/breakerz/pull/165)
+
+Inline web approval turns admin-endorsed material moves into player-scoped `prospect_rank_move` `market_observations`. **Stored as a dedicated observation type — deliberately NOT `breakerz_score`** (that's Track B SME sentiment; writing rank-derived Track A values there would conflate the two tracks the moat keeps separate AND get clobbered by the next `/insight`, whose apply path SETS not increments) **and NOT `players.prospect_rank`** (would fire the engine's existing `computeProspectAdjustment` immediately, bypassing the Slice-6 shadow gate). Migration `20260528123742_prospect_rank_move_observation.sql` (CHECK-only, applied to prod). Scrape route returns structured moves; `POST /api/admin/apply-prospect-moves` writes selected moves with full attribution + 45d TTL, per-player supersede, `.in()` chunked at 200. Button renders a pre-checked checklist with "Endorse N signals". **Endorse UI untested on real movers.**
+
+### Slice 3 — editorial URL scraping (Bucket A) — PR [#166](https://github.com/brodotype-dev/breakerz/pull/166)
+
+Admin-curated editorial/content URLs per product (Beckett product news, Topps blog, break previews), scraped on demand into `market_observations`. No Discord proposal — the admin who set the URLs is the gate. Migration `20260528155434_products_editorial_urls.sql`: `products.editorial_urls text[]` (consumer-readable products, no grant change). `lib/scrapers/editorial.ts`: content-agnostic Firecrawl **markdown** scrape (12k-char cap, no plain-fetch fallback). `lib/editorial-parser.ts`: roster-aware Haiku extract that **emits ONLY market-observation kinds** (`product_sentiment`/`team_sentiment`/`team_product_sentiment`/`hype_tag`) — never `breakerz_score` sentiment, never prices (same track-separation principle as #3 above). `lib/editorial-import.ts`: per-URL scrape→parse→supersede-prior→write, rows tagged `source_user_id='system:editorial'`, per-URL error isolation. `POST/PUT /api/admin/products/[id]/editorial-refresh` + `EditorialPanel`. Consumer surfacing works for free — `PreReleaseLayout` + `WhyThisPriceCard` + verdict-context already read product-scope observations. **NOT prod-verified — needs a real Beckett scrape.**
+
+### Slice 4a — `tracked_sources` + `/url-source` command — PR [#167](https://github.com/brodotype-dev/breakerz/pull/167)
+
+Open-ended URL ingestion (Shape 2). An allowlisted SME runs `/url-source` with a URL + cadence + stop_after; we record the source and run the first scrape immediately, staging a `pending_insights` proposal via the existing flow. Migration `20260528160519_tracked_sources.sql` (admin-only, index on `(status, next_scrape_at)` for the cron's due-check). `lib/tracked-sources.ts` (`computeStopAt`/`computeNextScrapeAt`/`isOneShot`). `/url-source` registered with cadence + stop_after dropdowns (5 commands total now). `handleUrlSource` (allowlist + URL validation, insert, first scrape via `scrapeEditorial` → `parseInsights`, stage `source_kind='tracked_source_scrape'`) + a refine branch. One-shot sources fully functional now; recurring fires once Slice 4b ships. **Tested vs a Substack homepage → `[]` (thin homepage, expected).**
+
+### Web-source parse mode — PRs [#168](https://github.com/brodotype-dev/breakerz/pull/168), [#169](https://github.com/brodotype-dev/breakerz/pull/169)
+
+- **#168** — new `ParseInput.webSource` flag. `/url-source` targets long, multi-topic web content but was reusing `parseInsights`' terse-SME framing + 2048-token cap, which under-extracts from dense pages. Web-source mode swaps the prompt intro ("extract EVERY distinct grounded signal across many players/teams/products; ignore nav/ads/boilerplate; don't stop after the first few") and raises `max_tokens` 2048 → 8192 (timeout 25s → 30s). Two-tier roster + all 8 kinds + validation unchanged. `handleUrlSource` + the refine branch pass `webSource: true`. **Not yet validated on a content-rich URL.**
+- **#169** — when `/url-source`'s first scrape extracts nothing, the reply now shows `scraped=<N> chars` + a "Scraped (first 400)" block, so "thin/paywalled page" is distinguishable from "parser too conservative" instead of guessed.
+
+### Slice 4b — recurring tracked-sources cron
+
+Completes the open-ended ingestion shape: recurring `/url-source` rows now re-scrape on their cadence and post a fresh ✅/✏️/❌ proposal to the channel they were submitted from. Migration `20260528170000_tracked_sources_channel_id.sql` adds `tracked_sources.discord_channel_id` (nullable, applied to prod) — Slice 4a stored the source but not where it was submitted; `handleUrlSource` now populates it from `interaction.channel_id`. New `createChannelMessage()` in [lib/discord.ts](lib/discord.ts) (bot-token POST, the cron has no interaction to reply to). The scrape→parse→stage→build-proposal logic was extracted from `handleUrlSource` into [lib/tracked-source-proposal.ts](lib/tracked-source-proposal.ts) `scrapeAndStageProposal()` so the command reply and the cron share one path (the two pure proposal helpers `formatProposalSummary` / `buildTargetsHeader` moved there too; the route re-imports them — −141 lines net in the route). New [app/api/cron/refresh-tracked-sources/route.ts](app/api/cron/refresh-tracked-sources/route.ts): selects `status='active' AND next_scrape_at <= now()` (capped 40/run, serial for Firecrawl rate limits); per row — retire if past `stop_at`, skip + back off legacy rows with a null channel, else scrape → `parseInsights({webSource:true})` → stage `pending_insights` → `createChannelMessage` → advance `next_scrape_at` (flip `status='done'` if the next firing would pass `stop_at`). No-updates scrapes advance silently so a recurring feed with nothing new doesn't spam the channel nightly; errors record `last_error` + back off. `recordCronStart`/`recordCronRun` markers for the admin Cron Status panel. `vercel.json` entry at `0 8 * * *` (after the pricing/dormant crons clear). **No Discord re-registration needed** — the `/url-source` schema didn't change. Owed prod verification: a recurring source + an actual cron firing.
+
+### Decisions locked
+
+1. Slice 1 raw rankings write **direct** (no Discord) — rank is objective fact.
+2. `PROSPECT_RANK_MATERIAL_DELTA = 3` — moves of ≥3 spots / new entries / drop-offs are material.
+3. Endorsed moves → dedicated `prospect_rank_move` observation (not `breakerz_score`, not `players.prospect_rank`).
+4. Editorial emits **only** market-observation kinds — never sentiment, never prices.
+5. **X/Twitter feeds deferred** — Firecrawl can't reliably scrape x.com in 2026 (anti-bot); WaxMetrix-style feeds need a dedicated X API (twitterapi.io / Apify) — own spike, not started.
+6. Substack — homepages are thin; target individual post URLs or `/feed`.
+
+### Not done (resume order in the handoff doc)
+
+- **Slice 5** — more structured prospect sources (ESPN NBA Big Board, NHL Central Scouting, NPB signees).
+- **Slice 6** — engine activation + resolving the **two-lane Track-A overlap**: `players.prospect_rank` → `computeProspectAdjustment` (called unconditionally in `lib/break-page-data.ts`, but the column is unpopulated) vs. the new `prospect_rankings` table (read by nothing). Must consolidate to one lane, gated behind `prospect_rank_enabled`, shadow-mode first.
+- **Surface `prospect_rank_move`** in consumer views (this player-scoped type isn't read yet; editorial product-scope obs surface for free).
+
+### Untestable locally
+
+Firecrawl's MCP token is dead in this dev env; prod's `FIRECRAWL_API_KEY` runs the real scrapes. Every scraper needed prod iteration (MLB Pipeline took 4 follow-ups). Slice 3 editorial + `/url-source` content-rich extraction still owe prod verification.
+
+---
+
 ## 2026-05-27 — Data API hardening (preempting Supabase's Oct 30 default flip)
 
 Triggered by Supabase's 2026-05-26 email announcing that on **Oct 30, 2026**, new `public` tables in existing projects will no longer be auto-exposed to the Data API unless explicitly `GRANT`ed. While auditing exposure, the Security Advisor surfaced three pre-existing WARN-level findings worth fixing now — separate from the email but related to the same theme.

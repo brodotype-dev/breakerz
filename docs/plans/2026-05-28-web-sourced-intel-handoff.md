@@ -8,10 +8,11 @@ self-contained source of truth going forward.
 ## TL;DR
 
 Across one long session we shipped **11 PRs (#159–#169)** covering Slices 1, 2a,
-2b, 3, and 4a + the web-source parser mode. Everything is **feature-flag-gated
+2b, 3, and 4a + the web-source parser mode. A follow-up session added **Slice
+4b** (the recurring tracked-sources cron). Everything is **feature-flag-gated
 or admin-only — nothing touches the pricing engine or consumer pricing yet.**
-The remaining work is Slice 4b (recurring cron), Slice 5 (more prospect
-sources), Slice 6 (engine activation), and a few fast-follows.
+The remaining work is Slice 5 (more prospect sources), Slice 6 (engine
+activation), and a few fast-follows.
 
 **⚠️ Outstanding housekeeping:** `CHANGELOG.md` has NOT been updated for any of
 #159–#169, and `CLAUDE.md` "Current State" has no entries for this arc. The
@@ -45,7 +46,7 @@ Three ingestion shapes:
 | 3 | Editorial URLs (Bucket A) → `market_observations` | ✅ shipped, **NOT prod-verified** (needs a real Beckett scrape) |
 | 4a | `tracked_sources` + `/url-source` command + first scrape | ✅ shipped + registered (5 cmds); tested vs Substack homepage → `[]` (thin homepage, expected) |
 | — | web-source parse mode (`parseInsights({webSource:true})`) | ✅ shipped, not yet validated on a content-rich URL |
-| 4b | `createChannelMessage` + nightly cron for recurring sources | ⏳ NOT STARTED |
+| 4b | `createChannelMessage` + nightly cron for recurring sources | ✅ shipped, **NOT prod-verified** (needs a recurring source + a cron firing) |
 | 5 | More structured prospect sources (NPB, NBA, NHL) | ⏳ NOT STARTED |
 | 6 | Engine activation (shadow→full) + resolve two-lane Track-A overlap | ⏳ NOT STARTED |
 
@@ -69,6 +70,7 @@ Three ingestion shapes:
 - `20260528123742_prospect_rank_move_observation.sql` — adds `prospect_rank_move` to `market_observations` observation_type CHECK.
 - `20260528155434_products_editorial_urls.sql` — `products.editorial_urls text[]`.
 - `20260528160519_tracked_sources.sql` — table. Admin-only (REVOKE). Index on `(status, next_scrape_at)`.
+- `20260528170000_tracked_sources_channel_id.sql` (Slice 4b) — `tracked_sources.discord_channel_id text` (nullable). Column add on admin-only table — no grant change.
 
 ## Key files (navigation map)
 
@@ -78,7 +80,10 @@ Three ingestion shapes:
 - `lib/prospect-rankings-diff.ts` — diff latest vs prior scrape; `describeMove()`.
 - `lib/editorial-parser.ts` — `parseEditorial()`, emits ONLY market-observation kinds.
 - `lib/editorial-import.ts` — `refreshProductEditorial()`, per-URL scrape→parse→supersede→write.
-- `lib/tracked-sources.ts` — cadence/stop_after helpers (`computeStopAt`, `computeNextScrapeAt`, `isOneShot`).
+- `lib/tracked-sources.ts` — cadence/stop_after helpers (`computeStopAt`, `computeNextScrapeAt`, `isOneShot`, `describeSchedule`).
+- `lib/tracked-source-proposal.ts` (Slice 4b) — `scrapeAndStageProposal()` + `buildUrlSourceProposalMessage()` + the relocated `formatProposalSummary` / `buildTargetsHeader`. Shared by `handleUrlSource` and the cron.
+- `app/api/cron/refresh-tracked-sources/route.ts` (Slice 4b) — nightly recurring-source cron.
+- `lib/discord.ts` — `createChannelMessage()` (Slice 4b) alongside `editChannelMessage` / `editInteractionResponse`.
 - `lib/format-error.ts` — `errText()` (gotcha #13).
 - `lib/insights-parser.ts` — `parseInsights` now takes `webSource?: boolean`.
 - `app/api/admin/scrape-mlb-pipeline/route.ts` — scrape + import + diff (returns structured movers).
@@ -107,11 +112,15 @@ Three ingestion shapes:
 
 ## How to resume — next steps in priority order
 
-### Slice 4b — recurring cron (the natural next build)
-- **Add `tracked_sources.discord_channel_id text`** (migration) — `handleUrlSource` must populate it from `interaction.channel_id` so the cron knows where to post. (4a does NOT store it yet.)
-- **Add `createChannelMessage(channelId, body)` to `lib/discord.ts`** — POST `/channels/{id}/messages` via bot token. Only `editChannelMessage` exists today.
-- **Extract a shared `scrapeAndStageProposal({url, note, channelId, submittedBy})`** from `handleUrlSource` that returns the proposal message body, so both the interaction reply AND the cron can post it.
-- **`app/api/cron/refresh-tracked-sources/route.ts`** — iterate `tracked_sources WHERE status='active' AND next_scrape_at <= now() AND (stop_at IS NULL OR stop_at > now())`; per row: scrape → `parseInsights({webSource:true})` → stage `pending_insights` (`source_kind='tracked_source_scrape'`) → post via `createChannelMessage` → advance `next_scrape_at` (computeNextScrapeAt) → flip `status='done'` when `stop_at` passes. `recordCronStart` marker. Add to `vercel.json` (nightly).
+### Slice 4b — recurring cron ✅ SHIPPED (not prod-verified)
+Shipped in a follow-up session. What landed:
+- Migration `20260528170000_tracked_sources_channel_id.sql` — `tracked_sources.discord_channel_id text` (applied to prod via MCP). `handleUrlSource` now populates it from `interaction.channel_id`.
+- `createChannelMessage(channelId, body)` in `lib/discord.ts` — bot-token POST `/channels/{id}/messages`.
+- `describeSchedule(cadence, stopAt)` in `lib/tracked-sources.ts` — shared schedule-line label.
+- New `lib/tracked-source-proposal.ts` — `scrapeAndStageProposal()` (scrape → `parseInsights({webSource:true})` → stage `pending_insights` → build proposal body) + the relocated `formatProposalSummary` / `buildTargetsHeader` pure helpers (route re-imports them). `handleUrlSource` rewired to call it.
+- `app/api/cron/refresh-tracked-sources/route.ts` — selects `status='active' AND next_scrape_at <= now()` (capped 40/run, serial); per row: retire if past `stop_at`, skip+back-off legacy rows with null channel, else scrape→stage→`createChannelMessage`→advance `next_scrape_at` (flip `done` if the next firing would pass `stop_at`). No-updates scrapes advance silently (no nightly channel spam). `recordCronStart`/`recordCronRun` markers. `vercel.json` entry at `0 8 * * *`.
+- **No Discord re-registration needed** — the `/url-source` schema didn't change.
+- **Owed prod verification:** create a `daily` `/url-source` against a content-rich URL, then confirm a cron firing posts a fresh proposal to the channel + advances `next_scrape_at`. Recurring sources created before this deploy have a null `channel_id` and get skipped (back-off + `last_error`), not lost.
 
 ### Slice 5 — more structured prospect sources
 ESPN NBA Big Board, NHL Central Scouting, NPB signees. Each a scraper like

@@ -21,7 +21,12 @@ import {
 } from '@/lib/insights-parser';
 import { deriveSourceType } from '@/lib/types';
 import { scrapeEditorial } from '@/lib/scrapers/editorial';
-import { computeStopAt, computeNextScrapeAt, isOneShot } from '@/lib/tracked-sources';
+import { computeStopAt, computeNextScrapeAt, isOneShot, describeSchedule } from '@/lib/tracked-sources';
+import {
+  formatProposalSummary,
+  buildTargetsHeader,
+  scrapeAndStageProposal,
+} from '@/lib/tracked-source-proposal';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -142,75 +147,6 @@ async function isAllowlisted(discordUserId: string): Promise<boolean> {
     .eq('discord_user_id', discordUserId)
     .maybeSingle();
   return !!data;
-}
-
-/**
- * Discord caps message `content` at 2000 chars. A `/break-price` capture from
- * an 18-team price-sheet screenshot trips that limit easily — 18 rows × ~100
- * chars per row + wrapping = >2000. Build the proposal summary defensively:
- * walk rows in order, stop when the next row would push past the budget,
- * append a "+ N more" note.
- *
- * Returns the formatted block ready to drop into the message; the caller is
- * responsible for budgeting space for any wrapping text (header / source /
- * buttons hint) and passing that subtracted from 2000.
- */
-function formatProposalSummary(
-  lines: string[],
-  charBudget: number,
-): { summary: string; hiddenCount: number } {
-  const SAFETY = 60; // small cushion for the "+ N more" footer + newlines
-  const effective = Math.max(0, charBudget - SAFETY);
-  let used = 0;
-  const kept: string[] = [];
-  for (let i = 0; i < lines.length; i++) {
-    const next = (kept.length === 0 ? 0 : 1) + lines[i].length; // +1 for \n
-    if (used + next > effective) break;
-    kept.push(lines[i]);
-    used += next;
-  }
-  const hiddenCount = lines.length - kept.length;
-  let summary = kept.join('\n');
-  if (hiddenCount > 0) {
-    summary += `\n_… and ${hiddenCount} more (full list applies on ✅)_`;
-  }
-  return { summary, hiddenCount };
-}
-
-/**
- * Builds the "Targets" header that surfaces which product(s) the proposed
- * updates will write to. Critical for review — multiple "2026 Bowman Baseball"
- * entries can exist in the products table, and contributors need to verify
- * Claude routed to the right one BEFORE clicking ✅. Shows full UUID so
- * admins can grep / cross-reference against the products table.
- *
- * Walks updates, dedupes by product_id, sorts by descending count so the
- * most-targeted product appears first. Updates without a product_id
- * (sentiment global, risk_flag, team_sentiment) are excluded.
- */
-function buildTargetsHeader(
-  updates: ParsedUpdate[],
-): { header: string; lineCount: number } {
-  const counts = new Map<string, { name: string; count: number }>();
-  for (const u of updates) {
-    const productId = (u as { product_id?: string }).product_id;
-    const productName = (u as { product_name?: string }).product_name;
-    if (!productId || !productName) continue;
-    const entry = counts.get(productId);
-    if (entry) entry.count++;
-    else counts.set(productId, { name: productName, count: 1 });
-  }
-  if (counts.size === 0) return { header: '', lineCount: 0 };
-
-  const sorted = [...counts.entries()].sort((a, b) => b[1].count - a[1].count);
-  if (sorted.length === 1) {
-    const [id, { name }] = sorted[0];
-    return { header: `**Writing to:** ${name} \`${id}\``, lineCount: 1 };
-  }
-  const lines = sorted.map(
-    ([id, { name, count }]) => `• ${name} \`${id}\` (${count})`,
-  );
-  return { header: `**Writing to:**\n${lines.join('\n')}`, lineCount: lines.length + 1 };
 }
 
 function ephemeralReply(content: string) {
@@ -541,6 +477,9 @@ async function handleUrlSource(interaction: SlashCommandInteraction): Promise<Ne
           stop_at: stopAt?.toISOString() ?? null,
           status: oneShot ? 'done' : 'active',
           submitted_by: user.id,
+          // Slice 4b: the recurring cron needs to know which channel to post
+          // the proposal to, since it has no interaction to reply to.
+          discord_channel_id: interaction.channel_id,
           last_scraped_at: now.toISOString(),
           next_scrape_at: nextScrapeAt?.toISOString() ?? null,
         })
@@ -553,13 +492,21 @@ async function handleUrlSource(interaction: SlashCommandInteraction): Promise<Ne
         return;
       }
 
-      // 2. First scrape — fetch markdown + extract. parseInsights' narrative
-      //    becomes the page content; the optional note is threaded as
-      //    contributor context.
-      let markdown: string;
+      const scheduleLine = oneShot ? 'one-off' : describeSchedule(cadence, stopAt);
+      const handle = user.global_name ?? user.username;
+
+      // 2. First scrape + stage via the shared helper — the same path the
+      //    Slice 4b cron reuses on each cadence firing.
+      let result;
       try {
-        const page = await scrapeEditorial(url);
-        markdown = note ? `${page.markdown}\n\n[contributor note: ${note}]` : page.markdown;
+        result = await scrapeAndStageProposal({
+          url,
+          note,
+          channelId: interaction.channel_id,
+          submittedBy: user.id,
+          scheduleLine,
+          submitterLabel: `@${handle}`,
+        });
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'scrape failed';
         await supabaseAdmin.from('tracked_sources').update({ last_error: msg }).eq('id', tracked.id);
@@ -569,80 +516,25 @@ async function handleUrlSource(interaction: SlashCommandInteraction): Promise<Ne
         return;
       }
 
-      const { updates, debug } = await parseInsights({ narrative: markdown, webSource: true });
-      const scheduleLine = oneShot
-        ? 'one-off'
-        : `${cadence}${stopAt ? ` · stops ${stopAt.toLocaleDateString('en-US')}` : ''}`;
-
-      if (updates.length === 0) {
+      if (!result.staged) {
+        // Surface a snippet of what we actually SCRAPED so "empty because the
+        // page was thin / paywalled" is distinguishable from "empty because
+        // the parser was too conservative." A homepage with no article bodies
+        // shows up here as a short masthead/subscribe blob; a real article
+        // shows substantive prose.
+        const { debug, scrapedChars, scrapedPreview } = result;
         const excerpt = debug.rawResponseExcerpt.replace(/```/g, "'''").slice(0, 400);
-        // Surface a snippet of what we actually SCRAPED so "empty because
-        // the page was thin / paywalled" is distinguishable from "empty
-        // because the parser was too conservative." A homepage with no
-        // article bodies shows up here as a short masthead/subscribe blob;
-        // a real article shows substantive prose.
-        const scrapedPreview = markdown.replace(/```/g, "'''").replace(/\s+/g, ' ').trim().slice(0, 400);
         await editInteractionResponse(interaction.application_id, interaction.token, {
           content:
             `📎 Tracking **${url}** (${scheduleLine}). First scrape extracted no structured updates.\n` +
-            `**Debug:** roster=${debug.rosterSize}, products=${debug.productsCount}, scraped=${markdown.length} chars, parsedRaw=${debug.parsedRawCount}, drops=${debug.droppedReasons.length}\n` +
+            `**Debug:** roster=${debug.rosterSize}, products=${debug.productsCount}, scraped=${scrapedChars} chars, parsedRaw=${debug.parsedRawCount}, drops=${debug.droppedReasons.length}\n` +
             `**Scraped (first 400):**\n\`\`\`${scrapedPreview || '(empty)'}\`\`\`\n` +
             (excerpt ? `**Claude raw (first 400):**\n\`\`\`${excerpt}\`\`\`` : ''),
         });
         return;
       }
 
-      // 3. Stage a proposal. source_text = the URL so the refine flow can
-      //    re-scrape it; source_kind distinguishes it for refine routing.
-      const { data: pending, error: pendErr } = await supabaseAdmin
-        .from('pending_insights')
-        .insert({
-          discord_channel_id: interaction.channel_id,
-          source_user_id: user.id,
-          source_text: url,
-          parsed_updates: updates as unknown as object,
-          source_kind: 'tracked_source_scrape',
-          source_attachments: null,
-        })
-        .select('id')
-        .single();
-
-      if (pendErr || !pending) {
-        await editInteractionResponse(interaction.application_id, interaction.token, {
-          content: `⚠️ Parsed ${updates.length} updates but couldn't stage them: ${pendErr?.message ?? 'unknown error'}`,
-        });
-        return;
-      }
-
-      const lines = updates.map((u, i) => `**${i + 1}.** ${summarizeUpdate(u)}`);
-      const handle = user.global_name ?? user.username;
-      const { header: targetsHeader } = buildTargetsHeader(updates);
-      const targetsBlock = targetsHeader ? `${targetsHeader}\n\n` : '';
-      const sourceLabel = `> 📎 ${url}\n_(${scheduleLine}, via @${handle})_`;
-      const wrapping =
-        `**URL source:**\n${sourceLabel}\n\n` +
-        targetsBlock +
-        `**Proposed updates (${updates.length}):**\n\n\n` +
-        `Click ✅ to apply, ❌ to discard. Anyone on the allowlist can resolve.`;
-      const { summary } = formatProposalSummary(lines, 2000 - wrapping.length);
-
-      await editInteractionResponse(interaction.application_id, interaction.token, {
-        content:
-          `**URL source:**\n${sourceLabel}\n\n` +
-          targetsBlock +
-          `**Proposed updates (${updates.length}):**\n${summary}\n\n` +
-          `Click ✅ to apply, ❌ to discard. Anyone on the allowlist can resolve.`,
-        components: [
-          {
-            type: ComponentType.ACTION_ROW,
-            components: [
-              { type: ComponentType.BUTTON, style: ButtonStyle.SUCCESS, label: 'Apply', custom_id: `confirm:${pending.id}`, emoji: { name: '✅' } },
-              { type: ComponentType.BUTTON, style: ButtonStyle.SECONDARY, label: 'Refine', custom_id: `refine:${pending.id}`, emoji: { name: '✏️' } },
-              { type: ComponentType.BUTTON, style: ButtonStyle.DANGER, label: 'Discard', custom_id: `discard:${pending.id}`, emoji: { name: '❌' } },
-            ],
-          },
-        ],
-      });
+      await editInteractionResponse(interaction.application_id, interaction.token, result.body);
     } catch (err) {
       console.error('[discord/url-source] failed', err);
       await editInteractionResponse(interaction.application_id, interaction.token, {
