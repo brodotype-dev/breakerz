@@ -575,12 +575,19 @@ async function handleUrlSource(interaction: SlashCommandInteraction): Promise<Ne
         : `${cadence}${stopAt ? ` · stops ${stopAt.toLocaleDateString('en-US')}` : ''}`;
 
       if (updates.length === 0) {
-        const excerpt = debug.rawResponseExcerpt.replace(/```/g, "'''").slice(0, 500);
+        const excerpt = debug.rawResponseExcerpt.replace(/```/g, "'''").slice(0, 400);
+        // Surface a snippet of what we actually SCRAPED so "empty because
+        // the page was thin / paywalled" is distinguishable from "empty
+        // because the parser was too conservative." A homepage with no
+        // article bodies shows up here as a short masthead/subscribe blob;
+        // a real article shows substantive prose.
+        const scrapedPreview = markdown.replace(/```/g, "'''").replace(/\s+/g, ' ').trim().slice(0, 400);
         await editInteractionResponse(interaction.application_id, interaction.token, {
           content:
             `📎 Tracking **${url}** (${scheduleLine}). First scrape extracted no structured updates.\n` +
-            `**Debug:** roster=${debug.rosterSize}, products=${debug.productsCount}, parsedRaw=${debug.parsedRawCount}, drops=${debug.droppedReasons.length}\n` +
-            (excerpt ? `**Claude raw (first 500):**\n\`\`\`${excerpt}\`\`\`` : ''),
+            `**Debug:** roster=${debug.rosterSize}, products=${debug.productsCount}, scraped=${markdown.length} chars, parsedRaw=${debug.parsedRawCount}, drops=${debug.droppedReasons.length}\n` +
+            `**Scraped (first 400):**\n\`\`\`${scrapedPreview || '(empty)'}\`\`\`\n` +
+            (excerpt ? `**Claude raw (first 400):**\n\`\`\`${excerpt}\`\`\`` : ''),
         });
         return;
       }
