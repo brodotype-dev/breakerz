@@ -13,7 +13,10 @@
 
 import { z } from 'zod';
 
-export const MLB_PIPELINE_TOP100_URL = 'https://www.mlb.com/prospects';
+// The /prospects hub page only renders a small "featured" widget (~5
+// prospects) — our first scrape returned exactly 5. The ranked Top 100
+// table lives at /prospects/stats/top-prospects ("Top Baseball Prospects").
+export const MLB_PIPELINE_TOP100_URL = 'https://www.mlb.com/prospects/stats/top-prospects';
 
 const RANKING_ROW_SCHEMA = z.object({
   rank: z.number().describe('Overall rank, 1 = top prospect'),
@@ -62,17 +65,22 @@ export async function scrapeMlbPipelineTop100(url: string = MLB_PIPELINE_TOP100_
         type: 'json',
         schema: jsonSchema as Record<string, unknown>,
         prompt:
-          'Extract the MLB Pipeline Top 100 prospect rankings table from this page. ' +
+          'This is the MLB Pipeline "Top Baseball Prospects" ranked table. Extract the ' +
+          'FULL ranked list — all rows present on the page, ideally the complete Top 100. ' +
           'Return one entry per ranked prospect with their overall `rank` (1 = top), ' +
           'full `player_name`, `position` abbreviation, and `team_or_school` (the MLB ' +
-          'organization or amateur school they belong to). Capture every ranked prospect ' +
-          'on the page, in rank order. Use null for position or team_or_school when not shown. ' +
+          'organization or amateur school they belong to). Go in rank order and do not ' +
+          'stop early — include every ranked row you can see, not just the first few or a ' +
+          'featured subset. Use null for position or team_or_school when not shown. ' +
           'Do NOT invent prospects or ranks — only extract what is on the page.',
       },
       'markdown',
     ],
     onlyMainContent: true,
-    waitFor: 3000,
+    // The ranked table is a JS-rendered SPA; give it generous time to
+    // hydrate the full list before extraction. Bumped 3s → 8s after the
+    // /prospects hub page only yielded 5 rows.
+    waitFor: 8000,
     timeout: 90_000,
   });
 

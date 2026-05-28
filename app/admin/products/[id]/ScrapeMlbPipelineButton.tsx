@@ -1,36 +1,13 @@
 'use client';
 
 import { useState } from 'react';
+import { errText } from '@/lib/format-error';
 
 type Status =
   | { kind: 'idle' }
   | { kind: 'running' }
   | { kind: 'ok'; scraped: number; matched: number; written: number; unmatched: number }
   | { kind: 'error'; msg: string };
-
-/**
- * Coerce any error shape to a renderable string. A long-running API route
- * can hit a Vercel platform error (function timeout / 500) whose JSON body
- * shapes the error as an OBJECT (`{ code, message, ... }`) rather than the
- * plain string our route returns. Rendering that object directly in JSX
- * throws React error #31 ("objects are not valid as a React child") and
- * crashes the whole admin page. Always stringify.
- */
-function errText(e: unknown, fallback: string): string {
-  if (typeof e === 'string' && e.trim()) return e;
-  if (e && typeof e === 'object') {
-    const o = e as Record<string, unknown>;
-    if (typeof o.message === 'string' && o.message.trim()) return o.message;
-    if (typeof o.error === 'string' && o.error.trim()) return o.error;
-    if (typeof o.code === 'string' && o.code.trim()) return o.code;
-    try {
-      return JSON.stringify(e);
-    } catch {
-      /* fall through to fallback */
-    }
-  }
-  return fallback;
-}
 
 /**
  * Slice 1 of the web-sourced-intel plan (Track A). Scrapes the MLB

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { errText } from '@/lib/format-error';
 
 type Status =
   | { kind: 'idle' }
@@ -25,9 +26,9 @@ export default function RefreshCatalogButton({ productId }: { productId: string 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ productId }),
       });
-      const json = await res.json();
-      if (!res.ok || json.error) {
-        setStatus({ kind: 'error', msg: json.error ?? `HTTP ${res.status}` });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json || json.error) {
+        setStatus({ kind: 'error', msg: errText(json?.error, `HTTP ${res.status}`) });
         return;
       }
       setStatus({
