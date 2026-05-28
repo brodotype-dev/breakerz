@@ -183,6 +183,70 @@ const commands = [
     name: 'Capture insight',
     type: 3,
   },
+  // /url-source — open-ended URL ingestion (web-sourced-intel Slice 4).
+  // An SME points us at any resource (beat-writer column, forum thread,
+  // MLB Pipeline weekly page, YouTube transcript URL) with a scrape cadence
+  // + stop date. We scrape immediately and (Slice 4b) on the chosen cadence,
+  // staging pending_insights proposals each time via the same ✅/✏️/❌ flow.
+  // The tracked_sources table + tracked_source_scrape source_kind keep the
+  // internal "tracking" naming; the user-facing verb is /url-source.
+  {
+    name: 'url-source',
+    description: 'Track a web URL — scrape it now + on a cadence into insight proposals',
+    type: 1, // CHAT_INPUT
+    options: [
+      {
+        name: 'url',
+        description: 'The page to scrape (article, forum thread, rankings page, etc.)',
+        type: 3, // STRING
+        required: true,
+        max_length: 1000,
+      },
+      {
+        name: 'cadence',
+        description: 'How often to re-scrape',
+        type: 3, // STRING
+        required: true,
+        choices: [
+          { name: 'One-off (scrape once)', value: 'one_off' },
+          { name: 'Daily', value: 'daily' },
+          { name: 'Weekly', value: 'weekly' },
+          { name: 'Twice monthly (1st + 15th)', value: 'twice_monthly' },
+        ],
+      },
+      {
+        name: 'stop_after',
+        description: 'When to stop tracking',
+        type: 3, // STRING
+        required: true,
+        choices: [
+          { name: 'Immediately (one-off)', value: 'immediately' },
+          { name: '1 month', value: '1_month' },
+          { name: '3 months', value: '3_months' },
+          { name: '6 months', value: '6_months' },
+          { name: '1 year', value: '1_year' },
+        ],
+      },
+      {
+        name: 'scope',
+        description: 'Optional hint: what is this source mostly about?',
+        type: 3, // STRING
+        required: false,
+        choices: [
+          { name: 'Player(s)', value: 'player' },
+          { name: 'Product', value: 'product' },
+          { name: 'Global / mixed', value: 'global' },
+        ],
+      },
+      {
+        name: 'note',
+        description: 'Optional context for the parser — "this is a Royals beat column"',
+        type: 3, // STRING
+        required: false,
+        max_length: 500,
+      },
+    ],
+  },
 ];
 
 const url = `https://discord.com/api/v10/applications/${DISCORD_APP_ID}/guilds/${DISCORD_GUILD_ID}/commands`;
