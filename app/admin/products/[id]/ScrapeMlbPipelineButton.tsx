@@ -6,7 +6,7 @@ import { errText } from '@/lib/format-error';
 type Status =
   | { kind: 'idle' }
   | { kind: 'running' }
-  | { kind: 'ok'; scraped: number; matched: number; written: number; unmatched: number }
+  | { kind: 'ok'; scraped: number; matched: number; written: number; unmatchedNames: string[] }
   | { kind: 'error'; msg: string };
 
 /**
@@ -40,7 +40,7 @@ export default function ScrapeMlbPipelineButton() {
         scraped: json.scraped,
         matched: json.matched,
         written: json.written,
-        unmatched: Array.isArray(json.unmatchedNames) ? json.unmatchedNames.length : 0,
+        unmatchedNames: Array.isArray(json.unmatchedNames) ? json.unmatchedNames : [],
       });
     } catch (err) {
       setStatus({ kind: 'error', msg: err instanceof Error ? err.message : String(err) });
@@ -48,21 +48,35 @@ export default function ScrapeMlbPipelineButton() {
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-3">
-      <button
-        onClick={run}
-        disabled={status.kind === 'running'}
-        className="rounded border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
-      >
-        {status.kind === 'running' ? 'Scraping MLB Pipeline…' : 'Scrape MLB Pipeline Top 100 ↻'}
-      </button>
-      {status.kind === 'ok' && (
-        <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-          {status.scraped} scraped · {status.matched} matched · {status.written} written
-          {status.unmatched > 0 ? ` · ${status.unmatched} unmatched` : ''}
-        </span>
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          onClick={run}
+          disabled={status.kind === 'running'}
+          className="rounded border px-4 py-2 text-sm font-medium hover:bg-muted transition-colors disabled:opacity-50"
+        >
+          {status.kind === 'running' ? 'Scraping MLB Pipeline…' : 'Scrape MLB Pipeline Top 100 ↻'}
+        </button>
+        {status.kind === 'ok' && (
+          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+            {status.scraped} scraped · {status.matched} matched · {status.written} written
+            {status.unmatchedNames.length > 0 ? ` · ${status.unmatchedNames.length} unmatched` : ''}
+          </span>
+        )}
+        {status.kind === 'error' && <span className="text-xs text-red-500">{status.msg}</span>}
+      </div>
+      {/* Unmatched names — surfaced so we can tell genuinely-not-carried
+          prospects from name-normalization misses (e.g. an accented or
+          Jr./Sr. name that should have matched). Most are expected
+          (Top 100 prospects not on our scoped products). */}
+      {status.kind === 'ok' && status.unmatchedNames.length > 0 && (
+        <details className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+          <summary className="cursor-pointer select-none">
+            {status.unmatchedNames.length} unmatched names (expand)
+          </summary>
+          <p className="mt-1 leading-relaxed">{status.unmatchedNames.join(' · ')}</p>
+        </details>
       )}
-      {status.kind === 'error' && <span className="text-xs text-red-500">{status.msg}</span>}
     </div>
   );
 }
