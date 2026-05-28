@@ -94,14 +94,24 @@ export async function importMlbPipelineRankings(
   const capturedAt = new Date().toISOString();
   const roster = await loadBaseballRoster();
 
-  const matchedRows: Array<{
+  type Row = {
     player_id: string;
     source: string;
     rank_value: number;
     rank_scope: string;
     source_url: string;
     captured_at: string;
-  }> = [];
+  };
+
+  // Dedupe by player_id WITHIN this scrape, keeping the best (lowest)
+  // rank. The MLB ranked-table page surfaces some prospects in more than
+  // one section (e.g. a "top risers" highlight + the main table), so the
+  // raw scrape can contain the same player twice. Writing both would put
+  // two rows for one player at one captured_at and break the "one current
+  // rank per player per scrape" invariant the diff logic (Slice 2) relies
+  // on. Keep one row per player at their best rank.
+  const byPlayer = new Map<string, Row>();
+  let matchedRowCount = 0; // raw matched scrape rows, before dedupe
   const unmatchedNames: string[] = [];
 
   for (const r of rows) {
@@ -111,22 +121,29 @@ export async function importMlbPipelineRankings(
       unmatchedNames.push(r.player_name);
       continue;
     }
-    matchedRows.push({
+    matchedRowCount++;
+    const candidate: Row = {
       player_id: playerId,
       source,
       rank_value: r.rank,
       rank_scope: 'overall',
       source_url: sourceUrl,
       captured_at: capturedAt,
-    });
+    };
+    const existing = byPlayer.get(playerId);
+    if (!existing || candidate.rank_value < existing.rank_value) {
+      byPlayer.set(playerId, candidate);
+    }
   }
+
+  const dedupedRows = [...byPlayer.values()];
 
   // Insert in chunks. 200-row inserts are well under any URL/body cap;
   // chunk anyway for parity with the codebase's .in()/insert conventions.
   let written = 0;
   const INSERT_CHUNK = 200;
-  for (let i = 0; i < matchedRows.length; i += INSERT_CHUNK) {
-    const slice = matchedRows.slice(i, i + INSERT_CHUNK);
+  for (let i = 0; i < dedupedRows.length; i += INSERT_CHUNK) {
+    const slice = dedupedRows.slice(i, i + INSERT_CHUNK);
     const { error } = await supabaseAdmin.from('prospect_rankings').insert(slice);
     if (error) {
       console.error('[prospect-import] insert chunk failed:', error);
@@ -139,7 +156,7 @@ export async function importMlbPipelineRankings(
     source,
     sourceUrl,
     scraped: rows.length,
-    matched: matchedRows.length,
+    matched: matchedRowCount,
     written,
     unmatchedNames,
     capturedAt,
