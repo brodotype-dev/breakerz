@@ -267,6 +267,8 @@ Supabase Vercel integration injects both `NEXT_PUBLIC_SUPABASE_URL` and `SUPABAS
 
     Don't forget `NOTIFY pgrst, 'reload schema';` at the bottom of any migration that adds functions OR changes grants — see gotcha #10.
 
+13. **Admin action buttons must never render `json.error` directly** — a long-running API route (CH catalog refresh, variant hydrate, MLB Pipeline scrape, etc.) can hit a **Vercel platform error** (function timeout / 500) whose JSON body shapes `error` as an **object** (`{ code, message, ... }`) instead of the plain string our route handlers return. Rendering that object as a React child throws **React error #31** ("objects are not valid as a React child") and — because admin pages have no error boundary — replaces the entire page with the Next.js global error overlay. Bit us 2026-05-28 the first time anyone clicked the MLB Pipeline scrape button (its function ran long enough to trip a platform error). **Always run the error through [`errText()`](lib/format-error.ts) before putting it in component state / JSX**, and guard `res.json()` with `.catch(() => null)` for non-JSON bodies (timeouts can return HTML). Pattern: `setStatus({ kind: 'error', msg: errText(json?.error, \`HTTP ${res.status}\`) })`. All admin buttons under `app/admin/products/[id]/*Button.tsx` follow this now.
+
 ---
 
 ## Key Files
