@@ -143,3 +143,21 @@ export async function editChannelMessage(
     body: JSON.stringify(body),
   });
 }
+
+/**
+ * Post a fresh message to a channel via the bot token. Unlike
+ * editInteractionResponse, this needs no interaction token — used by the
+ * tracked-sources cron (Slice 4b), which has no interaction to reply to and
+ * must originate the ✅/✏️/❌ proposal panel itself. Returns the created
+ * message JSON (carries `id` if the caller needs to edit it later).
+ */
+export async function createChannelMessage(
+  channelId: string,
+  body: Record<string, unknown>,
+): Promise<{ id: string }> {
+  const res = await discordFetch(`/channels/${channelId}/messages`, {
+    method: 'POST',
+    body: JSON.stringify(body),
+  });
+  return res.json();
+}

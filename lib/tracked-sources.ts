@@ -59,3 +59,13 @@ export function computeNextScrapeAt(cadence: string, from: Date = new Date()): D
 export function isOneShot(cadence: string, stopAfter: string): boolean {
   return cadence === 'one_off' || stopAfter === 'immediately';
 }
+
+/**
+ * Human-readable schedule label for the proposal panel — shared by the
+ * /url-source reply (Slice 4a) and the recurring cron's posts (Slice 4b) so
+ * the "(daily · stops 6/1/2026)" line reads identically across both surfaces.
+ */
+export function describeSchedule(cadence: string, stopAt: Date | null): string {
+  if (cadence === 'one_off') return 'one-off';
+  return `${cadence}${stopAt ? ` · stops ${stopAt.toLocaleDateString('en-US')}` : ''}`;
+}

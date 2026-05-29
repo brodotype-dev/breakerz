@@ -107,6 +107,7 @@ export type ParsedUpdate =
       scope_type: 'team' | 'player' | 'product' | 'variant';
       scope_team?: string;       // when scope_type='team'
       scope_player_id?: string;  // when scope_type='player' OR 'variant' (variant rolls up to player)
+      scope_player_name?: string; // resolved from roster at validation time — display only
       variant_name?: string;     // when scope_type='variant'
       // Slot composition. Single-key with null value = pure-format slot,
       // ratio not specified. Multi-key = mixed bundle. See SlotComposition
@@ -125,6 +126,7 @@ export type ParsedUpdate =
       scope_type: 'team' | 'player' | 'product' | 'variant';
       scope_team?: string;
       scope_player_id?: string;  // when 'player' OR 'variant'
+      scope_player_name?: string; // resolved from roster at validation time — display only
       variant_name?: string;     // when scope_type='variant'
       tag: 'release_premium' | 'cooled' | 'overhyped' | 'underhyped';
       strength: number;          // 0..1
@@ -151,6 +153,7 @@ export type ParsedUpdate =
       product_name: string;
       scope_type: 'variant' | 'player';
       scope_player_id?: string;  // always set (variant rolls up to player too)
+      scope_player_name?: string; // resolved from roster at validation time — display only
       variant_name?: string;     // when scope_type='variant'
       composition: SlotComposition;
       observed_odds_per_case: number;  // e.g. 80 for "1 in 80 cases"
@@ -764,6 +767,7 @@ CRITICAL:
           scope_type: u.scope_type,
           scope_team: u.scope_team,
           scope_player_id: u.scope_player_id,
+          scope_player_name: u.scope_player_id ? playerById.get(u.scope_player_id)?.name : undefined,
           variant_name: u.scope_type === 'variant' ? String(u.variant_name ?? '').slice(0, 120) : undefined,
           composition: compResult.comp,
           price_low: Math.max(0, Number(u.price_low) || 0),
@@ -799,6 +803,7 @@ CRITICAL:
           scope_type: u.scope_type,
           scope_team: u.scope_team,
           scope_player_id: u.scope_player_id,
+          scope_player_name: u.scope_player_id ? playerById.get(u.scope_player_id)?.name : undefined,
           variant_name: u.scope_type === 'variant' ? String(u.variant_name ?? '').slice(0, 120) : undefined,
           tag: u.tag,
           strength: Math.max(0, Math.min(1, Number(u.strength) || 0)),
@@ -839,6 +844,7 @@ CRITICAL:
           product_name: productById.get(u.product_id) ?? u.product_name,
           scope_type: u.scope_type,
           scope_player_id: u.scope_player_id,
+          scope_player_name: u.scope_player_id ? playerById.get(u.scope_player_id)?.name : undefined,
           variant_name: u.scope_type === 'variant' ? String(u.variant_name ?? '').slice(0, 120) : undefined,
           composition: compResult.comp,
           // Cap at 10000 — anything rarer than 1:10000 is almost certainly
@@ -958,7 +964,7 @@ export function summarizeUpdate(u: ParsedUpdate): string {
       const where =
         u.scope_type === 'team' ? `${u.scope_team} slot`
         : u.scope_type === 'variant' ? `${u.variant_name ?? 'variant'}`
-        : u.scope_type === 'player' ? `player slot`
+        : u.scope_type === 'player' ? `${u.scope_player_name ?? 'player'} slot`
         : `${u.product_name} bundle`;
       const range = u.price_low === u.price_high ? `$${u.price_low}` : `$${u.price_low}–$${u.price_high}`;
       return `${where} (${renderComposition(u.composition)}, ${u.source}): asking ${range} — ${u.source_note}`;
@@ -967,12 +973,12 @@ export function summarizeUpdate(u: ParsedUpdate): string {
       const where =
         u.scope_type === 'team' ? u.scope_team
         : u.scope_type === 'variant' ? (u.variant_name ?? 'variant')
-        : u.scope_type === 'player' ? 'player'
+        : u.scope_type === 'player' ? (u.scope_player_name ?? 'player')
         : u.product_name;
       return `${where}: ${u.tag} (strength ${u.strength.toFixed(2)}, decay ${u.decay_days}d)`;
     }
     case 'odds_observation':
-      return `${u.variant_name ?? 'card'} (${renderComposition(u.composition)}): observed 1:${u.observed_odds_per_case} cases — ${u.source_note}`;
+      return `${u.variant_name ?? u.scope_player_name ?? 'card'} (${renderComposition(u.composition)}): observed 1:${u.observed_odds_per_case} cases — ${u.source_note}`;
     case 'team_sentiment': {
       const arrow = u.direction === 1 ? '↑' : '↓';
       const tag = u.tag ? ` [${u.tag}]` : '';
