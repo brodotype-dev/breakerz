@@ -5,6 +5,16 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-28 — Discord proposal buttons clear reliably on apply/discard (incl. after refine)
+
+Long-standing annoyance: clicking ✅ Apply or ❌ Discard on an `/insight` / `/break-price` / `/url-source` proposal **after it had been refined** applied the update to the DB but left the buttons live — click ✅ again and you'd get the "That insight was already applied" ephemeral. PR #114 (2026-05-17) thought it fixed this by switching the post-hoc message edit from the interaction webhook (`@original`) to `editChannelMessage` (channel API by message id), but it kept failing on refined-message lineage.
+
+**Root cause:** both the apply/discard resolution AND the refine re-render relied on a *post-hoc* edit of a message that a prior interaction had already touched. That edit is the unreliable step — `@original` is flaky across interaction lineages, and `editChannelMessage` flakes on refined messages too. So the buttons (which only get removed by that edit) stuck around.
+
+**Fix ([app/api/discord/interactions/route.ts](app/api/discord/interactions/route.ts)):** strip the buttons in the **immediate interaction response** (`UPDATE_MESSAGE`, type 7) instead of a post-hoc edit. Updating the component's *own* message via the interaction response is the one mechanism Discord guarantees, regardless of how the message was previously edited. Discard flips status inline (fast, deterministic) and resolves in the response. Apply shows an optimistic "✅ Applied" in the response (buttons gone instantly), then runs `applyUpdates` in `after()` and refines the text to the precise "N of M committed" via `editInteractionResponse` first (this interaction's `@original` is now reliably the message it just updated) with an `editChannelMessage` fallback — both best-effort, since the buttons are already cleared. New `appendResolution()` helper clamps the resolution line to Discord's 2000-char cap so a near-full proposal body can't overflow and fail the `UPDATE_MESSAGE` response (which would re-introduce the stuck-buttons bug). No schema/registration change.
+
+---
+
 ## 2026-05-28 — Web-sourced intel arc: Track A prospect rankings + editorial + open-ended URL ingestion (11 PRs, #159–#169)
 
 Fills the non-CardHedger data gap. Two unmet needs drove it: (1) pre-release hype was model-output, not editorial reality; (2) the Track A prospect-attribute layer was designed in the 2026-05-12 plan but never fed. Solution: scrape the open web, admin-curated like `/insight`, reusing existing sinks (`market_observations`, `pending_insights`, the ✅/✏️/❌ proposal flow).

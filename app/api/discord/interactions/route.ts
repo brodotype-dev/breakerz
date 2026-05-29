@@ -1174,6 +1174,21 @@ async function handleInsightFromMessage(interaction: SlashCommandInteraction): P
 
 // ─── Button handler ──────────────────────────────────────────────────────
 
+/**
+ * Append a resolution line ("✅ Applied", "❌ Discarded", …) to a proposal's
+ * content, clamped to Discord's 2000-char message limit. Proposal summaries
+ * are already budgeted right up against that cap, so a naive append can push
+ * the body over 2000 — and when that body is an UPDATE_MESSAGE interaction
+ * response, the whole response is rejected and the buttons DON'T clear, which
+ * is the exact failure we're trying to fix. Trim the base to make room.
+ */
+function appendResolution(base: string, suffix: string): string {
+  const MAX = 2000;
+  if (base.length + suffix.length <= MAX) return base + suffix;
+  const room = Math.max(0, MAX - suffix.length - 1);
+  return base.slice(0, room) + '…' + suffix;
+}
+
 interface ButtonInteraction {
   application_id: string;
   token: string;
@@ -1239,44 +1254,57 @@ async function handleButton(interaction: ButtonInteraction): Promise<NextRespons
     });
   }
 
-  // Both buttons defer their response — applyUpdates can take more than
-  // Discord's 3s budget when a sentiment update fans out to many
-  // player_products. Discard is fast in practice but still defer for
-  // symmetry; the user-visible behavior is identical.
   const handle = user.global_name ?? user.username;
   const baseContent = interaction.message.content;
-
-  // Both confirm and discard edit the source message directly via the
-  // channel-message API instead of editInteractionResponse. The webhook
-  // /@original path was failing silently when a message had been edited
-  // by a PRIOR interaction (notably the refine modal-submit) — the
-  // interaction token's "original message" reference becomes unreliable
-  // across multi-interaction lifecycles. Direct channel edit by
-  // message_id sidesteps that entirely and is what Discord's docs
-  // recommend for "edit any message you own."
   const messageId = interaction.message.id;
 
+  // Resolve the buttons in the IMMEDIATE interaction response (UPDATE_MESSAGE,
+  // type 7) rather than in a post-hoc edit. The post-hoc edit
+  // (editInteractionResponse @original OR editChannelMessage) is unreliable on
+  // a message that a PRIOR interaction already edited — notably a refine
+  // modal-submit — so the buttons would stay live on an already-resolved
+  // proposal (click ✅ again → "already applied"). PR #114 swapped @original →
+  // editChannelMessage and it STILL failed on refined messages. Updating the
+  // component's own message via the interaction response is the one mechanism
+  // Discord guarantees, so the buttons clear there; the precise-count text is
+  // a best-effort follow-up.
+
   if (action === 'discard') {
-    after(async () => {
-      await supabaseAdmin
-        .from('pending_insights')
-        .update({ status: 'discarded', resolved_at: new Date().toISOString() })
-        .eq('id', pendingId)
-        .eq('status', 'pending');
+    // Fast + deterministic — flip status inline (well within the 3s budget),
+    // then strip the buttons + mark discarded in the response.
+    await supabaseAdmin
+      .from('pending_insights')
+      .update({ status: 'discarded', resolved_at: new Date().toISOString() })
+      .eq('id', pendingId)
+      .eq('status', 'pending');
 
-      await editChannelMessage(interaction.channel_id, messageId, {
-        content: `${baseContent}\n\n— ❌ **Discarded** by @${handle}`,
+    return NextResponse.json({
+      type: InteractionResponseType.UPDATE_MESSAGE,
+      data: {
+        content: appendResolution(baseContent, `\n\n— ❌ **Discarded** by @${handle}`),
         components: [],
-      }).catch(err => console.error('[discord/discard] message edit failed', err));
+      },
     });
-
-    return NextResponse.json({ type: InteractionResponseType.DEFERRED_UPDATE_MESSAGE });
   }
 
   if (action === 'confirm') {
     const updates = pending.parsed_updates as ParsedUpdate[];
 
+    // applyUpdates can exceed the 3s budget (sentiment fans out across many
+    // player_products), so the write + the exact-count text edit run in
+    // after(). The optimistic "Applied" in the response below is corrected to
+    // a precise count on success, or to "Apply failed" if the write throws —
+    // both best-effort, since the buttons are already gone from the response.
     after(async () => {
+      // Editing the component's own message: editInteractionResponse first
+      // (this interaction's @original IS the message we just updated, so it's
+      // reliable — unlike the cross-interaction lineage #114 hit), falling
+      // back to a channel edit.
+      const finalize = (content: string) =>
+        editInteractionResponse(interaction.application_id, interaction.token, { content, components: [] })
+          .catch(() => editChannelMessage(interaction.channel_id, messageId, { content, components: [] }))
+          .catch(err => console.error('[discord/confirm] final edit failed (buttons already cleared)', err));
+
       try {
         const result = await applyUpdates({
           pendingId: pending.id,
@@ -1291,23 +1319,25 @@ async function handleButton(interaction: ButtonInteraction): Promise<NextRespons
           .eq('id', pendingId)
           .eq('status', 'pending');
 
-        await editChannelMessage(interaction.channel_id, messageId, {
-          content:
-            `${baseContent}\n\n— ✅ **Applied** by @${handle}: ` +
-            `${result.applied} of ${updates.length} updates committed.` +
+        await finalize(appendResolution(
+          baseContent,
+          `\n\n— ✅ **Applied** by @${handle}: ${result.applied} of ${updates.length} updates committed.` +
             (result.errors.length > 0 ? `\nErrors: ${result.errors.slice(0, 3).join('; ')}` : ''),
-          components: [],
-        });
+        ));
       } catch (err) {
         console.error('[discord/confirm] apply failed', err);
-        await editChannelMessage(interaction.channel_id, messageId, {
-          content: `${baseContent}\n\n— ⚠️ **Apply failed** by @${handle}: ${err instanceof Error ? err.message : 'unknown'}`,
-          components: [],
-        }).catch(err2 => console.error('[discord/confirm] message edit failed', err2));
+        await finalize(appendResolution(baseContent, `\n\n— ⚠️ **Apply failed** by @${handle}: ${err instanceof Error ? err.message : 'unknown'}`));
       }
     });
 
-    return NextResponse.json({ type: InteractionResponseType.DEFERRED_UPDATE_MESSAGE });
+    // Immediately strip buttons + show optimistic applied state.
+    return NextResponse.json({
+      type: InteractionResponseType.UPDATE_MESSAGE,
+      data: {
+        content: appendResolution(baseContent, `\n\n— ✅ **Applied** by @${handle}`),
+        components: [],
+      },
+    });
   }
 
   return ephemeralReply('Unknown button.');
