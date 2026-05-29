@@ -21,7 +21,16 @@ import {
 } from '@/lib/insights-parser';
 import { deriveSourceType } from '@/lib/types';
 import { scrapeEditorial } from '@/lib/scrapers/editorial';
-import { computeStopAt, computeNextScrapeAt, isOneShot, describeSchedule } from '@/lib/tracked-sources';
+import {
+  computeStopAt,
+  computeNextScrapeAt,
+  isOneShot,
+  describeSchedule,
+  CADENCE_VALUES,
+  STOP_AFTER_VALUES,
+  type Cadence,
+  type StopAfter,
+} from '@/lib/tracked-sources';
 import {
   formatProposalSummary,
   buildTargetsHeader,
@@ -73,9 +82,14 @@ export async function POST(req: Request) {
     return handleAutocomplete(interaction);
   }
 
-  // 5. Modal submit — currently only fired by the Refine button on
-  //    pending_insights proposals.
+  // 5. Modal submit — routed by custom_id. The Refine button opens
+  //    `refine_modal:*`; the "Capture url-source" context menu opens
+  //    `url_source_modal`.
   if (interaction.type === InteractionType.MODAL_SUBMIT) {
+    const modalId = interaction.data?.custom_id ?? '';
+    if (modalId === 'url_source_modal') {
+      return handleUrlSourceModalSubmit(interaction);
+    }
     return handleRefineModalSubmit(interaction);
   }
 
@@ -212,6 +226,9 @@ async function handleSlashCommand(interaction: SlashCommandInteraction): Promise
     }
     if (interaction.data.name === 'Capture insight') {
       return handleInsightFromMessage(interaction);
+    }
+    if (interaction.data.name === 'Capture url-source') {
+      return handleUrlSourceFromMessage(interaction);
     }
     return ephemeralReply('Unknown command.');
   }
@@ -428,7 +445,7 @@ async function handleInsight(interaction: SlashCommandInteraction): Promise<Next
   });
 }
 
-// ─── /url-source handler ──────────────────────────────────────────────────
+// ─── /url-source handlers ─────────────────────────────────────────────────
 // Slice 4a. An allowlisted SME points us at any URL with a cadence +
 // stop_after. We record it in tracked_sources (the nightly cron in Slice 4b
 // re-scrapes recurring rows) AND run the first scrape immediately: scrape
@@ -436,6 +453,121 @@ async function handleInsight(interaction: SlashCommandInteraction): Promise<Next
 // proposal with source_kind='tracked_source_scrape' and the URL as
 // source_text → reply with the same ✅/✏️/❌ panel as /insight. Apply reuses
 // the existing applyUpdates path; refine re-scrapes the stored URL.
+//
+// Two entry points share captureUrlSource: the /url-source slash command
+// (URL + cadence/stop_after via option dropdowns) and the "Capture
+// url-source" MESSAGE context menu (long-press a post that contains a link →
+// extract the URL → modal for cadence/stop_after).
+
+/** First http(s) URL in a string, with common trailing punctuation trimmed. */
+function extractFirstUrl(text: string): string | null {
+  const m = text.match(/https?:\/\/[^\s<>()]+/i);
+  if (!m) return null;
+  return m[0].replace(/[.,!?:;'")\]]+$/, '');
+}
+
+/**
+ * Shared staging path for both /url-source entry points. Records the source
+ * (so the Slice 4b cron can re-scrape recurring rows), runs the first scrape,
+ * and edits the deferred interaction reply with the proposal panel (or a
+ * scrape/no-updates diagnostic). Caller must have already deferred with
+ * DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE.
+ */
+async function captureUrlSource(params: {
+  applicationId: string;
+  token: string;
+  channelId: string;
+  user: { id: string; username: string; global_name?: string };
+  url: string;
+  cadence: string;
+  stopAfter: string;
+  scope: string | null;
+  note: string | null;
+}): Promise<void> {
+  const { applicationId, token, channelId, user, url, cadence, stopAfter, scope, note } = params;
+  try {
+    // 1. Record the source so the cron can pick it up (Slice 4b). One-shot
+    //    sources (one_off cadence or immediate stop) are marked done now —
+    //    the first scrape below is their only scrape.
+    const oneShot = isOneShot(cadence, stopAfter);
+    const now = new Date();
+    const stopAt = oneShot ? null : computeStopAt(stopAfter, now);
+    const nextScrapeAt = oneShot ? null : computeNextScrapeAt(cadence, now);
+    const { data: tracked, error: trackErr } = await supabaseAdmin
+      .from('tracked_sources')
+      .insert({
+        url,
+        cadence,
+        scope,
+        note,
+        stop_at: stopAt?.toISOString() ?? null,
+        status: oneShot ? 'done' : 'active',
+        submitted_by: user.id,
+        // Slice 4b: the recurring cron needs to know which channel to post
+        // the proposal to, since it has no interaction to reply to.
+        discord_channel_id: channelId,
+        last_scraped_at: now.toISOString(),
+        next_scrape_at: nextScrapeAt?.toISOString() ?? null,
+      })
+      .select('id')
+      .single();
+    if (trackErr) {
+      await editInteractionResponse(applicationId, token, {
+        content: `⚠️ Couldn't record the source: ${trackErr.message}`,
+      });
+      return;
+    }
+
+    const scheduleLine = oneShot ? 'one-off' : describeSchedule(cadence, stopAt);
+    const handle = user.global_name ?? user.username;
+
+    // 2. First scrape + stage via the shared helper — the same path the
+    //    Slice 4b cron reuses on each cadence firing.
+    let result;
+    try {
+      result = await scrapeAndStageProposal({
+        url,
+        note,
+        channelId,
+        submittedBy: user.id,
+        scheduleLine,
+        submitterLabel: `@${handle}`,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'scrape failed';
+      await supabaseAdmin.from('tracked_sources').update({ last_error: msg }).eq('id', tracked.id);
+      await editInteractionResponse(applicationId, token, {
+        content: `⚠️ Tracked the source, but the first scrape failed: ${msg}\n${url}`,
+      });
+      return;
+    }
+
+    if (!result.staged) {
+      // Surface a snippet of what we actually SCRAPED so "empty because the
+      // page was thin / paywalled" is distinguishable from "empty because
+      // the parser was too conservative." A homepage with no article bodies
+      // shows up here as a short masthead/subscribe blob; a real article
+      // shows substantive prose.
+      const { debug, scrapedChars, scrapedPreview } = result;
+      const excerpt = debug.rawResponseExcerpt.replace(/```/g, "'''").slice(0, 400);
+      await editInteractionResponse(applicationId, token, {
+        content:
+          `📎 Tracking **${url}** (${scheduleLine}). First scrape extracted no structured updates.\n` +
+          `**Debug:** roster=${debug.rosterSize}, products=${debug.productsCount}, scraped=${scrapedChars} chars, parsedRaw=${debug.parsedRawCount}, drops=${debug.droppedReasons.length}\n` +
+          `**Scraped (first 400):**\n\`\`\`${scrapedPreview || '(empty)'}\`\`\`\n` +
+          (excerpt ? `**Claude raw (first 400):**\n\`\`\`${excerpt}\`\`\`` : ''),
+      });
+      return;
+    }
+
+    await editInteractionResponse(applicationId, token, result.body);
+  } catch (err) {
+    console.error('[discord/url-source] failed', err);
+    await editInteractionResponse(applicationId, token, {
+      content: `⚠️ Error: ${err instanceof Error ? err.message : 'unknown'}`,
+    }).catch(() => {});
+  }
+}
 
 async function handleUrlSource(interaction: SlashCommandInteraction): Promise<NextResponse> {
   const user = interaction.member?.user ?? interaction.user;
@@ -458,90 +590,151 @@ async function handleUrlSource(interaction: SlashCommandInteraction): Promise<Ne
     return ephemeralReply('Provide a valid http(s) URL.');
   }
 
-  after(async () => {
-    try {
-      // 1. Record the source so the cron can pick it up (Slice 4b). One-shot
-      //    sources (one_off cadence or immediate stop) are marked done now —
-      //    the first scrape below is their only scrape.
-      const oneShot = isOneShot(cadence, stopAfter);
-      const now = new Date();
-      const stopAt = oneShot ? null : computeStopAt(stopAfter, now);
-      const nextScrapeAt = oneShot ? null : computeNextScrapeAt(cadence, now);
-      const { data: tracked, error: trackErr } = await supabaseAdmin
-        .from('tracked_sources')
-        .insert({
-          url,
-          cadence,
-          scope,
-          note,
-          stop_at: stopAt?.toISOString() ?? null,
-          status: oneShot ? 'done' : 'active',
-          submitted_by: user.id,
-          // Slice 4b: the recurring cron needs to know which channel to post
-          // the proposal to, since it has no interaction to reply to.
-          discord_channel_id: interaction.channel_id,
-          last_scraped_at: now.toISOString(),
-          next_scrape_at: nextScrapeAt?.toISOString() ?? null,
-        })
-        .select('id')
-        .single();
-      if (trackErr) {
-        await editInteractionResponse(interaction.application_id, interaction.token, {
-          content: `⚠️ Couldn't record the source: ${trackErr.message}`,
-        });
-        return;
-      }
+  after(() => captureUrlSource({
+    applicationId: interaction.application_id,
+    token: interaction.token,
+    channelId: interaction.channel_id,
+    user,
+    url,
+    cadence,
+    stopAfter,
+    scope,
+    note,
+  }));
 
-      const scheduleLine = oneShot ? 'one-off' : describeSchedule(cadence, stopAt);
-      const handle = user.global_name ?? user.username;
-
-      // 2. First scrape + stage via the shared helper — the same path the
-      //    Slice 4b cron reuses on each cadence firing.
-      let result;
-      try {
-        result = await scrapeAndStageProposal({
-          url,
-          note,
-          channelId: interaction.channel_id,
-          submittedBy: user.id,
-          scheduleLine,
-          submitterLabel: `@${handle}`,
-        });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'scrape failed';
-        await supabaseAdmin.from('tracked_sources').update({ last_error: msg }).eq('id', tracked.id);
-        await editInteractionResponse(interaction.application_id, interaction.token, {
-          content: `⚠️ Tracked the source, but the first scrape failed: ${msg}\n${url}`,
-        });
-        return;
-      }
-
-      if (!result.staged) {
-        // Surface a snippet of what we actually SCRAPED so "empty because the
-        // page was thin / paywalled" is distinguishable from "empty because
-        // the parser was too conservative." A homepage with no article bodies
-        // shows up here as a short masthead/subscribe blob; a real article
-        // shows substantive prose.
-        const { debug, scrapedChars, scrapedPreview } = result;
-        const excerpt = debug.rawResponseExcerpt.replace(/```/g, "'''").slice(0, 400);
-        await editInteractionResponse(interaction.application_id, interaction.token, {
-          content:
-            `📎 Tracking **${url}** (${scheduleLine}). First scrape extracted no structured updates.\n` +
-            `**Debug:** roster=${debug.rosterSize}, products=${debug.productsCount}, scraped=${scrapedChars} chars, parsedRaw=${debug.parsedRawCount}, drops=${debug.droppedReasons.length}\n` +
-            `**Scraped (first 400):**\n\`\`\`${scrapedPreview || '(empty)'}\`\`\`\n` +
-            (excerpt ? `**Claude raw (first 400):**\n\`\`\`${excerpt}\`\`\`` : ''),
-        });
-        return;
-      }
-
-      await editInteractionResponse(interaction.application_id, interaction.token, result.body);
-    } catch (err) {
-      console.error('[discord/url-source] failed', err);
-      await editInteractionResponse(interaction.application_id, interaction.token, {
-        content: `⚠️ Error: ${err instanceof Error ? err.message : 'unknown'}`,
-      }).catch(() => {});
-    }
+  return NextResponse.json({
+    type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
   });
+}
+
+// MESSAGE context menu: long-press / right-click a post that contains a link
+// → Apps → "Capture url-source". We pull the first URL out of the message and
+// open a modal for cadence + stop_after (context-menu commands can't carry
+// option dropdowns, and Discord modals support only text inputs — so they're
+// typed, pre-filled with sensible defaults, and validated on submit).
+async function handleUrlSourceFromMessage(interaction: SlashCommandInteraction): Promise<NextResponse> {
+  const user = interaction.member?.user ?? interaction.user;
+  if (!user) return ephemeralReply('Could not identify you, sorry.');
+
+  if (!(await isAllowlisted(user.id))) {
+    return ephemeralReply('You are not on the BreakIQ contributor allowlist. Ping Brody to get added.');
+  }
+
+  const targetId = interaction.data.target_id;
+  const msg = targetId ? interaction.data.resolved?.messages?.[targetId] : undefined;
+  if (!msg) {
+    return ephemeralReply('Could not read that message.');
+  }
+
+  const url = extractFirstUrl(msg.content ?? '');
+  if (!url) {
+    return ephemeralReply('No link found in that message. Use /url-source and paste the URL directly.');
+  }
+
+  // The URL rides through the modal as a pre-filled (editable) field — modal
+  // submits don't carry the target message, so we can't re-resolve it later.
+  return NextResponse.json({
+    type: InteractionResponseType.MODAL,
+    data: {
+      custom_id: 'url_source_modal',
+      title: 'Track this URL',
+      components: [
+        {
+          type: ComponentType.ACTION_ROW,
+          components: [{
+            type: ComponentType.TEXT_INPUT,
+            custom_id: 'url',
+            label: 'URL to scrape',
+            style: TextInputStyle.SHORT,
+            value: url.slice(0, 1000),
+            required: true,
+            max_length: 1000,
+          }],
+        },
+        {
+          type: ComponentType.ACTION_ROW,
+          components: [{
+            type: ComponentType.TEXT_INPUT,
+            custom_id: 'cadence',
+            label: 'Cadence',
+            style: TextInputStyle.SHORT,
+            value: 'weekly',
+            placeholder: 'one_off · daily · weekly · twice_monthly',
+            required: true,
+            max_length: 20,
+          }],
+        },
+        {
+          type: ComponentType.ACTION_ROW,
+          components: [{
+            type: ComponentType.TEXT_INPUT,
+            custom_id: 'stop_after',
+            label: 'Stop after',
+            style: TextInputStyle.SHORT,
+            value: '3_months',
+            placeholder: 'immediately · 1_month · 3_months · 6_months · 1_year',
+            required: true,
+            max_length: 20,
+          }],
+        },
+        {
+          type: ComponentType.ACTION_ROW,
+          components: [{
+            type: ComponentType.TEXT_INPUT,
+            custom_id: 'note',
+            label: 'Note for Claude (optional)',
+            style: TextInputStyle.PARAGRAPH,
+            required: false,
+            max_length: 300,
+          }],
+        },
+      ],
+    },
+  });
+}
+
+async function handleUrlSourceModalSubmit(interaction: ModalSubmitInteraction): Promise<NextResponse> {
+  const user = interaction.member?.user ?? interaction.user;
+  if (!user) return ephemeralReply('Could not identify you.');
+
+  if (!(await isAllowlisted(user.id))) {
+    return ephemeralReply('You are not on the BreakIQ contributor allowlist.');
+  }
+
+  const fields = new Map(
+    interaction.data.components
+      .flatMap(row => row.components)
+      .map(c => [c.custom_id, (c.value ?? '').trim()]),
+  );
+
+  const url = fields.get('url') ?? '';
+  if (!/^https?:\/\//i.test(url)) {
+    return ephemeralReply('That doesn’t look like a valid http(s) URL.');
+  }
+
+  // Forgiving normalization so "one off" / "3-months" / "3 Months" all land.
+  const norm = (s: string) => s.toLowerCase().replace(/[\s-]+/g, '_');
+  const cadence = norm(fields.get('cadence') ?? '');
+  if (!CADENCE_VALUES.includes(cadence as Cadence)) {
+    return ephemeralReply(`Cadence must be one of: ${CADENCE_VALUES.join(', ')}.`);
+  }
+  const stopAfter = norm(fields.get('stop_after') ?? '');
+  if (!STOP_AFTER_VALUES.includes(stopAfter as StopAfter)) {
+    return ephemeralReply(`Stop after must be one of: ${STOP_AFTER_VALUES.join(', ')}.`);
+  }
+  const note = (fields.get('note') ?? '') || null;
+
+  after(() => captureUrlSource({
+    applicationId: interaction.application_id,
+    token: interaction.token,
+    channelId: interaction.channel_id,
+    user,
+    url,
+    cadence,
+    stopAfter,
+    scope: null,
+    note,
+  }));
 
   return NextResponse.json({
     type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
