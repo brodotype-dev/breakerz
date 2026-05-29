@@ -247,6 +247,15 @@ const commands = [
       },
     ],
   },
+  // Sibling MESSAGE context-menu for /url-source. Long-press / right-click a
+  // post that contains a link → Apps → "Capture url-source" → handler pulls
+  // the first URL out of the message and opens a modal for cadence +
+  // stop_after (context-menu commands can't carry option dropdowns). Same
+  // name conventions as the other Capture commands: no slash character.
+  {
+    name: 'Capture url-source',
+    type: 3,
+  },
 ];
 
 const url = `https://discord.com/api/v10/applications/${DISCORD_APP_ID}/guilds/${DISCORD_GUILD_ID}/commands`;

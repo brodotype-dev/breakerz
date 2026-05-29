@@ -5,6 +5,14 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-29 — "Capture url-source" message context-menu (long-press → track a link)
+
+Adds a long-press / right-click → Apps → **"Capture url-source"** entry alongside the existing "Capture insight" / "Capture break-price" context-menu commands, so an SME can track a link someone dropped in `#breakiq-insights` without retyping it into the slash command. The handler ([app/api/discord/interactions/route.ts](app/api/discord/interactions/route.ts)) pulls the first http(s) URL out of the target message and opens a **modal** for cadence + stop_after — context-menu commands can't carry option dropdowns, and Discord modals support only text inputs, so the two fields are typed (pre-filled with `weekly` / `3_months`, validated on submit with forgiving normalization so `one off` / `3-months` resolve correctly). The URL rides through the modal as a pre-filled, editable field since modal submits don't re-resolve the target message. New `extractFirstUrl()` helper.
+
+Both entry points (the `/url-source` slash command and this context menu → modal) now converge on a shared `captureUrlSource()` extracted from the old `handleUrlSource` body — record the source, first scrape, stage the proposal, reply — so the recurring-cron path, the slash path, and the context-menu path all behave identically. Modal submits are routed by `custom_id` (`url_source_modal` → new handler, `refine_modal:*` → refine). No schema change. **Operational: re-run `register-discord-commands.mjs` after deploy** so the new context-menu entry appears (the only schema-changing command this round).
+
+---
+
 ## 2026-05-28 — Discord proposal buttons clear reliably on apply/discard (incl. after refine)
 
 Long-standing annoyance: clicking ✅ Apply or ❌ Discard on an `/insight` / `/break-price` / `/url-source` proposal **after it had been refined** applied the update to the DB but left the buttons live — click ✅ again and you'd get the "That insight was already applied" ephemeral. PR #114 (2026-05-17) thought it fixed this by switching the post-hoc message edit from the interaction webhook (`@original`) to `editChannelMessage` (channel API by message id), but it kept failing on refined-message lineage.
