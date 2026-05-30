@@ -5,6 +5,42 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-30 — Per-player PYP prediction on `/break/[slug]` (fair-value EV model + P(zero hits))
+
+Adds a **PYP** (Pick Your Player) column to the player table on `/break/[slug]`, predicting what a breaker would charge to pre-pick that player's slot in the user's currently-configured break. Built on a fair-value expected-value foundation so the number is interpretable as a buyer's break-even price, not a breaker's logistical case-cost split.
+
+**Math (lib/player-pyp-pricing.ts):**
+
+```
+For a hobby case of H boxes:
+  E[$ from player p in this case] = H × Σ_p_variants(EV_v × 1/odds_per_box_v)
+                                  = H × hobbyEVPerBox_p
+For C cases:
+  fair_pyp_p   = C × H × hobbyEVPerBox_p
+  market_pyp_p = fair_pyp_p × MARKET_MARKUP_BY_LIFECYCLE(lifecycle)
+```
+
+`H` (boxes per case) is derived as `products.hobby_autos_per_case / Σ_all_variants(1/hobby_odds_per_box)` — the existing-but-previously-unused `hobby_autos_per_case` column is repurposed as the per-case anchor, no schema change. Same `MARKET_MARKUP_BY_LIFECYCLE` (1.40 pre-release / 1.20 live / 1.05 dormant) the team-slot display layer already uses, so PYP and the team-slot model use the same lifecycle markup contract.
+
+**Why fair-value and not case-cost-share** (initial v1 took the wrong path and was rewritten before shipping): a PYP slot is a financial instrument — the buyer pays now and receives a random payoff in pulls. Fair price = expected dollar value of those pulls. The case-cost-share formula (`hobbyBreakCost × player_weight / total_weight`) conflates the breaker's economic break-even ("I need to recoup case cost × markup") with the buyer's expected value, and the two diverge for any product that isn't a sell-out PYP. Fair-value math gives a coherent baseline that captured `/break-price` PYP asks can be deltaed against.
+
+**The lottery signal (P(zero hits) chip):** each row also renders a Poisson `P(0) = e^(-λ)` chip where `λ = expected pulls of this player across the configured break`. Color-coded: green (<25% chance of no hit, near-certainty), orange (25–50%, real lottery), red (≥50%, half-or-more chance of nothing). Tooltip explains "buyers often pay above fair value for the upside on low-λ slots." This is the variance honesty the model owes the user — a $1,500 slot with a 60% no-hit chance is a very different bet than a $1,500 slot with a 5% no-hit chance.
+
+**Column rendering is gated.** New per-call coverage check (`oddsCoverageOk`): the PYP column only appears when ≥30% of priced players have at least one variant with `hobby_odds`. Panini and similar odds-less products skip it cleanly — no degenerate "every player has equal share" math leaks through. Per-product hobby_autos_per_case must be set; we default to existing `16` for products without an explicit value.
+
+**v1 scope:** hobby only. BD / jumbo PYP rare in practice; will extend once `/break-price` captures reveal demand.
+
+**Data plumbing:** `lib/break-page-data.ts` adds a sixth parallel query loading per-variant `hobby_odds` keyed by `player_product_id` (uses an inner-join filter on `product_id` to sidestep gotcha #11's 200-UUID `.in()` cap). `BreakPageClient` recomputes `computePlayerPyp(rawPlayers, variantsMap, config, hobby_autos_per_case, lifecycle)` reactively on every break-config change — same pattern as `computeSlotPricing`.
+
+**Two BACKLOG entries surfaced and recorded** while building this:
+
+- **P0 — PYT (team-slot) math: audit + rebuild on fair-value EV foundation.** The existing `computeSlotPricing` in `lib/engine.ts` uses the same case-cost-share formula this rewrite specifically moved away from. The critique that drove PYP to fair-value applies equally to PYT. Worth aligning both pricing paths on one mathematical foundation; capture Market Delta state before the rewrite to A/B old vs. new model against the same captured asks. See `docs/BACKLOG.md` for the full plan, rollout shape, and pre-flight cautions.
+- **P1 — Variance-aware refinements (post fair-value foundation).** Two deferred-from-v1 items: (a) risk-premium markup that grows with `1/λ` (low-pull-rate slots trade above fair value in practice; we'll tune α from `/break-price` capture deltas once they accumulate), and (b) a "carve out as PYP" toggle per player that excludes them from the team-slot denominator and re-prices both — captures Kyle's hybrid-break pattern ("separate out rookies + big players, make them their own spot"). Both refinements are materially easier with both paths on fair-value EV; don't tune from constants in a vacuum.
+
+**Admin Market Delta player-scope Δ column deferred to a one-day follow-up PR** to keep this one scoped. `/break-price` PYP captures will start accumulating against the model immediately; the admin Δ surface is the validation loop and lands next.
+
+---
+
 ## 2026-05-29 — Consumer sign-in (`/auth/signin`) + waitlist link repurposed
 
 Caught testing the end-to-end signup flow: once you finish creating an account there's no door back into the app from `getbreakiq.com`. The waitlist had a single "Already have an invite? Create your account →" link pointing to `/auth/signup`, which without an invite code returns an error page. And the in-product fallback (the "Sign in →" button on the signup page's "this invite was already used" error state) pointed to `/auth/signin` — **a route that didn't exist**, so even the existing escape hatch was a 404.

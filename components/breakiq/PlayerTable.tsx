@@ -6,6 +6,7 @@ import ChaseHeartButton, { ChaseSetProvider } from '@/components/breakiq/ChaseHe
 import PricingFeedback from '@/components/breakiq/PricingFeedback';
 import { InfoTip } from '@/components/breakiq/ds';
 import type { BreakFormat, PlayerWithPricing } from '@/lib/types';
+import type { PlayerPypResult } from '@/lib/player-pyp-pricing';
 
 type RiskFlagEntry = { flagType: string; note: string };
 
@@ -19,6 +20,19 @@ interface Props {
   // Plan B: lifecycle-aware market markup applied to slot cost at display.
   // 1 = no markup (model EV shown as-is). Caller resolves via getMarketMarkup().
   marketMarkup?: number;
+  /**
+   * Per-player PYP (Pick Your Player) slot-price predictions for the
+   * current break configuration. When provided AND showPyp is true, the
+   * table renders a "PYP slot" column with the market price + a small
+   * P(zero hits) chip. See lib/player-pyp-pricing.ts for the math.
+   */
+  pypByPlayerProductId?: Map<string, PlayerPypResult>;
+  /**
+   * Whether to render the PYP column. Caller should set this only when the
+   * product publishes per-variant odds densely enough that PYP predictions
+   * are meaningful (oddsCoverageOk from computePlayerPyp).
+   */
+  showPyp?: boolean;
 }
 
 function pickSlot(row: PlayerWithPricing, fmt: BreakFormat): number {
@@ -32,13 +46,15 @@ function pickSlot(row: PlayerWithPricing, fmt: BreakFormat): number {
 const HIDE_BELOW_SM = 'hidden sm:table-cell';
 const HIDE_BELOW_MD = 'hidden md:table-cell';
 
-const COLUMNS: Array<{
+type ColumnDef = {
   key: string;
   label: string;
   align: 'left' | 'center' | 'right';
   hide?: string;
   tip?: string;
-}> = [
+};
+
+const BASE_COLUMNS: ColumnDef[] = [
   { key: 'rank',     label: '#',         align: 'left',  hide: HIDE_BELOW_SM },
   { key: 'player',   label: 'Player',    align: 'left'  },
   { key: 'team',     label: 'Team',      align: 'left',  hide: HIDE_BELOW_MD },
@@ -51,8 +67,38 @@ const COLUMNS: Array<{
   { key: 'feedback', label: '',          align: 'right' },
 ];
 
-export default function PlayerTable({ players, fetching = false, viewFormat, riskFlagMap = new Map(), onPlayerClick, productId = null, marketMarkup = 1 }: Props) {
+const PYP_COLUMN: ColumnDef = {
+  key: 'pyp',
+  label: 'PYP',
+  align: 'right',
+  tip:
+    "Pick-Your-Player slot price. Fair-value: expected $ of this player's autograph pulls across your configured break, marked up for the live-product window. The chip shows P(zero hits) — anything ≳25% is a real lottery, anything ≲5% is near-certainty.",
+};
+
+/** Insert the PYP column right after Slot Cost when active. */
+function buildColumns(showPyp: boolean): ColumnDef[] {
+  if (!showPyp) return BASE_COLUMNS;
+  const idx = BASE_COLUMNS.findIndex(c => c.key === 'slotCost');
+  return [
+    ...BASE_COLUMNS.slice(0, idx + 1),
+    PYP_COLUMN,
+    ...BASE_COLUMNS.slice(idx + 1),
+  ];
+}
+
+export default function PlayerTable({
+  players,
+  fetching = false,
+  viewFormat,
+  riskFlagMap = new Map(),
+  onPlayerClick,
+  productId = null,
+  marketMarkup = 1,
+  pypByPlayerProductId,
+  showPyp = false,
+}: Props) {
   const showMarketMarkup = marketMarkup !== 1;
+  const columns = buildColumns(showPyp);
   if (players.length === 0) {
     return (
       <div
@@ -71,7 +117,7 @@ export default function PlayerTable({ players, fetching = false, viewFormat, ris
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
-              {COLUMNS.map(col => (
+              {columns.map(col => (
                 <th
                   key={col.key}
                   className={`px-2 sm:px-4 py-2.5 terminal-label whitespace-nowrap text-${col.align} ${col.hide ?? ''}`}
@@ -166,6 +212,11 @@ export default function PlayerTable({ players, fetching = false, viewFormat, ris
                       <td className="px-2 sm:px-4 py-2.5 text-right">
                         <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>—</span>
                       </td>
+                      {showPyp && (
+                        <td className="px-2 sm:px-4 py-2.5 text-right">
+                          <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>—</span>
+                        </td>
+                      )}
                       <td className={`px-2 sm:px-4 py-2.5 text-right ${HIDE_BELOW_SM}`}>
                         <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>—</span>
                       </td>
@@ -231,6 +282,45 @@ export default function PlayerTable({ players, fetching = false, viewFormat, ris
                           );
                         })()}
                       </td>
+                      {showPyp && (() => {
+                        const pyp = pypByPlayerProductId?.get(row.id);
+                        if (!pyp) {
+                          return (
+                            <td className="px-2 sm:px-4 py-2.5 text-right">
+                              <span className="font-mono text-xs" style={{ color: 'var(--text-disabled)' }}>—</span>
+                            </td>
+                          );
+                        }
+                        // P(zero hits) bucketed for color/messaging. Mirrors the
+                        // confidence-tier spectrum used elsewhere in the row.
+                        const p0pct = pyp.pZeroHits * 100;
+                        const isLottery = p0pct >= 25;
+                        const chipColor = p0pct >= 50
+                          ? { bg: 'rgba(239,68,68,0.12)', fg: 'var(--signal-pass)',  border: 'rgba(239,68,68,0.35)' }
+                          : p0pct >= 25
+                          ? { bg: 'rgba(245,158,11,0.12)', fg: 'var(--accent-orange)', border: 'rgba(245,158,11,0.35)' }
+                          : { bg: 'rgba(34,197,94,0.10)',  fg: 'var(--signal-buy)',   border: 'rgba(34,197,94,0.30)' };
+                        return (
+                          <td className="px-2 sm:px-4 py-2.5 text-right">
+                            <div className="flex flex-col items-end leading-tight gap-0.5">
+                              <span className="font-mono text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                                {formatCurrency(pyp.pypMarket)}
+                              </span>
+                              <span
+                                className="text-[9px] font-medium px-1 py-0.5 rounded border whitespace-nowrap"
+                                title={`Expected hits across the configured break: ${pyp.expectedHits.toFixed(2)}. Poisson P(zero) = ${p0pct.toFixed(1)}%. ${isLottery ? 'Lottery-shaped slot — buyers often pay above fair value for the upside.' : 'Near-certainty hit.'}`}
+                                style={{
+                                  backgroundColor: chipColor.bg,
+                                  color: chipColor.fg,
+                                  borderColor: chipColor.border,
+                                }}
+                              >
+                                P(0) {p0pct.toFixed(0)}%
+                              </span>
+                            </div>
+                          </td>
+                        );
+                      })()}
                       <td className={`px-2 sm:px-4 py-2.5 text-right font-mono text-xs ${HIDE_BELOW_SM}`} style={{ color: 'var(--signal-buy)' }}>{formatCurrency(row.maxPay)}</td>
                       <td className="px-2 sm:px-4 py-2.5 text-right">
                         <PricingFeedback
