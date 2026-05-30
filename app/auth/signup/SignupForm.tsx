@@ -145,7 +145,7 @@ export default function SignupForm({
           )}
 
           <OAuthButtons
-            redirectTo={buildRedirectTo(inviteCode)}
+            getRedirectTo={() => buildRedirectTo(inviteCode)}
             disabled={!accepted}
             onBeforeRedirect={guardAccepted}
           />

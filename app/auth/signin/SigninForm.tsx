@@ -77,7 +77,7 @@ export default function SigninForm() {
         </div>
       ) : (
         <>
-          <OAuthButtons redirectTo={buildRedirectTo()} />
+          <OAuthButtons getRedirectTo={buildRedirectTo} />
 
           <div className="flex items-center gap-3">
             <div className="flex-1 border-t" style={{ borderColor: 'var(--terminal-border)' }} />

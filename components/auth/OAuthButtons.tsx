@@ -13,12 +13,18 @@ import { createBrowserClient } from '@supabase/ssr';
  * `onBeforeRedirect` lets the signup page gate clicks behind its legal-
  * acceptance checkbox — return false to abort. Signin has no gate.
  */
+// `getRedirectTo` is intentionally a function, not a string: the redirect
+// URL has to read `window.location.origin`, which doesn't exist during
+// Next's static prerender of the auth pages. Evaluating it lazily inside
+// the click handler keeps the component prerender-safe. Earlier shape
+// (`redirectTo: string`) crashed the /auth/signin build with
+// `ReferenceError: window is not defined`.
 export function OAuthButtons({
-  redirectTo,
+  getRedirectTo,
   disabled = false,
   onBeforeRedirect,
 }: {
-  redirectTo: string;
+  getRedirectTo: () => string;
   disabled?: boolean;
   onBeforeRedirect?: () => boolean;
 }) {
@@ -30,7 +36,7 @@ export function OAuthButtons({
     const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
     await supabase.auth.signInWithOAuth({
       provider,
-      options: { redirectTo },
+      options: { redirectTo: getRedirectTo() },
     });
   }
 
