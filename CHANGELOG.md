@@ -5,6 +5,22 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-29 — Consumer sign-in (`/auth/signin`) + waitlist link repurposed
+
+Caught testing the end-to-end signup flow: once you finish creating an account there's no door back into the app from `getbreakiq.com`. The waitlist had a single "Already have an invite? Create your account →" link pointing to `/auth/signup`, which without an invite code returns an error page. And the in-product fallback (the "Sign in →" button on the signup page's "this invite was already used" error state) pointed to `/auth/signin` — **a route that didn't exist**, so even the existing escape hatch was a 404.
+
+**Fix — three pieces:**
+
+- **New [/auth/signin](app/auth/signin/page.tsx) + [SigninForm](app/auth/signin/SigninForm.tsx)** — Google + Discord OAuth alongside an email **magic link** (`supabase.auth.signInWithOtp` with `shouldCreateUser: false` so a fat-fingered email can't silently mint a new auth user, which would then trip the callback's invite gate). No invite-code requirement, no legal-acceptance checkbox (returning user already accepted at signup; the callback honors their existing acceptance untouched). Footer links back to the waitlist for users who don't have an account yet.
+- **New shared [components/auth/OAuthButtons.tsx](components/auth/OAuthButtons.tsx)** — the Google + Discord buttons (with their SVG icons) extracted out of [SignupForm](app/auth/signup/SignupForm.tsx), now consumed by both signup and signin so the two pages can't drift visually. Signup wires `onBeforeRedirect={guardAccepted}` so the legal-checkbox gate is preserved exactly as before.
+- **Waitlist link repurposed** — `"Already have an invite? Create your account →"` → `"Already have an account? Sign in →"` pointing to the new route. The old "create your account" path is dead weight now that every new invite is a unique URL embedded in the approval email — anyone clicking the link without an invite code was hitting an error anyway.
+
+**Callback unchanged**: [/auth/callback](app/auth/callback/route.ts) already skipped the invite-code gate for returning users (line 73's `isNewProfile` check), so signin via the new page round-trips cleanly without needing `invite_code` / `accept_terms` / `accept_privacy` params on the redirect URL. New-user-without-profile hitting signin gets bounced to `/waitlist?error=missing_invite` — correct.
+
+**Admin login stays separate** at `/admin/login` — different mechanism (email + password) and intentionally not advertised on the marketing surface.
+
+---
+
 ## 2026-05-29 — "Capture url-source" message context-menu (long-press → track a link)
 
 Adds a long-press / right-click → Apps → **"Capture url-source"** entry alongside the existing "Capture insight" / "Capture break-price" context-menu commands, so an SME can track a link someone dropped in `#breakiq-insights` without retyping it into the slash command. The handler ([app/api/discord/interactions/route.ts](app/api/discord/interactions/route.ts)) pulls the first http(s) URL out of the target message and opens a **modal** for cadence + stop_after — context-menu commands can't carry option dropdowns, and Discord modals support only text inputs, so the two fields are typed (pre-filled with `weekly` / `3_months`, validated on submit with forgiving normalization so `one off` / `3-months` resolve correctly). The URL rides through the modal as a pre-filled, editable field since modal submits don't re-resolve the target message. New `extractFirstUrl()` helper.

@@ -255,9 +255,9 @@ export default function WaitlistPage() {
             </div>
 
             <p className="text-center text-xs mt-4" style={{ color: 'var(--text-disabled)' }}>
-              Already have an invite?{' '}
-              <Link href="/auth/signup" style={{ color: 'var(--accent-blue)' }}>
-                Create your account →
+              Already have an account?{' '}
+              <Link href="/auth/signin" style={{ color: 'var(--accent-blue)' }}>
+                Sign in →
               </Link>
             </p>
 
