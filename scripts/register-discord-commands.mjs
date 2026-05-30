@@ -147,6 +147,23 @@ const commands = [
         required: false,
         max_length: 500,
       },
+      // Tabular price-sheet inputs. Either url (public Google Sheet) or file
+      // (.xlsx/.xls/.csv) — converted to a markdown table that Claude reads
+      // alongside any screenshots/narrative. Mixed sheets (team buckets +
+      // per-player rows) extract BOTH types in one call.
+      {
+        name: 'url',
+        description: 'Optional: a PUBLIC Google Sheets link (must be shared "anyone with the link")',
+        type: 3, // STRING
+        required: false,
+        max_length: 500,
+      },
+      {
+        name: 'file',
+        description: 'Optional: .xlsx / .xls / .csv price sheet (≤5 MB)',
+        type: 11, // ATTACHMENT
+        required: false,
+      },
     ],
   },
   // Message context-menu — long-press / right-click any message in Discord

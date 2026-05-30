@@ -21,6 +21,8 @@ import {
 } from '@/lib/insights-parser';
 import { deriveSourceType } from '@/lib/types';
 import { scrapeEditorial } from '@/lib/scrapers/editorial';
+import { detectGoogleSheet, fetchGoogleSheetCsv } from '@/lib/google-sheets';
+import { xlsxBufferToMarkdown, csvTextToMarkdown } from '@/lib/tabular-extract';
 import {
   computeStopAt,
   computeNextScrapeAt,
@@ -764,6 +766,9 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
   const narrative = options.find(o => o.name === 'narrative')?.value?.trim();
   const notes = options.find(o => o.name === 'notes')?.value?.trim();
   const productId = options.find(o => o.name === 'product')?.value?.trim() || undefined;
+  const urlOption = options.find(o => o.name === 'url')?.value?.trim() || undefined;
+  const fileId = options.find(o => o.name === 'file')?.value;
+  const fileAttachment = fileId ? interaction.data.resolved?.attachments?.[fileId] : undefined;
 
   // Collect every present screenshot slot. The registrar exposes 5 numbered
   // slots; users fill what they have. Order is preserved (slot 1 → slot 5)
@@ -776,14 +781,70 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
     })
     .filter((a): a is DiscordAttachment => !!a);
 
-  if (!narrative && attachments.length === 0) {
-    return ephemeralReply('Include at least a narrative or a screenshot.');
+  if (!narrative && attachments.length === 0 && !urlOption && !fileAttachment) {
+    return ephemeralReply('Include at least a narrative, a screenshot, a Google Sheets URL, or a .xlsx/.csv file.');
   }
 
   // Defer immediately — image fetch + Claude vision call can take several
   // seconds and we only have 3s to ack.
   after(async () => {
     try {
+      // Convert a Google Sheets URL or .xlsx/.csv attachment into a markdown
+      // table that parseBreakPrice can chew on. File takes precedence when
+      // both are supplied — direct upload beats indirect link. Short-circuit
+      // here with a contributor-actionable error rather than letting the
+      // parser silently fail downstream.
+      let tabularText: string | undefined;
+      let tabularSource: string | undefined;
+
+      if (fileAttachment) {
+        const ext = (fileAttachment.filename.match(/\.([^.]+)$/i)?.[1] ?? '').toLowerCase();
+        if (!['xlsx', 'xls', 'csv'].includes(ext)) {
+          await editInteractionResponse(interaction.application_id, interaction.token, {
+            content: `⚠️ Unsupported file type: \`.${ext || '?'}\`. Supported: .xlsx, .xls, .csv`,
+          });
+          return;
+        }
+        try {
+          const res = await fetch(fileAttachment.url);
+          if (!res.ok) throw new Error(`fetch HTTP ${res.status}`);
+          const buf = Buffer.from(await res.arrayBuffer());
+          if (buf.byteLength > 5_000_000) {
+            throw new Error(`${(buf.byteLength / 1024 / 1024).toFixed(1)} MB exceeds 5 MB cap`);
+          }
+          const result = ext === 'csv'
+            ? csvTextToMarkdown(buf.toString('utf8'))
+            : xlsxBufferToMarkdown(buf);
+          tabularText = result.markdown;
+          tabularSource = `file: ${fileAttachment.filename} · ${result.rowCount} data row${result.rowCount === 1 ? '' : 's'}${result.truncated ? ' (truncated)' : ''}`;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'parse failed';
+          await editInteractionResponse(interaction.application_id, interaction.token, {
+            content: `⚠️ Couldn't read \`${fileAttachment.filename}\`: ${msg}`,
+          });
+          return;
+        }
+      } else if (urlOption) {
+        if (!detectGoogleSheet(urlOption)) {
+          await editInteractionResponse(interaction.application_id, interaction.token, {
+            content: `⚠️ The \`url\` option on /break-price supports Google Sheets only. For other web pages, use \`/url-source\`.`,
+          });
+          return;
+        }
+        try {
+          const csv = await fetchGoogleSheetCsv(urlOption);
+          const result = csvTextToMarkdown(csv);
+          tabularText = result.markdown;
+          tabularSource = `Google Sheets · ${result.rowCount} data row${result.rowCount === 1 ? '' : 's'}${result.truncated ? ' (truncated)' : ''}`;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'fetch failed';
+          await editInteractionResponse(interaction.application_id, interaction.token, {
+            content: `⚠️ ${msg}`,
+          });
+          return;
+        }
+      }
+
       // Parallel fetch + per-image sniff. Mirrors the context-menu handler
       // pattern: one bad image aborts with per-index error reporting so the
       // proposal is honest rather than partial.
@@ -832,7 +893,7 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
         .filter((f): f is { ok: true; idx: number; base64: string; mediaType: BreakPriceImageMediaType } => f.ok)
         .map(f => ({ base64: f.base64, mediaType: f.mediaType }));
 
-      const { updates, debug } = await parseBreakPrice({ narrative, notes, images, productId });
+      const { updates, debug } = await parseBreakPrice({ narrative, notes, images, productId, tabularText });
 
       if (updates.length === 0) {
         const excerpt = debug.rawResponseExcerpt.replace(/```/g, "'''").slice(0, 500);
@@ -840,7 +901,8 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
           content:
             `❓ Couldn't extract a slot ask.\n` +
             (narrative ? `> ${narrative.slice(0, 200)}\n` : '') +
-            `\n**Debug:** products=${debug.productsCount}, parsedRaw=${debug.parsedRawCount}, images=${images.length}, drops=${debug.droppedReasons.length}\n` +
+            (tabularSource ? `> _Tabular input: ${tabularSource}_\n` : '') +
+            `\n**Debug:** products=${debug.productsCount}, parsedRaw=${debug.parsedRawCount}, images=${images.length}, tabular=${debug.hadTabular ? 'yes' : 'no'}, drops=${debug.droppedReasons.length}\n` +
             (debug.droppedReasons.length > 0
               ? `**Dropped:** ${debug.droppedReasons.slice(0, 4).join(' | ')}\n\n`
               : '\n') +
@@ -854,7 +916,7 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
         .insert({
           discord_channel_id: interaction.channel_id,
           source_user_id: user.id,
-          source_text: narrative ?? (images.length > 0 ? `[${images.length} screenshot${images.length === 1 ? '' : 's'}: ${attachments.map(a => a.filename).join(', ')}]` : ''),
+          source_text: narrative ?? (tabularSource ? `[${tabularSource}${urlOption ? ` ${urlOption}` : ''}]` : (images.length > 0 ? `[${images.length} screenshot${images.length === 1 ? '' : 's'}: ${attachments.map(a => a.filename).join(', ')}]` : '')),
           parsed_updates: updates as unknown as object,
           source_kind: 'break_price',
           // Persist CDN URLs so the Refine flow can re-fetch + re-parse
@@ -1002,9 +1064,23 @@ async function handleBreakPriceFromMessage(interaction: SlashCommandInteraction)
     const mt = (a.content_type ?? '').split(';')[0].trim();
     return VALID_IMAGE_TYPES.has(mt);
   });
+  // .xlsx / .xls / .csv on the target message → tabular price-sheet path.
+  // First match wins (rare to attach multiple sheets on one message).
+  const tabularAttachment = allAttachments.find(a => {
+    const ext = (a.filename.match(/\.([^.]+)$/i)?.[1] ?? '').toLowerCase();
+    return ext === 'xlsx' || ext === 'xls' || ext === 'csv';
+  });
+  // Google Sheets URL in the message content → tabular path too. Same
+  // restriction as the slash command: only Sheets links here; other web
+  // pages route through /url-source.
+  const rawContent = target.content?.trim() ?? '';
+  const sheetUrlMatch = rawContent.match(/https?:\/\/docs\.google\.com\/spreadsheets\/[^\s<>()]+/i);
+  const sheetUrl = sheetUrlMatch ? sheetUrlMatch[0].replace(/[.,!?:;'")\]]+$/, '') : null;
 
-  if (imageAttachments.length === 0) {
-    return ephemeralReply('No image attachments on that message. Attach screenshots (PNG/JPEG/WebP/GIF) and try again.');
+  if (imageAttachments.length === 0 && !tabularAttachment && !sheetUrl) {
+    return ephemeralReply(
+      'No screenshots, .xlsx/.csv attachment, or Google Sheets link on that message. Add one and try again, or fire `/break-price` directly.',
+    );
   }
 
   if (imageAttachments.length > CONTEXT_MENU_IMAGE_CAP) {
@@ -1013,10 +1089,58 @@ async function handleBreakPriceFromMessage(interaction: SlashCommandInteraction)
     );
   }
 
-  const narrative = target.content?.trim() || undefined;
+  // If the target's text is JUST the Sheets URL we already extracted, don't
+  // re-pass it as narrative — it'd confuse the prompt. Otherwise keep it.
+  const narrative = (() => {
+    const t = rawContent;
+    if (!t) return undefined;
+    if (sheetUrl && t === sheetUrl) return undefined;
+    return t;
+  })();
 
   after(async () => {
     try {
+      // Process the tabular source first (if any) so a parse / fetch error
+      // gives an actionable reply BEFORE we burn the image fetches.
+      let tabularText: string | undefined;
+      let tabularSource: string | undefined;
+
+      if (tabularAttachment) {
+        const ext = (tabularAttachment.filename.match(/\.([^.]+)$/i)?.[1] ?? '').toLowerCase();
+        try {
+          const res = await fetch(tabularAttachment.url);
+          if (!res.ok) throw new Error(`fetch HTTP ${res.status}`);
+          const buf = Buffer.from(await res.arrayBuffer());
+          if (buf.byteLength > 5_000_000) {
+            throw new Error(`${(buf.byteLength / 1024 / 1024).toFixed(1)} MB exceeds 5 MB cap`);
+          }
+          const result = ext === 'csv'
+            ? csvTextToMarkdown(buf.toString('utf8'))
+            : xlsxBufferToMarkdown(buf);
+          tabularText = result.markdown;
+          tabularSource = `file: ${tabularAttachment.filename} · ${result.rowCount} data row${result.rowCount === 1 ? '' : 's'}${result.truncated ? ' (truncated)' : ''}`;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'parse failed';
+          await editInteractionResponse(interaction.application_id, interaction.token, {
+            content: `⚠️ Couldn't read \`${tabularAttachment.filename}\`: ${msg}`,
+          });
+          return;
+        }
+      } else if (sheetUrl) {
+        try {
+          const csv = await fetchGoogleSheetCsv(sheetUrl);
+          const result = csvTextToMarkdown(csv);
+          tabularText = result.markdown;
+          tabularSource = `Google Sheets · ${result.rowCount} data row${result.rowCount === 1 ? '' : 's'}${result.truncated ? ' (truncated)' : ''}`;
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'fetch failed';
+          await editInteractionResponse(interaction.application_id, interaction.token, {
+            content: `⚠️ ${msg}`,
+          });
+          return;
+        }
+      }
+
       // Parallel fetch. One bad image is reported by index and aborts
       // the parse — keeps the proposal honest rather than partial.
       const fetched = await Promise.all(
@@ -1060,15 +1184,19 @@ async function handleBreakPriceFromMessage(interaction: SlashCommandInteraction)
         .filter((f): f is { ok: true; idx: number; base64: string; mediaType: BreakPriceImageMediaType } => f.ok)
         .map(f => ({ base64: f.base64, mediaType: f.mediaType }));
 
-      const { updates, debug } = await parseBreakPrice({ narrative, images });
+      const { updates, debug } = await parseBreakPrice({ narrative, images, tabularText });
 
       if (updates.length === 0) {
         const excerpt = debug.rawResponseExcerpt.replace(/```/g, "'''").slice(0, 500);
+        const inputSummary = [
+          images.length > 0 ? `${images.length} screenshot${images.length === 1 ? '' : 's'}` : null,
+          tabularSource,
+        ].filter(Boolean).join(' + ') || 'no input';
         await editInteractionResponse(interaction.application_id, interaction.token, {
           content:
-            `❓ Couldn't extract a slot ask from ${images.length} screenshot${images.length === 1 ? '' : 's'}.\n` +
+            `❓ Couldn't extract a slot ask from ${inputSummary}.\n` +
             (narrative ? `> ${narrative.slice(0, 200)}\n` : '') +
-            `\n**Debug:** products=${debug.productsCount}, parsedRaw=${debug.parsedRawCount}, drops=${debug.droppedReasons.length}\n` +
+            `\n**Debug:** products=${debug.productsCount}, parsedRaw=${debug.parsedRawCount}, tabular=${debug.hadTabular ? 'yes' : 'no'}, drops=${debug.droppedReasons.length}\n` +
             (debug.droppedReasons.length > 0
               ? `**Dropped:** ${debug.droppedReasons.slice(0, 4).join(' | ')}\n\n`
               : '\n') +
@@ -1077,21 +1205,30 @@ async function handleBreakPriceFromMessage(interaction: SlashCommandInteraction)
         return;
       }
 
+      const sourceTextSummary = (() => {
+        if (narrative) return narrative;
+        if (tabularSource) return `[message context menu: ${tabularSource}${sheetUrl ? ` ${sheetUrl}` : ''}]`;
+        return `[message context menu: ${imageAttachments.length} screenshot${imageAttachments.length === 1 ? '' : 's'}]`;
+      })();
       const { data: pending, error: pendErr } = await supabaseAdmin
         .from('pending_insights')
         .insert({
           discord_channel_id: interaction.channel_id,
           source_user_id: user.id,
-          source_text:
-            narrative ??
-            `[message context menu: ${imageAttachments.length} screenshot${imageAttachments.length === 1 ? '' : 's'}]`,
+          source_text: sourceTextSummary,
           parsed_updates: updates as unknown as object,
           source_kind: 'break_price',
-          source_attachments: imageAttachments.map(a => ({
-            url: a.url,
-            filename: a.filename,
-            content_type: a.content_type ?? null,
-          })),
+          // Image CDN URLs only — re-fetch on Refine. Tabular sources don't
+          // get persisted here: Google Sheets URL is in source_text and an
+          // xlsx attachment's URL has the same Discord-CDN 24h window as
+          // images. Adding tabular re-fetch on Refine is a follow-up.
+          source_attachments: imageAttachments.length > 0
+            ? imageAttachments.map(a => ({
+                url: a.url,
+                filename: a.filename,
+                content_type: a.content_type ?? null,
+              }))
+            : null,
         })
         .select('id')
         .single();
@@ -1105,8 +1242,12 @@ async function handleBreakPriceFromMessage(interaction: SlashCommandInteraction)
 
       const lines = updates.map((u, i) => `**${i + 1}.** ${summarizeUpdate(u)}`);
       const handle = user.global_name ?? user.username;
-      const imageNote = `_(message context menu · ${imageAttachments.length} screenshot${imageAttachments.length === 1 ? '' : 's'})_`;
-      const sourceLabel = narrative ? `> ${narrative.slice(0, 240)}\n${imageNote}` : imageNote;
+      const inputBits = [
+        imageAttachments.length > 0 ? `${imageAttachments.length} screenshot${imageAttachments.length === 1 ? '' : 's'}` : null,
+        tabularSource,
+      ].filter(Boolean);
+      const inputNote = `_(message context menu · ${inputBits.join(' + ') || 'no input'})_`;
+      const sourceLabel = narrative ? `> ${narrative.slice(0, 240)}\n${inputNote}` : inputNote;
       const { header: targetsHeader } = buildTargetsHeader(updates);
       const targetsBlock = targetsHeader ? `${targetsHeader}\n\n` : '';
       const wrapping =
