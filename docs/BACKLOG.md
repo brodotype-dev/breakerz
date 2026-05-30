@@ -42,6 +42,52 @@ See the [full plan](plans/2026-05-10-topps-series-split.md) for verified data, c
 
 ---
 
+### PYT (team-slot) math: audit + rebuild on fair-value EV foundation
+**Effort:** ~1 day (refactor + UI rewire) + 1–2 days of calibration once captures accumulate
+**Surfaces affected:** [lib/engine.ts](../lib/engine.ts) `computeSlotPricing` + every consumer surface that renders team slots (TeamSlotsTable, PlayerTable's slot columns, `/analysis`, /admin/market-delta, the verdict pipeline in `lib/analysis.ts`).
+
+**Why P0:** Surfaced 2026-05-30 while building the player-PYP prediction. Through a gambling-math lens, the existing PYT pipeline is built on the wrong foundation:
+
+> `hobbySlotCost = hobbyBreakCost × (hobbyWeight / totalHobbyWeight)`
+> — `lib/engine.ts:78`
+
+That's **case-cost-share** — "the breaker's economic break-even split by EV-weight." It conflates two distinct things: (a) the breaker's logistical need to recoup `case_cost × markup`, and (b) the buyer's fair-value expectation (`E[$ of team's pulls across the break]`). These converge only for sell-out PYP/PYT products. For mixed products and any case where the breaker isn't strictly priced to break-even, the share-of-case-cost formula systematically distorts per-team prices.
+
+**Fair-value reformulation** (mirrors what `lib/player-pyp-pricing.ts` now does for players):
+
+```
+For a hobby case of H boxes:
+  E[$ from team T in this case] = H × Σ_team_players(hobbyEVPerBox_p)
+
+For C cases:
+  fair_team_slot_T   = C × H × Σ_team_players(hobbyEVPerBox_p)
+  market_team_slot_T = fair_team_slot_T × MARKET_MARKUP_BY_LIFECYCLE(lifecycle)
+  P(zero hits for team) ≈ e^(-λ_T) where λ_T = expected_hits across team
+```
+
+Same `H = hobby_autos_per_case / total_pull_rate_per_box` derivation. Same Poisson variance surface.
+
+**What this changes operationally:**
+- Sum of fair team slots no longer equals case-cost × markup — it equals total expected pulls × markup. For a typical break that should be in the same ballpark, but **the per-team distribution shifts**: stacked-with-stars teams (Yankees, Dodgers) get more expensive, weak-roster teams get cheaper, and the spread better matches how breakers actually price.
+- Becomes consistent with the player-PYP model so PYT and PYP can be summed/compared coherently (today they can't — different units).
+- Unlocks the variance signal on team slots too ("Cavs slot: 12% chance of zero autos in 1 hobby case") which is genuinely actionable for buyers.
+
+**Pre-flight cautions:**
+- This is a math change to a shipped pipeline. Capture Market Delta Watch state for the current week of `/break-price` and `/break/[slug]` traffic BEFORE rebuild, so we can A/B the new vs. old model against the same captured asks.
+- Consider feature-flagging behind `feature_flags.fair_value_pyt_enabled` for the first deploy. Compute both, show the new number, keep the old computation alongside in `pricing_cache` for one rollback cycle.
+- The `AnalysisResultPanel` verdict (`BUY/WATCH/PASS`) currently keys off `evMid` vs. `askPrice` — that math doesn't change; only the slot decomposition does.
+- Consumer copy on `/break/[slug]` may need a one-line refresh — the team slot price is now "expected pulls × markup" not "your share of the case cost."
+
+**Rollout shape:**
+1. Refactor `computeSlotPricing` to compute fair-value EV per team alongside the legacy case-cost-share (both paths, behind a flag).
+2. Surface both numbers in the admin Market Delta dashboard. Watch the delta improve (we expect lower P90 absolute delta with fair-value).
+3. Flip the consumer surfaces to fair-value once two weeks of captures confirm the calibration is better.
+4. Delete the legacy path.
+
+**Related:** P1 — Variance-aware PYP/PYT refinements (below) becomes meaningful once both pricing paths are on fair-value foundation.
+
+---
+
 ## Priority 1 — High value, no external blockers
 
 > **Note (2026-05-12):** P1 ordering was re-evaluated against the strategic reframe captured in [docs/strategy/north-star-and-feedback-loop.md](strategy/north-star-and-feedback-loop.md) and [docs/strategy/product-strategy-map.md](strategy/product-strategy-map.md). The three entries below — Market Delta Watch, In-Stream Delivery, and Pull-Data Capture — are the items that turn the model work we've already shipped into a measurable, defensible product. They precede pure model-improvement items because measurement-driven validation now unblocks all the model work.
@@ -126,6 +172,34 @@ Related: see Section 4 of [docs/strategy/north-star-and-feedback-loop.md](strate
 3. **Mobile push (PWA)** — pre-configured "watching this product" alerts. We already have PWA infrastructure; alert-payload design is the main work
 
 **Recommendation:** Discord bot first. Lowest cost to market, validates the in-stream-decision-support hypothesis, builds on existing Discord investment.
+
+---
+
+### Variance-aware PYP/PYT refinements (post fair-value foundation)
+**Effort:** ~2–3 days end-to-end
+**Prerequisite:** P0 "PYT math: audit + rebuild on fair-value EV foundation" must land first — these refinements only make sense once both PYP and PYT are on the same fair-value EV foundation.
+
+Two refinements deferred from the initial PYP v1 ship (deliberately shipped without these so we'd have unmodulated fair-value as a baseline and could see, via `/break-price` capture deltas, where the gaps actually are):
+
+**1. Risk-premium markup that grows with 1/λ.** PYP/PYT slots are lottery tickets, not annuities. A slot with λ = 5 expected pulls trades close to fair value (buyers can model it as an annuity). A slot with λ = 0.3 — say a rare-pull marquee player in a single-case break — has ~74% probability of zero hits. Real breakers charge a *premium* over fair value on low-λ slots because the upside-only payoff is itself worth something to risk-seeking buyers (or the breaker needs the carry from a sold slot to cover the unsold rest). Shape:
+
+```
+risk_premium(λ) = 1 + α × (1/λ - 1/λ_baseline)+
+                  capped at some reasonable ceiling
+market_price = fair_value × MARKET_MARKUP × risk_premium(λ)
+```
+
+Where `α` and the cap are tuned from `/break-price` capture deltas: fit `α` to minimize median absolute delta between predicted and captured market prices, broken out by `λ` bucket. The fair-value model + Poisson `P(zero hits)` we shipped in v1 already produce λ, so this is purely a markup-stage refinement — no new data, no new schema. Surface the risk-premium component in `WhyThisPriceCard` so the decomposition shows "fair $1,200 × 1.20 lifecycle × 1.35 low-λ premium = $1,944."
+
+**2. "Carve out as PYP" toggle per player.** On `/break/[slug]`, a star-player row gets a small "PYP this slot" toggle. When activated, the player is excluded from the team-slot denominator and re-priced as a standalone PYP slot. Both the team's PYT and the player's PYP update in real time. Captures the hybrid break pattern Kyle described (2026-05-29): "Separate out the rookies and big players from the team spots and make them their own spot." Math is straightforward once both pricing paths are on fair-value EV — currently impossible because they use different units (case-cost-share vs. expected-EV). Implementation:
+
+- New state on `/break/[slug]`: `Set<player_product_id>` of carved players
+- Pass through `computeSlotPricing` and `computePlayerPyp` as exclusion lists
+- Single recompute pass; both surfaces update reactively
+- Persist the carve-out set in URL state so configurations are shareable / linkable
+- Discord `/break-price` capture rows can also flag whether a particular ask was "as part of hybrid" — informs which buyer math the breaker is using
+
+Both refinements get materially easier once captures accumulate. Don't tune in a vacuum; tune from real data.
 
 ---
 

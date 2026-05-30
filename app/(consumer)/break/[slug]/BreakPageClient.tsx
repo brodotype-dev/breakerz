@@ -13,6 +13,7 @@ import TeamChip from '@/components/breakiq/TeamChip';
 import AnalysisResultPanel from '@/components/breakiq/AnalysisResultPanel';
 import { SegmentedControl, CounterInput, LargeCTAButton, InfoTip } from '@/components/breakiq/ds';
 import { computeSlotPricing, computeTeamSlotPricing, formatCurrency } from '@/lib/engine';
+import { computePlayerPyp } from '@/lib/player-pyp-pricing';
 import { getMarketMarkup } from '@/lib/market-markup';
 import { PH_EVENTS } from '@/lib/posthog-events';
 import type { AnalysisResult as AnalysisResultShape } from '@/lib/analysis';
@@ -37,7 +38,7 @@ export default function BreakPageClient({ product, dataPromise }: BreakPageClien
   // when settled. The cached server function in lib/break-page-data.ts
   // means second visits in the same 60s window are near-instant.
   const data = use(dataPromise);
-  const { rawPlayers, chaseCards, riskFlagRecord, hypeObsRows, askingPriceObsRows } = data;
+  const { rawPlayers, chaseCards, riskFlagRecord, hypeObsRows, askingPriceObsRows, variantsByPlayerProductId } = data;
 
   // riskFlagMap as an actual Map (children expect Map; record is for
   // JSON serialization across the server/client boundary)
@@ -112,6 +113,21 @@ export default function BreakPageClient({ product, dataPromise }: BreakPageClien
   const lifecycle = (product.lifecycle_status ?? 'live') as 'pre_release' | 'live' | 'dormant';
   const isPreRelease = lifecycle === 'pre_release';
   const isDormant = lifecycle === 'dormant';
+
+  // PYP (Pick Your Player) prediction. Fair-value EV model — see
+  // lib/player-pyp-pricing.ts. Column only renders when the product
+  // publishes per-variant hobby_odds densely enough that the model has
+  // signal; Panini / odds-less products skip it cleanly. Recomputes
+  // reactively as the user changes hobby case count.
+  const variantsMap = useMemo(() => {
+    const m = new Map<string, Array<{ hobby_odds: number | null }>>();
+    for (const [ppId, variants] of Object.entries(variantsByPlayerProductId)) m.set(ppId, variants);
+    return m;
+  }, [variantsByPlayerProductId]);
+  const pypTable = useMemo(
+    () => computePlayerPyp(rawPlayers, variantsMap, config, product.hobby_autos_per_case ?? null, lifecycle),
+    [rawPlayers, variantsMap, config, product.hobby_autos_per_case, lifecycle],
+  );
 
   // Step #3 — side-by-side comparison. Bucket the team-scoped asking-price
   // observations so TeamSlotsTable can render them next to each row, and
@@ -556,6 +572,8 @@ export default function BreakPageClient({ product, dataPromise }: BreakPageClien
             onPlayerClick={id => setActivePlayerProductId(id)}
             productId={product.id}
             marketMarkup={getMarketMarkup(lifecycle)}
+            pypByPlayerProductId={pypTable.byPlayerProductId}
+            showPyp={pypTable.oddsCoverageOk}
           />
         )}
       </div>

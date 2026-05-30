@@ -65,6 +65,16 @@ export interface BreakPageData {
    *  per-player adjustments above; these are passed through for UI use. */
   hypeObsRows: HypeObsRow[];
   askingPriceObsRows: AskingPriceObsRow[];
+  /**
+   * Per-variant hobby_odds bucketed by player_product_id. Used by the
+   * PYP (Pick Your Player) prediction on the client — fed into
+   * lib/player-pyp-pricing.ts alongside the user's break config. Loaded
+   * here so the client doesn't have to make a second round trip; only
+   * `hobby_odds` is selected since that's all the math needs. Stored as
+   * a plain object so it serializes cleanly to the client (wraps in Map
+   * on the other side).
+   */
+  variantsByPlayerProductId: Record<string, Array<{ hobby_odds: number | null }>>;
 }
 
 /**
@@ -108,14 +118,17 @@ async function loadBreakPageDataRaw(product: ProductWithSport): Promise<BreakPag
       riskFlagRecord: {},
       hypeObsRows: [],
       askingPriceObsRows: [],
+      variantsByPlayerProductId: {},
     };
   }
 
   const ppIds = players.map(p => p.id);
 
-  // Phase 2 — 5 parallel observation fetches. Same five queries that
-  // the page's useEffect was firing client-side, just run server-side now.
-  const [flagsRes, hypeRes, cascadeProductRes, cascadeGlobalRes, askRes] = await Promise.all([
+  // Phase 2 — 6 parallel observation/variant fetches. Same five queries that
+  // the page's useEffect was firing client-side, plus the variants fetch for
+  // PYP. The variants query uses a product_id inner-join (not .in('pp', N))
+  // so it sidesteps gotcha #11 (Kong's 200-UUID limit on .in() filters).
+  const [flagsRes, hypeRes, cascadeProductRes, cascadeGlobalRes, askRes, variantsRes] = await Promise.all([
     supabaseAdmin
       .from('player_risk_flags')
       .select('player_product_id, flag_type, note')
@@ -149,6 +162,12 @@ async function loadBreakPageDataRaw(product: ProductWithSport): Promise<BreakPag
       .eq('observation_type', 'asking_price')
       .gt('expires_at', nowIso)
       .is('superseded_at', null),
+    // Variant odds for PYP — only hobby_odds is needed (v1 PYP is hobby-only).
+    // Inner-join filter avoids the 200-UUID Kong cap on .in() filters.
+    supabaseAdmin
+      .from('player_product_variants')
+      .select('player_product_id, hobby_odds, player_products!inner(product_id)')
+      .eq('player_products.product_id', productId),
   ]);
 
   // ─── Risk flags: bucket by player_product_id + compute per-pp adjustment ─
@@ -223,12 +242,21 @@ async function loadBreakPageDataRaw(product: ProductWithSport): Promise<BreakPag
     };
   });
 
+  // ─── Variants: bucket by player_product_id (hobby_odds only) ────────────
+  const variantsByPlayerProductId: Record<string, Array<{ hobby_odds: number | null }>> = {};
+  for (const v of (variantsRes.data ?? []) as Array<{ player_product_id: string; hobby_odds: number | null }>) {
+    const arr = variantsByPlayerProductId[v.player_product_id] ?? [];
+    arr.push({ hobby_odds: v.hobby_odds });
+    variantsByPlayerProductId[v.player_product_id] = arr;
+  }
+
   return {
     rawPlayers,
     chaseCards,
     riskFlagRecord,
     hypeObsRows,
     askingPriceObsRows: (askRes.data ?? []) as AskingPriceObsRow[],
+    variantsByPlayerProductId,
   };
 }
 
