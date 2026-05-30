@@ -1275,13 +1275,14 @@ ${input.refineCorrection.trim()}
 
 The contributor saw your prior attempt and is telling you what to fix. When the correction names a specific product, team, player, price, format, or composition, USE THAT — do not second-guess it. If the correction names a player by nickname or with a typo (e.g. "Webanyama" → "Victor Wembanyama"), match to the canonical roster entry. If you previously picked Player/Team/Product A and the correction says "this is Player/Team/Product B," the answer is B and only B.
 ` : ''}${hadTabular ? `
-The contributor pasted a breaker's PRICE SHEET (Google Sheets, .xlsx, or .csv). Below is the sheet rendered as a markdown table. Treat it as ONE capture session — emit one asking_price row per priced entity (team buckets AND player rows in the same call).
+The contributor pasted a breaker's PRICE SHEET (Google Sheets, .xlsx, or .csv). Below is the workbook rendered as markdown. When MULTIPLE TABS were exported they appear as separate \`## <tab name>\` sections — treat all of them as one capture session and emit one asking_price row per priced entity across every tab (team buckets AND player rows in the same call).
 """
 ${input.tabularText!.trim()}
 """
 
 PRICE SHEET RULES:
-- Two price columns are common: PYT (Pick Your Team / Price You Trade) and PYP (Pick Your Player / Price You Pay). Each row in a PYP-priced sheet is a separate slot ask. Use the column whose values are reasonable as an asking price for that product+entity; when both PYT and PYP are present and the row names an INDIVIDUAL PLAYER, prefer the player-specific column (typically labeled "PYP PRICE" / "PYP" / "Player Price"). When the row names a TEAM bucket, use the team-specific column.
+- The \`## <tab name>\` header often identifies what the tab's price column means. Common conventions: a tab named "PYT PRICE" / "PYT" / "Team Price" lists per-TEAM slot prices (rows are team buckets). A tab named "PYP PRICE" / "PYP" / "Player Price" lists per-PLAYER slot prices (rows are individual players). Use the tab name as a strong hint for both row-scope and which column the asking price lives in.
+- When a single tab has TWO price columns (e.g. a PYT column AND a PYP column side by side), use the column whose values are reasonable as an asking price for that product+entity. For player rows prefer the player-specific column; for team rows prefer the team-specific column.
 - Column headers vary across sheets: "PYT PRICE", "PYP PRICE", "PYP", "Price", "Ask", "Slot Price". Identify by header text; fall back to the only price column when only one is present.
 - One row per priced entity → one asking_price update. Apply the team-row vs player-row rules below. Sheets that mix team buckets and player rows are NORMAL — emit BOTH types.
 - Source for sheet-derived captures: use "other".

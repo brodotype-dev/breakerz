@@ -13,15 +13,16 @@ Two related improvements from a Bowman Sapphire testing session:
 
 **Use case 2 — tabular price-sheet ingestion.** A breaker's canonical price artifact is a Google Sheet or .xlsx with team buckets + per-player rows + PYT (Pick Your Team / Price You Trade) and PYP (Pick Your Player / Price You Pay) columns. New optional `url` and `file` options on `/break-price` (and the same on `Capture break-price` message context menu, which now also detects Sheets links in message content + xlsx/csv attachments on the target post). The handler converts:
 
-- **Google Sheets URL** → public CSV export via `https://docs.google.com/spreadsheets/d/<id>/export?format=csv&gid=<gid>` (no OAuth; sheet must be shared "anyone with the link"). Clear contributor-actionable error on 401/403/404.
+- **Google Sheets URL** → public **xlsx** export (`/export?format=xlsx`) — the whole workbook in one fetch, so the same parser handles uploaded files AND Sheets URLs. No OAuth; sheet must be shared "anyone with the link." Clear contributor-actionable error on 401/403/404.
 - **.xlsx / .xls / .csv attachment** → parsed with the `xlsx` lib we already ship for checklist imports.
 
-Both paths produce a markdown table (`lib/tabular-extract.ts`, capped at 400 rows × 12 cols × 60K total chars) that rides into `parseBreakPrice` via a new `tabularText` input. The prompt activates a price-sheet section when present, with rules for identifying the PYP column (prefer player-specific column for player rows; team-specific column for team buckets; fall back to the only price column when only one is present). Same `asking_price` observation rows out, same ✅/✏️/❌ staging — no schema change.
+**Multi-tab aware** ([lib/tabular-extract.ts](lib/tabular-extract.ts)): both paths iterate every sheet in the workbook, classify each by a numeric-density heuristic, and **drop tabs that don't look like price sheets** (mostly prose, few $-shaped numbers — e.g. a Bowman Sapphire sheet's `NOTES *NBA*` / `NOTES *NCAA*` tabs get skipped while `PYT PRICE` / `PYP PRICE` survive). Surviving tabs concat into one markdown blob with `## <tab name>` headers so Claude can tell which rows came from PYT vs PYP (and use the tab name as a strong hint for both row-scope and which column is the asking price). Caps: 400 rows × 12 cols per tab, 60 K total chars across all tabs. If no tab passes the heuristic the handler short-circuits with a friendly "didn't have any tabs that look like a price sheet" message (with the list of skipped tab names). The prompt activates a price-sheet section when present, with rules for identifying the PYP column (prefer player-specific column for player rows; team-specific column for team buckets; fall back to the only price column when only one is present). Same `asking_price` observation rows out, same ✅/✏️/❌ staging — no schema change.
+
+**Why not just route notes tabs through `parseInsights`?** Same separation we enforce for editorial scraping (Slice 3): a competitor breaker's notes shouldn't auto-import as our SME's sentiment / breakerz_score read. If those notes turn out to be valuable, the right move is `/insight` from the SME's own voice. Deferred.
 
 **Restriction on the URL option:** Google Sheets only. Generic web URLs route through `/url-source` (different workflow — recurring cadence + parseInsights). Clear error message on non-Sheets URLs.
 
 **Other minor caveats:**
-- One sheet's first tab only — multi-tab sheets need the SME to paste the second tab's URL (carries its own `gid`). Multi-tab loop is a follow-up if it becomes operational pain.
 - File precedence > URL when both supplied.
 - Refine on tabular captures doesn't yet re-fetch + re-parse the source (URL stored in `source_text`, xlsx in `source_attachments` via Discord CDN's 24h window) — kept the refine branch unchanged this round; that's a one-line addition we can do once we see how the captures actually flow.
 

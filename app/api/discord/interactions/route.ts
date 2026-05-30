@@ -21,8 +21,8 @@ import {
 } from '@/lib/insights-parser';
 import { deriveSourceType } from '@/lib/types';
 import { scrapeEditorial } from '@/lib/scrapers/editorial';
-import { detectGoogleSheet, fetchGoogleSheetCsv } from '@/lib/google-sheets';
-import { xlsxBufferToMarkdown, csvTextToMarkdown } from '@/lib/tabular-extract';
+import { detectGoogleSheet, fetchGoogleSheetXlsx } from '@/lib/google-sheets';
+import { xlsxBufferToMarkdown, csvTextToMarkdown, formatTabularSourceLabel } from '@/lib/tabular-extract';
 import {
   computeStopAt,
   computeNextScrapeAt,
@@ -815,8 +815,17 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
           const result = ext === 'csv'
             ? csvTextToMarkdown(buf.toString('utf8'))
             : xlsxBufferToMarkdown(buf);
+          if (!result.markdown) {
+            const skipMsg = result.sheetsSkipped.length > 0
+              ? ` Skipped ${result.sheetsSkipped.length} tab${result.sheetsSkipped.length === 1 ? '' : 's'} (no pricing-shaped content): ${result.sheetsSkipped.join(', ')}.`
+              : '';
+            await editInteractionResponse(interaction.application_id, interaction.token, {
+              content: `⚠️ \`${fileAttachment.filename}\` didn't have any tabs that look like a price sheet (need $-shaped values).${skipMsg}`,
+            });
+            return;
+          }
           tabularText = result.markdown;
-          tabularSource = `file: ${fileAttachment.filename} · ${result.rowCount} data row${result.rowCount === 1 ? '' : 's'}${result.truncated ? ' (truncated)' : ''}`;
+          tabularSource = formatTabularSourceLabel(`file: ${fileAttachment.filename}`, result);
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'parse failed';
           await editInteractionResponse(interaction.application_id, interaction.token, {
@@ -832,10 +841,19 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
           return;
         }
         try {
-          const csv = await fetchGoogleSheetCsv(urlOption);
-          const result = csvTextToMarkdown(csv);
+          const buf = await fetchGoogleSheetXlsx(urlOption);
+          const result = xlsxBufferToMarkdown(buf);
+          if (!result.markdown) {
+            const skipMsg = result.sheetsSkipped.length > 0
+              ? ` Skipped ${result.sheetsSkipped.length} tab${result.sheetsSkipped.length === 1 ? '' : 's'} (no pricing-shaped content): ${result.sheetsSkipped.join(', ')}.`
+              : '';
+            await editInteractionResponse(interaction.application_id, interaction.token, {
+              content: `⚠️ That sheet didn't have any tabs that look like a price sheet (need $-shaped values).${skipMsg}`,
+            });
+            return;
+          }
           tabularText = result.markdown;
-          tabularSource = `Google Sheets · ${result.rowCount} data row${result.rowCount === 1 ? '' : 's'}${result.truncated ? ' (truncated)' : ''}`;
+          tabularSource = formatTabularSourceLabel('Google Sheets', result);
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'fetch failed';
           await editInteractionResponse(interaction.application_id, interaction.token, {
@@ -1117,8 +1135,17 @@ async function handleBreakPriceFromMessage(interaction: SlashCommandInteraction)
           const result = ext === 'csv'
             ? csvTextToMarkdown(buf.toString('utf8'))
             : xlsxBufferToMarkdown(buf);
+          if (!result.markdown) {
+            const skipMsg = result.sheetsSkipped.length > 0
+              ? ` Skipped ${result.sheetsSkipped.length} tab${result.sheetsSkipped.length === 1 ? '' : 's'} (no pricing-shaped content): ${result.sheetsSkipped.join(', ')}.`
+              : '';
+            await editInteractionResponse(interaction.application_id, interaction.token, {
+              content: `⚠️ \`${tabularAttachment.filename}\` didn't have any tabs that look like a price sheet (need $-shaped values).${skipMsg}`,
+            });
+            return;
+          }
           tabularText = result.markdown;
-          tabularSource = `file: ${tabularAttachment.filename} · ${result.rowCount} data row${result.rowCount === 1 ? '' : 's'}${result.truncated ? ' (truncated)' : ''}`;
+          tabularSource = formatTabularSourceLabel(`file: ${tabularAttachment.filename}`, result);
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'parse failed';
           await editInteractionResponse(interaction.application_id, interaction.token, {
@@ -1128,10 +1155,19 @@ async function handleBreakPriceFromMessage(interaction: SlashCommandInteraction)
         }
       } else if (sheetUrl) {
         try {
-          const csv = await fetchGoogleSheetCsv(sheetUrl);
-          const result = csvTextToMarkdown(csv);
+          const buf = await fetchGoogleSheetXlsx(sheetUrl);
+          const result = xlsxBufferToMarkdown(buf);
+          if (!result.markdown) {
+            const skipMsg = result.sheetsSkipped.length > 0
+              ? ` Skipped ${result.sheetsSkipped.length} tab${result.sheetsSkipped.length === 1 ? '' : 's'} (no pricing-shaped content): ${result.sheetsSkipped.join(', ')}.`
+              : '';
+            await editInteractionResponse(interaction.application_id, interaction.token, {
+              content: `⚠️ That sheet didn't have any tabs that look like a price sheet (need $-shaped values).${skipMsg}`,
+            });
+            return;
+          }
           tabularText = result.markdown;
-          tabularSource = `Google Sheets · ${result.rowCount} data row${result.rowCount === 1 ? '' : 's'}${result.truncated ? ' (truncated)' : ''}`;
+          tabularSource = formatTabularSourceLabel('Google Sheets', result);
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'fetch failed';
           await editInteractionResponse(interaction.application_id, interaction.token, {
