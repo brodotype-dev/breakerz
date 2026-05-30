@@ -5,6 +5,35 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-29 — `/break-price` accepts price sheets (Google Sheets / .xlsx / .csv) + extracts team AND player rows
+
+Two related improvements from a Bowman Sapphire testing session:
+
+**Use case 1 — team + player extraction in one capture.** Sending two screenshots to `/break-price` — one with team-bucket prices, one with per-player prices — was returning only the team rows. The parser already supported `scope_type='player'`, but `parseBreakPrice`'s prompt rules were team-biased (all examples and the "one row per slot ask" wording defaulted to team thinking). Added an explicit rule that **team rows AND player rows are both slot asks** and must be extracted from the same capture, with concrete patterns for player-row name extraction (`"Cooper Flagg, Dallas Mavericks (RC) (AUTOS) $2400"` → `scope_type='player'`, name = `"Cooper Flagg"`, ignore parentheticals, match to active-product roster). New rule also names the multi-player insert / generic bucket rows that should be **skipped** (`yz*UNLISTED ACC(7 PLAYER AUTOS)`, `z*UNLISTED Chicago Bulls (Autos)`, totals, blanks) so they don't pollute observations.
+
+**Use case 2 — tabular price-sheet ingestion.** A breaker's canonical price artifact is a Google Sheet or .xlsx with team buckets + per-player rows + PYT (Pick Your Team / Price You Trade) and PYP (Pick Your Player / Price You Pay) columns. New optional `url` and `file` options on `/break-price` (and the same on `Capture break-price` message context menu, which now also detects Sheets links in message content + xlsx/csv attachments on the target post). The handler converts:
+
+- **Google Sheets URL** → public **xlsx** export (`/export?format=xlsx`) — the whole workbook in one fetch, so the same parser handles uploaded files AND Sheets URLs. No OAuth; sheet must be shared "anyone with the link." Clear contributor-actionable error on 401/403/404.
+- **.xlsx / .xls / .csv attachment** → parsed with the `xlsx` lib we already ship for checklist imports.
+
+**Multi-tab aware** ([lib/tabular-extract.ts](lib/tabular-extract.ts)): both paths iterate every sheet in the workbook, classify each by a numeric-density heuristic, and **drop tabs that don't look like price sheets** (mostly prose, few $-shaped numbers — e.g. a Bowman Sapphire sheet's `NOTES *NBA*` / `NOTES *NCAA*` tabs get skipped while `PYT PRICE` / `PYP PRICE` survive). Surviving tabs concat into one markdown blob with `## <tab name>` headers so Claude can tell which rows came from PYT vs PYP (and use the tab name as a strong hint for both row-scope and which column is the asking price). Caps: 400 rows × 12 cols per tab, 60 K total chars across all tabs. If no tab passes the heuristic the handler short-circuits with a friendly "didn't have any tabs that look like a price sheet" message (with the list of skipped tab names). The prompt activates a price-sheet section when present, with rules for identifying the PYP column (prefer player-specific column for player rows; team-specific column for team buckets; fall back to the only price column when only one is present). Same `asking_price` observation rows out, same ✅/✏️/❌ staging — no schema change.
+
+**Why not just route notes tabs through `parseInsights`?** Same separation we enforce for editorial scraping (Slice 3): a competitor breaker's notes shouldn't auto-import as our SME's sentiment / breakerz_score read. If those notes turn out to be valuable, the right move is `/insight` from the SME's own voice. Deferred.
+
+**Restriction on the URL option:** Google Sheets only. Generic web URLs route through `/url-source` (different workflow — recurring cadence + parseInsights). Clear error message on non-Sheets URLs.
+
+**Other minor caveats:**
+- File precedence > URL when both supplied.
+- Refine on tabular captures doesn't yet re-fetch + re-parse the source (URL stored in `source_text`, xlsx in `source_attachments` via Discord CDN's 24h window) — kept the refine branch unchanged this round; that's a one-line addition we can do once we see how the captures actually flow.
+
+**Files:** new [lib/google-sheets.ts](lib/google-sheets.ts), new [lib/tabular-extract.ts](lib/tabular-extract.ts), [lib/insights-parser.ts](lib/insights-parser.ts) (BreakPriceInput + prompt), [app/api/discord/interactions/route.ts](app/api/discord/interactions/route.ts) (both handlers), [scripts/register-discord-commands.mjs](scripts/register-discord-commands.mjs) (two new options).
+
+**Operational:** re-run `register-discord-commands.mjs` after deploy so the new `url`/`file` options appear on `/break-price` in Discord. The Capture break-price message context menu didn't change schema, so it'll work without re-registration once code deploys.
+
+**Open follow-up surfaced by this work (not in this PR):** we don't have a per-player PYP prediction in the engine yet. Team-slot PYP-equivalent exists (TeamSlotsTable × lifecycle market-markup), but per-player PYP needs `EV × expected_hits_per_break × markup` where `expected_hits_per_break = cases_in_break / hobby_odds(player)`. All inputs exist (`pricing_cache.ev_*`, `player_product_variants.hobby_odds`, `lib/market-markup.ts`); the wiring doesn't. Slated as the immediate next slice so the PYP observations this PR captures have a model number to delta against.
+
+---
+
 ## 2026-05-29 — "Capture url-source" message context-menu (long-press → track a link)
 
 Adds a long-press / right-click → Apps → **"Capture url-source"** entry alongside the existing "Capture insight" / "Capture break-price" context-menu commands, so an SME can track a link someone dropped in `#breakiq-insights` without retyping it into the slash command. The handler ([app/api/discord/interactions/route.ts](app/api/discord/interactions/route.ts)) pulls the first http(s) URL out of the target message and opens a **modal** for cadence + stop_after — context-menu commands can't carry option dropdowns, and Discord modals support only text inputs, so the two fields are typed (pre-filled with `weekly` / `3_months`, validated on submit with forgiving normalization so `one off` / `3-months` resolve correctly). The URL rides through the modal as a pre-filled, editable field since modal submits don't re-resolve the target message. New `extractFirstUrl()` helper.

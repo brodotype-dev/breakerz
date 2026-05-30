@@ -1110,6 +1110,16 @@ export interface BreakPriceInput {
    * then drop short narratives or screenshots for slot after slot.
    */
   productId?: string;
+  /**
+   * Tabular capture: a breaker's price sheet rendered as a markdown table
+   * (lib/tabular-extract.ts converts XLSX/CSV/Google Sheets into this shape).
+   * When present, the prompt activates a price-sheet section that knows
+   * about PYT vs PYP columns, player-row vs team-bucket naming patterns,
+   * and multi-player insert bucket rows that should be skipped. One sheet
+   * = one parse pass = N asking_price rows (team buckets + player rows
+   * emitted in the same call).
+   */
+  tabularText?: string;
 }
 
 export interface BreakPriceResult {
@@ -1122,6 +1132,7 @@ export interface BreakPriceResult {
     droppedReasons: string[];
     hadImage: boolean;
     hadNarrative: boolean;
+    hadTabular: boolean;
   };
 }
 
@@ -1142,6 +1153,7 @@ export async function parseBreakPrice(input: BreakPriceInput): Promise<BreakPric
   })();
   const hadImage = images.length > 0;
   const imageCount = images.length;
+  const hadTabular = !!input.tabularText?.trim();
 
   const baseDebug = {
     rosterSize: 0,
@@ -1151,9 +1163,10 @@ export async function parseBreakPrice(input: BreakPriceInput): Promise<BreakPric
     droppedReasons: [] as string[],
     hadImage,
     hadNarrative,
+    hadTabular,
   };
 
-  if (!hadNarrative && !hadImage) {
+  if (!hadNarrative && !hadImage && !hadTabular) {
     return { updates: [], debug: { ...baseDebug, rawResponseExcerpt: 'no input' } };
   }
 
@@ -1261,6 +1274,18 @@ ${input.refineCorrection.trim()}
 """
 
 The contributor saw your prior attempt and is telling you what to fix. When the correction names a specific product, team, player, price, format, or composition, USE THAT — do not second-guess it. If the correction names a player by nickname or with a typo (e.g. "Webanyama" → "Victor Wembanyama"), match to the canonical roster entry. If you previously picked Player/Team/Product A and the correction says "this is Player/Team/Product B," the answer is B and only B.
+` : ''}${hadTabular ? `
+The contributor pasted a breaker's PRICE SHEET (Google Sheets, .xlsx, or .csv). Below is the workbook rendered as markdown. When MULTIPLE TABS were exported they appear as separate \`## <tab name>\` sections — treat all of them as one capture session and emit one asking_price row per priced entity across every tab (team buckets AND player rows in the same call).
+"""
+${input.tabularText!.trim()}
+"""
+
+PRICE SHEET RULES:
+- The \`## <tab name>\` header often identifies what the tab's price column means. Common conventions: a tab named "PYT PRICE" / "PYT" / "Team Price" lists per-TEAM slot prices (rows are team buckets). A tab named "PYP PRICE" / "PYP" / "Player Price" lists per-PLAYER slot prices (rows are individual players). Use the tab name as a strong hint for both row-scope and which column the asking price lives in.
+- When a single tab has TWO price columns (e.g. a PYT column AND a PYP column side by side), use the column whose values are reasonable as an asking price for that product+entity. For player rows prefer the player-specific column; for team rows prefer the team-specific column.
+- Column headers vary across sheets: "PYT PRICE", "PYP PRICE", "PYP", "Price", "Ask", "Slot Price". Identify by header text; fall back to the only price column when only one is present.
+- One row per priced entity → one asking_price update. Apply the team-row vs player-row rules below. Sheets that mix team buckets and player rows are NORMAL — emit BOTH types.
+- Source for sheet-derived captures: use "other".
 ` : ''}${hadImage
     ? imageCount === 1
       ? '\nA screenshot is attached. Read it carefully — Whatnot, Fanatics Live, eBay listings, and Discord stream embeds all encode the product / team / price / format / platform in their UI.'
@@ -1288,6 +1313,12 @@ Schema for each asking_price update:
 
 RULES:
 - One asking_price ROW PER DISCRETE SLOT ASK. A screenshot with 18 team rows ("Diamondbacks $625, Red Sox $6000, Cubs $625, …") = 18 separate asking_price updates, one per row. A breaker stream listing four slot prices = four updates.
+- TEAM ROWS AND PLAYER ROWS ARE BOTH SLOT ASKS — extract BOTH in the same capture:
+    · Team row: rows naming a team or team-aggregate bucket ("Cavaliers slot $165", "z*ALL Cleveland Cavaliers", "All Cavs", "ALL Dodgers $800") → scope_type='team', scope_team = canonical full team name (e.g. "Cleveland Cavaliers", not "Cavs" or "z*ALL Cleveland Cavaliers"), NO scope_player_id.
+    · Player row: rows naming an individual player ("Cooper Flagg, Dallas Mavericks (RC) — $2400", "Wemby $4500") → scope_type='player', scope_player_id = matched roster id, NO scope_team.
+    · For player-row name extraction: take the player name from before the FIRST comma if present ("Cooper Flagg, Dallas Mavericks" → "Cooper Flagg"); ignore parenthetical metadata ("(RC)", "(TREASURED TALENTS)", "(CHROME+SELECTION AUTOS)", etc.). Match the name to the active-product roster with the nickname rules below. If no match, drop that row.
+    · Captures that mix team buckets and player rows are NORMAL (the entire point of a PYP/PYT sheet) — emit BOTH types in the same response, do not pick one.
+- SKIP rows that don't name a single resolvable entity: multi-player insert buckets ("yz*UNLISTED ACC(7 PLAYER AUTOS) - Boston College, CAL, Duke, …", "yz*UNLISTED BIG 10(4 PLAYER AUTOS)", "z*UNLISTED Chicago Bulls (Autos)"), totals, header / column-label rows, blank rows, footnotes. These aren't asks for a specific team or player and would corrupt downstream analysis.
 - DISTINGUISH a price-sheet (N rows, each is its own slot) from a multi-team BUNDLE (one combined ask spanning multiple teams). A bundle like "Yankees + Red Sox + Dodgers for $2,400" → return empty array (single combined ask not yet supported, see edge-cases doc). A list like "Yankees $800 / Red Sox $750 / Dodgers $850" → three rows.
 - AVAILABLE FORMATS PRECEDES TITLE OVERRIDE (highest priority): each product in the list above ships with a "formats=…" tag listing which formats it actually has SKUs for (hobby/bd/jumbo). A composition key MUST be one of the product's available formats. If the title says "JUMBO" but the product's formats tag is just "hobby" (specialty product like Bowman Best, Topps Chrome, Topps Cosmic Chrome, Topps Finest, Pristine, Donruss Optic), the title is describing the BREAK NAME (a half-case sized hobby break), not the product format — emit { "hobby": null } for those rows. Same logic for BD/DELIGHT titles on jumbo-only or hobby-only products. The product's "line=" tag is a soft hint: lines containing "_best", "_chrome", "_cosmic", "_finest", "_pristine", "_optic", "_sapphire", "_platinum" are typically specialty/hobby-only.
 - COMPOSITION RULES — sparse map of formats involved per slot:
