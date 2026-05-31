@@ -29,9 +29,13 @@ const FORMAT_DEFS: Array<{ key: BreakFormat; label: string; short: string }> = [
 interface BreakPageClientProps {
   product: ProductWithSport;
   dataPromise: Promise<BreakPageData>;
+  /** PYT rewrite flag — when true, computeSlotPricing uses fair-value EV
+   *  for hobby team slots instead of case-cost-share. Falls back silently
+   *  inside the engine if odds coverage is too thin. */
+  fairValuePytEnabled?: boolean;
 }
 
-export default function BreakPageClient({ product, dataPromise }: BreakPageClientProps) {
+export default function BreakPageClient({ product, dataPromise, fairValuePytEnabled = false }: BreakPageClientProps) {
   // ─── Suspense unwrap ───────────────────────────────────────────────────
   // React 19's `use()` hook: throws while the promise is pending (which
   // surfaces the parent <Suspense>'s fallback), resolves to the data
@@ -99,7 +103,23 @@ export default function BreakPageClient({ product, dataPromise }: BreakPageClien
   }, []);
 
   // ─── Engine computations ──────────────────────────────────────────────
-  const players = useMemo(() => computeSlotPricing(rawPlayers, config), [rawPlayers, config]);
+  // Variants map for fair_value_ev mode. Built lazily — only the PYP column
+  // needed it before, now the engine does too when the flag is on.
+  const variantsMap = useMemo(() => {
+    const m = new Map<string, Array<{ hobby_odds: number | null }>>();
+    for (const [ppId, variants] of Object.entries(variantsByPlayerProductId)) m.set(ppId, variants);
+    return m;
+  }, [variantsByPlayerProductId]);
+  const players = useMemo(
+    () => computeSlotPricing(
+      rawPlayers,
+      config,
+      fairValuePytEnabled ? 'fair_value_ev' : 'case_cost_share',
+      fairValuePytEnabled ? variantsMap : undefined,
+      fairValuePytEnabled ? (product.hobby_autos_per_case ?? null) : null,
+    ),
+    [rawPlayers, config, fairValuePytEnabled, variantsMap, product.hobby_autos_per_case],
+  );
   const teamSlots = useMemo(() => computeTeamSlotPricing(players, config), [players, config]);
 
   const pricedCount = players.filter(p => p.pricingSource !== 'none').length;
@@ -119,11 +139,7 @@ export default function BreakPageClient({ product, dataPromise }: BreakPageClien
   // publishes per-variant hobby_odds densely enough that the model has
   // signal; Panini / odds-less products skip it cleanly. Recomputes
   // reactively as the user changes hobby case count.
-  const variantsMap = useMemo(() => {
-    const m = new Map<string, Array<{ hobby_odds: number | null }>>();
-    for (const [ppId, variants] of Object.entries(variantsByPlayerProductId)) m.set(ppId, variants);
-    return m;
-  }, [variantsByPlayerProductId]);
+  // (variantsMap above is reused — same shape both PYP + fair_value_ev want.)
   const pypTable = useMemo(
     () => computePlayerPyp(rawPlayers, variantsMap, config, product.hobby_autos_per_case ?? null, lifecycle),
     [rawPlayers, variantsMap, config, product.hobby_autos_per_case, lifecycle],

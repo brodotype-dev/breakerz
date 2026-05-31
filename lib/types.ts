@@ -235,6 +235,13 @@ export interface PlayerWithPricing extends PlayerProduct {
   hype_score_adj?: number;
   prospect_score_adj?: number;
   cascade_score_adj?: number;
+  // Set only when computeSlotPricing runs in 'fair_value_ev' mode. Mirrors
+  // the per-player PYP variance surface (see lib/player-pyp-pricing.ts):
+  // expectedHits = λ over the configured hobby case count; pZeroHits =
+  // e^(-λ). Lets team-slot consumers surface "lottery vs. annuity" copy
+  // analogous to the per-player PYP chip.
+  expectedHits?: number;
+  pZeroHits?: number;
 }
 
 export interface PlayerProductVariant {

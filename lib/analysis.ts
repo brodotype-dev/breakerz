@@ -45,6 +45,20 @@ export interface AnalysisResult {
     applied: boolean;          // observations spliced into the prompt
     observationCount: number;  // top-N actually included (≤ 5)
   };
+  // PYT rewrite — telemetry on which slot-pricing model produced the
+  // numbers above. `active` mirrors the flag at request time (after any
+  // silent bail to case_cost_share, e.g. for products with thin odds
+  // coverage). `comparison` captures both numbers for the dual-Δ admin
+  // telemetry pipeline — non-null even when the flag is off, so we can
+  // watch verdict-flip impact across real traffic before flipping.
+  pricingModel: {
+    active: 'case_cost_share' | 'fair_value_ev';
+    flagEnabled: boolean;
+    comparison: {
+      caseCostShareFair: number;
+      fairValueEvFair: number | null; // null when product doesn't qualify
+    };
+  };
 }
 
 export interface AnalysisInput {
@@ -314,7 +328,40 @@ export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisRe
     };
   });
 
-  const pricedPlayers = computeSlotPricing(augmentedRawPlayers, config);
+  // PYT rewrite — feature-flag-gated fair-value EV mode. Read flag once at
+  // request time. When on (and the product has dense odds + autos_per_case),
+  // hobby team slots use the per-player PYP math foundation instead of
+  // case-cost-share. BD + jumbo unchanged. See lib/engine.ts SlotPricingMode.
+  const { data: pytFlagRow } = await supabaseAdmin
+    .from('feature_flags')
+    .select('enabled')
+    .eq('key', 'fair_value_pyt_enabled')
+    .maybeSingle();
+  const fairValuePytEnabled = !!pytFlagRow?.enabled;
+
+  // Build the variants-by-pp map for fair_value_ev (only hobby_odds needed).
+  // Cheaper than re-fetching: variantMap already holds the rows.
+  const variantsForPyt = new Map<string, Array<{ hobby_odds: number | null }>>();
+  for (const [ppId, vs] of variantMap) {
+    variantsForPyt.set(ppId, (vs ?? []).map(v => ({ hobby_odds: v.hobby_odds })));
+  }
+  const productHobbyAutosPerCase = product.hobby_autos_per_case ?? null;
+
+  // Always compute both models so we can fire the dual-Δ telemetry event
+  // regardless of flag state. Engine math is in-memory, cheap relative to
+  // CH + Claude calls — the 2× cost is negligible at request scale.
+  const pricedCaseCost = computeSlotPricing(augmentedRawPlayers, config, 'case_cost_share');
+  const pricedFairValue = computeSlotPricing(
+    augmentedRawPlayers, config, 'fair_value_ev', variantsForPyt, productHobbyAutosPerCase,
+  );
+  // Detect silent bail (fair-value path returned identical hobby slots → engine
+  // fell back to case_cost_share). Cheap check: any difference in hobbySlotCost.
+  const fairValueActuallyApplied = pricedFairValue.some((p, i) =>
+    p.hobbySlotCost !== pricedCaseCost[i]?.hobbySlotCost,
+  );
+  const activeMode: 'case_cost_share' | 'fair_value_ev' =
+    fairValuePytEnabled && fairValueActuallyApplied ? 'fair_value_ev' : 'case_cost_share';
+  const pricedPlayers = activeMode === 'fair_value_ev' ? pricedFairValue : pricedCaseCost;
   const playerById = new Map(pricedPlayers.map(p => [p.id, p]));
   const teamSlots = computeTeamSlotPricing(pricedPlayers, config);
 
@@ -338,6 +385,23 @@ export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisRe
   const teamsTotal = selectedTeamSlots.reduce((sum, t) => sum + t.totalCost, 0);
   const playersTotal = extraPlayers.reduce((sum, p) => sum + p.totalCost, 0);
   const fairValue = teamsTotal + playersTotal;
+
+  // Dual-model comparison for telemetry — recompute the same bundle selection
+  // against the inactive model so the PostHog event can carry both numbers.
+  // Cheap: array lookups + adds, no engine re-run beyond the already-done two
+  // computeSlotPricing calls above.
+  function fairFor(rows: PlayerWithPricing[]): number {
+    const byId = new Map(rows.map(r => [r.id, r]));
+    const teamSlotsRecomputed = computeTeamSlotPricing(rows, config);
+    const tTotal = teamSlotsRecomputed.filter(t => teams.includes(t.team)).reduce((s, t) => s + t.totalCost, 0);
+    const pTotal = extraPlayerProductIds
+      .map(id => byId.get(id))
+      .filter((p): p is PlayerWithPricing => !!p && !selectedTeamSet.has(p.player?.team ?? ''))
+      .reduce((s, p) => s + p.totalCost, 0);
+    return tTotal + pTotal;
+  }
+  const caseCostShareFair = fairFor(pricedCaseCost);
+  const fairValueEvFair = fairValueActuallyApplied ? fairFor(pricedFairValue) : null;
 
   // Plan B: lifecycle-aware market markup. The signal is judged against the
   // market-adjusted number — what breakers actually charge over pure EV —
@@ -526,6 +590,14 @@ Write a 2–3 sentence analysis explaining whether this bundle is worth buying a
       enabled: observationContextEnabled,
       applied: observationApplied,
       observationCount,
+    },
+    pricingModel: {
+      active: activeMode,
+      flagEnabled: fairValuePytEnabled,
+      comparison: {
+        caseCostShareFair,
+        fairValueEvFair,
+      },
     },
   };
 }

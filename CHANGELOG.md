@@ -5,6 +5,49 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-30 — PYT (team-slot) fair-value EV rewrite — shipped dark behind `fair_value_pyt_enabled` flag + dual-Δ A/B on `/admin/market-delta`
+
+Rebuilds the team-slot pricing math on the same fair-value EV foundation as yesterday's per-player PYP shipment, but ships **flag-off** so production behavior is byte-for-byte unchanged on deploy. Sums of per-player PYPs across a team now equal team PYT — one coherent mathematical foundation across both surfaces.
+
+**Math (lib/engine.ts) — new `fair_value_ev` mode:**
+
+```
+For team T with players p_1..p_n, in a hobby case of H boxes:
+  fair_team_slot_T = C × H × Σ_team_players(hobbyEVPerBox_p)
+  H = hobby_autos_per_case / Σ_all_eligible_players(playerPullRate)
+  playerPullRate_p = Σ over p's variants (1/hobby_odds) when hobby_odds > 0
+
+Per-player additions:
+  expectedHits_p = C × hobby_autos_per_case × (playerPullRate_p / totalPullRate)
+  pZeroHits_p    = exp(-expectedHits_p)
+```
+
+No effective-score multiplier (score modulation belongs to the markup layer, not the EV layer in this model — the admin Δ A/B will tell us if dropping it improves calibration). BD + jumbo unchanged in v1 (case-cost-share with their existing weights; rewriting them needs per-format pull-rate data we don't have yet).
+
+**Coverage gate — silent fallback:** mirrors PYP's `MIN_ODDS_COVERAGE = 0.30`. Products with thin odds coverage OR missing `hobby_autos_per_case` fall back to `case_cost_share` for hobby silently — never zero out a slot on misconfiguration. Detected at the call site (any difference in per-player `hobbySlotCost` between modes) and surfaced in the new `pricingModel.active` telemetry field on `AnalysisResult`.
+
+**A/B rollout (the whole point of shipping dark):**
+
+- **Feature flag** `fair_value_pyt_enabled` added to `feature_flags` (migration `20260530120000_fair_value_pyt_flag.sql`, applied via Supabase MCP). Default `false`. Toggle allowlisted in `app/api/admin/feature-flags/route.ts`.
+- **`computeSlotPricing` signature extension** — new optional `mode: SlotPricingMode` (default `'case_cost_share'`), `variantsByPlayerProductId?`, `productHobbyAutosPerCase?` params. Zero behavior change at call sites that don't pass `mode`.
+- **`lib/analysis.ts` `runBreakAnalysis`** reads the flag, ALWAYS computes both models (engine math is in-memory and cheap relative to CH + Claude calls), picks the active one per the flag, and returns both numbers in a new `pricingModel.comparison` field on `AnalysisResult` so the dual-Δ telemetry pipeline works irrespective of flag state.
+- **`/break/[slug]`** server fetches the flag and prop-drills `fairValuePytEnabled` to `BreakPageClient`, which threads it into `computeSlotPricing` along with the existing `variantsMap` (already loaded for PYP) + `product.hobby_autos_per_case`.
+- **`/admin/market-delta`** — Section 2 now renders both verdicts side-by-side ("Model A — case-cost-share (live)" + "Model B — fair-value EV (proposed)" with P90 |Δ| comparison and improvement chip). Captures table gains a new **Δ B** column next to **Δ A** so per-row calibration is inspectable. Pure read — `getTeamFairValuesForProducts` extended with a `mode` param, called twice in parallel.
+- **New PostHog event `pricing_model_compared`** fires from `/api/analysis` whenever both numbers are available. Property bag: `{product_id, active_model, flag_enabled, case_cost_share_fair, fair_value_ev_fair, delta_pct, ask_price, signal_active}`. Lets us watch the verdict-flip impact across real usage during the calibration window.
+
+**Flip plan:** keep `fair_value_pyt_enabled = false` until Model B's P90 |Δ| consistently undershoots Model A's across the captured `/break-price` observations (N>30 per active product). Then flip in prod via the existing admin toggle. After one stable week, delete the `case_cost_share` code path and the `mode` param.
+
+**What does NOT change:**
+
+- BD / jumbo team-slot math — kept on case-cost-share with their existing weights. Per-format pull-rate data needed to rewrite is not yet available.
+- `pricing_cache` schema — slot prices aren't cached, they're computed at render. Zero dual-write complexity.
+- `lifecycleEvMultiplier` (math-layer) + `MARKET_MARKUP_BY_LIFECYCLE` (display-layer) — same contract on both pricing models.
+- `WhyThisPriceCard` per-player decomposition — already explains the math story per-player. Team-slot decomposition queued for a follow-up PR.
+
+**Verification:** type-check clean. Full `next build` clean with placeholder env. `.env.local` in worktrees has `SUPABASE_SERVICE_ROLE_KEY=""` so a real build needs the proper env (gotcha #9 territory). Per the PR #174 build-time-prerender lesson: no new top-level statically-prerendered pages added, only extensions to existing dynamic routes — risk surface is lower than the auth-signin case. Once merged, eyeball verification owed: `/break/[slug]` consumer page renders unchanged with flag off; `/admin/market-delta` shows the new Section 2 dual-model panel with `0 captures qualified yet` until a Bowman / odds-publishing product accumulates real `/break-price` captures.
+
+---
+
 ## 2026-05-30 — Per-player PYP prediction on `/break/[slug]` (fair-value EV model + P(zero hits))
 
 Adds a **PYP** (Pick Your Player) column to the player table on `/break/[slug]`, predicting what a breaker would charge to pre-pick that player's slot in the user's currently-configured break. Built on a fair-value expected-value foundation so the number is interpretable as a buyer's break-even price, not a breaker's logistical case-cost split.

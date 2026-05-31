@@ -182,6 +182,11 @@ type BreakPriceCapture = {
   // 1-case-equivalent; see lib/team-fair-value.ts.
   delta_pct: number | null;
   fair_value: number | null;
+  // PYT rewrite dual-Δ — same comparison computed against the fair_value_ev
+  // model. null when product doesn't qualify (thin odds coverage). Lets us
+  // watch P90 |Δ| improvement before flipping the live flag.
+  delta_pct_new: number | null;
+  fair_value_new: number | null;
 };
 
 function renderComposition(comp: CompositionMap): string {
@@ -293,14 +298,19 @@ export default async function MarketDeltaPage({
     .order('observed_at', { ascending: false })
     .limit(50);
 
-  // Slice B — batch-fetch per-team fair values for every distinct product
-  // referenced in the captures list. Dedupes by product_id; one
-  // `pricing_cache` query per product (chunked internally for large
-  // rosters). Avoids N+1 over the captures map below.
+  // Slice B + PYT rewrite — batch-fetch per-team fair values for every
+  // distinct product in BOTH pricing models so the captures panel can
+  // render Δ vs old (case_cost_share) + Δ vs new (fair_value_ev)
+  // side-by-side. Dual-Δ runs irrespective of flag state — the whole point
+  // is to watch the new model's calibration before flipping. One
+  // `pricing_cache` query per (product × mode).
   const captureProductIds = Array.from(
     new Set(((obsRows ?? []).map((r: any) => r.product_id).filter(Boolean) as string[])),
   );
-  const fairValuesByProduct = await getTeamFairValuesForProducts(captureProductIds);
+  const [fairValuesByProduct, fairValuesByProductNew] = await Promise.all([
+    getTeamFairValuesForProducts(captureProductIds, 'case_cost_share'),
+    getTeamFairValuesForProducts(captureProductIds, 'fair_value_ev'),
+  ]);
 
   const playerScopeIds = Array.from(
     new Set(
@@ -338,14 +348,17 @@ export default async function MarketDeltaPage({
     const price_low = Number(payload.price_low) || 0;
     const price_high = Number(payload.price_high) || 0;
 
-    // Slice B — delta vs. our per-team fair value. Only computed for
-    // team-scoped, single-format captures with a snapshot for the product.
-    // Mixed compositions are out of scope for the 1-case-equivalent
-    // reference (engine would need a custom case mix); player/variant/
-    // product scopes don't have a per-team comparable; legacy rows
-    // without composition/format get skipped.
+    // Slice B + PYT dual-Δ — delta vs. our per-team fair value for both
+    // pricing models (old: case_cost_share, new: fair_value_ev). Same
+    // eligibility gate: team-scoped, single-format captures with a snapshot
+    // for the product. Mixed compositions are out of scope for the
+    // 1-case-equivalent reference (engine would need a custom case mix);
+    // player/variant/product scopes don't have a per-team comparable;
+    // legacy rows without composition/format get skipped.
     let delta_pct: number | null = null;
     let fair_value: number | null = null;
+    let delta_pct_new: number | null = null;
+    let fair_value_new: number | null = null;
     if (
       r.scope_type === 'team'
       && r.scope_team
@@ -353,16 +366,27 @@ export default async function MarketDeltaPage({
       && !isMixed
       && Object.keys(composition).length === 1
     ) {
+      const fmt = Object.keys(composition)[0] as 'hobby' | 'bd' | 'jumbo';
+      const askMid = (price_low + price_high) / 2;
+
       const snapshot = fairValuesByProduct.get(r.product_id);
       const teamFv = snapshot?.teams.get(r.scope_team);
-      const fmt = Object.keys(composition)[0] as 'hobby' | 'bd' | 'jumbo';
       const teamRef = teamFv
         ? (fmt === 'hobby' ? teamFv.marketHobby : fmt === 'bd' ? teamFv.marketBd : teamFv.marketJumbo)
         : 0;
       if (teamRef > 0) {
-        const askMid = (price_low + price_high) / 2;
         fair_value = teamRef;
         delta_pct = ((askMid - teamRef) / teamRef) * 100;
+      }
+
+      const snapshotNew = fairValuesByProductNew.get(r.product_id);
+      const teamFvNew = snapshotNew?.teams.get(r.scope_team);
+      const teamRefNew = teamFvNew
+        ? (fmt === 'hobby' ? teamFvNew.marketHobby : fmt === 'bd' ? teamFvNew.marketBd : teamFvNew.marketJumbo)
+        : 0;
+      if (teamRefNew > 0) {
+        fair_value_new = teamRefNew;
+        delta_pct_new = ((askMid - teamRefNew) / teamRefNew) * 100;
       }
     }
 
@@ -383,6 +407,8 @@ export default async function MarketDeltaPage({
       narrative: r.source_narrative ?? '',
       delta_pct,
       fair_value,
+      delta_pct_new,
+      fair_value_new,
     };
   });
 
@@ -423,6 +449,20 @@ export default async function MarketDeltaPage({
     }));
   const slotAgg = aggregate(slotDeltaRows);
   const slotVerdict = verdictFor(slotAgg);
+
+  // PYT dual-Δ — aggregate the fair_value_ev model's deltas in parallel so
+  // we can headline the P90 |Δ| improvement (or regression) before flipping
+  // the flag in prod.
+  const slotDeltaRowsNew = allCaptures
+    .filter(c => c.delta_pct_new !== null && c.product_id)
+    .map(c => ({
+      delta_pct: c.delta_pct_new as number,
+      product_key: c.product_id ?? c.product_name,
+      product_name: c.product_name,
+      product_lifecycle: '',
+    }));
+  const slotAggNew = aggregate(slotDeltaRowsNew);
+  const slotVerdictNew = verdictFor(slotAggNew);
 
   return (
     <div className="max-w-7xl mx-auto space-y-8">
@@ -653,6 +693,59 @@ export default async function MarketDeltaPage({
           <StatCard label="Overcharge" value={`${slotAgg.overchargePct.toFixed(0)}%`} sub={`${slotAgg.overchargeCount} of ${slotAgg.total}`} color="#f97316" icon={TrendingUp} />
           <StatCard label="Steal" value={`${slotAgg.stealPct.toFixed(0)}%`} sub={`${slotAgg.stealCount} of ${slotAgg.total}`} color="#22c55e" icon={TrendingDown} />
         </div>
+
+        {/* PYT dual-model A/B — show both P90 |Δ| numbers side by side.
+            The new model wins when its P90 absolute delta is meaningfully
+            lower than the old; once consistent across N>30 captures per
+            active product, flip fair_value_pyt_enabled in prod. */}
+        {slotAgg.total > 0 && (
+          <div
+            className="mt-4 rounded-xl p-4 grid grid-cols-2 gap-3"
+            style={{ backgroundColor: 'rgba(19, 24, 32, 0.6)', border: '1px solid var(--terminal-border-hover)' }}
+          >
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--text-tertiary)' }}>
+                Model A — case-cost-share (live)
+              </div>
+              <div className="text-lg font-bold font-mono" style={{ color: 'var(--text-primary)' }}>
+                P90 |Δ| {slotAgg.p90.toFixed(0)}%
+              </div>
+              <div className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                {slotAgg.total} captures · mean {slotAgg.meanDelta >= 0 ? '+' : ''}{slotAgg.meanDelta.toFixed(1)}%
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--accent-blue)' }}>
+                Model B — fair-value EV (proposed)
+              </div>
+              {slotAggNew.total > 0 ? (
+                <>
+                  <div className="text-lg font-bold font-mono" style={{ color: slotAggNew.p90 < slotAgg.p90 ? '#22c55e' : slotAggNew.p90 > slotAgg.p90 ? '#f97316' : 'var(--text-primary)' }}>
+                    P90 |Δ| {slotAggNew.p90.toFixed(0)}%
+                    {slotAggNew.p90 !== slotAgg.p90 && (
+                      <span className="ml-2 text-[11px] font-mono">
+                        ({slotAggNew.p90 < slotAgg.p90 ? '↓' : '↑'} {Math.abs(slotAggNew.p90 - slotAgg.p90).toFixed(0)}pp)
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                    {slotAggNew.total} captures qualified · mean {slotAggNew.meanDelta >= 0 ? '+' : ''}{slotAggNew.meanDelta.toFixed(1)}%
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="text-sm font-mono" style={{ color: 'var(--text-tertiary)' }}>—</div>
+                  <div className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+                    No captures qualified yet (need products with dense hobby odds + autos_per_case)
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="col-span-2 text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
+              Verdict (B): <span style={{ color: slotVerdictNew.color }}>{slotVerdictNew.label}</span>. When B&apos;s P90 is consistently lower than A&apos;s across &gt;30 captures per active product, flip <code>fair_value_pyt_enabled</code> to ship the new math.
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Distribution (slot) */}
@@ -775,15 +868,16 @@ export default async function MarketDeltaPage({
 
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
             <div
-              className="grid grid-cols-13 gap-3 px-4 py-2 border-b text-[10px] font-bold uppercase tracking-widest"
-              style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface-hover)', color: 'var(--text-tertiary)', gridTemplateColumns: 'repeat(13, minmax(0, 1fr))' }}
+              className="grid gap-3 px-4 py-2 border-b text-[10px] font-bold uppercase tracking-widest"
+              style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface-hover)', color: 'var(--text-tertiary)', gridTemplateColumns: 'repeat(14, minmax(0, 1fr))' }}
             >
               <div className="col-span-2">When</div>
               <div className="col-span-3">Product</div>
               <div className="col-span-3">Scope</div>
               <div className="col-span-1 text-center">Comp</div>
               <div className="col-span-2 text-right">Ask</div>
-              <div className="col-span-1 text-right">Δ vs model</div>
+              <div className="col-span-1 text-right" title="Old model — case_cost_share">Δ A</div>
+              <div className="col-span-1 text-right" style={{ color: 'var(--accent-blue)' }} title="New model — fair_value_ev">Δ B</div>
               <div className="col-span-1 text-right">Kind</div>
             </div>
             {captures.length === 0 ? (
@@ -796,11 +890,16 @@ export default async function MarketDeltaPage({
                 : c.delta_pct >= 20 ? '#ef4444'
                 : c.delta_pct <= -20 ? '#22c55e'
                 : 'var(--text-secondary)';
+              const deltaColorNew = c.delta_pct_new === null
+                ? 'var(--text-tertiary)'
+                : c.delta_pct_new >= 20 ? '#ef4444'
+                : c.delta_pct_new <= -20 ? '#22c55e'
+                : 'var(--text-secondary)';
               return (
                 <div
                   key={c.id}
-                  className="grid grid-cols-13 gap-3 px-4 py-2 border-b last:border-b-0 items-center text-xs"
-                  style={{ borderColor: 'var(--terminal-border)', gridTemplateColumns: 'repeat(13, minmax(0, 1fr))' }}
+                  className="grid gap-3 px-4 py-2 border-b last:border-b-0 items-center text-xs"
+                  style={{ borderColor: 'var(--terminal-border)', gridTemplateColumns: 'repeat(14, minmax(0, 1fr))' }}
                 >
                   <div className="col-span-2 font-mono" style={{ color: 'var(--text-tertiary)' }}>
                     {new Date(c.observed_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
@@ -821,9 +920,16 @@ export default async function MarketDeltaPage({
                   <div
                     className="col-span-1 text-right font-mono"
                     style={{ color: deltaColor }}
-                    title={c.fair_value !== null ? `Model: $${Math.round(c.fair_value).toLocaleString()} (1-case ref)` : c.isMixed ? 'Mixed composition — skipped' : 'No team fair value available'}
+                    title={c.fair_value !== null ? `A (case-cost-share): $${Math.round(c.fair_value).toLocaleString()} (1-case ref)` : c.isMixed ? 'Mixed composition — skipped' : 'No team fair value available'}
                   >
                     {c.delta_pct === null ? '—' : `${c.delta_pct >= 0 ? '+' : ''}${c.delta_pct.toFixed(0)}%`}
+                  </div>
+                  <div
+                    className="col-span-1 text-right font-mono"
+                    style={{ color: deltaColorNew }}
+                    title={c.fair_value_new !== null ? `B (fair-value EV): $${Math.round(c.fair_value_new).toLocaleString()} (1-case ref)` : 'Product does not qualify for fair_value_ev (thin odds coverage or no autos_per_case)'}
+                  >
+                    {c.delta_pct_new === null ? '—' : `${c.delta_pct_new >= 0 ? '+' : ''}${c.delta_pct_new.toFixed(0)}%`}
                   </div>
                   <div className="col-span-1 text-right text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
                     {c.source_type === 'competitor_listing' ? 'listing'
@@ -836,7 +942,7 @@ export default async function MarketDeltaPage({
             })}
           </div>
           <div className="mt-3 px-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-            Δ vs model uses a 1-case-equivalent per-team fair value (matches the consumer page math; applies lifecycle-aware market markup). Mixed-composition captures show "—" until per-mix engine reference math ships.
+            <strong style={{ color: 'var(--text-secondary)' }}>Δ A</strong> = case-cost-share (live model) · <strong style={{ color: 'var(--accent-blue)' }}>Δ B</strong> = fair-value EV (proposed). Both use a 1-case-equivalent per-team fair value with lifecycle-aware market markup. B shows &quot;—&quot; on products with thin odds coverage (engine bails to A silently). Mixed-composition captures show &quot;—&quot; until per-mix engine reference math ships.
           </div>
         </Section>
       )}

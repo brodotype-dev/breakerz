@@ -1,5 +1,19 @@
 import type { PlayerWithPricing, BreakConfig, Signal, TeamSlot } from './types';
 
+// Slot-pricing mode. Default 'case_cost_share' = behavior-preserving
+// (hobbyBreakCost × hobbyWeight/totalHobbyWeight). 'fair_value_ev' = each
+// player's hobby slot is C × H × hobbyEVPerBox (no effective-score multiplier,
+// no markup — that's display-layer). Sums of per-player fair_value_ev hobby
+// slots across a team equal the team PYT, matching the per-player PYP math
+// in lib/player-pyp-pricing.ts. BD + jumbo remain on case-cost-share in v1.
+// See docs/plans/2026-05-30-handoff.md §4.
+export type SlotPricingMode = 'case_cost_share' | 'fair_value_ev';
+
+// Coverage threshold below which fair_value_ev silently falls back to
+// case_cost_share. Mirrors lib/player-pyp-pricing.ts MIN_ODDS_COVERAGE so
+// the same products that suppress the PYP column suppress the new PYT mode.
+const FAIR_VALUE_MIN_ODDS_COVERAGE = 0.30;
+
 // Exported for use in UI components that need to display buzz signals.
 // risk_score_adj / hype_score_adj / prospect_score_adj / cascade_score_adj are
 // runtime modulators folded in alongside buzz + breakerz before the clamp.
@@ -31,7 +45,10 @@ export function computeEffectiveScore(
 
 export function computeSlotPricing(
   players: PlayerWithPricing[],
-  config: BreakConfig
+  config: BreakConfig,
+  mode: SlotPricingMode = 'case_cost_share',
+  variantsByPlayerProductId?: Map<string, Array<{ hobby_odds: number | null }>>,
+  productHobbyAutosPerCase?: number | null,
 ): PlayerWithPricing[] {
   const eligible = players.filter(p => !p.insert_only);
 
@@ -69,13 +86,69 @@ export function computeSlotPricing(
   const bdBreakCost = config.bdCases * config.bdCaseCost;
   const jumboBreakCost = config.jumboCases * config.jumboCaseCost;
 
+  // ── Fair-value EV pre-computation (hobby only) ─────────────────────────
+  // Per-player pullRate = Σ over hobby_odds-bearing variants of (1/odds).
+  // Identical to lib/player-pyp-pricing.ts so PYT sums match per-player PYP.
+  // If coverage is too thin (or no autos_per_case), silently bail to
+  // case-cost-share for hobby — same fallback policy as the PYP column.
+  let useFairValueHobby = false;
+  let boxesPerCase = 0;
+  let totalPullRatePerBox = 0;
+  const playerPullRates = new Map<string, number>();
+  const totalHobbyPullsInBreak =
+    config.hobbyCases * (productHobbyAutosPerCase ?? 0);
+
+  if (mode === 'fair_value_ev' && variantsByPlayerProductId && productHobbyAutosPerCase && productHobbyAutosPerCase > 0) {
+    let playersWithOdds = 0;
+    for (const p of eligible) {
+      const variants = variantsByPlayerProductId.get(p.id) ?? [];
+      let r = 0;
+      for (const v of variants) {
+        if (v.hobby_odds != null && v.hobby_odds > 0) r += 1 / v.hobby_odds;
+      }
+      playerPullRates.set(p.id, r);
+      totalPullRatePerBox += r;
+      if (r > 0) playersWithOdds++;
+    }
+    const oddsCoverage = eligible.length > 0 ? playersWithOdds / eligible.length : 0;
+    if (oddsCoverage >= FAIR_VALUE_MIN_ODDS_COVERAGE && totalPullRatePerBox > 0 && config.hobbyCases > 0) {
+      useFairValueHobby = true;
+      boxesPerCase = productHobbyAutosPerCase / totalPullRatePerBox;
+    }
+  }
+
   return eligible.map(player => {
     const hobbyWeight = hobbyWeightFor(player);
     const jumboWeight = jumboWeightFor(player);
     const bdWeight = player.evMid;
 
-    const hobbySlotCost =
-      totalHobbyWeight > 0 ? hobbyBreakCost * (hobbyWeight / totalHobbyWeight) : 0;
+    // Hobby — fair_value_ev for products that publish dense enough odds;
+    // case-cost-share otherwise. Players with hobby_sets=0 or zero pullRate
+    // get a $0 hobby slot in the fair-value path (they have no expected
+    // pulls per the data); UI surfaces this via the PYP "—" rendering.
+    let hobbySlotCost: number;
+    let expectedHits: number | undefined;
+    let pZeroHits: number | undefined;
+
+    if (useFairValueHobby && player.hobby_sets > 0) {
+      const playerPullRate = playerPullRates.get(player.id) ?? 0;
+      if (playerPullRate > 0 && player.hobbyEVPerBox > 0) {
+        // fair = C × H × hobbyEVPerBox — pure expected $ of pulls. No
+        // effective-score multiplier (score modulation belongs to the
+        // markup layer, not the EV layer).
+        hobbySlotCost = config.hobbyCases * boxesPerCase * player.hobbyEVPerBox;
+        expectedHits = totalHobbyPullsInBreak * (playerPullRate / totalPullRatePerBox);
+        pZeroHits = Math.exp(-expectedHits);
+      } else {
+        hobbySlotCost = 0;
+        expectedHits = 0;
+        pZeroHits = 1;
+      }
+    } else {
+      hobbySlotCost =
+        totalHobbyWeight > 0 ? hobbyBreakCost * (hobbyWeight / totalHobbyWeight) : 0;
+    }
+
     const bdSlotCost =
       totalBdWeight > 0 ? bdBreakCost * (bdWeight / totalBdWeight) : 0;
     const jumboSlotCost =
@@ -95,6 +168,7 @@ export function computeSlotPricing(
       bdPerCase: config.bdCases > 0 ? bdSlotCost / config.bdCases : 0,
       jumboPerCase: config.jumboCases > 0 ? jumboSlotCost / config.jumboCases : 0,
       maxPay: totalCost * 1.5,
+      ...(expectedHits !== undefined ? { expectedHits, pZeroHits } : {}),
     };
   }).sort((a, b) => (a.player?.name ?? '').localeCompare(b.player?.name ?? ''));
 }

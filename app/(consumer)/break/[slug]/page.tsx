@@ -23,6 +23,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import BetaBanner from '@/components/breakiq/BetaBanner';
 import { loadBreakPageData, loadProductBySlug, type ProductWithSport } from '@/lib/break-page-data';
+import { supabaseAdmin } from '@/lib/supabase';
 import BreakPageClient from './BreakPageClient';
 import BreakPageSkeleton from './BreakPageSkeleton';
 
@@ -40,6 +41,16 @@ export default async function BreakPage({ params }: PageProps) {
   // the promise is pending, which shows BreakPageSkeleton below the
   // server-rendered hero + banners.
   const dataPromise = loadBreakPageData(product);
+
+  // PYT rewrite — flag-gates whether the client uses fair_value_ev or
+  // case_cost_share for hobby team slots. Fetched server-side so the
+  // initial render is consistent with what the engine will compute.
+  const { data: pytFlagRow } = await supabaseAdmin
+    .from('feature_flags')
+    .select('enabled')
+    .eq('key', 'fair_value_pyt_enabled')
+    .maybeSingle();
+  const fairValuePytEnabled = !!pytFlagRow?.enabled;
 
   const lifecycle = (product.lifecycle_status ?? 'live') as 'pre_release' | 'live' | 'dormant';
   const isPreRelease = lifecycle === 'pre_release';
@@ -76,7 +87,11 @@ export default async function BreakPage({ params }: PageProps) {
       <main className="px-3 sm:px-4 md:px-6 py-4 sm:py-6 space-y-5 max-w-[1400px] mx-auto">
         <BetaBanner surface="break_page" />
         <Suspense fallback={<BreakPageSkeleton />}>
-          <BreakPageClient product={product} dataPromise={dataPromise} />
+          <BreakPageClient
+            product={product}
+            dataPromise={dataPromise}
+            fairValuePytEnabled={fairValuePytEnabled}
+          />
         </Suspense>
       </main>
     </div>
