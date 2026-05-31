@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { computeLiveEV, get90DayPrices } from '@/lib/cardhedger';
-import { computeSlotPricing, computeTeamSlotPricing, computeSignal, formatCurrency } from '@/lib/engine';
+import { computeSlotPricing, computeTeamSlotPricing, computeSignal, computeEffectiveScore, formatCurrency } from '@/lib/engine';
+import { computeMarginBand, classifyAsk, zoneToSignal, bandValuePct, type MarginZone } from '@/lib/margin-band';
 import { computeRiskAdjustment, computeHypeAdjustment, type HypeObservation, type HypeTag } from '@/lib/score-modulation';
 import { computeProspectAdjustment } from '@/lib/prospect-score';
 import {
@@ -45,6 +46,26 @@ export interface AnalysisResult {
     applied: boolean;          // observations spliced into the prompt
     observationCount: number;  // top-N actually included (≤ 5)
   };
+  // PYT rewrite — telemetry on which slot-pricing model produced the
+  // numbers above. `active` mirrors the flag at request time (after any
+  // silent bail to case_cost_share, e.g. for products with thin odds
+  // coverage). `comparison` captures both numbers for the dual-Δ admin
+  // telemetry pipeline — non-null even when the flag is off, so we can
+  // watch verdict-flip impact across real traffic before flipping.
+  pricingModel: {
+    active: 'case_cost_share' | 'fair_value_ev';
+    flagEnabled: boolean;
+    comparison: {
+      caseCostShareFair: number;
+      fairValueEvFair: number | null; // null when product doesn't qualify
+    };
+  };
+  // Reasonable-margin band classification. Set only on the fair_value_ev
+  // path (the band reframe rides with the new model). When present, the
+  // signal/valuePct above derive from where the ask falls in the band:
+  // steal → BUY, fair → WATCH, overpaying → PASS. null on the legacy path
+  // so the consumer panel falls back to the percentage-threshold copy.
+  marginZone: MarginZone | null;
 }
 
 export interface AnalysisInput {
@@ -314,7 +335,40 @@ export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisRe
     };
   });
 
-  const pricedPlayers = computeSlotPricing(augmentedRawPlayers, config);
+  // PYT rewrite — feature-flag-gated fair-value EV mode. Read flag once at
+  // request time. When on (and the product has dense odds + autos_per_case),
+  // hobby team slots use the per-player PYP math foundation instead of
+  // case-cost-share. BD + jumbo unchanged. See lib/engine.ts SlotPricingMode.
+  const { data: pytFlagRow } = await supabaseAdmin
+    .from('feature_flags')
+    .select('enabled')
+    .eq('key', 'fair_value_pyt_enabled')
+    .maybeSingle();
+  const fairValuePytEnabled = !!pytFlagRow?.enabled;
+
+  // Build the variants-by-pp map for fair_value_ev (only hobby_odds needed).
+  // Cheaper than re-fetching: variantMap already holds the rows.
+  const variantsForPyt = new Map<string, Array<{ hobby_odds: number | null }>>();
+  for (const [ppId, vs] of variantMap) {
+    variantsForPyt.set(ppId, (vs ?? []).map(v => ({ hobby_odds: v.hobby_odds })));
+  }
+  const productHobbyAutosPerCase = product.hobby_autos_per_case ?? null;
+
+  // Always compute both models so we can fire the dual-Δ telemetry event
+  // regardless of flag state. Engine math is in-memory, cheap relative to
+  // CH + Claude calls — the 2× cost is negligible at request scale.
+  const pricedCaseCost = computeSlotPricing(augmentedRawPlayers, config, 'case_cost_share');
+  const pricedFairValue = computeSlotPricing(
+    augmentedRawPlayers, config, 'fair_value_ev', variantsForPyt, productHobbyAutosPerCase,
+  );
+  // Detect silent bail (fair-value path returned identical hobby slots → engine
+  // fell back to case_cost_share). Cheap check: any difference in hobbySlotCost.
+  const fairValueActuallyApplied = pricedFairValue.some((p, i) =>
+    p.hobbySlotCost !== pricedCaseCost[i]?.hobbySlotCost,
+  );
+  const activeMode: 'case_cost_share' | 'fair_value_ev' =
+    fairValuePytEnabled && fairValueActuallyApplied ? 'fair_value_ev' : 'case_cost_share';
+  const pricedPlayers = activeMode === 'fair_value_ev' ? pricedFairValue : pricedCaseCost;
   const playerById = new Map(pricedPlayers.map(p => [p.id, p]));
   const teamSlots = computeTeamSlotPricing(pricedPlayers, config);
 
@@ -339,17 +393,76 @@ export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisRe
   const playersTotal = extraPlayers.reduce((sum, p) => sum + p.totalCost, 0);
   const fairValue = teamsTotal + playersTotal;
 
-  // Plan B: lifecycle-aware market markup. The signal is judged against the
-  // market-adjusted number — what breakers actually charge over pure EV —
-  // not the raw model output. Pure fairValue stays in the response for the
-  // "model: $X" sub-line and for user_breaks snapshot continuity.
-  const lifecycleStatus = (product.lifecycle_status ?? 'live') as ProductLifecycle;
-  const markup = getMarketMarkup(lifecycleStatus);
-  const marketFairValue = fairValue * markup;
-  const marketFairLow   = fairValue * (markup - MARKET_MARKUP_RANGE);
-  const marketFairHigh  = fairValue * (markup + MARKET_MARKUP_RANGE);
+  // Dual-model comparison for telemetry — recompute the same bundle selection
+  // against the inactive model so the PostHog event can carry both numbers.
+  // Cheap: array lookups + adds, no engine re-run beyond the already-done two
+  // computeSlotPricing calls above.
+  function fairFor(rows: PlayerWithPricing[]): number {
+    const byId = new Map(rows.map(r => [r.id, r]));
+    const teamSlotsRecomputed = computeTeamSlotPricing(rows, config);
+    const tTotal = teamSlotsRecomputed.filter(t => teams.includes(t.team)).reduce((s, t) => s + t.totalCost, 0);
+    const pTotal = extraPlayerProductIds
+      .map(id => byId.get(id))
+      .filter((p): p is PlayerWithPricing => !!p && !selectedTeamSet.has(p.player?.team ?? ''))
+      .reduce((s, p) => s + p.totalCost, 0);
+    return tTotal + pTotal;
+  }
+  const caseCostShareFair = fairFor(pricedCaseCost);
+  const fairValueEvFair = fairValueActuallyApplied ? fairFor(pricedFairValue) : null;
 
-  const { signal, valuePct } = computeSignal(marketFairValue, askPrice);
+  const lifecycleStatus = (product.lifecycle_status ?? 'live') as ProductLifecycle;
+
+  // Verdict — two paths, gated by which slot model is active.
+  //
+  // fair_value_ev (Model B): reasonable-margin band. The band center is the
+  // lifecycle markup SHIFTED by the bundle's EV-weighted effective score —
+  // this is where score modulation (the moat) re-enters after being absent
+  // from the pure-EV slot math. The ask is classified steal / fair /
+  // overpaying and mapped onto BUY / WATCH / PASS. We're not fighting the
+  // breaker; we're refereeing the margin.
+  //
+  // case_cost_share (Model A / legacy): unchanged — flat lifecycle markup +
+  // percentage-threshold signal. Byte-for-byte identical to prior behavior.
+  let marketFairValue: number;
+  let marketFairLow: number;
+  let marketFairHigh: number;
+  let signal: Signal;
+  let valuePct: number;
+  let marginZone: MarginZone | null = null;
+
+  if (activeMode === 'fair_value_ev') {
+    // EV-weighted effective score across the bundle players — the band
+    // shifts by how hot/cold the bundle is, not a flat product markup.
+    const bundlePlayers = [...selectedTeamSlots.flatMap(t => t.players), ...extraPlayers];
+    let scoreNum = 0;
+    let scoreDen = 0;
+    for (const p of bundlePlayers) {
+      const w = Math.max(p.evMid, 0);
+      const eff = computeEffectiveScore(
+        p.buzz_score, p.breakerz_score, p.player?.is_icon ?? false,
+        p.risk_score_adj, p.hype_score_adj, p.prospect_score_adj, p.cascade_score_adj,
+      );
+      scoreNum += eff * w;
+      scoreDen += w;
+    }
+    const bundleEffectiveScore = scoreDen > 0 ? scoreNum / scoreDen : 0;
+
+    const band = computeMarginBand(fairValue, lifecycleStatus, bundleEffectiveScore);
+    marketFairValue = band.priceCenter;
+    marketFairLow = band.priceLow;
+    marketFairHigh = band.priceHigh;
+    marginZone = classifyAsk(askPrice, band);
+    signal = zoneToSignal(marginZone);
+    valuePct = bandValuePct(askPrice, band);
+  } else {
+    // Plan B: lifecycle-aware market markup. Pure fairValue stays in the
+    // response for the "model: $X" sub-line + user_breaks snapshot continuity.
+    const markup = getMarketMarkup(lifecycleStatus);
+    marketFairValue = fairValue * markup;
+    marketFairLow   = fairValue * (markup - MARKET_MARKUP_RANGE);
+    marketFairHigh  = fairValue * (markup + MARKET_MARKUP_RANGE);
+    ({ signal, valuePct } = computeSignal(marketFairValue, askPrice));
+  }
 
   // Union of all players in the bundle for top-players, risk flags, HV.
   const teamPlayers = selectedTeamSlots.flatMap(t => t.players);
@@ -527,5 +640,14 @@ Write a 2–3 sentence analysis explaining whether this bundle is worth buying a
       applied: observationApplied,
       observationCount,
     },
+    pricingModel: {
+      active: activeMode,
+      flagEnabled: fairValuePytEnabled,
+      comparison: {
+        caseCostShareFair,
+        fairValueEvFair,
+      },
+    },
+    marginZone,
   };
 }

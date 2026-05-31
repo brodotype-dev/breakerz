@@ -35,6 +35,15 @@ export const PH_EVENTS = {
   // events.
   observed_ask_prefilled: 'observed_ask_prefilled',
 
+  // PYT rewrite — fires from /api/analysis whenever both pricing models
+  // produced a comparable bundle fair value. Property bag:
+  // { product_id, active_model, flag_enabled, case_cost_share_fair,
+  //   fair_value_ev_fair, delta_pct, ask_price, signal_active }.
+  // Drives the Model A/B calibration tracking even while the flag is off
+  // in prod — once Model B's P90 |Δ| consistently undershoots Model A's,
+  // flip fair_value_pyt_enabled.
+  pricing_model_compared: 'pricing_model_compared',
+
   // Transactional-email observability. These fire from server routes when
   // a Resend send call rejects — catches the silent-failure shape that
   // bit the 2026-04 → 2026-05 invite cohort. distinctId is the recipient

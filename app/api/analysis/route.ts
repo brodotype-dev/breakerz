@@ -113,6 +113,35 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // PYT rewrite — fire dual-model comparison event whenever both numbers
+    // are available (i.e. fair_value_ev computed successfully for the
+    // product). Drives the Model A/B telemetry pipeline irrespective of
+    // flag state so we can watch the new model's calibration before
+    // flipping fair_value_pyt_enabled in prod. Best-effort.
+    if (user && result.pricingModel.comparison.fairValueEvFair != null) {
+      try {
+        const a = result.pricingModel.comparison.caseCostShareFair;
+        const b = result.pricingModel.comparison.fairValueEvFair;
+        const deltaPct = a > 0 ? ((b - a) / a) * 100 : 0;
+        await captureServer({
+          distinctId: user.id,
+          event: PH_EVENTS.pricing_model_compared,
+          properties: {
+            product_id: productId,
+            active_model: result.pricingModel.active,
+            flag_enabled: result.pricingModel.flagEnabled,
+            case_cost_share_fair: a,
+            fair_value_ev_fair: b,
+            delta_pct: deltaPct,
+            ask_price: ask,
+            signal_active: result.signal,
+          },
+        });
+      } catch {
+        // ignore
+      }
+    }
+
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';

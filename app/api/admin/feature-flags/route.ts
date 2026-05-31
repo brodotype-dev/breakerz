@@ -12,6 +12,7 @@ export const dynamic = 'force-dynamic';
 // endpoint from being abused to flip arbitrary future flags accidentally.
 const TOGGLEABLE_KEYS = new Set([
   'verdict_observation_context_enabled',
+  'fair_value_pyt_enabled',
 ]);
 
 export async function GET() {

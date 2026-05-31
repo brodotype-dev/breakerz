@@ -14,7 +14,7 @@
 // observation that doesn't carry case-count metadata.
 
 import { supabaseAdmin } from '@/lib/supabase';
-import { computeSlotPricing, computeTeamSlotPricing } from '@/lib/engine';
+import { computeSlotPricing, computeTeamSlotPricing, type SlotPricingMode } from '@/lib/engine';
 import { getMarketMarkup } from '@/lib/market-markup';
 import type { BreakConfig, PlayerWithPricing, ProductLifecycle } from '@/lib/types';
 
@@ -41,12 +41,15 @@ const EMPTY: ProductFairValueSnapshot = {
   teams: new Map(),
 };
 
-export async function getTeamFairValuesForProduct(productId: string): Promise<ProductFairValueSnapshot> {
+export async function getTeamFairValuesForProduct(
+  productId: string,
+  mode: SlotPricingMode = 'case_cost_share',
+): Promise<ProductFairValueSnapshot> {
   if (!productId) return EMPTY;
 
   const { data: prod } = await supabaseAdmin
     .from('products')
-    .select('id, lifecycle_status, hobby_case_cost, bd_case_cost, jumbo_case_cost, hobby_am_case_cost, bd_am_case_cost, jumbo_am_case_cost')
+    .select('id, lifecycle_status, hobby_case_cost, bd_case_cost, jumbo_case_cost, hobby_am_case_cost, bd_am_case_cost, jumbo_am_case_cost, hobby_autos_per_case')
     .eq('id', productId)
     .single();
   if (!prod) return EMPTY;
@@ -117,7 +120,31 @@ export async function getTeamFairValuesForProduct(productId: string): Promise<Pr
     jumboCaseCost,
   };
 
-  const priced = computeSlotPricing(players, config);
+  // Load per-variant hobby_odds for fair_value_ev mode. Sidesteps Kong's
+  // 200-UUID .in() cap by inner-joining on product_id (gotcha #11). When
+  // mode === 'case_cost_share' we skip the fetch entirely — pure-EV math
+  // doesn't need it.
+  let variantsForPyt: Map<string, Array<{ hobby_odds: number | null }>> | undefined;
+  if (mode === 'fair_value_ev') {
+    const { data: vs } = await supabaseAdmin
+      .from('player_product_variants')
+      .select('player_product_id, hobby_odds, player_products!inner(product_id)')
+      .eq('player_products.product_id', productId);
+    variantsForPyt = new Map();
+    for (const v of (vs ?? []) as Array<{ player_product_id: string; hobby_odds: number | null }>) {
+      const arr = variantsForPyt.get(v.player_product_id) ?? [];
+      arr.push({ hobby_odds: v.hobby_odds });
+      variantsForPyt.set(v.player_product_id, arr);
+    }
+  }
+
+  const priced = computeSlotPricing(
+    players,
+    config,
+    mode,
+    variantsForPyt,
+    mode === 'fair_value_ev' ? (prod.hobby_autos_per_case ?? null) : null,
+  );
   const teamSlots = computeTeamSlotPricing(priced, config);
   const lifecycle = prod.lifecycle_status as ProductLifecycle;
   const marketMarkup = getMarketMarkup(lifecycle);
@@ -144,9 +171,10 @@ export async function getTeamFairValuesForProduct(productId: string): Promise<Pr
  */
 export async function getTeamFairValuesForProducts(
   productIds: string[],
+  mode: SlotPricingMode = 'case_cost_share',
 ): Promise<Map<string, ProductFairValueSnapshot>> {
   const unique = Array.from(new Set(productIds.filter(Boolean)));
-  const snapshots = await Promise.all(unique.map(id => getTeamFairValuesForProduct(id)));
+  const snapshots = await Promise.all(unique.map(id => getTeamFairValuesForProduct(id, mode)));
   const out = new Map<string, ProductFairValueSnapshot>();
   for (const s of snapshots) {
     if (s.productId) out.set(s.productId, s);

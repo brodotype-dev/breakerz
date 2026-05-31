@@ -5,6 +5,83 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-05-30 — Reasonable-margin band — checks-and-balances reframe on top of the PYT fair-value model
+
+Reframes the fair-value PYT work (entry below) from "BreakIQ vs. breakers" to a **referee on the breaker's margin**. Breakers run a real business and deserve a fair markup over expected value; consumers deserve to know when a slot has crossed from reasonable into fleecing. Three zones, not a binary.
+
+**The band (lib/margin-band.ts):**
+
+```
+F = pure fair value (expected $ of pulls)
+bandCenter = MARKET_MARKUP_BY_LIFECYCLE[lifecycle] × (1 + α × effectiveScore)
+band       = [F × bandCenter × (1−w), F × bandCenter × (1+w)]   (w = ±7%)
+
+ask < bandLow   → STEAL       (lean in)        → BUY
+bandLow..High   → FAIR        (honest margin)  → WATCH
+ask > bandHigh  → OVERPAYING  (fleecing)       → PASS
+```
+
+`α = MARGIN_BAND_SCORE_SENSITIVITY = 0.25`, `w = MARGIN_BAND_HALF_WIDTH = 0.07`. Zones map onto the existing `Signal` enum — no schema change, sharper meaning. Both dials are deliberately **liberal to start** (strong score pull, narrow "fair" band) — easier to roll back from bold than to discover a timid band did nothing.
+
+**This is where the moat comes back.** The prior PYT entry (below) correctly noted that the pure-EV slot math dropped `effectiveScore` (SME sentiment / prospect rank / hype / risk — the Track A + Track B edge). The band re-introduces it as the **band-shifter**, not a removal: a player on a heater (positive score) → reasonable band shifts UP (it's genuinely fine for a breaker to charge more, we say so); a risk-flagged / cooling player → band shifts DOWN (charging the normal premium on a just-injured player IS fleecing, and the band catches it where a flat markup wouldn't). A CardHedger wrapper can't do this — it doesn't know where the reasonable line sits for *this* player at *this* moment.
+
+**Consumer verdict (lib/analysis.ts + AnalysisResultPanel):** when `fair_value_pyt_enabled` is on, `runBreakAnalysis` computes the bundle's EV-weighted `effectiveScore`, builds the band, classifies the ask, and returns a new `marginZone` field. `marketFairValue` becomes the band center; low/high become the band edges. The result panel reads "Priced below a fair breaker margin — lean in." / "Inside a fair breaker margin — honest pricing." / "Above a fair breaker margin — you're overpaying," and relabels "Market Ask Range" → "Reasonable margin band." Flag off = legacy percentage-threshold verdict, byte-for-byte unchanged.
+
+**Admin validation reframe (/admin/market-delta).** Replaced the "Model B wins when its P90 |Δ| vs the herd is lower" panel — that was **herd-chasing**, the exact thing the thesis says is wrong. New panel classifies captured `/break-price` asks into the band's steal / fair / overpaying zones: a healthy market reads mostly FAIR with an OVERPAYING tail we'd flag. Flip criterion is now explicit and qualitative: *flip when the zone split matches SME judgment by eye, and once My Breaks v2 pull data can confirm the overpaying calls actually under-returned* — NOT when Model B matches breaker asks better than Model A. Δ B column is colored by band zone (±7%, matching the consumer verdict) instead of the generic ±20% bucket.
+
+**Admin Δ for PYP — the skipped prerequisite (Owed #8) now landed.** New `lib/player-fair-value.ts` (`getPlayerPypForProduct(s)`) runs `computePlayerPyp` from cache at a 1-hobby-case reference, keyed by `player_id` for capture lookups. Player-scope `/break-price` captures now populate the Δ B column + feed the band zone breakdown (Δ A stays "—" — case-cost-share has no per-player analog). Same admin approximation caveat as the team helper: score adjustments default to 0 (flat band), `hobbyEVPerBox` falls back to `evMid`; the consumer page is the source of truth for the real score-shifted number.
+
+**P(0) chip copy** reframed per the r/sportscards sentiment read (validate the smart buyer, don't shame the rip impulse). "Lottery-shaped slot" / "Near-certainty hit" → "High-variance upside bet — scarce pulls like this often carry a premium for the ceiling" / "Near-lock to hit at least once." The chip is now "the bet you're making," not a bust warning.
+
+**What did NOT change:** the `case_cost_share` (legacy) verdict path is untouched; flag-off behavior is identical. No schema migration (the band is render-time math). BD/jumbo still case-cost-share. `MARKET_MARKUP_BY_LIFECYCLE` constants unchanged — the band is built on top of them. Per-row score-shifted markup on the consumer slot *tables* (vs. the verdict) is deferred — the band carries the moat in the verdict, which is the surface that answers "am I getting fleeced."
+
+**Tuning constants to revisit from captures:** `MARGIN_BAND_SCORE_SENSITIVITY` (how hard score swings the band) and `MARGIN_BAND_HALF_WIDTH` (how wide "fair" is). Both deliberately **liberal** for v1 — strong score pull (0.25) + narrow fair band (±7%) so the model makes confident calls and the moat has teeth. Easier to dial back from bold than to notice a timid band did nothing. The admin zone split is the dial; widen the band / soften α if it cries wolf.
+
+---
+
+## 2026-05-30 — PYT (team-slot) fair-value EV rewrite — shipped dark behind `fair_value_pyt_enabled` flag + dual-Δ A/B on `/admin/market-delta`
+
+Rebuilds the team-slot pricing math on the same fair-value EV foundation as yesterday's per-player PYP shipment, but ships **flag-off** so production behavior is byte-for-byte unchanged on deploy. Sums of per-player PYPs across a team now equal team PYT — one coherent mathematical foundation across both surfaces.
+
+**Math (lib/engine.ts) — new `fair_value_ev` mode:**
+
+```
+For team T with players p_1..p_n, in a hobby case of H boxes:
+  fair_team_slot_T = C × H × Σ_team_players(hobbyEVPerBox_p)
+  H = hobby_autos_per_case / Σ_all_eligible_players(playerPullRate)
+  playerPullRate_p = Σ over p's variants (1/hobby_odds) when hobby_odds > 0
+
+Per-player additions:
+  expectedHits_p = C × hobby_autos_per_case × (playerPullRate_p / totalPullRate)
+  pZeroHits_p    = exp(-expectedHits_p)
+```
+
+No effective-score multiplier (score modulation belongs to the markup layer, not the EV layer in this model — the admin Δ A/B will tell us if dropping it improves calibration). BD + jumbo unchanged in v1 (case-cost-share with their existing weights; rewriting them needs per-format pull-rate data we don't have yet).
+
+**Coverage gate — silent fallback:** mirrors PYP's `MIN_ODDS_COVERAGE = 0.30`. Products with thin odds coverage OR missing `hobby_autos_per_case` fall back to `case_cost_share` for hobby silently — never zero out a slot on misconfiguration. Detected at the call site (any difference in per-player `hobbySlotCost` between modes) and surfaced in the new `pricingModel.active` telemetry field on `AnalysisResult`.
+
+**A/B rollout (the whole point of shipping dark):**
+
+- **Feature flag** `fair_value_pyt_enabled` added to `feature_flags` (migration `20260530120000_fair_value_pyt_flag.sql`, applied via Supabase MCP). Default `false`. Toggle allowlisted in `app/api/admin/feature-flags/route.ts`.
+- **`computeSlotPricing` signature extension** — new optional `mode: SlotPricingMode` (default `'case_cost_share'`), `variantsByPlayerProductId?`, `productHobbyAutosPerCase?` params. Zero behavior change at call sites that don't pass `mode`.
+- **`lib/analysis.ts` `runBreakAnalysis`** reads the flag, ALWAYS computes both models (engine math is in-memory and cheap relative to CH + Claude calls), picks the active one per the flag, and returns both numbers in a new `pricingModel.comparison` field on `AnalysisResult` so the dual-Δ telemetry pipeline works irrespective of flag state.
+- **`/break/[slug]`** server fetches the flag and prop-drills `fairValuePytEnabled` to `BreakPageClient`, which threads it into `computeSlotPricing` along with the existing `variantsMap` (already loaded for PYP) + `product.hobby_autos_per_case`.
+- **`/admin/market-delta`** — Section 2 now renders both verdicts side-by-side ("Model A — case-cost-share (live)" + "Model B — fair-value EV (proposed)" with P90 |Δ| comparison and improvement chip). Captures table gains a new **Δ B** column next to **Δ A** so per-row calibration is inspectable. Pure read — `getTeamFairValuesForProducts` extended with a `mode` param, called twice in parallel.
+- **New PostHog event `pricing_model_compared`** fires from `/api/analysis` whenever both numbers are available. Property bag: `{product_id, active_model, flag_enabled, case_cost_share_fair, fair_value_ev_fair, delta_pct, ask_price, signal_active}`. Lets us watch the verdict-flip impact across real usage during the calibration window.
+
+**Flip plan:** keep `fair_value_pyt_enabled = false` until Model B's P90 |Δ| consistently undershoots Model A's across the captured `/break-price` observations (N>30 per active product). Then flip in prod via the existing admin toggle. After one stable week, delete the `case_cost_share` code path and the `mode` param.
+
+**What does NOT change:**
+
+- BD / jumbo team-slot math — kept on case-cost-share with their existing weights. Per-format pull-rate data needed to rewrite is not yet available.
+- `pricing_cache` schema — slot prices aren't cached, they're computed at render. Zero dual-write complexity.
+- `lifecycleEvMultiplier` (math-layer) + `MARKET_MARKUP_BY_LIFECYCLE` (display-layer) — same contract on both pricing models.
+- `WhyThisPriceCard` per-player decomposition — already explains the math story per-player. Team-slot decomposition queued for a follow-up PR.
+
+**Verification:** type-check clean. Full `next build` clean with placeholder env. `.env.local` in worktrees has `SUPABASE_SERVICE_ROLE_KEY=""` so a real build needs the proper env (gotcha #9 territory). Per the PR #174 build-time-prerender lesson: no new top-level statically-prerendered pages added, only extensions to existing dynamic routes — risk surface is lower than the auth-signin case. Once merged, eyeball verification owed: `/break/[slug]` consumer page renders unchanged with flag off; `/admin/market-delta` shows the new Section 2 dual-model panel with `0 captures qualified yet` until a Bowman / odds-publishing product accumulates real `/break-price` captures.
+
+---
+
 ## 2026-05-30 — Per-player PYP prediction on `/break/[slug]` (fair-value EV model + P(zero hits))
 
 Adds a **PYP** (Pick Your Player) column to the player table on `/break/[slug]`, predicting what a breaker would charge to pre-pick that player's slot in the user's currently-configured break. Built on a fair-value expected-value foundation so the number is interpretable as a buyer's break-even price, not a breaker's logistical case-cost split.
