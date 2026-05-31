@@ -38,15 +38,19 @@ import { MARKET_MARKUP_BY_LIFECYCLE } from '@/lib/market-markup';
 export type MarginZone = 'steal' | 'fair' | 'overpaying';
 
 // α — how hard effectiveScore swings the reasonable band center. effectiveScore
-// is already clamped to [-0.9, 1.0] upstream, so at α=0.15 a max-hype player's
-// band center moves +15% and a max-risk player's moves −13.5%. Conservative
-// starting value; tune from /break-price capture deltas as they accumulate.
-export const MARGIN_BAND_SCORE_SENSITIVITY = 0.15;
+// is already clamped to [-0.9, 1.0] upstream, so at α=0.25 a max-hype player's
+// band center moves +25% and a max-risk player's moves −22.5%. Deliberately
+// LIBERAL to start — we'd rather the SME/score signal (the moat) have real
+// teeth and roll back than ship something timid. Tune down from /break-price
+// capture deltas if the zone split reads too aggressive.
+export const MARGIN_BAND_SCORE_SENSITIVITY = 0.25;
 
-// Half-width of the "fair" zone as a fraction of the band center. ±10% means a
-// live product (base markup 1.20, no score) treats 1.08–1.32 as reasonable.
-// Wide on purpose for v1 — we'd rather under-call fleecing than cry wolf.
-export const MARGIN_BAND_HALF_WIDTH = 0.10;
+// Half-width of the "fair" zone as a fraction of the band center. ±7% means a
+// live product (base markup 1.20, no score) treats 1.116–1.284 as reasonable.
+// Narrow on purpose for v1 — we'd rather make a confident steal/overpaying
+// call and roll back than hide behind a wide "fair" band. Widen if it cries
+// wolf once captures accumulate.
+export const MARGIN_BAND_HALF_WIDTH = 0.07;
 
 export interface MarginBand {
   /** Pure expected value — the floor the whole band is built on. */

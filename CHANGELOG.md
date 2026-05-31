@@ -14,20 +14,20 @@ Reframes the fair-value PYT work (entry below) from "BreakIQ vs. breakers" to a 
 ```
 F = pure fair value (expected $ of pulls)
 bandCenter = MARKET_MARKUP_BY_LIFECYCLE[lifecycle] × (1 + α × effectiveScore)
-band       = [F × bandCenter × (1−w), F × bandCenter × (1+w)]   (w = ±10%)
+band       = [F × bandCenter × (1−w), F × bandCenter × (1+w)]   (w = ±7%)
 
 ask < bandLow   → STEAL       (lean in)        → BUY
 bandLow..High   → FAIR        (honest margin)  → WATCH
 ask > bandHigh  → OVERPAYING  (fleecing)       → PASS
 ```
 
-`α = MARGIN_BAND_SCORE_SENSITIVITY = 0.15`, `w = MARGIN_BAND_HALF_WIDTH = 0.10`. Zones map onto the existing `Signal` enum — no schema change, sharper meaning.
+`α = MARGIN_BAND_SCORE_SENSITIVITY = 0.25`, `w = MARGIN_BAND_HALF_WIDTH = 0.07`. Zones map onto the existing `Signal` enum — no schema change, sharper meaning. Both dials are deliberately **liberal to start** (strong score pull, narrow "fair" band) — easier to roll back from bold than to discover a timid band did nothing.
 
 **This is where the moat comes back.** The prior PYT entry (below) correctly noted that the pure-EV slot math dropped `effectiveScore` (SME sentiment / prospect rank / hype / risk — the Track A + Track B edge). The band re-introduces it as the **band-shifter**, not a removal: a player on a heater (positive score) → reasonable band shifts UP (it's genuinely fine for a breaker to charge more, we say so); a risk-flagged / cooling player → band shifts DOWN (charging the normal premium on a just-injured player IS fleecing, and the band catches it where a flat markup wouldn't). A CardHedger wrapper can't do this — it doesn't know where the reasonable line sits for *this* player at *this* moment.
 
 **Consumer verdict (lib/analysis.ts + AnalysisResultPanel):** when `fair_value_pyt_enabled` is on, `runBreakAnalysis` computes the bundle's EV-weighted `effectiveScore`, builds the band, classifies the ask, and returns a new `marginZone` field. `marketFairValue` becomes the band center; low/high become the band edges. The result panel reads "Priced below a fair breaker margin — lean in." / "Inside a fair breaker margin — honest pricing." / "Above a fair breaker margin — you're overpaying," and relabels "Market Ask Range" → "Reasonable margin band." Flag off = legacy percentage-threshold verdict, byte-for-byte unchanged.
 
-**Admin validation reframe (/admin/market-delta).** Replaced the "Model B wins when its P90 |Δ| vs the herd is lower" panel — that was **herd-chasing**, the exact thing the thesis says is wrong. New panel classifies captured `/break-price` asks into the band's steal / fair / overpaying zones: a healthy market reads mostly FAIR with an OVERPAYING tail we'd flag. Flip criterion is now explicit and qualitative: *flip when the zone split matches SME judgment by eye, and once My Breaks v2 pull data can confirm the overpaying calls actually under-returned* — NOT when Model B matches breaker asks better than Model A. Δ B column is colored by band zone (±10%, matching the consumer verdict) instead of the generic ±20% bucket.
+**Admin validation reframe (/admin/market-delta).** Replaced the "Model B wins when its P90 |Δ| vs the herd is lower" panel — that was **herd-chasing**, the exact thing the thesis says is wrong. New panel classifies captured `/break-price` asks into the band's steal / fair / overpaying zones: a healthy market reads mostly FAIR with an OVERPAYING tail we'd flag. Flip criterion is now explicit and qualitative: *flip when the zone split matches SME judgment by eye, and once My Breaks v2 pull data can confirm the overpaying calls actually under-returned* — NOT when Model B matches breaker asks better than Model A. Δ B column is colored by band zone (±7%, matching the consumer verdict) instead of the generic ±20% bucket.
 
 **Admin Δ for PYP — the skipped prerequisite (Owed #8) now landed.** New `lib/player-fair-value.ts` (`getPlayerPypForProduct(s)`) runs `computePlayerPyp` from cache at a 1-hobby-case reference, keyed by `player_id` for capture lookups. Player-scope `/break-price` captures now populate the Δ B column + feed the band zone breakdown (Δ A stays "—" — case-cost-share has no per-player analog). Same admin approximation caveat as the team helper: score adjustments default to 0 (flat band), `hobbyEVPerBox` falls back to `evMid`; the consumer page is the source of truth for the real score-shifted number.
 
@@ -35,7 +35,7 @@ ask > bandHigh  → OVERPAYING  (fleecing)       → PASS
 
 **What did NOT change:** the `case_cost_share` (legacy) verdict path is untouched; flag-off behavior is identical. No schema migration (the band is render-time math). BD/jumbo still case-cost-share. `MARKET_MARKUP_BY_LIFECYCLE` constants unchanged — the band is built on top of them. Per-row score-shifted markup on the consumer slot *tables* (vs. the verdict) is deferred — the band carries the moat in the verdict, which is the surface that answers "am I getting fleeced."
 
-**Tuning constants to revisit from captures:** `MARGIN_BAND_SCORE_SENSITIVITY` (how hard score swings the band) and `MARGIN_BAND_HALF_WIDTH` (how wide "fair" is). Both deliberately conservative for v1 — we'd rather under-call fleecing than cry wolf. The admin zone split is the dial.
+**Tuning constants to revisit from captures:** `MARGIN_BAND_SCORE_SENSITIVITY` (how hard score swings the band) and `MARGIN_BAND_HALF_WIDTH` (how wide "fair" is). Both deliberately **liberal** for v1 — strong score pull (0.25) + narrow fair band (±7%) so the model makes confident calls and the moat has teeth. Easier to dial back from bold than to notice a timid band did nothing. The admin zone split is the dial; widen the band / soften α if it cries wolf.
 
 ---
 
