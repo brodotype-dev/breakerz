@@ -42,7 +42,9 @@ See the [full plan](plans/2026-05-10-topps-series-split.md) for verified data, c
 
 ---
 
-### PYT (team-slot) math: audit + rebuild on fair-value EV foundation
+### PYT (team-slot) math: audit + rebuild on fair-value EV foundation  ✅ SHIPPED 2026-05-30 (flag-off)
+**Shipped:** [breakerz#176](https://github.com/brodotype-dev/breakerz/pull/176). `computeSlotPricing` gained a `mode` param (`fair_value_ev`), gated behind `feature_flags.fair_value_pyt_enabled` (default false). A reasonable-margin band ([lib/margin-band.ts](../lib/margin-band.ts)) reframes the verdict to steal/fair/overpaying with score modulation re-entering as the band-shifter. Dual-Δ A/B + band-zone classification on `/admin/market-delta`; player-scope Δ via [lib/player-fair-value.ts](../lib/player-fair-value.ts). **Flag stays off in prod until validated — see "Pull-Data Capture" (the gate) + the persona-panel findings below.** Original plan + rationale retained below for reference.
+
 **Effort:** ~1 day (refactor + UI rewire) + 1–2 days of calibration once captures accumulate
 **Surfaces affected:** [lib/engine.ts](../lib/engine.ts) `computeSlotPricing` + every consumer surface that renders team slots (TeamSlotsTable, PlayerTable's slot columns, `/analysis`, /admin/market-delta, the verdict pipeline in `lib/analysis.ts`).
 
@@ -148,6 +150,8 @@ Each logged pull gets CH-priced via existing infrastructure → sum to `total_pu
 
 **Why P1 now:** Without this, every model improvement (Track A prospect_score, Track B cascading sentiment, freshness multiplier, anchor strategies, grade ratio value) is hypothesis-driven and unprovable. With this, every model constant becomes a tunable hyperparameter validated against observed reality. **This is the single shipping change that converts BreakIQ from "tuning a piano with the lid closed" to a learnable system.**
 
+**🔴 ELEVATED 2026-05-30 — this is now the GATE before flipping `fair_value_pyt_enabled`.** The persona panel (PM + Investor + Whale, independently) identified that the `/admin/market-delta` band validation calibrates against captured *breaker asks* — the population the thesis says is systematically wrong. That's circular: a "healthy mostly-FAIR split" can only mean the band agrees with the herd. The ONLY non-circular validator is realized pull value (this entry). **Do not flip the consumer flag on herd-agreement alone — flip it when realized pulls confirm the "overpaying" calls actually under-returned.** See [docs/persona-reviews/2026-05-30-pyt-pyp-band-critique.md](persona-reviews/2026-05-30-pyt-pyp-band-critique.md).
+
 Related: see Section 4 of [docs/strategy/north-star-and-feedback-loop.md](strategy/north-star-and-feedback-loop.md) for the full measurement stack — Stage 1 (Market Delta, this section) → Stage 2 (recovery ratio, this entry) → Stage 3 (verdict accuracy) → Stage 4 (confidence-calibrated coverage).
 
 ---
@@ -200,6 +204,36 @@ Where `α` and the cap are tuned from `/break-price` capture deltas: fit `α` to
 - Discord `/break-price` capture rows can also flag whether a particular ask was "as part of hybrid" — informs which buyer math the breaker is using
 
 Both refinements get materially easier once captures accumulate. Don't tune in a vacuum; tune from real data.
+
+---
+
+## Persona-panel findings — 2026-05-30
+
+Surfaced by a 5-persona critical review (Breaker / Novice / Whale / PM / Investor) of the PYP + PYT + margin-band work. Full session record + verbatim agent output: [docs/persona-reviews/2026-05-30-pyt-pyp-band-critique.md](persona-reviews/2026-05-30-pyt-pyp-band-critique.md). Listed here in priority order; the strongest signals were where personas *independently converged*.
+
+### High-end slots are biased low by construction (1/1 + SuperFractor EV filter)  — P1
+**Surfaced by:** Whale + Breaker (independently).
+**The gap:** [lib/analysis.ts](../lib/analysis.ts) + [lib/pricing-refresh.ts](../lib/pricing-refresh.ts) filter `print_run > 1` out of `hobbyEVPerBox` (the 2026-04-29 1/1 filter — correct for stopping a single SuperFractor sale from skewing the *sets-weighted* slot, but it also strips the convexity that *justifies* a premium slot). `pypPure` is therefore structurally a **floor**, and a flat lifecycle markup sits on top. On the Wemby/Ohtani marquee slot a whale would pay $4k for, the model anchors near $1,200 and the band screams "Overpaying." A false PASS on the exact slots with the most upside is the fastest way to lose a high-spend user.
+**Distinct from the 1/λ risk-premium above:** that premium marks up *low-λ* slots; this is about the EV itself excluding the 1/1 *ceiling* before any markup applies. Related but not the same fix.
+**Possible shapes:** (a) keep 1/1s out of the sets-weighted anchor but add a separate, capped "tail/ceiling" term to high-end PYP slots; (b) surface the ceiling explicitly (EV Low / Mid / **Ceiling-incl-1/1**) so the whale sees the upside the slot price excludes. Tune against `/break-price` captures on premium slots.
+
+### Validation circularity + admin/consumer band divergence  — P1 (do before flipping the flag)
+**Surfaced by:** PM + Investor.
+**Two coupled problems:** (1) The admin band validation classifies captured *breaker asks* against our band — but breakers are the population we say is wrong (see the GATE note on Pull-Data Capture above; realized pulls are the real validator). (2) The admin band runs `effectiveScore = 0` (flat) while the consumer band uses the real bundle score-shift — so **the moat coefficient (α=0.25) is never exercised by the validation surface.** We'd be calibrating a *different model* than ships.
+**Fix:** either enrich the admin band path ([lib/team-fair-value.ts](../lib/team-fair-value.ts) / [lib/player-fair-value.ts](../lib/player-fair-value.ts) currently default score to 0) with the real per-bundle score-shift, or stop framing the admin panel as validation and label it what it is — a herd-agreement debug surface. Cheap; it's a flaw introduced in the same PR.
+
+### Novice consumer copy pass — kill the jargon, stop shaming the rip  — P2
+**Surfaced by:** Novice (reinforced by the r/sportscards sentiment file's "validate the smart buyer, don't shame the rip impulse").
+**Concrete fixes:**
+- **Kill the `P(0)` label.** "P-zero" is stats-class jargon. Say "1 in 3 chance you hit" in *green* (frame the upside), not a red 65% chip — red is the PASS color, so we're flashing "danger" on the player the user is excited about.
+- **Kill / gloss `EV` and `PYP` as bare labels** in [PlayerTable.tsx](../components/breakiq/PlayerTable.tsx) headers and [AnalysisResultPanel.tsx](../components/breakiq/AnalysisResultPanel.tsx). Lead with plain words ("what the hits are usually worth").
+- **One primary verdict, not three.** The panel currently shows BUY/WATCH/PASS *and* "X% below the reasonable margin" *and* a margin tagline. The clearest copy (the steal/fair/overpaying tagline) is the smallest/least visible; the jargon is loudest. Pick one answer and make it the hero.
+- A novice in a 10-second live-rip won't hover a paragraph-long tooltip. Front-load the one-glance read.
+
+### Breaker "Fair badge" — two-sided distribution spike  — STRATEGIC (discuss w/ Kyle before building)
+**Surfaced by:** Breaker + Investor (independently — this was the single opportunity both circled).
+**The idea:** the referee reframe we just shipped makes breakers *want* the "Fair margin" verdict — the Breaker persona said outright "let me claim the Fair badge, I'd put it in my stream title." A "BreakIQ-Fair Verified" overlay/embed turns the accusation tool into a trust signal breakers cite, flipping our subjects-with-audiences from enemies into a **distribution channel**. The Investor's verdict: today BreakIQ reads as a feature (CardHedger wrapper + sentiment coefficient); the *only* wedge anyone sees to a fundable company is this two-sided network where breakers adopt the badge and the SME data compounds.
+**Why it's a spike, not a build:** it's a positioning + business-model bet, not an engineering task. Needs Brody + Kyle alignment on whether we court breakers as partners at all (it inverts "stop overpaying breakers") before any UI. Smallest test: offer one trusted breaker a "Fair-rated" embed for a single break and watch whether it drives net-new buyers.
 
 ---
 
