@@ -2,6 +2,19 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { Activity, TrendingUp, TrendingDown, Scale } from 'lucide-react';
 import VerdictContextToggle from './VerdictContextToggle';
 import { getTeamFairValuesForProducts } from '@/lib/team-fair-value';
+import { getPlayerPypForProducts } from '@/lib/player-fair-value';
+import { MARGIN_BAND_HALF_WIDTH, zoneLabel, type MarginZone } from '@/lib/margin-band';
+
+// Zone boundary in percentage terms — a captured ask is "fair" when it sits
+// within ±half-width of Model B's band center. Derived from the same constant
+// the consumer verdict uses so admin + consumer stay in lockstep.
+const ZONE_PCT = MARGIN_BAND_HALF_WIDTH * 100;
+function zoneFromDelta(deltaPct: number | null): MarginZone | null {
+  if (deltaPct === null) return null;
+  if (deltaPct < -ZONE_PCT) return 'steal';
+  if (deltaPct > ZONE_PCT) return 'overpaying';
+  return 'fair';
+}
 
 // Market Delta Watch — admin-only thesis validation surface.
 //
@@ -307,9 +320,13 @@ export default async function MarketDeltaPage({
   const captureProductIds = Array.from(
     new Set(((obsRows ?? []).map((r: any) => r.product_id).filter(Boolean) as string[])),
   );
-  const [fairValuesByProduct, fairValuesByProductNew] = await Promise.all([
+  const [fairValuesByProduct, fairValuesByProductNew, playerPypByProduct] = await Promise.all([
     getTeamFairValuesForProducts(captureProductIds, 'case_cost_share'),
     getTeamFairValuesForProducts(captureProductIds, 'fair_value_ev'),
+    // Owed #8 — per-player PYP model for player-scope captures. Same band
+    // treatment as team captures so the Δ B column + zone breakdown cover
+    // both scopes.
+    getPlayerPypForProducts(captureProductIds),
   ]);
 
   const playerScopeIds = Array.from(
@@ -388,6 +405,23 @@ export default async function MarketDeltaPage({
         fair_value_new = teamRefNew;
         delta_pct_new = ((askMid - teamRefNew) / teamRefNew) * 100;
       }
+    } else if (
+      // Owed #8 — player-scope PYP captures. Only Model B has a per-player
+      // comparable (case-cost-share has no PYP analog), so Δ A stays null
+      // and only Δ B / the band zone populate. Hobby-only, single-format.
+      r.scope_type === 'player'
+      && r.scope_id
+      && r.product_id
+      && !isMixed
+      && composition.hobby !== undefined
+      && Object.keys(composition).length === 1
+    ) {
+      const pypRef = playerPypByProduct.get(r.product_id)?.players.get(r.scope_id)?.pypMarket ?? 0;
+      if (pypRef > 0) {
+        const askMid = (price_low + price_high) / 2;
+        fair_value_new = pypRef;
+        delta_pct_new = ((askMid - pypRef) / pypRef) * 100;
+      }
     }
 
     return {
@@ -450,19 +484,20 @@ export default async function MarketDeltaPage({
   const slotAgg = aggregate(slotDeltaRows);
   const slotVerdict = verdictFor(slotAgg);
 
-  // PYT dual-Δ — aggregate the fair_value_ev model's deltas in parallel so
-  // we can headline the P90 |Δ| improvement (or regression) before flipping
-  // the flag in prod.
-  const slotDeltaRowsNew = allCaptures
+  // Reasonable-margin band classification — the checks-and-balances read.
+  // Instead of asking "does Model B match the herd?" (the wrong question —
+  // the herd is what we exist to referee), we ask "where do captured breaker
+  // asks fall against Model B's reasonable band?" A healthy market is mostly
+  // FAIR with a meaningful OVERPAYING tail we'd flag for consumers. The flip
+  // decision is qualitative: do these zone calls match SME judgment?
+  const zoneRows = allCaptures
     .filter(c => c.delta_pct_new !== null && c.product_id)
-    .map(c => ({
-      delta_pct: c.delta_pct_new as number,
-      product_key: c.product_id ?? c.product_name,
-      product_name: c.product_name,
-      product_lifecycle: '',
-    }));
-  const slotAggNew = aggregate(slotDeltaRowsNew);
-  const slotVerdictNew = verdictFor(slotAggNew);
+    .map(c => zoneFromDelta(c.delta_pct_new));
+  const zoneTotal = zoneRows.length;
+  const zoneSteal = zoneRows.filter(z => z === 'steal').length;
+  const zoneFair = zoneRows.filter(z => z === 'fair').length;
+  const zoneOverpay = zoneRows.filter(z => z === 'overpaying').length;
+  const pct = (n: number) => (zoneTotal > 0 ? Math.round((n / zoneTotal) * 100) : 0);
 
   return (
     <div className="max-w-7xl mx-auto space-y-8">
@@ -694,56 +729,47 @@ export default async function MarketDeltaPage({
           <StatCard label="Steal" value={`${slotAgg.stealPct.toFixed(0)}%`} sub={`${slotAgg.stealCount} of ${slotAgg.total}`} color="#22c55e" icon={TrendingDown} />
         </div>
 
-        {/* PYT dual-model A/B — show both P90 |Δ| numbers side by side.
-            The new model wins when its P90 absolute delta is meaningfully
-            lower than the old; once consistent across N>30 captures per
-            active product, flip fair_value_pyt_enabled in prod. */}
-        {slotAgg.total > 0 && (
+        {/* Reasonable-margin band — checks-and-balances read on Model B.
+            NOT "does B match the herd?" (the herd is what we referee), but
+            "where do captured breaker asks fall against B's reasonable band?"
+            Healthy market = mostly FAIR with an OVERPAYING tail we'd flag.
+            The flip decision is whether these zone calls match SME judgment —
+            not whether B matches breaker asks better than A. */}
+        {zoneTotal > 0 ? (
           <div
-            className="mt-4 rounded-xl p-4 grid grid-cols-2 gap-3"
+            className="mt-4 rounded-xl p-4"
             style={{ backgroundColor: 'rgba(19, 24, 32, 0.6)', border: '1px solid var(--terminal-border-hover)' }}
           >
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--text-tertiary)' }}>
-                Model A — case-cost-share (live)
+            <div className="text-[10px] font-bold uppercase tracking-widest mb-3" style={{ color: 'var(--accent-blue)' }}>
+              Model B — reasonable-margin band · {zoneTotal} captures classified
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <div className="text-2xl font-bold font-mono" style={{ color: '#22c55e' }}>{pct(zoneSteal)}%</div>
+                <div className="text-[11px] font-semibold" style={{ color: '#22c55e' }}>Steal</div>
+                <div className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{zoneSteal} priced below band · buyer wins</div>
               </div>
-              <div className="text-lg font-bold font-mono" style={{ color: 'var(--text-primary)' }}>
-                P90 |Δ| {slotAgg.p90.toFixed(0)}%
+              <div>
+                <div className="text-2xl font-bold font-mono" style={{ color: 'var(--text-primary)' }}>{pct(zoneFair)}%</div>
+                <div className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>Fair margin</div>
+                <div className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{zoneFair} inside band · breaker pricing honestly</div>
               </div>
-              <div className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-                {slotAgg.total} captures · mean {slotAgg.meanDelta >= 0 ? '+' : ''}{slotAgg.meanDelta.toFixed(1)}%
+              <div>
+                <div className="text-2xl font-bold font-mono" style={{ color: '#ef4444' }}>{pct(zoneOverpay)}%</div>
+                <div className="text-[11px] font-semibold" style={{ color: '#ef4444' }}>Overpaying</div>
+                <div className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>{zoneOverpay} above band · we&apos;d flag for consumers</div>
               </div>
             </div>
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--accent-blue)' }}>
-                Model B — fair-value EV (proposed)
-              </div>
-              {slotAggNew.total > 0 ? (
-                <>
-                  <div className="text-lg font-bold font-mono" style={{ color: slotAggNew.p90 < slotAgg.p90 ? '#22c55e' : slotAggNew.p90 > slotAgg.p90 ? '#f97316' : 'var(--text-primary)' }}>
-                    P90 |Δ| {slotAggNew.p90.toFixed(0)}%
-                    {slotAggNew.p90 !== slotAgg.p90 && (
-                      <span className="ml-2 text-[11px] font-mono">
-                        ({slotAggNew.p90 < slotAgg.p90 ? '↓' : '↑'} {Math.abs(slotAggNew.p90 - slotAgg.p90).toFixed(0)}pp)
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-                    {slotAggNew.total} captures qualified · mean {slotAggNew.meanDelta >= 0 ? '+' : ''}{slotAggNew.meanDelta.toFixed(1)}%
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="text-sm font-mono" style={{ color: 'var(--text-tertiary)' }}>—</div>
-                  <div className="text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-                    No captures qualified yet (need products with dense hobby odds + autos_per_case)
-                  </div>
-                </>
-              )}
+            <div className="mt-3 text-[10px] leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
+              Band = lifecycle markup ±{ZONE_PCT}% (admin approximation uses a flat band; the consumer verdict shifts it by each bundle&apos;s SME/score signal). <strong style={{ color: 'var(--text-secondary)' }}>Flip criterion:</strong> not &quot;B matches breaker asks better than A&quot; — that&apos;s herd-chasing. Flip <code>fair_value_pyt_enabled</code> when the steal/fair/overpaying split here matches what an SME would call by eye, and once real pull data (My Breaks v2) can confirm the overpaying calls actually under-returned.
             </div>
-            <div className="col-span-2 text-[10px]" style={{ color: 'var(--text-tertiary)' }}>
-              Verdict (B): <span style={{ color: slotVerdictNew.color }}>{slotVerdictNew.label}</span>. When B&apos;s P90 is consistently lower than A&apos;s across &gt;30 captures per active product, flip <code>fair_value_pyt_enabled</code> to ship the new math.
-            </div>
+          </div>
+        ) : (
+          <div
+            className="mt-4 rounded-xl p-4 text-[11px]"
+            style={{ backgroundColor: 'rgba(19, 24, 32, 0.6)', border: '1px solid var(--terminal-border-hover)', color: 'var(--text-tertiary)' }}
+          >
+            No captures qualify for Model B band classification yet — need team- or player-scoped, single-format hobby captures on products with dense hobby odds + <code>hobby_autos_per_case</code> set.
           </div>
         )}
       </div>
@@ -890,11 +916,14 @@ export default async function MarketDeltaPage({
                 : c.delta_pct >= 20 ? '#ef4444'
                 : c.delta_pct <= -20 ? '#22c55e'
                 : 'var(--text-secondary)';
-              const deltaColorNew = c.delta_pct_new === null
-                ? 'var(--text-tertiary)'
-                : c.delta_pct_new >= 20 ? '#ef4444'
-                : c.delta_pct_new <= -20 ? '#22c55e'
-                : 'var(--text-secondary)';
+              // Δ B is colored by band zone (±10% band), not the generic ±20
+              // bucket — so the admin sees exactly the steal/fair/overpaying
+              // call the consumer verdict would make.
+              const zoneNew = zoneFromDelta(c.delta_pct_new);
+              const deltaColorNew = zoneNew === 'overpaying' ? '#ef4444'
+                : zoneNew === 'steal' ? '#22c55e'
+                : zoneNew === 'fair' ? 'var(--text-secondary)'
+                : 'var(--text-tertiary)';
               return (
                 <div
                   key={c.id}
@@ -927,7 +956,7 @@ export default async function MarketDeltaPage({
                   <div
                     className="col-span-1 text-right font-mono"
                     style={{ color: deltaColorNew }}
-                    title={c.fair_value_new !== null ? `B (fair-value EV): $${Math.round(c.fair_value_new).toLocaleString()} (1-case ref)` : 'Product does not qualify for fair_value_ev (thin odds coverage or no autos_per_case)'}
+                    title={c.fair_value_new !== null ? `B (fair-value EV): $${Math.round(c.fair_value_new).toLocaleString()} band center · ${zoneNew ? zoneLabel(zoneNew) : ''}` : 'Product does not qualify for fair_value_ev (thin odds coverage or no autos_per_case)'}
                   >
                     {c.delta_pct_new === null ? '—' : `${c.delta_pct_new >= 0 ? '+' : ''}${c.delta_pct_new.toFixed(0)}%`}
                   </div>
@@ -942,7 +971,7 @@ export default async function MarketDeltaPage({
             })}
           </div>
           <div className="mt-3 px-1 text-xs" style={{ color: 'var(--text-tertiary)' }}>
-            <strong style={{ color: 'var(--text-secondary)' }}>Δ A</strong> = case-cost-share (live model) · <strong style={{ color: 'var(--accent-blue)' }}>Δ B</strong> = fair-value EV (proposed). Both use a 1-case-equivalent per-team fair value with lifecycle-aware market markup. B shows &quot;—&quot; on products with thin odds coverage (engine bails to A silently). Mixed-composition captures show &quot;—&quot; until per-mix engine reference math ships.
+            <strong style={{ color: 'var(--text-secondary)' }}>Δ A</strong> = case-cost-share (live model) · <strong style={{ color: 'var(--accent-blue)' }}>Δ B</strong> = fair-value EV (proposed), colored by reasonable-margin band zone (steal / fair / overpaying at ±{ZONE_PCT}%). Team captures compare to the per-team slot; player captures compare to the per-player PYP (Δ A is &quot;—&quot; there — case-cost-share has no PYP analog). 1-case-equivalent reference, lifecycle markup. B shows &quot;—&quot; on thin-odds products (engine bails to A silently). Mixed-composition captures show &quot;—&quot; until per-mix reference math ships.
           </div>
         </Section>
       )}

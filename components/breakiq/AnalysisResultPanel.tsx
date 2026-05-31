@@ -31,9 +31,21 @@ interface Props {
  * HV advisory, risk flags. Shared between the standalone /analysis page
  * and the inline break-page analysis block.
  */
+// When the reasonable-margin band is active, the verdict reads as a referee
+// call on the breaker's margin rather than a raw EV delta. Same BUY/WATCH/PASS
+// badge, sharper meaning.
+const ZONE_COPY: Record<NonNullable<AnalysisResult['marginZone']>, { tagline: string; rangeLabel: string }> = {
+  steal:      { tagline: 'Priced below a fair breaker margin — lean in.', rangeLabel: 'Reasonable margin band' },
+  fair:       { tagline: 'Inside a fair breaker margin — this is honest pricing.', rangeLabel: 'Reasonable margin band' },
+  overpaying: { tagline: 'Above a fair breaker margin — you’re overpaying.', rangeLabel: 'Reasonable margin band' },
+};
+
 export default function AnalysisResultPanel({ result, productId, productSlug }: Props) {
   const cfg = signalConfig[result.signal];
-  const aboveBelow = result.valuePct >= 0 ? 'below fair value' : 'above fair value';
+  const zone = result.marginZone ? ZONE_COPY[result.marginZone] : null;
+  const aboveBelow = zone
+    ? (result.valuePct >= 0 ? 'below the reasonable margin' : 'above the reasonable margin')
+    : (result.valuePct >= 0 ? 'below fair value' : 'above fair value');
   const formatLine = (['hobby', 'jumbo', 'bd'] as const)
     .filter(k => result.formats[k] > 0)
     .map(k => `${result.formats[k]} ${k === 'hobby' ? 'Hobby' : k === 'bd' ? 'BD' : 'Jumbo'}`)
@@ -68,8 +80,16 @@ export default function AnalysisResultPanel({ result, productId, productSlug }: 
           </div>
         </div>
 
+        {zone && (
+          <p className="text-xs mb-2 font-medium" style={{ color: cfg.textColor }}>
+            {zone.tagline}
+          </p>
+        )}
+
         <p className="text-[11px] mb-3 leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
-          Based on CardHedger comps + our lifecycle-aware pricing model. Flag us if it&rsquo;s off — we tune from every report.
+          {zone
+            ? 'We referee the breaker’s margin — steal, fair, or overpaying — over CardHedger comps plus our SME signal. Flag us if it’s off; we tune from every report.'
+            : 'Based on CardHedger comps + our lifecycle-aware pricing model. Flag us if it’s off — we tune from every report.'}
         </p>
 
         <div className="mb-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
@@ -78,10 +98,10 @@ export default function AnalysisResultPanel({ result, productId, productSlug }: 
 
         <div className="grid grid-cols-2 gap-4 mb-4">
           <div>
-            <p className="terminal-label mb-1">Market Ask Range</p>
+            <p className="terminal-label mb-1">{zone ? zone.rangeLabel : 'Market Ask Range'}</p>
             <p className="font-mono text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{formatCurrency(result.marketFairValue)}</p>
             <p className="font-mono text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-              {formatCurrency(result.marketFairLow)}–{formatCurrency(result.marketFairHigh)} · model {formatCurrency(result.fairValue)}
+              {formatCurrency(result.marketFairLow)}–{formatCurrency(result.marketFairHigh)} · {zone ? 'EV' : 'model'} {formatCurrency(result.fairValue)}
             </p>
           </div>
           <div>

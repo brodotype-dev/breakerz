@@ -72,7 +72,7 @@ const PYP_COLUMN: ColumnDef = {
   label: 'PYP',
   align: 'right',
   tip:
-    "Pick-Your-Player slot price. Fair-value: expected $ of this player's autograph pulls across your configured break, marked up for the live-product window. The chip shows P(zero hits) — anything ≳25% is a real lottery, anything ≲5% is near-certainty.",
+    "Pick-Your-Player price — the fair-value estimate of this player's autograph pulls across your configured break, plus a reasonable margin. The P(0) chip is the bet you're making: how likely the slot returns no hit. Low P(0) = near-lock; high P(0) = high-variance upside (scarce pulls are part of why these price up).",
 };
 
 /** Insert the PYP column right after Slot Cost when active. */
@@ -308,7 +308,7 @@ export default function PlayerTable({
                               </span>
                               <span
                                 className="text-[9px] font-medium px-1 py-0.5 rounded border whitespace-nowrap"
-                                title={`Expected hits across the configured break: ${pyp.expectedHits.toFixed(2)}. Poisson P(zero) = ${p0pct.toFixed(1)}%. ${isLottery ? 'Lottery-shaped slot — buyers often pay above fair value for the upside.' : 'Near-certainty hit.'}`}
+                                title={`Expected pulls across this break: ${pyp.expectedHits.toFixed(2)}. P(no hit) = ${p0pct.toFixed(1)}%. ${isLottery ? 'High-variance upside bet — scarce pulls like this often carry a premium for the ceiling.' : 'Near-lock to hit at least once.'}`}
                                 style={{
                                   backgroundColor: chipColor.bg,
                                   color: chipColor.fg,

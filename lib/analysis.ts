@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { computeLiveEV, get90DayPrices } from '@/lib/cardhedger';
-import { computeSlotPricing, computeTeamSlotPricing, computeSignal, formatCurrency } from '@/lib/engine';
+import { computeSlotPricing, computeTeamSlotPricing, computeSignal, computeEffectiveScore, formatCurrency } from '@/lib/engine';
+import { computeMarginBand, classifyAsk, zoneToSignal, bandValuePct, type MarginZone } from '@/lib/margin-band';
 import { computeRiskAdjustment, computeHypeAdjustment, type HypeObservation, type HypeTag } from '@/lib/score-modulation';
 import { computeProspectAdjustment } from '@/lib/prospect-score';
 import {
@@ -59,6 +60,12 @@ export interface AnalysisResult {
       fairValueEvFair: number | null; // null when product doesn't qualify
     };
   };
+  // Reasonable-margin band classification. Set only on the fair_value_ev
+  // path (the band reframe rides with the new model). When present, the
+  // signal/valuePct above derive from where the ask falls in the band:
+  // steal → BUY, fair → WATCH, overpaying → PASS. null on the legacy path
+  // so the consumer panel falls back to the percentage-threshold copy.
+  marginZone: MarginZone | null;
 }
 
 export interface AnalysisInput {
@@ -403,17 +410,59 @@ export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisRe
   const caseCostShareFair = fairFor(pricedCaseCost);
   const fairValueEvFair = fairValueActuallyApplied ? fairFor(pricedFairValue) : null;
 
-  // Plan B: lifecycle-aware market markup. The signal is judged against the
-  // market-adjusted number — what breakers actually charge over pure EV —
-  // not the raw model output. Pure fairValue stays in the response for the
-  // "model: $X" sub-line and for user_breaks snapshot continuity.
   const lifecycleStatus = (product.lifecycle_status ?? 'live') as ProductLifecycle;
-  const markup = getMarketMarkup(lifecycleStatus);
-  const marketFairValue = fairValue * markup;
-  const marketFairLow   = fairValue * (markup - MARKET_MARKUP_RANGE);
-  const marketFairHigh  = fairValue * (markup + MARKET_MARKUP_RANGE);
 
-  const { signal, valuePct } = computeSignal(marketFairValue, askPrice);
+  // Verdict — two paths, gated by which slot model is active.
+  //
+  // fair_value_ev (Model B): reasonable-margin band. The band center is the
+  // lifecycle markup SHIFTED by the bundle's EV-weighted effective score —
+  // this is where score modulation (the moat) re-enters after being absent
+  // from the pure-EV slot math. The ask is classified steal / fair /
+  // overpaying and mapped onto BUY / WATCH / PASS. We're not fighting the
+  // breaker; we're refereeing the margin.
+  //
+  // case_cost_share (Model A / legacy): unchanged — flat lifecycle markup +
+  // percentage-threshold signal. Byte-for-byte identical to prior behavior.
+  let marketFairValue: number;
+  let marketFairLow: number;
+  let marketFairHigh: number;
+  let signal: Signal;
+  let valuePct: number;
+  let marginZone: MarginZone | null = null;
+
+  if (activeMode === 'fair_value_ev') {
+    // EV-weighted effective score across the bundle players — the band
+    // shifts by how hot/cold the bundle is, not a flat product markup.
+    const bundlePlayers = [...selectedTeamSlots.flatMap(t => t.players), ...extraPlayers];
+    let scoreNum = 0;
+    let scoreDen = 0;
+    for (const p of bundlePlayers) {
+      const w = Math.max(p.evMid, 0);
+      const eff = computeEffectiveScore(
+        p.buzz_score, p.breakerz_score, p.player?.is_icon ?? false,
+        p.risk_score_adj, p.hype_score_adj, p.prospect_score_adj, p.cascade_score_adj,
+      );
+      scoreNum += eff * w;
+      scoreDen += w;
+    }
+    const bundleEffectiveScore = scoreDen > 0 ? scoreNum / scoreDen : 0;
+
+    const band = computeMarginBand(fairValue, lifecycleStatus, bundleEffectiveScore);
+    marketFairValue = band.priceCenter;
+    marketFairLow = band.priceLow;
+    marketFairHigh = band.priceHigh;
+    marginZone = classifyAsk(askPrice, band);
+    signal = zoneToSignal(marginZone);
+    valuePct = bandValuePct(askPrice, band);
+  } else {
+    // Plan B: lifecycle-aware market markup. Pure fairValue stays in the
+    // response for the "model: $X" sub-line + user_breaks snapshot continuity.
+    const markup = getMarketMarkup(lifecycleStatus);
+    marketFairValue = fairValue * markup;
+    marketFairLow   = fairValue * (markup - MARKET_MARKUP_RANGE);
+    marketFairHigh  = fairValue * (markup + MARKET_MARKUP_RANGE);
+    ({ signal, valuePct } = computeSignal(marketFairValue, askPrice));
+  }
 
   // Union of all players in the bundle for top-players, risk flags, HV.
   const teamPlayers = selectedTeamSlots.flatMap(t => t.players);
@@ -599,5 +648,6 @@ Write a 2–3 sentence analysis explaining whether this bundle is worth buying a
         fairValueEvFair,
       },
     },
+    marginZone,
   };
 }
