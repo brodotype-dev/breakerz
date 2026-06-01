@@ -4,10 +4,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
-import { ClipboardList, Plus, Clock, ArrowLeft, Sparkles, Trophy, Meh, ThumbsDown, ChevronDown, Download, Upload, X, Search, Check } from 'lucide-react';
+import { ClipboardList, Plus, Clock, ArrowLeft, Sparkles, Trophy, Meh, ThumbsDown, ChevronDown, Download, Upload, X, Search, Check, Pencil, Trash2 } from 'lucide-react';
 import { formatCurrency } from '@/lib/engine';
 import type { Signal, Platform, BreakOutcome, BreakStatus, BreakFormat } from '@/lib/types';
+import type { AnalysisResult } from '@/lib/analysis';
 import TeamChip from '@/components/breakiq/TeamChip';
+import AnalysisResultPanel from '@/components/breakiq/AnalysisResultPanel';
 import { InfoTip } from '@/components/breakiq/ds';
 
 const supabase = createClient(
@@ -123,12 +125,39 @@ function computeStats(breaks: BreakRecord[]) {
   const mediocres = completed.filter(b => b.outcome === 'mediocre').length;
   const busts = completed.filter(b => b.outcome === 'bust').length;
 
+  // Avg vs Fair: mean of (ask − fair) / fair across active breaks that carry a
+  // usable fair-value snapshot. Descriptive only — positive means the user has
+  // paid over our number on average, negative means under. Sample size is
+  // surfaced alongside so a single break can't masquerade as a trend.
+  const withFair = active.filter(
+    b => b.snapshot_fair_value != null && Number(b.snapshot_fair_value) > 0
+  );
+  const avgVsFair = withFair.length
+    ? withFair.reduce(
+        (sum, b) => sum + (Number(b.ask_price) - Number(b.snapshot_fair_value)) / Number(b.snapshot_fair_value),
+        0
+      ) / withFair.length
+    : null;
+
+  // Signal mix: how many of the user's breaks our model flagged BUY / WATCH /
+  // PASS at the moment they logged them.
+  const withSignal = active.filter(b => b.snapshot_signal);
+  const signalMix = {
+    BUY: withSignal.filter(b => b.snapshot_signal === 'BUY').length,
+    WATCH: withSignal.filter(b => b.snapshot_signal === 'WATCH').length,
+    PASS: withSignal.filter(b => b.snapshot_signal === 'PASS').length,
+  };
+
   return {
     totalBreaks: active.length,
     totalSpent,
     wins,
     mediocres,
     busts,
+    avgVsFair,
+    avgVsFairSample: withFair.length,
+    signalMix,
+    signalSample: withSignal.length,
   };
 }
 
@@ -347,6 +376,7 @@ function BreakList({
 
   const pending = filtered.filter(b => b.status === 'pending');
   const completed = filtered.filter(b => b.status === 'completed');
+  const abandoned = filtered.filter(b => b.status === 'abandoned');
 
   const stats = computeStats(filtered);
   const hasFilters = timeFilter !== 'all' || platformFilter !== '' || outcomeFilter !== '';
@@ -384,7 +414,7 @@ function BreakList({
   return (
     <div className="space-y-6">
       {/* Stats row */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-4">
         <div className="rounded-lg p-3 sm:p-4 text-center" style={{ border: '1px solid var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
           <p className="text-xl sm:text-2xl font-bold font-mono" style={{ color: 'var(--text-primary)' }}>{stats.totalBreaks}</p>
           <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider mt-1" style={{ color: 'var(--text-tertiary)' }}>Breaks</p>
@@ -393,6 +423,46 @@ function BreakList({
           <p className="text-xl sm:text-2xl font-bold font-mono" style={{ color: 'var(--text-primary)' }}>{formatCurrency(stats.totalSpent)}</p>
           <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider mt-1" style={{ color: 'var(--text-tertiary)' }}>Total Spent</p>
         </div>
+
+        {/* Avg vs Fair — descriptive. Over fair (positive) is red, under is green. */}
+        <div className="rounded-lg p-3 sm:p-4 text-center" style={{ border: '1px solid var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
+          {stats.avgVsFair == null ? (
+            <p className="text-xl sm:text-2xl font-bold font-mono" style={{ color: 'var(--text-disabled)' }}>—</p>
+          ) : (
+            <p
+              className="text-xl sm:text-2xl font-bold font-mono"
+              style={{ color: stats.avgVsFair >= 0 ? 'var(--signal-pass)' : 'var(--signal-buy)' }}
+            >
+              {stats.avgVsFair >= 0 ? '+' : ''}{(stats.avgVsFair * 100).toFixed(0)}%
+            </p>
+          )}
+          <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider mt-1" style={{ color: 'var(--text-tertiary)' }}>
+            {stats.avgVsFair == null ? 'Avg vs Fair' : stats.avgVsFair >= 0 ? 'Over Fair' : 'Under Fair'}
+          </p>
+          <p className="text-[9px] sm:text-[10px] mt-0.5" style={{ color: 'var(--text-disabled)' }}>
+            {stats.avgVsFairSample === 0 ? 'no snapshots' : `across ${stats.avgVsFairSample} break${stats.avgVsFairSample === 1 ? '' : 's'}`}
+          </p>
+        </div>
+
+        {/* Signal mix — what our model flagged at log time. */}
+        <div className="rounded-lg p-3 sm:p-4 text-center" style={{ border: '1px solid var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
+          {stats.signalSample === 0 ? (
+            <p className="text-base sm:text-lg font-bold font-mono" style={{ color: 'var(--text-disabled)' }}>—</p>
+          ) : (
+            <div className="flex items-center justify-center gap-1 sm:gap-1.5 text-sm sm:text-base font-bold font-mono whitespace-nowrap">
+              <span style={{ color: 'var(--signal-buy)' }}>{stats.signalMix.BUY}B</span>
+              <span style={{ color: 'var(--text-disabled)' }}>·</span>
+              <span style={{ color: 'var(--signal-watch)' }}>{stats.signalMix.WATCH}W</span>
+              <span style={{ color: 'var(--text-disabled)' }}>·</span>
+              <span style={{ color: 'var(--signal-pass)' }}>{stats.signalMix.PASS}P</span>
+            </div>
+          )}
+          <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider mt-1" style={{ color: 'var(--text-tertiary)' }}>Signal Mix</p>
+          <p className="text-[9px] sm:text-[10px] mt-0.5" style={{ color: 'var(--text-disabled)' }}>
+            {stats.signalSample === 0 ? 'no snapshots' : `of ${stats.signalSample} rated`}
+          </p>
+        </div>
+
         <div className="rounded-lg p-3 sm:p-4 text-center" style={{ border: '1px solid var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
           <div className="flex items-center justify-center gap-1 sm:gap-2 text-base sm:text-lg font-bold font-mono whitespace-nowrap">
             <span style={{ color: 'var(--signal-buy)' }}>{stats.wins}W</span>
@@ -479,11 +549,293 @@ function BreakList({
           </h2>
           <div className="space-y-3">
             {completed.map(b => (
-              <CompletedBreakCard key={b.id} brk={b} />
+              <CompletedBreakCard key={b.id} brk={b} onRefresh={onRefresh} />
             ))}
           </div>
         </div>
       )}
+
+      {abandoned.length > 0 && (
+        <AbandonedSection breaks={abandoned} onRefresh={onRefresh} />
+      )}
+    </div>
+  );
+}
+
+// ── Abandoned ("Passed on") Section ───────────────────────────────────────────
+
+// Breaks the user researched but didn't buy into. Collapsed by default — these
+// are excluded from every stat, so they live in a quiet drawer the user can
+// open to review or delete.
+function AbandonedSection({ breaks, onRefresh }: { breaks: BreakRecord[]; onRefresh: () => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider"
+        style={{ color: 'var(--text-tertiary)' }}
+      >
+        <ChevronDown className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+        Passed on ({breaks.length})
+      </button>
+      {open && (
+        <div className="space-y-2 mt-3">
+          {breaks.map(b => {
+            const platformLabel = PLATFORMS.find(p => p.value === b.platform)?.label ?? b.platform;
+            return (
+              <div
+                key={b.id}
+                className="rounded-lg p-3 flex items-center justify-between opacity-70"
+                style={{ border: '1px solid var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
+              >
+                <div>
+                  <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+                    {b.product?.name ?? 'Unknown Product'} — {(b.teams ?? []).join(', ') || '—'}
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                    {formatCurrency(b.ask_price)} · {platformLabel} · {new Date(b.created_at).toLocaleDateString()}
+                  </p>
+                </div>
+                <CardActions brk={b} onEdit={() => {}} onRefresh={onRefresh} hideEdit />
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Edit / Delete affordances ─────────────────────────────────────────────────
+
+// Pencil + trash icons for a break card header. Delete uses a two-click confirm
+// (click trash → "Delete?" → confirm) so a stray tap can't wipe a logged break.
+// All clicks stopPropagation because the pending card header is click-to-expand.
+function CardActions({
+  brk,
+  onEdit,
+  onRefresh,
+  hideEdit = false,
+}: {
+  brk: BreakRecord;
+  onEdit: () => void;
+  onRefresh: () => void;
+  hideEdit?: boolean;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleDelete(e: React.MouseEvent) {
+    e.stopPropagation();
+    setDeleting(true);
+    setErr(null);
+    try {
+      const res = await fetch(`/api/my-breaks/${brk.id}`, { method: 'DELETE' });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`);
+      onRefresh();
+    } catch (e2) {
+      setErr(e2 instanceof Error ? e2.message : 'Failed to delete');
+      setDeleting(false);
+      setConfirming(false);
+    }
+  }
+
+  if (confirming) {
+    return (
+      <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+        {err && <span className="text-[10px]" style={{ color: 'var(--signal-pass)' }}>{err}</span>}
+        <button
+          onClick={handleDelete}
+          disabled={deleting}
+          className="text-[11px] font-bold px-2 py-1 rounded disabled:opacity-40"
+          style={{ backgroundColor: 'var(--signal-pass)', color: 'white' }}
+        >
+          {deleting ? 'Deleting…' : 'Delete?'}
+        </button>
+        <button
+          onClick={e => { e.stopPropagation(); setConfirming(false); }}
+          className="text-[11px] font-medium px-2 py-1 rounded"
+          style={{ color: 'var(--text-tertiary)', border: '1px solid var(--terminal-border)' }}
+        >
+          Cancel
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+      {!hideEdit && (
+        <button
+          onClick={e => { e.stopPropagation(); onEdit(); }}
+          className="p-1.5 rounded transition-colors hover:bg-[var(--terminal-bg)]"
+          title="Edit break"
+          aria-label="Edit break"
+        >
+          <Pencil className="w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
+        </button>
+      )}
+      <button
+        onClick={e => { e.stopPropagation(); setConfirming(true); }}
+        className="p-1.5 rounded transition-colors hover:bg-[var(--terminal-bg)]"
+        title="Delete break"
+        aria-label="Delete break"
+      >
+        <Trash2 className="w-3.5 h-3.5" style={{ color: 'var(--text-tertiary)' }} />
+      </button>
+    </div>
+  );
+}
+
+// Inline editor for a saved break. Edits ask price + platform always; outcome +
+// notes when `withOutcome` (completed breaks). Server recomputes the snapshot
+// signal/value when ask_price changes (pure, off the stored fair value).
+function BreakEditForm({
+  brk,
+  withOutcome,
+  onSaved,
+  onCancel,
+}: {
+  brk: BreakRecord;
+  withOutcome: boolean;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const [askPrice, setAskPrice] = useState(String(brk.ask_price));
+  const [platform, setPlatform] = useState<Platform>(brk.platform);
+  const [platformOther, setPlatformOther] = useState(brk.platform_other ?? '');
+  const [outcome, setOutcome] = useState<BreakOutcome | null>(brk.outcome);
+  const [notes, setNotes] = useState(brk.outcome_notes ?? '');
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function handleSave() {
+    const ask = parseFloat(askPrice);
+    if (!Number.isFinite(ask) || ask <= 0) {
+      setErr('Ask price must be a positive number');
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    const body: Record<string, unknown> = {
+      ask_price: ask,
+      platform,
+      platform_other: platform === 'other' ? (platformOther || null) : null,
+    };
+    if (withOutcome) {
+      body.outcome = outcome;
+      body.outcome_notes = notes || null;
+    }
+    try {
+      const res = await fetch(`/api/my-breaks/${brk.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? `HTTP ${res.status}`);
+      onSaved();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Failed to save');
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="px-4 pb-4 pt-3 border-t space-y-3" style={{ borderColor: 'var(--terminal-border)' }}>
+      <p className="text-xs font-bold uppercase tracking-wider" style={{ color: 'var(--text-tertiary)' }}>Edit break</p>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--text-tertiary)' }}>Ask Price</label>
+          <input
+            type="number"
+            inputMode="decimal"
+            value={askPrice}
+            onChange={e => setAskPrice(e.target.value)}
+            className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+            style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-bg)', color: 'var(--text-primary)' }}
+          />
+        </div>
+        <div>
+          <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--text-tertiary)' }}>Platform</label>
+          <select
+            value={platform}
+            onChange={e => setPlatform(e.target.value as Platform)}
+            className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none"
+            style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-bg)', color: 'var(--text-primary)' }}
+          >
+            {PLATFORMS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
+          </select>
+        </div>
+      </div>
+      {platform === 'other' && (
+        <input
+          value={platformOther}
+          onChange={e => setPlatformOther(e.target.value)}
+          placeholder="Which platform?"
+          className="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+          style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-bg)', color: 'var(--text-primary)' }}
+        />
+      )}
+
+      {withOutcome && (
+        <>
+          <div>
+            <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--text-tertiary)' }}>Outcome</label>
+            <div className="flex gap-2">
+              {OUTCOME_OPTIONS.map(o => {
+                const Icon = o.icon;
+                const selected = outcome === o.value;
+                return (
+                  <button
+                    key={o.value}
+                    onClick={() => setOutcome(o.value)}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-all"
+                    style={{
+                      backgroundColor: selected ? `${o.color}20` : 'var(--terminal-bg)',
+                      border: `2px solid ${selected ? o.color : 'var(--terminal-border)'}`,
+                      color: selected ? o.color : 'var(--text-tertiary)',
+                    }}
+                  >
+                    <Icon className="w-3.5 h-3.5" />
+                    {o.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            placeholder="Notes (optional)"
+            rows={2}
+            className="w-full rounded-lg border px-3 py-2 text-sm resize-none focus:outline-none focus:ring-1 focus:ring-blue-500"
+            style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-bg)', color: 'var(--text-primary)' }}
+          />
+        </>
+      )}
+
+      {err && <p className="text-sm" style={{ color: 'var(--signal-pass)' }}>{err}</p>}
+      <div className="flex gap-2">
+        <button
+          onClick={onCancel}
+          className="px-4 py-2 rounded-lg text-sm font-semibold transition-all hover:opacity-80"
+          style={{ backgroundColor: 'var(--terminal-bg)', color: 'var(--text-tertiary)', border: '1px solid var(--terminal-border)' }}
+        >
+          Cancel
+        </button>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="flex-1 py-2 rounded-lg text-sm font-bold text-white transition-all hover:opacity-90 disabled:opacity-40"
+          style={{ background: 'var(--gradient-blue)' }}
+        >
+          {saving ? 'Saving…' : 'Save changes'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -492,6 +844,7 @@ function BreakList({
 
 function PendingBreakCard({ brk, onComplete }: { brk: BreakRecord; onComplete: () => void }) {
   const [expanded, setExpanded] = useState(false);
+  const [editing, setEditing] = useState(false);
   const [outcome, setOutcome] = useState<BreakOutcome | null>(null);
   const [notes, setNotes] = useState('');
   const [analysisFeedback, setAnalysisFeedback] = useState<'helpful' | 'not_helpful' | null>(null);
@@ -550,7 +903,7 @@ function PendingBreakCard({ brk, onComplete }: { brk: BreakRecord; onComplete: (
 
   return (
     <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
-      <div className="p-4 flex items-center justify-between cursor-pointer" onClick={() => setExpanded(!expanded)}>
+      <div className="p-4 flex items-center justify-between cursor-pointer" onClick={() => !editing && setExpanded(!expanded)}>
         <div>
           <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
             {brk.product?.name ?? 'Unknown Product'} — {(brk.teams ?? []).join(', ') || '—'}
@@ -559,19 +912,28 @@ function PendingBreakCard({ brk, onComplete }: { brk: BreakRecord; onComplete: (
             {formatCurrency(brk.ask_price)} · {summarizeFormatMix(brk.formats ?? { hobby: 0, bd: 0, jumbo: 0 })} · {platformLabel} · {new Date(brk.created_at).toLocaleDateString()}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           {brk.snapshot_signal && (
             <span className="text-xs font-bold px-2 py-1 rounded" style={{ color: signalColors[brk.snapshot_signal], backgroundColor: `${signalColors[brk.snapshot_signal]}15` }}>
               {brk.snapshot_signal}
             </span>
           )}
-          <span className="text-xs font-semibold px-2 py-1 rounded" style={{ backgroundColor: 'rgba(234,179,8,0.15)', color: 'var(--signal-watch)' }}>
+          <span className="text-xs font-semibold px-2 py-1 rounded hidden sm:inline" style={{ backgroundColor: 'rgba(234,179,8,0.15)', color: 'var(--signal-watch)' }}>
             Pending
           </span>
+          <CardActions brk={brk} onEdit={() => { setEditing(true); setExpanded(false); }} onRefresh={onComplete} />
           <ChevronDown className={`w-4 h-4 transition-transform ${expanded ? 'rotate-180' : ''}`} style={{ color: 'var(--text-tertiary)' }} />
         </div>
       </div>
-      {expanded && (
+      {editing && (
+        <BreakEditForm
+          brk={brk}
+          withOutcome={false}
+          onSaved={() => { setEditing(false); onComplete(); }}
+          onCancel={() => setEditing(false)}
+        />
+      )}
+      {!editing && expanded && (
         <div className="px-4 pb-4 pt-2 border-t space-y-4" style={{ borderColor: 'var(--terminal-border)' }}>
           {brk.snapshot_analysis && (
             <p className="text-sm italic pl-3 border-l-2" style={{ color: 'var(--text-secondary)', borderColor: 'var(--accent-blue)' }}>
@@ -680,36 +1042,48 @@ function PendingBreakCard({ brk, onComplete }: { brk: BreakRecord; onComplete: (
 
 // ── Completed Break Card ──────────────────────────────────────────────────────
 
-function CompletedBreakCard({ brk }: { brk: BreakRecord }) {
+function CompletedBreakCard({ brk, onRefresh }: { brk: BreakRecord; onRefresh: () => void }) {
+  const [editing, setEditing] = useState(false);
   const outcomeOpt = OUTCOME_OPTIONS.find(o => o.value === brk.outcome);
   const platformLabel = PLATFORMS.find(p => p.value === brk.platform)?.label ?? brk.platform;
 
   return (
-    <div className="rounded-lg p-4" style={{ border: '1px solid var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-            {brk.product?.name ?? 'Unknown Product'} — {(brk.teams ?? []).join(', ') || '—'}
-          </p>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-            {formatCurrency(brk.ask_price)} · {summarizeFormatMix(brk.formats ?? { hobby: 0, bd: 0, jumbo: 0 })} · {platformLabel} · {new Date(brk.created_at).toLocaleDateString()}
-          </p>
+    <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
+      <div className="p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+              {brk.product?.name ?? 'Unknown Product'} — {(brk.teams ?? []).join(', ') || '—'}
+            </p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+              {formatCurrency(brk.ask_price)} · {summarizeFormatMix(brk.formats ?? { hobby: 0, bd: 0, jumbo: 0 })} · {platformLabel} · {new Date(brk.created_at).toLocaleDateString()}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {brk.snapshot_signal && (
+              <span className="text-xs font-mono" style={{ color: signalColors[brk.snapshot_signal] }}>
+                {brk.snapshot_signal}
+              </span>
+            )}
+            {outcomeOpt && (
+              <span className="text-xs font-bold px-2 py-1 rounded" style={{ backgroundColor: `${outcomeOpt.color}15`, color: outcomeOpt.color }}>
+                {outcomeOpt.label}
+              </span>
+            )}
+            <CardActions brk={brk} onEdit={() => setEditing(true)} onRefresh={onRefresh} />
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {brk.snapshot_signal && (
-            <span className="text-xs font-mono" style={{ color: signalColors[brk.snapshot_signal] }}>
-              {brk.snapshot_signal}
-            </span>
-          )}
-          {outcomeOpt && (
-            <span className="text-xs font-bold px-2 py-1 rounded" style={{ backgroundColor: `${outcomeOpt.color}15`, color: outcomeOpt.color }}>
-              {outcomeOpt.label}
-            </span>
-          )}
-        </div>
+        {!editing && brk.outcome_notes && (
+          <p className="text-xs mt-2" style={{ color: 'var(--text-secondary)' }}>{brk.outcome_notes}</p>
+        )}
       </div>
-      {brk.outcome_notes && (
-        <p className="text-xs mt-2" style={{ color: 'var(--text-secondary)' }}>{brk.outcome_notes}</p>
+      {editing && (
+        <BreakEditForm
+          brk={brk}
+          withOutcome
+          onSaved={() => { setEditing(false); onRefresh(); }}
+          onCancel={() => setEditing(false)}
+        />
       )}
     </div>
   );
@@ -742,7 +1116,7 @@ function BreakForm({
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [analysisResult, setAnalysisResult] = useState<any | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
 
   // CSV import (log mode only)
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -912,14 +1286,50 @@ function BreakForm({
       const data = await res.json();
       if (data.error) throw new Error(data.error);
 
+      // New-mode breaks are saved `pending` server-side. Don't bounce back to
+      // the list — show the verdict we just computed (and threw away before)
+      // so the user sees what they're buying into before navigating away.
       if (mode === 'new' && data.analysis) {
         setAnalysisResult(data.analysis);
+        setSubmitting(false);
+        return;
       }
       onSaved();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong');
       setSubmitting(false);
     }
+  }
+
+  // Post-save verdict gate (new mode). The break is already saved `pending`;
+  // this is a pure render switch so the user reads the analysis before leaving.
+  if (analysisResult) {
+    return (
+      <div className="max-w-xl mx-auto space-y-4">
+        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
+          <div className="h-1" style={{ background: 'var(--gradient-blue)' }} />
+          <div className="p-6">
+            <div className="flex items-center gap-2 mb-1">
+              <Check className="w-5 h-5" style={{ color: 'var(--signal-buy)' }} />
+              <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Saved to My Breaks</h2>
+            </div>
+            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+              Here&rsquo;s our take. Come back after the break to log how it went.
+            </p>
+          </div>
+        </div>
+
+        <AnalysisResultPanel result={analysisResult} productId={productId} />
+
+        <button
+          onClick={onSaved}
+          className="w-full px-4 py-3 rounded-lg text-sm font-semibold transition-all hover:opacity-90"
+          style={{ background: 'var(--gradient-blue)', color: 'white' }}
+        >
+          Done — back to My Breaks
+        </button>
+      </div>
+    );
   }
 
   return (

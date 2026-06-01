@@ -21,6 +21,18 @@ Validating finding: the Discord `/insight` apply path already fanned each risk f
 
 Build clean. Full plan + post-deploy verification checklist + the deploy-ordering caveat: [docs/plans/2026-06-02-players-global-attributes.md](docs/plans/2026-06-02-players-global-attributes.md).
 
+## 2026-06-01 — My Breaks V2 · Solidity Pass (verdict render + honest stats + edit/delete)
+
+Three scoped fixes to make the **My Breaks** consumer surface feel solid. No schema migration — all client + API-route changes. Branch `feat/my-breaks-v2-solid` off `origin/main`. Plan: [docs/plans/2026-05-30-my-breaks-v2-handoff.md](./docs/plans/2026-05-30-my-breaks-v2-handoff.md).
+
+**1. Show the verdict in New Break.** The New Break flow ran `runBreakAnalysis`, saved the snapshot, then immediately called `onSaved()` and navigated away — the computed verdict was thrown on the floor despite the copy promising "a live analysis." `BreakForm.handleSubmit` ([app/(consumer)/my-breaks/page.tsx](<./app/(consumer)/my-breaks/page.tsx>)) now gates on `mode === 'new'` success: stores the returned `AnalysisResult`, renders `<AnalysisResultPanel>` inline (with a "Saved to My Breaks" header + "Done — back to My Breaks" button that calls `onSaved()`). The break is already saved `pending`, so it's a pure render switch. `productSlug` omitted so the panel hides its self-link. `log` mode behavior unchanged.
+
+**2. Honest stats.** `computeStats` extended with two descriptive, sample-size-guarded measures alongside the existing Breaks / Total Spent / W·M·B record: **Avg vs Fair** = mean of `(ask − snapshot_fair_value) / snapshot_fair_value` across non-abandoned breaks carrying a usable fair-value snapshot → rendered "Over Fair +14%" (red) / "Under Fair −8%" (green) with an "across N breaks" sub-label; **Signal Mix** = count of BUY·WATCH·PASS our model flagged at log time, "of N rated." Both show `—` + "no snapshots" when the sample is empty. Stat block widened to a wrapping `grid-cols-2 sm:grid-cols-3 lg:grid-cols-5`.
+
+**3. Edit / delete a break.** New `PATCH` + `DELETE` on [app/api/my-breaks/[id]/route.ts](<./app/api/my-breaks/[id]/route.ts>), both scoped by resolved `user_id` through the service-role client (no DELETE RLS policy exists on `user_breaks`). `PATCH` accepts `ask_price` / `platform` / `platform_other` / `outcome` / `outcome_notes`; when `ask_price` changes it recomputes `snapshot_value_pct` + `snapshot_signal` from the *stored* pure `snapshot_fair_value` via `computeSignal` (no CH/Claude call). Accepted caveat: that recompute references pure fair value while the original signal was judged against the market-adjusted number — internally consistent, slightly different from origin. UI: shared `CardActions` (pencil + trash with a two-click delete confirm, all `stopPropagation` so the pending card's click-to-expand isn't triggered) + shared `BreakEditForm` (ask price + platform always; outcome + notes for completed breaks) wired into both `PendingBreakCard` and `CompletedBreakCard`. New collapsed **"Passed on"** drawer lists abandoned breaks (delete-only) — they're excluded from every stat, so they live in a quiet section.
+
+---
+
 ## 2026-05-30 — Per-player PYP prediction on `/break/[slug]` (fair-value EV model + P(zero hits))
 
 Adds a **PYP** (Pick Your Player) column to the player table on `/break/[slug]`, predicting what a breaker would charge to pre-pick that player's slot in the user's currently-configured break. Built on a fair-value expected-value foundation so the number is interpretable as a buyer's break-even price, not a breaker's logistical case-cost split.
