@@ -122,7 +122,10 @@ async function loadBreakPageDataRaw(product: ProductWithSport): Promise<BreakPag
     };
   }
 
-  const ppIds = players.map(p => p.id);
+  // Risk flags are player-global now (2026-06-02) — fetch by player_id and
+  // project back onto each player_product so the client keeps its ppId-keyed
+  // riskFlagRecord/riskAdjMap.
+  const playerIds = [...new Set(players.map(p => p.player_id))];
 
   // Phase 2 — 6 parallel observation/variant fetches. Same five queries that
   // the page's useEffect was firing client-side, plus the variants fetch for
@@ -131,8 +134,8 @@ async function loadBreakPageDataRaw(product: ProductWithSport): Promise<BreakPag
   const [flagsRes, hypeRes, cascadeProductRes, cascadeGlobalRes, askRes, variantsRes] = await Promise.all([
     supabaseAdmin
       .from('player_risk_flags')
-      .select('player_product_id, flag_type, note')
-      .in('player_product_id', ppIds)
+      .select('player_id, flag_type, note')
+      .in('player_id', playerIds)
       .is('cleared_at', null),
     supabaseAdmin
       .from('market_observations')
@@ -170,20 +173,28 @@ async function loadBreakPageDataRaw(product: ProductWithSport): Promise<BreakPag
       .eq('player_products.product_id', productId),
   ]);
 
-  // ─── Risk flags: bucket by player_product_id + compute per-pp adjustment ─
+  // ─── Risk flags: bucket by player (deduping the legacy fan-out), then ────
+  // project onto every player_product of that player so riskFlagRecord +
+  // riskAdjMap stay keyed by player_product_id for the client.
+  const flagsByPlayer = new Map<string, Array<{ flagType: string; note: string }>>();
+  const seenFlagKey = new Set<string>();
+  for (const f of (flagsRes.data ?? []) as Array<{ player_id: string; flag_type: string; note: string }>) {
+    const key = `${f.player_id}|${f.flag_type}|${f.note}`;
+    if (seenFlagKey.has(key)) continue;
+    seenFlagKey.add(key);
+    const arr = flagsByPlayer.get(f.player_id) ?? [];
+    arr.push({ flagType: f.flag_type, note: f.note });
+    flagsByPlayer.set(f.player_id, arr);
+  }
   const riskFlagRecord: Record<string, Array<{ flagType: string; note: string }>> = {};
   const riskAdjMap = new Map<string, number>();
-  const flagsByPp = new Map<string, PlayerRiskFlag['flag_type'][]>();
-  for (const f of (flagsRes.data ?? []) as Array<{ player_product_id: string; flag_type: string; note: string }>) {
-    const arr = riskFlagRecord[f.player_product_id] ?? [];
-    arr.push({ flagType: f.flag_type, note: f.note });
-    riskFlagRecord[f.player_product_id] = arr;
-    const types = flagsByPp.get(f.player_product_id) ?? [];
-    types.push(f.flag_type as PlayerRiskFlag['flag_type']);
-    flagsByPp.set(f.player_product_id, types);
-  }
-  for (const [ppId, types] of flagsByPp) {
-    riskAdjMap.set(ppId, computeRiskAdjustment(types.map(t => ({ flag_type: t }))));
+  for (const p of players) {
+    const flags = flagsByPlayer.get(p.player_id);
+    if (!flags?.length) continue;
+    riskFlagRecord[p.id] = flags;
+    riskAdjMap.set(p.id, computeRiskAdjustment(
+      flags.map(f => ({ flag_type: f.flagType as PlayerRiskFlag['flag_type'] })),
+    ));
   }
 
   // ─── Hype observations: bucket by scope ─────────────────────────────────

@@ -62,8 +62,8 @@ export async function listChaseForUser(userId: string): Promise<ChaseListEntry[]
   // Fallback signals if no priced player_product exists for this player —
   // use whatever buzz/breakerz the highest-buzz player_product has.
   const fallbackSignalsByPlayer = new Map<string, { buzz_score: number; breakerz_score: number }>();
-  // player_product_id → player_id, used to map risk_flags (which are keyed
-  // by player_product_id) back to a player.
+  // player_product_id → player_id. Its values() give the distinct player ids
+  // we fetch player-global risk flags for.
   const ppToPlayer = new Map<string, string>();
 
   for (const raw of (pricedRows ?? []) as unknown as PricedRow[]) {
@@ -95,26 +95,28 @@ export async function listChaseForUser(userId: string): Promise<ChaseListEntry[]
     }
   }
 
-  // 3. Active risk flags. risk_flags reference player_product_id, not
-  //    player_id, so we look them up via the pp→player map above.
-  const playerProductIds = Array.from(ppToPlayer.keys());
-  const flagRowsResp = playerProductIds.length === 0
-    ? { data: [] as Array<{ player_product_id: string; flag_type: string; note: string | null }>, error: null }
+  // 3. Active risk flags — player-global now (2026-06-02). Query by player_id
+  //    directly; dedup the legacy Discord fan-out.
+  const allPlayerIds = [...new Set(ppToPlayer.values())];
+  const flagRowsResp = allPlayerIds.length === 0
+    ? { data: [] as Array<{ player_id: string; flag_type: string; note: string | null }>, error: null }
     : await supabaseAdmin
         .from('player_risk_flags')
-        .select('player_product_id, flag_type, note')
-        .in('player_product_id', playerProductIds)
+        .select('player_id, flag_type, note')
+        .in('player_id', allPlayerIds)
         .is('cleared_at', null);
 
   if (flagRowsResp.error) throw flagRowsResp.error;
 
   const flagsByPlayer = new Map<string, Array<{ flag_type: string; note: string }>>();
+  const seenFlagKey = new Set<string>();
   for (const f of flagRowsResp.data ?? []) {
-    const playerId = ppToPlayer.get(f.player_product_id);
-    if (!playerId) continue;
-    const list = flagsByPlayer.get(playerId) ?? [];
+    const key = `${f.player_id}|${f.flag_type}|${f.note ?? ''}`;
+    if (seenFlagKey.has(key)) continue;
+    seenFlagKey.add(key);
+    const list = flagsByPlayer.get(f.player_id) ?? [];
     list.push({ flag_type: f.flag_type, note: f.note ?? '' });
-    flagsByPlayer.set(playerId, list);
+    flagsByPlayer.set(f.player_id, list);
   }
 
   // 4. Stitch

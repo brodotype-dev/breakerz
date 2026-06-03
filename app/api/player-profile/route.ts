@@ -243,16 +243,14 @@ export async function GET(req: NextRequest) {
   }
 
   // 4. Insights — risk flags + recent sentiment history + active market
-  //    observations. Reuses the playerProductIds list from the comp-fetch
-  //    step above.
-  const flagsResp = playerProductIds.length === 0
-    ? { data: [] as Array<{ player_product_id: string; flag_type: string; note: string | null; created_at: string }>, error: null }
-    : await supabaseAdmin
-        .from('player_risk_flags')
-        .select('player_product_id, flag_type, note, created_at')
-        .in('player_product_id', playerProductIds)
-        .is('cleared_at', null)
-        .order('created_at', { ascending: false });
+  //    observations. Risk flags are player-global now (2026-06-02), so we
+  //    query by player_id directly instead of mapping through player_products.
+  const flagsResp = await supabaseAdmin
+    .from('player_risk_flags')
+    .select('player_id, flag_type, note, created_at')
+    .eq('player_id', playerId)
+    .is('cleared_at', null)
+    .order('created_at', { ascending: false });
 
   if (flagsResp.error) {
     console.error('[player-profile] flags', flagsResp.error);
@@ -278,7 +276,7 @@ export async function GET(req: NextRequest) {
     .order('observed_at', { ascending: false })
     .limit(10);
 
-  type FlagRow = { player_product_id: string; flag_type: string; note: string | null; created_at: string };
+  type FlagRow = { player_id: string; flag_type: string; note: string | null; created_at: string };
   type SentimentRow = {
     id: string;
     prev_score: number | null;
@@ -302,17 +300,22 @@ export async function GET(req: NextRequest) {
     products: { name: string; slug: string } | null;
   };
 
-  // Map flags back to their product name for display.
-  const ppToProduct = new Map<string, { name: string; slug: string }>();
-  for (const r of (ppRows ?? []) as unknown as PpRow[]) {
-    if (r.products) ppToProduct.set(r.id, { name: r.products.name, slug: r.products.slug });
-  }
-  const riskFlags = ((flagsResp.data ?? []) as FlagRow[]).map(f => ({
-    flag_type: f.flag_type,
-    note: f.note,
-    created_at: f.created_at,
-    product: ppToProduct.get(f.player_product_id) ?? null,
-  }));
+  // Risk flags are player-global now — no product attribution. Dedup the
+  // legacy fan-out (same type+note repeated across the player's products).
+  const seenFlagKey = new Set<string>();
+  const riskFlags = ((flagsResp.data ?? []) as FlagRow[])
+    .filter(f => {
+      const k = `${f.flag_type}|${f.note ?? ''}`;
+      if (seenFlagKey.has(k)) return false;
+      seenFlagKey.add(k);
+      return true;
+    })
+    .map(f => ({
+      flag_type: f.flag_type,
+      note: f.note,
+      created_at: f.created_at,
+      product: null as { name: string; slug: string } | null,
+    }));
 
   // Effective B-score from the featured product (or the highest-buzz pp).
   const featuredScore = featured ?? (products.find(x => x.buzz_score != null) ?? products[0] ?? null);

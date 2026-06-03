@@ -171,64 +171,10 @@ export async function saveBreakerzBets(
   }
 }
 
-export async function setPlayerIcon(
-  productId: string,
-  playerId: string,
-  isIcon: boolean
-): Promise<{ error?: string }> {
-  await requireRole('admin', 'contributor');
-  const { error } = await supabaseAdmin
-    .from('players')
-    .update({ is_icon: isIcon })
-    .eq('id', playerId);
-  if (error) return { error: error.message };
-  revalidatePath(`/admin/products/${productId}/players`);
-  return {};
-}
-
-export async function setPlayerHighVolatility(
-  productId: string,
-  playerProductId: string,
-  isHV: boolean
-): Promise<{ error?: string }> {
-  await requireRole('admin', 'contributor');
-  const { error } = await supabaseAdmin
-    .from('player_products')
-    .update({ is_high_volatility: isHV })
-    .eq('id', playerProductId);
-  if (error) return { error: error.message };
-  revalidatePath(`/admin/products/${productId}/players`);
-  return {};
-}
-
-export async function addPlayerRiskFlag(
-  productId: string,
-  playerProductId: string,
-  flagType: string,
-  note: string
-): Promise<{ error?: string }> {
-  await requireRole('admin', 'contributor');
-  const { error } = await supabaseAdmin
-    .from('player_risk_flags')
-    .insert({ player_product_id: playerProductId, flag_type: flagType, note: note.trim() });
-  if (error) return { error: error.message };
-  revalidatePath(`/admin/products/${productId}/players`);
-  return {};
-}
-
-export async function clearPlayerRiskFlag(
-  productId: string,
-  flagId: string
-): Promise<{ error?: string }> {
-  await requireRole('admin', 'contributor');
-  const { error } = await supabaseAdmin
-    .from('player_risk_flags')
-    .update({ cleared_at: new Date().toISOString() })
-    .eq('id', flagId);
-  if (error) return { error: error.message };
-  revalidatePath(`/admin/products/${productId}/players`);
-  return {};
-}
+// Player-global attribute editing (icon / high-volatility / risk flags) moved
+// to app/admin/players/actions.ts in the 2026-06-02 re-model. These attributes
+// describe the player, not the card-in-a-product, so they're managed from the
+// global /admin/players directory rather than per product.
 
 // Pre-flight summary for product deletion — the admin UI surfaces these
 // counts so admin sees exactly what cascades before they confirm. Also

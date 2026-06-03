@@ -95,6 +95,9 @@ export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisRe
   if (!playerProducts?.length) throw new Error('No players found for this product');
 
   const ids = playerProducts.map(pp => pp.id);
+  // Risk flags are player-global now (2026-06-02) — fetch by player_id, not
+  // player_product_id. Distinct player ids across the pool.
+  const playerIds = [...new Set(playerProducts.map(pp => pp.player_id))];
 
   // Variants drive weighted EV. 1/1s get filtered at the query level — they're
   // outliers that skew slot math without representing a pull-rate path most
@@ -243,8 +246,8 @@ export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisRe
   const [poolFlagsRes, poolObsRes, cascadeObs] = await Promise.all([
     supabaseAdmin
       .from('player_risk_flags')
-      .select('player_product_id, flag_type, note')
-      .in('player_product_id', ids)
+      .select('player_id, flag_type, note')
+      .in('player_id', playerIds)
       .is('cleared_at', null),
     supabaseAdmin
       .from('market_observations')
@@ -256,15 +259,25 @@ export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisRe
     loadCascadeObservations(productId),
   ]);
 
-  const flagsByPp = new Map<string, PlayerRiskFlag['flag_type'][]>();
+  // Bucket flags by player, deduping the legacy Discord fan-out (same
+  // player+type+note repeated across products). Then project onto each
+  // player_product so riskAdjMap stays keyed by ppId for the engine.
+  const flagsByPlayer = new Map<string, PlayerRiskFlag['flag_type'][]>();
+  const seenFlagKey = new Set<string>();
   for (const f of poolFlagsRes.data ?? []) {
-    const arr = flagsByPp.get(f.player_product_id) ?? [];
+    const key = `${f.player_id}|${f.flag_type}|${f.note}`;
+    if (seenFlagKey.has(key)) continue;
+    seenFlagKey.add(key);
+    const arr = flagsByPlayer.get(f.player_id) ?? [];
     arr.push(f.flag_type as PlayerRiskFlag['flag_type']);
-    flagsByPp.set(f.player_product_id, arr);
+    flagsByPlayer.set(f.player_id, arr);
   }
   const riskAdjMap = new Map<string, number>();
-  for (const [ppId, types] of flagsByPp) {
-    riskAdjMap.set(ppId, computeRiskAdjustment(types.map(t => ({ flag_type: t }))));
+  for (const pp of playerProducts) {
+    const types = flagsByPlayer.get(pp.player_id);
+    if (types?.length) {
+      riskAdjMap.set(pp.id, computeRiskAdjustment(types.map(t => ({ flag_type: t }))));
+    }
   }
 
   type Obs = { scope_type: string; scope_id: string | null; scope_team: string | null; payload: { tag: HypeTag; strength: number; decay_days: number }; observed_at: string };
@@ -355,22 +368,29 @@ export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisRe
   const teamPlayers = selectedTeamSlots.flatMap(t => t.players);
   const allBundlePlayers = [...teamPlayers, ...extraPlayers]
     .sort((a, b) => b.evMid - a.evMid);
-  const bundlePlayerProductIds = allBundlePlayers.map(p => p.id);
 
   // Reuse poolFlagsRes from the engine-modulation fetch above — same rows,
-  // just filtered down to the bundle for the response payload.
-  const bundlePpIdSet = new Set(bundlePlayerProductIds);
-  const ppNameMap = new Map(allBundlePlayers.map(p => [p.id, p.player.name]));
+  // filtered down to the bundle's players (flags are player-global now) and
+  // deduped against the legacy fan-out.
+  const bundlePlayerIdSet = new Set(allBundlePlayers.map(p => p.player_id));
+  const playerNameById = new Map(allBundlePlayers.map(p => [p.player_id, p.player.name]));
+  const seenRiskKey = new Set<string>();
   const riskFlags = (poolFlagsRes.data ?? [])
-    .filter(f => bundlePpIdSet.has(f.player_product_id))
+    .filter(f => bundlePlayerIdSet.has(f.player_id))
+    .filter(f => {
+      const k = `${f.player_id}|${f.flag_type}|${f.note}`;
+      if (seenRiskKey.has(k)) return false;
+      seenRiskKey.add(k);
+      return true;
+    })
     .map(f => ({
-      playerName: ppNameMap.get(f.player_product_id) ?? '',
+      playerName: playerNameById.get(f.player_id) ?? '',
       flagType: f.flag_type as string,
       note: f.note,
     }));
 
   const hvPlayers = allBundlePlayers
-    .filter(p => p.is_high_volatility)
+    .filter(p => p.player?.is_high_volatility)
     .map(p => p.player.name);
 
   const top10 = allBundlePlayers.slice(0, 10);

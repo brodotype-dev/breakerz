@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, ChevronDown } from 'lucide-react';
+import { ArrowLeft, ChevronDown, Star } from 'lucide-react';
 import ChecklistUpload from '@/components/admin/ChecklistUpload';
 import PlayerBulkForm from '@/components/admin/PlayerBulkForm';
 import PlayersManager, { type PlayerRow } from './PlayersManager';
@@ -29,23 +29,9 @@ export default async function AdminPlayersPage({ params }: PageProps) {
     .order('id') as { data: (PlayerProduct & { player: Player })[] | null };
 
   const playerProducts = playerProductsRaw ?? [];
-  const ppIds = playerProducts.map(pp => pp.id);
 
-  const { data: riskFlags } = ppIds.length
-    ? await supabaseAdmin
-        .from('player_risk_flags')
-        .select('id, player_product_id, flag_type, note')
-        .in('player_product_id', ppIds)
-        .is('cleared_at', null)
-    : { data: [] };
-
-  const flagsByPP = new Map<string, Array<{ id: string; flagType: string; note: string }>>();
-  for (const f of riskFlags ?? []) {
-    const list = flagsByPP.get(f.player_product_id) ?? [];
-    list.push({ id: f.id, flagType: f.flag_type, note: f.note });
-    flagsByPP.set(f.player_product_id, list);
-  }
-
+  // Player-global attributes (icon / HV / risk flags) moved to /admin/players
+  // in the 2026-06-02 re-model — this page is now the product roster only.
   const players: PlayerRow[] = playerProducts
     .filter(pp => pp.player?.name)
     .map(pp => ({
@@ -57,9 +43,6 @@ export default async function AdminPlayersPage({ params }: PageProps) {
       hobbySets: pp.hobby_sets ?? 0,
       bdOnlySets: pp.bd_only_sets ?? 0,
       insertOnly: !!pp.insert_only,
-      isIcon: !!(pp.player as any)?.is_icon,
-      isHighVolatility: !!(pp as any).is_high_volatility,
-      activeFlags: flagsByPP.get(pp.id) ?? [],
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -80,7 +63,7 @@ export default async function AdminPlayersPage({ params }: PageProps) {
               {product.sport?.name} · {product.year}
             </p>
             <h1 className="text-2xl font-black leading-tight">{product.name}</h1>
-            <p className="text-xs text-muted-foreground mt-0.5">Players & Flags</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Product roster</p>
           </div>
         </div>
         <Link
@@ -91,8 +74,19 @@ export default async function AdminPlayersPage({ params }: PageProps) {
         </Link>
       </div>
 
-      {/* Player manager (search + table + flag controls) */}
-      <PlayersManager productId={id} players={players} />
+      {/* Icon / High-Volatility / Risk flags are player-global now — managed
+          from the global directory, not per product. */}
+      <Link
+        href="/admin/players"
+        className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg border transition-colors hover:bg-[var(--terminal-surface-hover)]"
+        style={{ borderColor: 'var(--terminal-border)', color: 'var(--text-secondary)' }}
+      >
+        <Star className="w-4 h-4" style={{ color: '#a855f7' }} />
+        Manage player attributes (icon · high-volatility · risk flags) in the global Players directory →
+      </Link>
+
+      {/* Product roster — read-only list of who's in this product */}
+      <PlayersManager players={players} />
 
       {/* Add players — collapsed by default */}
       <details
