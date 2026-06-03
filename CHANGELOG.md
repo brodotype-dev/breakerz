@@ -5,6 +5,12 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-06-03 — `/admin/players`: hide card-code junk rows + widen subset-code matcher
+
+The new global players directory surfaced ~2,900 garbage `players` rows where a card-subset code is the name and the real player sits in the team column (`90CAS-DO` / team `David Ortiz`). Investigation: these are NOT new pollution — **every one is already `insert_only` everywhere** (quarantined from team math, parser rosters, and consumer pages; the prior #111/#113 cleanup did its job). Only the new admin page showed them because it lists raw rows regardless of `insert_only`. Net live impact: 1 row (`B25-ÉP`, accented É, on an inactive product).
+
+Two safe fixes (no data deleted): (1) new `looksLikeRealPlayerName()` in [lib/checklist-aggregates.ts](lib/checklist-aggregates.ts) — a real name has a space or a lowercase letter; card codes / stray card numbers / accented codes have neither — applied to [/api/admin/players/search](app/api/admin/players/search/route.ts) so the directory hides them. (2) Widened `CARD_SUBSET_CODE_RE` from `{1,5}-{1,6}` to `{1,6}-{1,8}` so the parser roster filter catches 6-char-prefix subsets (`MLMDA2-…`, `HLAR2-…`) that were slipping through. Physically deleting the quarantined rows is deferred as a separate, deliberate decision (FK cascade through player_products → variants → pricing_cache).
+
 ## 2026-06-02 — `/admin/players`: Sport / Product / Rookie filters + click-to-expand products
 
 Follow-up UX on the global players directory. (1) **Filters** — a Sport dropdown, a Product dropdown (active products), and a Rookies Y/N selector, alongside the existing name search. Any combination ANDs together and browses the full catalog (not just the managed set); the managed set is still the default empty-state view. (2) **Click a player name** → inline expansion listing every product that player is in, with year, sport, lifecycle badge (Live / Pre-release / Dormant), inactive + insert-only tags. Lazy-loaded + cached per player.

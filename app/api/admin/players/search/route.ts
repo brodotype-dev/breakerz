@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { looksLikeRealPlayerName } from '@/lib/checklist-aggregates';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,6 +65,11 @@ export async function GET(req: NextRequest) {
   for (const r of (data as unknown as Row[]) ?? []) {
     if (seen.has(r.id)) continue;
     seen.add(r.id);
+    // Drop card-code / card-number junk rows (e.g. "90CAS-DO", "221",
+    // "B25-ÉP") that mis-parsed into the players table. These are all
+    // insert-only subset cards quarantined everywhere else in the app; the
+    // global directory should hide them too. See 2026-06-03 data note.
+    if (!looksLikeRealPlayerName(r.name)) continue;
     rows.push(r);
   }
   const truncated = rows.length > limit;
