@@ -396,7 +396,7 @@ export default function BreakPageClient({ product, dataPromise }: BreakPageClien
             {/* Teams */}
             {uniqueTeams.length > 0 && (
               <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Teams</p>
+                <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>Teams / PYT</p>
                 <div className="flex flex-wrap gap-2">
                   {uniqueTeams.map(t => (
                     <TeamChip
@@ -414,7 +414,7 @@ export default function BreakPageClient({ product, dataPromise }: BreakPageClien
             {/* Specific player slots */}
             <div>
               <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: 'var(--text-tertiary)' }}>
-                Specific player slots <span className="font-normal opacity-60">(optional)</span>
+                Player Slots - PTP <span className="font-normal opacity-60">(Optional)</span>
               </p>
               {selectedAnalysisPlayerIds.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-3">
