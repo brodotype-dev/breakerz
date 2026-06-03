@@ -123,7 +123,11 @@ export function computePlayerAggregates(sections: SectionInput[]): PlayerAggrega
 //
 // Both server (import-checklist route) and client (parser roster
 // filter) need this; centralized here so the rule stays in one place.
-const CARD_SUBSET_CODE_RE = /^[A-Z0-9]{1,5}-[A-Z0-9]{1,6}$/;
+//
+// Widened 2026-06-03 from {1,5}-{1,6} to {1,6}-{1,8}: real subsets ship
+// 6-char prefixes (MLMDA2, HLAR2, TFAP2, …) and longer suffixes that the
+// tighter bound let slip into the players table as fake "players".
+const CARD_SUBSET_CODE_RE = /^[A-Z0-9]{1,6}-[A-Z0-9]{1,8}$/;
 
 export function isMultiPlayerName(name: string): boolean {
   if (name.includes('/')) return true;
@@ -138,4 +142,19 @@ export function isMultiPlayerName(name: string): boolean {
  */
 export function isCardSubsetCode(name: string): boolean {
   return CARD_SUBSET_CODE_RE.test(name.trim());
+}
+
+/**
+ * Broad "is this a real player name?" test for surfaces that list raw rows
+ * from the players table (e.g. the /admin/players directory). A real name
+ * always carries a space (first + last) OR a lowercase letter (mononyms like
+ * "Ichiro"). Card codes and stray card numbers — "90CAS-DO", "MLMDA2-X",
+ * "221", "B25-ÉP" — have neither, so this catches dash codes, pure-numeric
+ * names, and accented codes the CARD_SUBSET_CODE_RE (ASCII-only) misses.
+ * Intentionally inclusive: when in doubt, keep the row.
+ */
+export function looksLikeRealPlayerName(name: string): boolean {
+  const n = (name ?? '').trim();
+  if (!n) return false;
+  return /\s/.test(n) || /[a-z]/.test(n);
 }
