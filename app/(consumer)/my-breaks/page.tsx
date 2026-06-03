@@ -1460,7 +1460,7 @@ function BreakForm({
           {/* Teams (multi-select chips) */}
           {selectedProduct && (
             <div>
-              <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Teams</label>
+              <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-tertiary)' }}>Teams / PYT</label>
               {teams.length === 0 ? (
                 <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Loading teams…</p>
               ) : (
@@ -1483,7 +1483,7 @@ function BreakForm({
           {selectedProduct && (
             <div>
               <label className="block text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: 'var(--text-tertiary)' }}>
-                Specific player slots <span className="font-normal opacity-60">(optional)</span>
+                Player Slots - PTP <span className="font-normal opacity-60">(Optional)</span>
               </label>
               {selectedPlayerIds.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-2">

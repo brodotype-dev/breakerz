@@ -314,7 +314,7 @@ export default function AnalysisPage() {
                     Combined slots ("Pirates/White Sox") show both logos. */}
                 {selectedProduct && (
                   <div>
-                    <FormLabel>Teams</FormLabel>
+                    <FormLabel>Teams / PYT</FormLabel>
                     {teams.length === 0 ? (
                       <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>Loading teams…</p>
                     ) : (
@@ -336,7 +336,7 @@ export default function AnalysisPage() {
                 {/* Player slots */}
                 {selectedProduct && (
                   <div>
-                    <FormLabel>Specific player slots <span className="font-normal text-[10px] opacity-60">(optional)</span></FormLabel>
+                    <FormLabel>Player Slots - PTP <span className="font-normal text-[10px] opacity-60">(Optional)</span></FormLabel>
                     {selectedPlayerIds.length > 0 && (
                       <div className="flex flex-wrap gap-2 mb-3">
                         {selectedPlayerIds.map(id => {
