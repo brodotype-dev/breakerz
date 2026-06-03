@@ -5,6 +5,12 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-06-02 — `/admin/players`: Sport / Product / Rookie filters + click-to-expand products
+
+Follow-up UX on the global players directory. (1) **Filters** — a Sport dropdown, a Product dropdown (active products), and a Rookies Y/N selector, alongside the existing name search. Any combination ANDs together and browses the full catalog (not just the managed set); the managed set is still the default empty-state view. (2) **Click a player name** → inline expansion listing every product that player is in, with year, sport, lifecycle badge (Live / Pre-release / Dormant), inactive + insert-only tags. Lazy-loaded + cached per player.
+
+Implementation: [/api/admin/players/search](app/api/admin/players/search/route.ts) extended from name-only to a unified `q` / `sport` / `productId` / `rookie` query (inner-join on `player_products` for the product filter, `sport_id` + `is_rookie` eq filters, deduped, with a truncation sentinel — capped at 300, narrow to see more). New [/api/admin/players/[playerId]/products](app/api/admin/players/%5BplayerId%5D/products/route.ts) backs the expansion. [GlobalPlayersManager](app/admin/players/GlobalPlayersManager.tsx) gains the filter controls, a `filterActive` fetch path (debounced), and the expandable product sub-row; [page.tsx](app/admin/players/page.tsx) loads the sport + product dropdown options and threads `is_rookie` onto managed rows (with an RC chip). Admin-only via middleware; no schema change.
+
 ## 2026-06-02 — Players-as-global re-model (HV + risk flags → player) + global `/admin/players` directory
 
 Brody noticed there was no way to manage player attributes platform-wide — you edited icon / high-volatility / risk flags **inside a product**, but those describe the *player*, not the card-in-a-product. Framing: *cards of players are product-specific, players as players are global.* An injury / suspension / volatile market follows the athlete across every product. So **HV and risk flags move to the player**; **B-score stays product-scoped** (sentiment genuinely varies by product). Icon was already global, just lacked a global edit surface.
