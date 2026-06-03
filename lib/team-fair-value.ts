@@ -59,7 +59,7 @@ export async function getTeamFairValuesForProduct(productId: string): Promise<Pr
 
   const { data: pps } = await supabaseAdmin
     .from('player_products')
-    .select('*, player:players(*), buzz_score, breakerz_score, is_high_volatility, c_score')
+    .select('*, player:players(*), buzz_score, breakerz_score, c_score')
     .eq('product_id', productId)
     .eq('insert_only', false);
   if (!pps?.length) return { productId, lifecycle: prod.lifecycle_status, marketMarkup: 1, teams: new Map() };
@@ -88,6 +88,8 @@ export async function getTeamFairValuesForProduct(productId: string): Promise<Pr
     const evMid = c?.ev_mid ?? 0;
     return {
       ...pp,
+      // HV is player-global now (2026-06-02 re-model) — read off the player.
+      is_high_volatility: pp.player?.is_high_volatility ?? false,
       evLow: c?.ev_low ?? 0,
       evMid,
       evHigh: c?.ev_high ?? 0,

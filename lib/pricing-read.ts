@@ -27,7 +27,7 @@ import type { PlayerWithPricing } from './types';
 async function loadCachedRaw(productId: string): Promise<PlayerWithPricing[]> {
   const { data: playerProducts, error } = await supabaseAdmin
     .from('player_products')
-    .select('*, player:players(*), buzz_score, breakerz_score, is_high_volatility, c_score')
+    .select('*, player:players(*), buzz_score, breakerz_score, c_score')
     .eq('product_id', productId)
     .eq('insert_only', false)
     .order('id');
@@ -59,6 +59,9 @@ async function loadCachedRaw(productId: string): Promise<PlayerWithPricing[]> {
     const evMid = c?.ev_mid ?? 0;
     return {
       ...pp,
+      // HV is player-global now — source it off the player join, not the
+      // legacy player_products column (2026-06-02 re-model).
+      is_high_volatility: pp.player?.is_high_volatility ?? false,
       evLow: c?.ev_low ?? 0,
       evMid,
       evHigh: c?.ev_high ?? 0,

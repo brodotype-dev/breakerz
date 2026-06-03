@@ -2088,27 +2088,18 @@ async function applyUpdates(args: {
           break;
         }
         case 'risk_flag': {
-          // player_risk_flags rows are scoped to player_product, so we
-          // create one per player_product the player appears in. Each row
-          // gets full source attribution so the same downstream analytics
-          // queries that work on market_observations work here too.
-          const { data: pps } = await supabaseAdmin
-            .from('player_products')
-            .select('id')
-            .eq('player_id', u.player_id);
-
-          if (!pps?.length) throw new Error('no player_products for this player');
-
-          const rows = pps.map(pp => ({
-            player_product_id: pp.id,
+          // Risk flags are player-global now (2026-06-02 re-model) — one row
+          // keyed by player_id, no fan-out across the player's products. Full
+          // source attribution preserved for downstream analytics.
+          const { error } = await supabaseAdmin.from('player_risk_flags').insert({
+            player_id: u.player_id,
             flag_type: u.flag_type,
             note: u.note,
             source_pending_id: args.pendingId,
             source_user_id: args.sourceUserId,
             source_narrative: args.sourceText,
             confidence: u.confidence,
-          }));
-          const { error } = await supabaseAdmin.from('player_risk_flags').insert(rows);
+          });
           if (error) throw error;
           applied++;
           break;

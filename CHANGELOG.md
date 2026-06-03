@@ -5,6 +5,22 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-06-02 — Players-as-global re-model (HV + risk flags → player) + global `/admin/players` directory
+
+Brody noticed there was no way to manage player attributes platform-wide — you edited icon / high-volatility / risk flags **inside a product**, but those describe the *player*, not the card-in-a-product. Framing: *cards of players are product-specific, players as players are global.* An injury / suspension / volatile market follows the athlete across every product. So **HV and risk flags move to the player**; **B-score stays product-scoped** (sentiment genuinely varies by product). Icon was already global, just lacked a global edit surface.
+
+Validating finding: the Discord `/insight` apply path already fanned each risk flag out to every one of a player's `player_products` — **63 rows collapsing to 14 logical flags across 13 players**. The re-model removes that redundancy rather than adding a concept.
+
+**Schema (phase 1 — additive, applied to prod):** `supabase/migrations/20260602120000_players_global_attributes.sql` adds `players.is_high_volatility` (backfilled from any-product HV) + `player_risk_flags.player_id` FK (backfilled from the product join; `player_product_id` made nullable; new indexes). Invisible to old code. A **phase-2 cleanup migration** (`20260602130000_…_cleanup.sql`) is written but **NOT applied** — it deletes the 49 redundant fan-out rows + drops the legacy columns and is **deploy-gated** (running it under old code would strip flags from a player's other products).
+
+**Read sites → player-global** (HV off the `players` join; flags by `player_id` with defensive dedup): `lib/pricing-read.ts`, `lib/team-fair-value.ts`, `lib/analysis.ts` (riskAdjMap still ppId-keyed via player→pp projection), `lib/break-page-data.ts` (projects back onto ppId so the client's keyed records are unchanged), `lib/chase.ts` (simplified — it already did a pp→player workaround), `app/api/player-profile/route.ts` (dropped now-meaningless per-flag product attribution). `lib/types.ts`: `Player.is_high_volatility` is the new source of truth; `PlayerProduct.is_high_volatility` marked legacy; `PlayerRiskFlag` gains `player_id`.
+
+**Write paths:** new `app/admin/players/actions.ts` (icon / HV / add-flag / clear-flag, all keyed by `player_id`); product-scoped versions removed from `app/admin/products/actions.ts`. Discord risk_flag apply collapses the fan-out loop to a single insert by `player_id`.
+
+**New global directory:** `/admin/players` ([page.tsx](app/admin/players/page.tsx) server-loads only the "managed" set since the players table exceeds PostgREST's 1k cap; [GlobalPlayersManager.tsx](app/admin/players/GlobalPlayersManager.tsx) adds debounced search + per-player icon/HV toggles + flag add/clear; [/api/admin/players/search](app/api/admin/players/search/route.ts) is the admin-gated rich search). Nav entry added. The per-product players page (`app/admin/products/[id]/players/`) loses its icon/HV/flag controls (now a read-only roster with a link to the global directory); B-score / bets stay there.
+
+Build clean. Full plan + post-deploy verification checklist + the deploy-ordering caveat: [docs/plans/2026-06-02-players-global-attributes.md](docs/plans/2026-06-02-players-global-attributes.md).
+
 ## 2026-05-30 — Per-player PYP prediction on `/break/[slug]` (fair-value EV model + P(zero hits))
 
 Adds a **PYP** (Pick Your Player) column to the player table on `/break/[slug]`, predicting what a breaker would charge to pre-pick that player's slot in the user's currently-configured break. Built on a fair-value expected-value foundation so the number is interpretable as a buyer's break-even price, not a breaker's logistical case-cost split.

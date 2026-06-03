@@ -145,6 +145,10 @@ export interface Player {
   team: string;
   is_rookie: boolean;
   is_icon: boolean;
+  // High-volatility is a player-global attribute (re-modeled off player_products
+  // 2026-06-02): a player's market whips around regardless of which product the
+  // card sits in. Read this off the player, not the player_product.
+  is_high_volatility: boolean;
   // Track A — Objective prospect attributes (institutional source). NULL on
   // every player by default; populated via admin CSV import. See
   // lib/prospect-score.ts and docs/plans/2026-05-12-prospect-attrs-and-cascading-sentiment.md.
@@ -166,6 +170,9 @@ export interface PlayerProduct {
   buzz_score: number | null;
   breakerz_score: number | null;
   breakerz_note: string | null;
+  // LEGACY (2026-06-02): HV moved to players.is_high_volatility. This column
+  // still exists during the transition deploy but read sites source HV off the
+  // player join. Dropped in the cleanup migration.
   is_high_volatility: boolean;
   c_score: number | null;
   player?: Player;
@@ -173,7 +180,11 @@ export interface PlayerProduct {
 
 export interface PlayerRiskFlag {
   id: string;
-  player_product_id: string;
+  // Risk flags are player-global (re-modeled 2026-06-02). player_id is the
+  // source of truth; player_product_id is the legacy column kept nullable for
+  // one deploy and dropped in the cleanup migration.
+  player_id: string;
+  player_product_id: string | null;
   flag_type: 'injury' | 'suspension' | 'legal' | 'trade' | 'retirement' | 'off_field';
   note: string;
   created_at: string;
