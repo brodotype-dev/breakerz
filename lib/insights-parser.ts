@@ -1212,11 +1212,22 @@ export async function parseBreakPrice(input: BreakPriceInput): Promise<BreakPric
     const seen = new Set<string>();
     const PAGE = 1000;
     for (let from = 0; ; from += PAGE) {
-      const { data } = await supabaseAdmin
+      // When the product is pinned (Discord autocomplete), scope the roster to
+      // just that product's players — a lean, exact candidate list. Otherwise
+      // use the full active-product roster. Either way the names + ids are
+      // injected into the prompt below so Claude can emit a REAL
+      // scope_player_id for player-row asks. Without the roster in the prompt
+      // it fabricates slug ids ("victor-wembanyama") that fail validation —
+      // the 2026-06 Wemby /break-price drop.
+      let filter = supabaseAdmin
         .from('players')
         .select('id, name, team, player_products!inner(products!inner(is_active))')
         .eq('player_products.products.is_active', true)
-        .not('name', 'like', '%/%')
+        .not('name', 'like', '%/%');
+      if (input.productId) {
+        filter = filter.eq('player_products.product_id', input.productId);
+      }
+      const { data } = await filter
         .order('name')
         .range(from, from + PAGE - 1);
       if (!data || data.length === 0) break;
@@ -1230,6 +1241,14 @@ export async function parseBreakPrice(input: BreakPriceInput): Promise<BreakPric
     // Defense in depth: drop card-subset codes (matches parseInsights).
     players = players.filter(p => !isCardSubsetCode(p.name));
   }
+
+  // Roster lines for the prompt. parseBreakPrice previously loaded players ONLY
+  // to validate Claude's output against playerById — but never showed Claude
+  // the roster, so every player-scoped ask got a fabricated id and was dropped.
+  // Injecting the roster (names + exact ids) is what makes player-row asks work.
+  const rosterLines = players
+    .map(p => `- ${p.name} (${p.team || 'N/A'}) [id: ${p.id}]`)
+    .join('\n');
 
   // Each product line ships its known available formats (derived from
   // *_case_cost nullability) and brand-line taxonomy (specialty products
@@ -1260,6 +1279,10 @@ export async function parseBreakPrice(input: BreakPriceInput): Promise<BreakPric
 ${productPinned
     ? `The contributor PINNED the product for this capture — you do not need to infer it. Use this product id exactly:\n${productLines}`
     : `Available products (use product ids exactly):\n${productLines}`}
+
+${rosterLines
+    ? `PLAYER ROSTER for player-row asks (scope_type='player'). Use the EXACT id from this list for scope_player_id — never invent, slugify, or guess an id. Apply the nickname rules below to match (Wemby → Victor Wembanyama, etc.). If a named player isn't here and isn't a recognized nickname for someone who is, DROP that row:\n${rosterLines}`
+    : 'No player roster available — emit only team-scoped asks (scope_type=\'team\').'}
 
 ${
     hadNarrative
