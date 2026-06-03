@@ -59,10 +59,16 @@ export function computePlayerAggregates(sections: SectionInput[]): PlayerAggrega
 
   for (const section of sections) {
     for (const card of section.cards) {
-      const key = `${card.playerName}||${card.team ?? ''}`;
+      // Normalize the name (strip glued card-number prefix) and skip rows that
+      // aren't real players (section headers, stray numbers, subset codes) so
+      // they never become player rows. See normalizePlayerName / isNonPlayerName.
+      const name = normalizePlayerName(card.playerName);
+      if (isNonPlayerName(name)) continue;
+
+      const key = `${name}||${card.team ?? ''}`;
       const existing = playerSetTotals.get(key);
       playerSetTotals.set(key, {
-        name: card.playerName,
+        name,
         team: card.team ?? existing?.team ?? '',
         hobbySets: (existing?.hobbySets ?? 0) + section.hobbySets,
         bdSets: (existing?.bdSets ?? 0) + section.bdSets,
@@ -70,15 +76,15 @@ export function computePlayerAggregates(sections: SectionInput[]): PlayerAggrega
       });
 
       const isBaseCard = isBaseShapedCardNumber(card.cardNumber) && isBaseSectionName(section.sectionName);
-      if (isBaseCard) playerHasBaseAppearance.set(card.playerName, true);
-      else if (!playerHasBaseAppearance.has(card.playerName)) {
-        playerHasBaseAppearance.set(card.playerName, false);
+      if (isBaseCard) playerHasBaseAppearance.set(name, true);
+      else if (!playerHasBaseAppearance.has(name)) {
+        playerHasBaseAppearance.set(name, false);
       }
 
       if (card.cardNumber) {
-        const nums = playerCardNumbers.get(card.playerName) ?? new Set<string>();
+        const nums = playerCardNumbers.get(name) ?? new Set<string>();
         nums.add(card.cardNumber);
-        playerCardNumbers.set(card.playerName, nums);
+        playerCardNumbers.set(name, nums);
       }
     }
   }
@@ -157,4 +163,44 @@ export function looksLikeRealPlayerName(name: string): boolean {
   const n = (name ?? '').trim();
   if (!n) return false;
   return /\s/.test(n) || /[a-z]/.test(n);
+}
+
+/**
+ * Strip a leading card-number prefix the parser sometimes glues onto a player
+ * name, so the row dedupes against the clean entry:
+ *   "1 Jacob Wilson"   → "Jacob Wilson"   (merges with the real player)
+ *   "12. Roki Sasaki"  → "Roki Sasaki"
+ *   "1990 TOPPS …"     → "TOPPS …"        (then rejected by isNonPlayerName)
+ * Also drops trademark symbols. Conservative: only a PURE leading number +
+ * separator is stripped — codes like "US300 Player" or "SM-AB" are untouched.
+ */
+export function normalizePlayerName(name: string): string {
+  return (name ?? '')
+    .replace(/[®™]/g, '')
+    .replace(/^\s*\d+[\s.\-]+/, '')
+    .trim();
+}
+
+/**
+ * True when a parsed "player" is not a real person and should be SKIPPED at
+ * import (not created as a quarantined `insert_only` row). Covers the junk that
+ * the new /admin/players directory surfaced:
+ *   · section / description headers — "BASEBALL STARS AUTOGRAPHS",
+ *     "HEAVY LUMBER AUTOGRAPH RELICS" (all-caps, multi-word)
+ *   · stray card numbers — "221"
+ *   · card-subset codes — "90CAS-DO", "MLMDA2-X" (isCardSubsetCode)
+ *
+ * NOT rejected: multi-player slash rows ("Skubal / Blanco / Valdez") — those
+ * are legit subset cards the caller keeps as insert_only; and single all-caps
+ * tokens (possible initialisms / mononyms). Run on a NORMALIZED name so the
+ * year prefix on "1990 TOPPS …" doesn't dodge the all-caps test.
+ */
+export function isNonPlayerName(name: string): boolean {
+  const n = (name ?? '').trim();
+  if (!n) return true;
+  if (/^\d+$/.test(n)) return true;       // pure card number
+  if (isCardSubsetCode(n)) return true;   // dash code (90CAS-DO, MLMDA2-X)
+  // All-caps, multi-word descriptor / section header.
+  if (/\s/.test(n) && /[A-Z]/.test(n) && n === n.toUpperCase()) return true;
+  return false;
 }

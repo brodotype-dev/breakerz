@@ -5,6 +5,8 @@ import { checkRole } from '@/lib/auth';
 import {
   computePlayerAggregates,
   isMultiPlayerName,
+  normalizePlayerName,
+  isNonPlayerName,
   type PlayerAggregate,
   type SectionInput,
 } from '@/lib/checklist-aggregates';
@@ -136,7 +138,12 @@ export async function POST(req: NextRequest) {
   const variantRows: VariantRow[] = [];
   for (const section of sections) {
     for (const card of section.cards) {
-      const playerId = playerNameToId.get(card.playerName);
+      // Match the normalization computePlayerAggregates applied, so variants
+      // attach to the normalized player and skipped non-player rows (headers,
+      // codes, numbers) produce no variants either.
+      const name = normalizePlayerName(card.playerName);
+      if (isNonPlayerName(name)) continue;
+      const playerId = playerNameToId.get(name);
       if (!playerId) continue;
       const ppId = playerIdToPPId.get(playerId);
       if (!ppId) continue;

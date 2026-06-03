@@ -5,6 +5,15 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-06-03 — Import hardening: stop junk player rows at the source (normalize + reject)
+
+Root-cause fix behind the `/admin/players` junk. The checklist import created a `players` row for *every* parsed name and only flagged junk `insert_only` — quarantined, never prevented — so card-number-prefixed names (`1 Jacob Wilson`), section/description headers (`BASEBALL STARS AUTOGRAPHS`), stray numbers, and subset codes all accumulated as fake players. Two shared guards now run at the aggregation chokepoint (`computePlayerAggregates` in [lib/checklist-aggregates.ts](lib/checklist-aggregates.ts), which both the client `playersOverride` path and the server use), plus the matching variant loop in [app/api/admin/import-checklist/route.ts](app/api/admin/import-checklist/route.ts):
+
+- **`normalizePlayerName`** strips a glued leading card-number prefix (`1 Jacob Wilson` → `Jacob Wilson`, merging with the real player) + trademark symbols. Conservative — only a pure leading number is stripped.
+- **`isNonPlayerName`** rejects rows that aren't people — pure numbers, subset codes (`isCardSubsetCode`), and all-caps multi-word headers/descriptions — so they never become rows. Legit multi-player slash cards (`Skubal / Blanco / Valdez`) are explicitly NOT rejected (caller still keeps them `insert_only`).
+
+Verified by [scripts/verify-name-guards.ts](scripts/verify-name-guards.ts) (`npx tsx`, 26 cases: real names untouched, prefixes stripped, every junk shape rejected, multi-player preserved). Prevents recurrence; existing quarantined rows were cleaned separately. Deferred enhancement: recover the real player for subset-code rows that carry the name in the team column (swap), instead of dropping the card.
+
 ## 2026-06-03 — `/admin/players`: hide card-code junk rows + widen subset-code matcher
 
 The new global players directory surfaced ~2,900 garbage `players` rows where a card-subset code is the name and the real player sits in the team column (`90CAS-DO` / team `David Ortiz`). Investigation: these are NOT new pollution — **every one is already `insert_only` everywhere** (quarantined from team math, parser rosters, and consumer pages; the prior #111/#113 cleanup did its job). Only the new admin page showed them because it lists raw rows regardless of `insert_only`. Net live impact: 1 row (`B25-ÉP`, accented É, on an inactive product).
