@@ -18,6 +18,7 @@ type PlayerRowDb = {
   id: string;
   name: string;
   team: string | null;
+  is_rookie: boolean | null;
   is_icon: boolean | null;
   is_high_volatility: boolean | null;
   sports: { name: string } | null;
@@ -47,7 +48,7 @@ export default async function AdminPlayersPage() {
   // Players with an attribute set (icon or HV).
   const { data: attrRows } = await supabaseAdmin
     .from('players')
-    .select('id, name, team, is_icon, is_high_volatility, sports(name)')
+    .select('id, name, team, is_rookie, is_icon, is_high_volatility, sports(name)')
     .or('is_icon.eq.true,is_high_volatility.eq.true')
     .order('name', { ascending: true });
 
@@ -59,7 +60,7 @@ export default async function AdminPlayersPage() {
   if (missingIds.length) {
     const { data: extra } = await supabaseAdmin
       .from('players')
-      .select('id, name, team, is_icon, is_high_volatility, sports(name)')
+      .select('id, name, team, is_rookie, is_icon, is_high_volatility, sports(name)')
       .in('id', missingIds);
     for (const p of (extra ?? []) as unknown as PlayerRowDb[]) byId.set(p.id, p);
   }
@@ -70,11 +71,26 @@ export default async function AdminPlayersPage() {
       name: p.name,
       team: p.team ?? '',
       sport: p.sports?.name ?? null,
+      isRookie: !!p.is_rookie,
       isIcon: !!p.is_icon,
       isHighVolatility: !!p.is_high_volatility,
       activeFlags: flagsByPlayer.get(p.id) ?? [],
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
+
+  // Dropdown options for the filter bar.
+  const [{ data: sportRows }, { data: productRows }] = await Promise.all([
+    supabaseAdmin.from('sports').select('id, name').order('name', { ascending: true }),
+    supabaseAdmin
+      .from('products')
+      .select('id, name, year')
+      .eq('is_active', true)
+      .order('year', { ascending: false })
+      .order('name', { ascending: true }),
+  ]);
+  const sports = ((sportRows ?? []) as Array<{ id: string; name: string }>).map(s => ({ id: s.id, name: s.name }));
+  const products = ((productRows ?? []) as Array<{ id: string; name: string; year: string | null }>)
+    .map(p => ({ id: p.id, label: `${p.year ? `${p.year} ` : ''}${p.name}` }));
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
@@ -85,12 +101,12 @@ export default async function AdminPlayersPage() {
         </h1>
         <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
           Global player attributes — icon tier, high-volatility, and risk flags. These follow the
-          player across every product. Search to manage any player; the list below shows everyone
-          who already has an attribute set.
+          player across every product. Search or filter to manage any player; the list below shows
+          everyone who already has an attribute set. Click a name to see their products.
         </p>
       </div>
 
-      <GlobalPlayersManager initialManaged={managed} />
+      <GlobalPlayersManager initialManaged={managed} sports={sports} products={products} />
     </div>
   );
 }
