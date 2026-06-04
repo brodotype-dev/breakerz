@@ -1,7 +1,8 @@
 import Link from 'next/link';
-import { getCHCoverageForActiveProducts, type CHCoverageRow } from '@/lib/ch-coverage';
+import { getCHCoverageForActiveProducts, getRecentCHAdditions, type CHCoverageRow } from '@/lib/ch-coverage';
 import { AlertTriangle, CheckCircle2, Database, ExternalLink } from 'lucide-react';
 import ProbeCHButton from './ProbeCHButton';
+import CHAdditionsPanel from './CHAdditionsPanel';
 
 // CardHedger data-health dashboard. One row per active product, surfacing
 // the kind of signals that would have caught the 2026-05-20 ch_price_cache
@@ -21,7 +22,10 @@ import ProbeCHButton from './ProbeCHButton';
 export const dynamic = 'force-dynamic';
 
 export default async function DataHealthPage() {
-  const rows = await getCHCoverageForActiveProducts();
+  const [rows, additions] = await Promise.all([
+    getCHCoverageForActiveProducts(),
+    getRecentCHAdditions(14),
+  ]);
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -40,6 +44,8 @@ export default async function DataHealthPage() {
           {rows.length} active product{rows.length === 1 ? '' : 's'}
         </div>
       </div>
+
+      <CHAdditionsPanel data={additions} />
 
       {rows.length === 0 ? (
         <div

@@ -49,6 +49,40 @@ export async function getTopMovers(count = 100, category?: string): Promise<TopM
   return res.json();
 }
 
+// CardHedger additions-summary — what CH added in a date window (their
+// closest thing to a release feed; River pointed us here 2026-06-03).
+// One row per (set, subset) added on a given day. Drives the Data Health
+// "CH Additions" panel + the nightly cron that snapshots it.
+export interface CHAdditionRow {
+  category: string;
+  set_name: string;
+  subset: string;
+  variants: string;       // comma-separated variant labels
+  added_date: string;     // YYYY-MM-DD
+  card_count: number;
+}
+
+export async function getAdditionsSummary(
+  startDate: string,
+  endDate?: string,
+): Promise<CHAdditionRow[]> {
+  const body: Record<string, unknown> = { start_date: startDate };
+  if (endDate) body.end_date = endDate;
+  const res = await post<{ data?: CHAdditionRow[] }>(
+    '/v1/cards/additions-summary',
+    body,
+    { timeoutMs: 20_000 },
+  );
+  return (res.data ?? []).map(r => ({
+    category: r.category ?? '',
+    set_name: r.set_name ?? '',
+    subset: r.subset ?? '',
+    variants: r.variants ?? '',
+    added_date: r.added_date ?? '',
+    card_count: Number(r.card_count) || 0,
+  }));
+}
+
 // Retry on 5xx, AbortError (timeout), and network errors. Don't retry on 4xx
 // (auth/bad request won't fix themselves). Backoff is bounded so a worst-case
 // 3-retry chain on a 30s-timeout fetch tops out around 36s — well within the

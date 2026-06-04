@@ -271,3 +271,76 @@ async function listDistinctMatchedCardIds(productId: string): Promise<string[]> 
   }
   return Array.from(seen);
 }
+
+// ── CardHedger additions feed (River's release-calendar proxy) ──────────────
+// Reads the `ch_additions` snapshot (nightly cron) and flags additions to sets
+// we already track — i.e. "CH added cards to a set you depend on → re-match it."
+export type CHAdditionView = {
+  added_date: string;
+  category: string;
+  set_name: string;
+  subset: string;
+  variants: string;
+  card_count: number;
+  tracked: boolean;
+};
+
+export type CHAdditionsSummary = {
+  rows: CHAdditionView[];
+  totalCards: number;
+  trackedCards: number;
+  trackedSets: string[];
+  lastFetchedAt: string | null;
+  daysCovered: number;
+};
+
+export async function getRecentCHAdditions(days = 14): Promise<CHAdditionsSummary> {
+  const since = new Date();
+  since.setUTCDate(since.getUTCDate() - days);
+  const sinceIso = since.toISOString().slice(0, 10);
+
+  const [addRes, prodRes] = await Promise.all([
+    supabaseAdmin
+      .from('ch_additions')
+      .select('added_date, category, set_name, subset, variants, card_count, fetched_at')
+      .gte('added_date', sinceIso)
+      .order('added_date', { ascending: false })
+      .order('card_count', { ascending: false }),
+    supabaseAdmin
+      .from('products')
+      .select('ch_set_name')
+      .eq('is_active', true)
+      .not('ch_set_name', 'is', null),
+  ]);
+
+  const trackedSetNames = new Set(
+    (prodRes.data ?? [])
+      .map(p => (p.ch_set_name as string | null)?.toLowerCase().trim())
+      .filter((s): s is string => !!s),
+  );
+
+  const raw = (addRes.data ?? []) as Array<{
+    added_date: string; category: string; set_name: string; subset: string;
+    variants: string; card_count: number; fetched_at: string;
+  }>;
+
+  const rows: CHAdditionView[] = raw.map(r => ({
+    added_date: r.added_date,
+    category: r.category,
+    set_name: r.set_name,
+    subset: r.subset,
+    variants: r.variants,
+    card_count: r.card_count,
+    tracked: trackedSetNames.has((r.set_name ?? '').toLowerCase().trim()),
+  }));
+
+  const trackedRows = rows.filter(r => r.tracked);
+  return {
+    rows,
+    totalCards: rows.reduce((s, r) => s + r.card_count, 0),
+    trackedCards: trackedRows.reduce((s, r) => s + r.card_count, 0),
+    trackedSets: [...new Set(trackedRows.map(r => r.set_name))],
+    lastFetchedAt: raw[0]?.fetched_at ?? null,
+    daysCovered: days,
+  };
+}
