@@ -1,4 +1,4 @@
-import { PackagePlus, RefreshCw } from 'lucide-react';
+import { PackagePlus, RefreshCw, ChevronRight } from 'lucide-react';
 import type { CHAdditionsSummary } from '@/lib/ch-coverage';
 
 // CardHedger additions feed — what CH added recently (their release-calendar
@@ -17,17 +17,23 @@ export default function CHAdditionsPanel({ data }: { data: CHAdditionsSummary })
   const shown = rows.slice(0, ROW_CAP);
 
   return (
-    <div
-      className="rounded-xl overflow-hidden"
+    <details
+      className="group rounded-xl overflow-hidden"
       style={{ border: '1px solid var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
     >
-      <div className="px-4 py-3 flex items-start justify-between gap-4 border-b" style={{ borderColor: 'var(--terminal-border)' }}>
+      <summary className="px-4 py-3 flex items-start justify-between gap-4 cursor-pointer select-none list-none hover:bg-[var(--terminal-surface-hover)]">
         <div>
           <h2 className="text-sm font-bold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+            <ChevronRight className="w-3.5 h-3.5 transition-transform group-open:rotate-90" style={{ color: 'var(--text-tertiary)' }} />
             <PackagePlus className="w-4 h-4" />
             CardHedger Additions
+            {trackedSets.length > 0 && (
+              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide" style={{ backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b' }}>
+                ⚡ {trackedSets.length} tracked
+              </span>
+            )}
           </h2>
-          <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+          <p className="text-xs mt-0.5 ml-[1.4rem]" style={{ color: 'var(--text-tertiary)' }}>
             What CH added in the last {daysCovered} days (their release-calendar proxy). Pulled nightly.
             {lastFetchedAt && (
               <span className="inline-flex items-center gap-1 ml-2">
@@ -42,7 +48,7 @@ export default function CHAdditionsPanel({ data }: { data: CHAdditionsSummary })
             <div className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--text-tertiary)' }}>cards added</div>
           </div>
         </div>
-      </div>
+      </summary>
 
       {/* Tracked-set callout — the re-match signal */}
       {trackedSets.length > 0 && (
@@ -100,6 +106,6 @@ export default function CHAdditionsPanel({ data }: { data: CHAdditionsSummary })
           )}
         </div>
       )}
-    </div>
+    </details>
   );
 }

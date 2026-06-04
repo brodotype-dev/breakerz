@@ -45,8 +45,6 @@ export default async function DataHealthPage() {
         </div>
       </div>
 
-      <CHAdditionsPanel data={additions} />
-
       {rows.length === 0 ? (
         <div
           className="rounded-xl p-8 text-center text-sm"
@@ -94,6 +92,8 @@ export default async function DataHealthPage() {
       )}
 
       <Legend />
+
+      <CHAdditionsPanel data={additions} />
     </div>
   );
 }

@@ -79,11 +79,19 @@ export async function getCHCoverageForActiveProducts(): Promise<CHCoverageRow[]>
   if (error) throw error;
   if (!products?.length) return [];
 
-  const rows = await Promise.all(
+  // Resilient: a single product's rollup failing shouldn't 500 the whole
+  // dashboard (it did when the per-product fan-out timed out — 57014). Drop
+  // failures and keep the rest.
+  const settled = await Promise.allSettled(
     products.map(p =>
       buildOneRow(p.id, p.name, (p.lifecycle_status ?? 'live') as CHCoverageRow['lifecycleStatus']),
     ),
   );
+  const rows: CHCoverageRow[] = [];
+  for (const s of settled) {
+    if (s.status === 'fulfilled') rows.push(s.value);
+    else console.error('[ch-coverage] buildOneRow failed:', s.reason);
+  }
   return rows;
 }
 
@@ -92,82 +100,28 @@ async function buildOneRow(
   productName: string,
   lifecycleStatus: CHCoverageRow['lifecycleStatus'],
 ): Promise<CHCoverageRow> {
-  // 1. Pull the distinct cardhedger_card_ids this product cares about.
-  //    Pagination via supabase's range — over-1000 products exist
-  //    (Topps Chrome BB has ~30K distinct card_ids).
-  const cardIds = await listDistinctMatchedCardIds(productId);
-  const distinctCardIds = cardIds.length;
-
-  // 2. ch_price_cache rollup for those card_ids. Chunk the .in() by
-  //    200 UUIDs — Kong URL cap (CLAUDE.md gotcha #11). For huge
-  //    products we issue ~150 queries; each is a small count, runs
-  //    serially to keep memory low.
-  let cachedTotal = 0;
-  let cardsWithPrices = 0;
-  let cardsAllNull = 0;
-  let cachedFresh = 0;
-  let cachedStale = 0;
+  // Single SQL aggregate via get_ch_coverage(). Replaces the old per-product
+  // fan-out (distinct-card scan + chunked ch_price_cache loop + pricing_cache
+  // fetch) that timed out (57014) once re-matching grew the card sets. See
+  // migration 20260604140000_ch_coverage_rpc.sql.
   const freshCutoff = new Date(Date.now() - STALE_HOURS * 3_600_000).toISOString();
+  const { data, error } = await supabaseAdmin.rpc('get_ch_coverage', {
+    p_product_id: productId,
+    p_cutoff: freshCutoff,
+  });
+  if (error) throw error;
 
-  const IN_CHUNK = 200;
-  for (let i = 0; i < cardIds.length; i += IN_CHUNK) {
-    const slice = cardIds.slice(i, i + IN_CHUNK);
-    const { data, error: chErr } = await supabaseAdmin
-      .from('ch_price_cache')
-      .select('raw_price, psa9_price, psa10_price, fetched_at')
-      .in('cardhedger_card_id', slice);
-    if (chErr) throw chErr;
-    for (const r of (data ?? []) as Array<{
-      raw_price: number | null;
-      psa9_price: number | null;
-      psa10_price: number | null;
-      fetched_at: string;
-    }>) {
-      cachedTotal++;
-      const hasPrice = r.raw_price != null || r.psa9_price != null || r.psa10_price != null;
-      if (hasPrice) cardsWithPrices++;
-      else cardsAllNull++;
-      if (r.fetched_at >= freshCutoff) cachedFresh++;
-      else cachedStale++;
-    }
-  }
-  const cardsNeverFetched = distinctCardIds - cachedTotal;
+  const r = (Array.isArray(data) ? data[0] : data) as {
+    distinct_card_ids: number; cached_total: number; cards_with_prices: number;
+    cards_all_null: number; cached_fresh: number; cached_stale: number;
+    pp_total: number; pp_priced: number; pc_fresh: number; pc_stale: number;
+    conf_sum: number; conf_count: number; last_priced: string | null;
+  } | undefined;
 
-  // 3. pricing_cache rollup: how many of this product's player_products
-  //    are priced, freshness split, avg confidence, last fetched_at.
-  const { count: ppTotalCount } = await supabaseAdmin
-    .from('player_products')
-    .select('id', { count: 'exact', head: true })
-    .eq('product_id', productId)
-    .eq('insert_only', false);
-  const playerProductsTotal = ppTotalCount ?? 0;
-
-  // pricing_cache joined to player_products by product_id. Pull
-  // confidence + fetched_at for in-process aggregation — count helpers
-  // can't give us the freshness split + avg in one query.
-  const { data: pcRows, error: pcErr } = await supabaseAdmin
-    .from('pricing_cache')
-    .select('confidence, fetched_at, player_products!inner(product_id)')
-    .eq('player_products.product_id', productId);
-  if (pcErr) throw pcErr;
-
-  let playerProductsPriced = 0;
-  let pricingCacheFresh = 0;
-  let pricingCacheStale = 0;
-  let confidenceSum = 0;
-  let confidenceCount = 0;
-  let lastPriced: string | null = null;
-  for (const r of (pcRows ?? []) as Array<{ confidence: number | null; fetched_at: string }>) {
-    playerProductsPriced++;
-    if (r.fetched_at >= freshCutoff) pricingCacheFresh++;
-    else pricingCacheStale++;
-    if (r.confidence != null) {
-      confidenceSum += r.confidence;
-      confidenceCount++;
-    }
-    if (!lastPriced || r.fetched_at > lastPriced) lastPriced = r.fetched_at;
-  }
-  const avgConfidence = confidenceCount > 0 ? confidenceSum / confidenceCount : null;
+  const num = (v: unknown) => Number(v ?? 0);
+  const distinctCardIds = num(r?.distinct_card_ids);
+  const cachedTotal = num(r?.cached_total);
+  const confCount = num(r?.conf_count);
 
   return {
     productId,
@@ -175,17 +129,17 @@ async function buildOneRow(
     lifecycleStatus,
     distinctCardIds,
     cachedTotal,
-    cardsWithPrices,
-    cardsAllNull,
-    cardsNeverFetched,
-    cachedFresh,
-    cachedStale,
-    playerProductsTotal,
-    playerProductsPriced,
-    pricingCacheFresh,
-    pricingCacheStale,
-    avgConfidence,
-    lastPriced,
+    cardsWithPrices: num(r?.cards_with_prices),
+    cardsAllNull: num(r?.cards_all_null),
+    cardsNeverFetched: distinctCardIds - cachedTotal,
+    cachedFresh: num(r?.cached_fresh),
+    cachedStale: num(r?.cached_stale),
+    playerProductsTotal: num(r?.pp_total),
+    playerProductsPriced: num(r?.pp_priced),
+    pricingCacheFresh: num(r?.pc_fresh),
+    pricingCacheStale: num(r?.pc_stale),
+    avgConfidence: confCount > 0 ? num(r?.conf_sum) / confCount : null,
+    lastPriced: r?.last_priced ?? null,
   };
 }
 
@@ -247,29 +201,6 @@ export async function probeCHForProduct(productId: string): Promise<CHProbeResul
     cardsDelta: chCount - (ourCount ?? 0),
     probedAt: new Date().toISOString(),
   };
-}
-
-// Paginate distinct cardhedger_card_ids for a product. PostgREST caps
-// any single response at 1000 rows; for big products we page until done
-// and dedupe in-process.
-async function listDistinctMatchedCardIds(productId: string): Promise<string[]> {
-  const PAGE = 1000;
-  const seen = new Set<string>();
-  for (let offset = 0; ; offset += PAGE) {
-    const { data, error } = await supabaseAdmin
-      .from('player_product_variants')
-      .select('cardhedger_card_id, player_products!inner(product_id)')
-      .eq('player_products.product_id', productId)
-      .not('cardhedger_card_id', 'is', null)
-      .range(offset, offset + PAGE - 1);
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-    for (const r of data as Array<{ cardhedger_card_id: string | null }>) {
-      if (r.cardhedger_card_id) seen.add(r.cardhedger_card_id);
-    }
-    if (data.length < PAGE) break;
-  }
-  return Array.from(seen);
 }
 
 // ── CardHedger additions feed (River's release-calendar proxy) ──────────────
