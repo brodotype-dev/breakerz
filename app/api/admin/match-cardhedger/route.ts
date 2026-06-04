@@ -54,8 +54,15 @@ async function runConcurrent<T>(tasks: (() => Promise<T>)[], limit: number): Pro
  *      - Write cardhedger_card_id + match_confidence + match_tier to the variant row
  */
 export async function POST(req: NextRequest) {
-  const auth = await checkRole('admin', 'contributor');
-  if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  // Accept cron-secret auth (for automated / scripted re-matching after a CH
+  // card-match change) or admin cookie auth — same pattern as
+  // refresh-product-pricing.
+  const authHeader = req.headers.get('authorization');
+  const isCron = authHeader === `Bearer ${process.env.CRON_SECRET}`;
+  if (!isCron) {
+    const auth = await checkRole('admin', 'contributor');
+    if (!auth) return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
 
   const { productId, offset = 0, limit = DEFAULT_CHUNK } = await req.json();
   if (!productId) return NextResponse.json({ error: 'productId required' }, { status: 400 });

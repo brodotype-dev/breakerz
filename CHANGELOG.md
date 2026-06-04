@@ -5,6 +5,10 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-06-04 — match-cardhedger: accept cron-secret bearer (drive re-matching after CH card-match changes)
+
+CardHedger (River) shipped significant card-match changes and asked us to rerun non-matches. Our matcher runs a local tier-ladder against the cached CH catalog (`ch_set_cache`), and validation showed **98.6%** of Topps Chrome Football's 2,523 unmatched variants have a card number present in the fresh catalog — i.e. re-running matching is high-yield (≈50% → ≈99% for that product; ~13K unmatched variants across active products). [match-cardhedger](app/api/admin/match-cardhedger/route.ts) now accepts `Authorization: Bearer <CRON_SECRET>` in addition to admin-cookie auth (same pattern as `refresh-product-pricing`), so re-matching can be driven by a script/cron rather than only the admin UI. No behavior change to the matching itself — it still only touches unmatched (`cardhedger_card_id IS NULL`) variants, so it can add matches but never break existing ones.
+
 ## 2026-06-04 — Discord `/break-price`: same wrong-player warning for player-row asks
 
 Extends the `/insight` mismatch guard to `parseBreakPrice` ([lib/insights-parser.ts](lib/insights-parser.ts)). Player/variant-scope asks now carry the soft `match_warning` (via the shared `matchedNameMissingFromText`) when the bound player's name isn't in the text we can read. Because `/break-price` is screenshot/sheet-first, the check runs only when the evidence is text-checkable — a tabular sheet (`tabularText`) is present, OR there's no image — so pure-screenshot rows (where the name lives in pixels) never false-warn. Compared against `tabularText + narrative + notes`. Also now resolves `scope_player_name` from the roster on emission, so the proposal shows the player's name instead of "player slot". Renders via the same `summarizeUpdate` path on the ✅/✏️/❌ panel.
