@@ -96,6 +96,11 @@ export type ParsedUpdate =
       score: number;            // -0.5..0.5, snaps to 0.25 increments client-side
       note: string;
       confidence: number;
+      // Soft mismatch flag: set when the matched player's name isn't found in
+      // the source text (likely a wrong-player match). Display-only warning on
+      // the proposal — never drops the update (would false-reject nicknames /
+      // misspellings the model correctly resolved). See matchedNameMissingFromText.
+      match_warning?: string;
     }
   | {
       kind: 'asking_price';
@@ -141,6 +146,7 @@ export type ParsedUpdate =
       flag_type: 'injury' | 'suspension' | 'legal' | 'trade' | 'retirement' | 'off_field';
       note: string;
       confidence: number;
+      match_warning?: string;   // see sentiment.match_warning
     }
   | {
       // Field intel: a specific card pulls at a different rate than the
@@ -585,6 +591,7 @@ CRITICAL:
   If the narrative names a famous player by nickname or short form, and that player IS in the roster, match to them. If a nickname is genuinely ambiguous (multiple players go by it), choose the most contextually likely one (e.g. NBA player for a basketball card narrative, MLB player for a baseball narrative). NEVER substitute a different player just because their name shares a syllable or position — wrong attributions are worse than missing ones.
 - One narrative can produce multiple updates of different kinds.
 - DO NOT SUBSTITUTE. If a named player or product isn't in the roster AND the name isn't a recognized nickname for someone who IS, OMIT that update entirely. Example: if the narrative mentions "Joe Smith" and no Joe Smith / J. Smith / no obvious nickname for Joe is in the roster, drop the update — do not pick John Smith.
+- NEVER substitute by ROLE, TEAM, or SUCCESSION. Match the EXACT person named. Do not pick the current player at a position when the text names a former one, the new starter when it names the guy he replaced, or a teammate. Example: "Russell Wilson retired" → match Russell Wilson (he IS in the roster), NOT Sam Darnold because Darnold is now the Seahawks QB. The surname in the text must match the player you bind. If the named person isn't in the roster, OMIT — do not bind a positionally/team-related player.
 - variant_name is free text — copy it verbatim from the narrative ("Orange Refractor /99", "Black Prism /1"). We don't have a variant roster yet, so don't try to match against one.
 - It is fine to return fewer updates than the narrative implies, or even an empty array, if you can't make confident matches. EXCEPTION: see RISK_FLAG rule below — risk flags should be emitted whenever a clear factual event (arrest, injury, trade, suspension, retirement) is shown, regardless of market context.
 - RISK_FLAG EMIT-BY-DEFAULT: if the screenshot or narrative shows a clear factual event about a player who IS in the roster, EMIT THE RISK_FLAG. Example: a news article showing "Josh Jacobs was arrested and booked on domestic violence charges" → emit { kind: 'risk_flag', player_id: <Josh Jacobs id>, flag_type: 'legal' or 'off_field', note: '<one-line factual summary>', confidence: 0.9 }. The fact that it's a news article (not a sports card market post) is NOT a reason to skip — risk flags exist precisely to capture events that haven't yet moved the market.`;
@@ -687,6 +694,17 @@ CRITICAL:
   // also loose enough to miss real hallucinations, and a tight check
   // false-rejects nicknames. Trust the player_id; the model's roster is
   // now complete so it has no reason to substitute.
+  // Soft cross-check: did the model bind a player whose name is nowhere in the
+  // contributor's text? That's the "Russel Wilson retired" → Sam Darnold class
+  // — a confident wrong-player match. We warn (never drop): a hard reject would
+  // false-fire on nicknames ("Wemby") and misspellings ("Russel") the model
+  // correctly resolved. Fuzzy (edit-distance ≤1) token match keeps the warning
+  // off correct-but-misspelled inputs; empty text (screenshot-only) skips it.
+  const matchWarningFor = (playerName: string): string | undefined =>
+    matchedNameMissingFromText(playerName, narrativeText)
+      ? `⚠️ "${playerName}" isn't in your text — double-check this is the right player`
+      : undefined;
+
   const out: ParsedUpdate[] = [];
   const dropReasons: string[] = [];
   for (const u of parsed) {
@@ -719,6 +737,7 @@ CRITICAL:
           score: Math.max(-0.5, Math.min(0.5, Number(u.score) || 0)),
           note: String(u.note ?? '').slice(0, 240),
           confidence: Math.max(0, Math.min(1, Number(u.confidence) || 0)),
+          match_warning: matchWarningFor(known.name),
         });
         break;
       }
@@ -737,6 +756,7 @@ CRITICAL:
           flag_type: u.flag_type,
           note: String(u.note ?? '').slice(0, 500),
           confidence: Math.max(0, Math.min(1, Number(u.confidence) || 0)),
+          match_warning: matchWarningFor(known.name),
         });
         break;
       }
@@ -951,15 +971,66 @@ CRITICAL:
   };
 }
 
+// Accent-fold + lowercase for forgiving comparisons.
+function foldText(s: string): string {
+  return (s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+// Are two tokens within edit-distance 1 (one insert/delete/substitution)?
+// Tolerates "russel" ≈ "russell", "wembanyma" ≈ "wembanyama".
+function within1(a: string, b: string): boolean {
+  if (a === b) return true;
+  const la = a.length, lb = b.length;
+  if (Math.abs(la - lb) > 1) return false;
+  let i = 0, j = 0, edits = 0;
+  while (i < la && j < lb) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++edits > 1) return false;
+    if (la > lb) i++;
+    else if (lb > la) j++;
+    else { i++; j++; }
+  }
+  if (i < la || j < lb) edits++;
+  return edits <= 1;
+}
+
+const NAME_STOPWORDS = new Set(['jr', 'sr', 'ii', 'iii', 'iv', 'the', 'de', 'la', 'van', 'von', 'st']);
+
+/**
+ * True when NONE of the matched player's significant name tokens appear (fuzzily)
+ * in the contributor's text — the signal that the model bound the wrong player
+ * (the "Russel Wilson retired" → Sam Darnold case). Returns false (no warning)
+ * when the text is empty (screenshot-only) so we don't warn on captures we can't
+ * validate. Edit-distance ≤1 on tokens ≥4 chars absorbs misspellings; exact on
+ * shorter tokens. NICKNAMES are NOT resolved here — that's fine, this only drives
+ * a soft warning, never a drop.
+ */
+export function matchedNameMissingFromText(playerName: string, text: string): boolean {
+  const t = (text ?? '').trim();
+  if (!t) return false;
+  const nameTokens = foldText(playerName).split(/[^a-z0-9]+/).filter(w => w.length >= 3 && !NAME_STOPWORDS.has(w));
+  if (nameTokens.length === 0) return false;
+  const textTokens = foldText(t).split(/[^a-z0-9]+/).filter(w => w.length >= 3);
+  for (const nt of nameTokens) {
+    for (const tt of textTokens) {
+      if (nt.length >= 4 ? within1(nt, tt) : nt === tt) return false; // found a match
+    }
+  }
+  return true;
+}
+
 /** Pretty one-line summary used in the bot reply. */
 export function summarizeUpdate(u: ParsedUpdate): string {
   switch (u.kind) {
     case 'sentiment': {
       const scopeLabel = u.scope === 'product' ? ' (this product only)' : '';
-      return `${u.player_name}${scopeLabel}: sentiment ${u.score >= 0 ? '+' : ''}${u.score} — ${u.note}`;
+      const warn = u.match_warning ? `\n   ${u.match_warning}` : '';
+      return `${u.player_name}${scopeLabel}: sentiment ${u.score >= 0 ? '+' : ''}${u.score} — ${u.note}${warn}`;
     }
-    case 'risk_flag':
-      return `${u.player_name}: ${u.flag_type} — ${u.note}`;
+    case 'risk_flag': {
+      const warn = u.match_warning ? `\n   ${u.match_warning}` : '';
+      return `${u.player_name}: ${u.flag_type} — ${u.note}${warn}`;
+    }
     case 'asking_price': {
       const where =
         u.scope_type === 'team' ? `${u.scope_team} slot`
