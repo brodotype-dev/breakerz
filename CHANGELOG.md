@@ -5,6 +5,12 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-06-04 — Discord `/insight`: warn on wrong-player matches (name not in your text)
+
+A `/insight` of "Russel Wilson retired" proposed a retirement flag on **Sam Darnold** — the model semantically substituted the *current* Seahawks QB for the *former* one, returning a self-consistent wrong `player_id`/`player_name` (so the existing id↔name check couldn't catch it). Russell Wilson was in the roster; this was a confident mis-match, not a missing-roster bug.
+
+New structural guard in [lib/insights-parser.ts](lib/insights-parser.ts): `matchedNameMissingFromText(playerName, text)` flags a sentiment/risk_flag update when **none** of the bound player's name tokens appear (fuzzily) in the contributor's narrative. It's a **soft warning, never a drop** — a hard reject would false-fire on nicknames ("Wemby") and misspellings ("Russel") the model resolved correctly. Fuzzy (edit-distance ≤1, accent-folded) token matching keeps it quiet on those; empty text (screenshot-only) skips the check. The warning (`⚠️ "Sam Darnold" isn't in your text — double-check…`) renders on the proposal via `summarizeUpdate`, so it shows on the existing ✅/✏️/❌ panel. Plus a prompt rule explicitly forbidding role/team/succession substitution (don't bind the current player at a position when the text names a former one). Verified by [scripts/verify-match-warning.ts](scripts/verify-match-warning.ts).
+
 ## 2026-06-03 — Import hardening: stop junk player rows at the source (normalize + reject)
 
 Root-cause fix behind the `/admin/players` junk. The checklist import created a `players` row for *every* parsed name and only flagged junk `insert_only` — quarantined, never prevented — so card-number-prefixed names (`1 Jacob Wilson`), section/description headers (`BASEBALL STARS AUTOGRAPHS`), stray numbers, and subset codes all accumulated as fake players. Two shared guards now run at the aggregation chokepoint (`computePlayerAggregates` in [lib/checklist-aggregates.ts](lib/checklist-aggregates.ts), which both the client `playersOverride` path and the server use), plus the matching variant loop in [app/api/admin/import-checklist/route.ts](app/api/admin/import-checklist/route.ts):
