@@ -5,6 +5,10 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-06-04 — Discord `/break-price`: same wrong-player warning for player-row asks
+
+Extends the `/insight` mismatch guard to `parseBreakPrice` ([lib/insights-parser.ts](lib/insights-parser.ts)). Player/variant-scope asks now carry the soft `match_warning` (via the shared `matchedNameMissingFromText`) when the bound player's name isn't in the text we can read. Because `/break-price` is screenshot/sheet-first, the check runs only when the evidence is text-checkable — a tabular sheet (`tabularText`) is present, OR there's no image — so pure-screenshot rows (where the name lives in pixels) never false-warn. Compared against `tabularText + narrative + notes`. Also now resolves `scope_player_name` from the roster on emission, so the proposal shows the player's name instead of "player slot". Renders via the same `summarizeUpdate` path on the ✅/✏️/❌ panel.
+
 ## 2026-06-04 — Discord `/insight`: warn on wrong-player matches (name not in your text)
 
 A `/insight` of "Russel Wilson retired" proposed a retirement flag on **Sam Darnold** — the model semantically substituted the *current* Seahawks QB for the *former* one, returning a self-consistent wrong `player_id`/`player_name` (so the existing id↔name check couldn't catch it). Russell Wilson was in the roster; this was a confident mis-match, not a missing-roster bug.

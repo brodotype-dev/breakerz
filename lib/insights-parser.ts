@@ -123,6 +123,7 @@ export type ParsedUpdate =
       source: AskingPriceSource;
       source_note: string;
       confidence: number;
+      match_warning?: string;   // player/variant scope: name not found in the sheet/text (see matchedNameMissingFromText)
     }
   | {
       kind: 'hype_tag';
@@ -1038,7 +1039,8 @@ export function summarizeUpdate(u: ParsedUpdate): string {
         : u.scope_type === 'player' ? `${u.scope_player_name ?? 'player'} slot`
         : `${u.product_name} bundle`;
       const range = u.price_low === u.price_high ? `$${u.price_low}` : `$${u.price_low}–$${u.price_high}`;
-      return `${where} (${renderComposition(u.composition)}, ${u.source}): asking ${range} — ${u.source_note}`;
+      const warn = u.match_warning ? `\n   ${u.match_warning}` : '';
+      return `${where} (${renderComposition(u.composition)}, ${u.source}): asking ${range} — ${u.source_note}${warn}`;
     }
     case 'hype_tag': {
       const where =
@@ -1505,6 +1507,14 @@ RULES:
   const valid: Extract<ParsedUpdate, { kind: 'asking_price' }>[] = [];
   const dropped: string[] = [];
 
+  // Cross-check player-row matches against text we can actually read. Sheets
+  // (tabularText) list player names explicitly, so a bound player absent from
+  // the sheet is a likely wrong match → soft warning. Pure-screenshot rows
+  // (image, no sheet) carry the name in pixels we can't read here, so skip the
+  // check to avoid false warnings. Same warn-never-drop policy as /insight.
+  const canCheckMatch = !hadImage || hadTabular;
+  const matchCheckText = [input.tabularText, input.narrative, input.notes].filter(Boolean).join('  ');
+
   for (const u of parsed) {
     if (!u || typeof u !== 'object' || (u as any).kind !== 'asking_price') {
       dropped.push('not an asking_price update'); continue;
@@ -1537,6 +1547,15 @@ RULES:
       dropped.push('team scope missing scope_team'); continue;
     }
 
+    const isPlayerScope = row.scope_type === 'player' || row.scope_type === 'variant';
+    const resolvedPlayerName = isPlayerScope
+      ? playerById.get(row.scope_player_id as string)
+      : undefined;
+    const matchWarning = isPlayerScope && resolvedPlayerName && canCheckMatch
+      && matchedNameMissingFromText(resolvedPlayerName, matchCheckText)
+        ? `⚠️ "${resolvedPlayerName}" isn't in the sheet/text — double-check this is the right player`
+        : undefined;
+
     valid.push({
       kind: 'asking_price',
       product_id: row.product_id as string,
@@ -1544,6 +1563,7 @@ RULES:
       scope_type: row.scope_type as 'team' | 'player' | 'product' | 'variant',
       scope_team: row.scope_team as string | undefined,
       scope_player_id: row.scope_player_id as string | undefined,
+      scope_player_name: resolvedPlayerName,
       variant_name: row.variant_name as string | undefined,
       composition: compResult.comp,
       price_low: Math.round(lo),
@@ -1551,6 +1571,7 @@ RULES:
       source: row.source as AskingPriceSource,
       source_note: (row.source_note as string) ?? '',
       confidence: Math.max(0, Math.min(1, Number(row.confidence) || 0)),
+      match_warning: matchWarning,
     });
   }
 
