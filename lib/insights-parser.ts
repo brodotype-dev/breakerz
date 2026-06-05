@@ -701,10 +701,41 @@ CRITICAL:
   // false-fire on nicknames ("Wemby") and misspellings ("Russel") the model
   // correctly resolved. Fuzzy (edit-distance ≤1) token match keeps the warning
   // off correct-but-misspelled inputs; empty text (screenshot-only) skips it.
-  const matchWarningFor = (playerName: string): string | undefined =>
-    matchedNameMissingFromText(playerName, narrativeText)
-      ? `⚠️ "${playerName}" isn't in your text — double-check this is the right player`
-      : undefined;
+  // Resolve the final player binding for a model-bound (id, name). If the bound
+  // name is in the text, trust it. If NOT (the "Russel Wilson retired → Sam
+  // Darnold" class), try to re-resolve from the contributor's own words: if
+  // exactly one roster player is *strongly* present in the text (surname +
+  // first name), re-bind to them — auto-correcting the model's mistake at parse
+  // time, no refine needed. If we can't disambiguate, keep the bound player and
+  // warn (never silently drop).
+  const narrativeTokensForMatch = foldText(narrativeText)
+    .split(/[^a-z0-9]+/)
+    .filter(w => w.length >= 2 && !NAME_STOPWORDS.has(w));
+  const resolveBinding = (
+    boundId: string,
+    boundName: string,
+  ): { player_id: string; player_name: string; match_warning?: string } => {
+    if (!matchedNameMissingFromText(boundName, narrativeText)) {
+      return { player_id: boundId, player_name: boundName };
+    }
+    const byId = new Map<string, { id: string; name: string }>();
+    for (const p of players as Array<{ id: string; name: string }>) {
+      if (nameStronglyInText(p.name, narrativeTokensForMatch)) byId.set(p.id, { id: p.id, name: p.name });
+    }
+    const cands = [...byId.values()];
+    if (cands.length === 1 && cands[0].id !== boundId) {
+      return {
+        player_id: cands[0].id,
+        player_name: cands[0].name,
+        match_warning: `↻ re-matched to ${cands[0].name} from your text (model first picked ${boundName})`,
+      };
+    }
+    return {
+      player_id: boundId,
+      player_name: boundName,
+      match_warning: `⚠️ "${boundName}" isn't in your text — double-check this is the right player`,
+    };
+  };
 
   const out: ParsedUpdate[] = [];
   const dropReasons: string[] = [];
@@ -729,16 +760,17 @@ CRITICAL:
           continue;
         }
         const known = playerById.get(u.player_id)!;
+        const sBind = resolveBinding(u.player_id, known.name);
         out.push({
           kind: 'sentiment',
-          player_id: u.player_id,
-          player_name: known.name,
+          player_id: sBind.player_id,
+          player_name: sBind.player_name,
           scope,
           product_id: scope === 'product' ? u.product_id : undefined,
           score: Math.max(-0.5, Math.min(0.5, Number(u.score) || 0)),
           note: String(u.note ?? '').slice(0, 240),
           confidence: Math.max(0, Math.min(1, Number(u.confidence) || 0)),
-          match_warning: matchWarningFor(known.name),
+          match_warning: sBind.match_warning,
         });
         break;
       }
@@ -750,14 +782,15 @@ CRITICAL:
         const known = playerById.get(u.player_id)!;
         const validFlags = ['injury', 'suspension', 'legal', 'trade', 'retirement', 'off_field'] as const;
         if (!validFlags.includes(u.flag_type as typeof validFlags[number])) continue;
+        const rBind = resolveBinding(u.player_id, known.name);
         out.push({
           kind: 'risk_flag',
-          player_id: u.player_id,
-          player_name: known.name,
+          player_id: rBind.player_id,
+          player_name: rBind.player_name,
           flag_type: u.flag_type,
           note: String(u.note ?? '').slice(0, 500),
           confidence: Math.max(0, Math.min(1, Number(u.confidence) || 0)),
-          match_warning: matchWarningFor(known.name),
+          match_warning: rBind.match_warning,
         });
         break;
       }
@@ -1018,6 +1051,28 @@ export function matchedNameMissingFromText(playerName: string, text: string): bo
     }
   }
   return true;
+}
+
+// Significant tokens of a player name (drops Jr/Sr/etc.), folded + lowercased.
+function namePartsFor(name: string): string[] {
+  return foldText(name).split(/[^a-z0-9]+/).filter(w => w.length >= 2 && !NAME_STOPWORDS.has(w));
+}
+function tokenPresent(tok: string, textTokens: string[]): boolean {
+  return textTokens.some(tt => (tok.length >= 4 ? within1(tok, tt) : tok === tt));
+}
+
+/**
+ * Strong presence: the player's SURNAME and FIRST name both appear (fuzzily) in
+ * the text — stronger than matchedNameMissingFromText's any-token check, so it
+ * won't fire on a shared surname alone ("Garrett Wilson" ≠ "Russell Wilson").
+ * Used to re-resolve a mis-bound player from the contributor's own words.
+ */
+export function nameStronglyInText(name: string, textTokens: string[]): boolean {
+  const parts = namePartsFor(name);
+  if (parts.length === 0) return false;
+  if (!tokenPresent(parts[parts.length - 1], textTokens)) return false; // surname required
+  if (parts.length === 1) return true;                                    // mononym
+  return tokenPresent(parts[0], textTokens);                              // + first name
 }
 
 /** Pretty one-line summary used in the bot reply. */
