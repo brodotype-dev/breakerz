@@ -12,6 +12,7 @@
  */
 
 import { supabaseAdmin } from '@/lib/supabase';
+import { MODELS } from '@/lib/models';
 import { isCardSubsetCode } from '@/lib/checklist-aggregates';
 import type { SlotComposition, AskingPriceSource, BreakFormat } from '@/lib/types';
 
@@ -629,7 +630,7 @@ CRITICAL:
 
   const message = await client.messages.create(
     {
-      model: 'claude-haiku-4-5-20251001',
+      model: MODELS.matcher,
       // Vision responses run wider (multiple players + sentiments per screenshot
       // are routine); 2048 was the silent failure mode for parseBreakPrice
       // before May 14. Match the 8192 ceiling there for parity. Web sources
@@ -1518,7 +1519,7 @@ RULES:
 
   const message = await client.messages.create(
     {
-      model: 'claude-haiku-4-5-20251001',
+      model: MODELS.matcher,
       // 8192 fits ~30 asking_price rows (~250 tokens each) — covers Dan-Reed-style
       // 18-team price-sheet screenshots without truncating the closing `]`.
       // Previous 1024 was the silent failure: response cut off mid-object,

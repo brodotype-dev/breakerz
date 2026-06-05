@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { MODELS } from '@/lib/models';
 import { checkRole } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getManufacturerDescriptor } from '@/lib/card-knowledge';
@@ -406,7 +407,7 @@ async function proposeAnchorConfig(body: ProposeBody) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   const message = await client.messages.create({
-    model: 'claude-sonnet-4-6',
+    model: MODELS.configurator,
     max_tokens: 1536,
     system: systemPrompt,
     messages: claudeMessages.map(m => ({ role: m.role, content: m.content })),
