@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase';
+import { MODELS } from '@/lib/models';
 import { computeLiveEV, get90DayPrices } from '@/lib/cardhedger';
 import { computeSlotPricing, computeTeamSlotPricing, computeSignal, formatCurrency } from '@/lib/engine';
 import { computeRiskAdjustment, computeHypeAdjustment, type HypeObservation, type HypeTag } from '@/lib/score-modulation';
@@ -518,7 +519,7 @@ Write a 2–3 sentence analysis explaining whether this bundle is worth buying a
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
   const message = await client.messages.create({
-    model: 'claude-haiku-4-5-20251001',
+    model: MODELS.verdict,
     max_tokens: 350,
     messages: [{ role: 'user', content: prompt }],
   }, { timeout: 15_000 });

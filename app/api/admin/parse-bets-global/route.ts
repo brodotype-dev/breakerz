@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { MODELS } from '@/lib/models';
 import { supabaseAdmin } from '@/lib/supabase';
 import { checkRole } from '@/lib/auth';
 
@@ -58,7 +59,7 @@ IMPORTANT: Only include players explicitly mentioned. If no players are clearly 
     const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
     const message = await client.messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: MODELS.extract,
       max_tokens: 1024,
       messages: [{ role: 'user', content: prompt }],
     }, { timeout: 25_000 });

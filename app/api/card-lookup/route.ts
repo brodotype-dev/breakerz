@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { MODELS } from '@/lib/models';
 import Anthropic from '@anthropic-ai/sdk';
 import { pricesByCert, searchCards, getAllPrices, getComps } from '@/lib/cardhedger';
 import { getCertByNumber } from '@/lib/psa';
@@ -35,7 +36,7 @@ export async function POST(req: Request) {
       }
 
       const message = await client.messages.create({
-        model: 'claude-haiku-4-5-20251001',
+        model: MODELS.extract,
         max_tokens: 300,
         messages: [{
           role: 'user',
