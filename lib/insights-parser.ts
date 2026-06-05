@@ -654,18 +654,16 @@ CRITICAL:
     hadNarrative,
   };
 
-  const arrayMatch = raw.match(/\[[\s\S]*\]/);
-  if (!arrayMatch) {
-    console.warn(`[insights-parser] no JSON array found in response`);
-    return { updates: [], debug: { ...debugBase, parsedRawCount: 0, droppedReasons: ['no JSON array in response'] } };
-  }
-
-  let parsed: ParsedUpdate[];
-  try {
-    parsed = JSON.parse(arrayMatch[0]);
-  } catch (err) {
-    console.warn(`[insights-parser] JSON parse failed: ${err instanceof Error ? err.message : err}`);
-    return { updates: [], debug: { ...debugBase, parsedRawCount: 0, droppedReasons: [`json parse: ${err instanceof Error ? err.message : err}`] } };
+  // Use the robust salvage walker (same as parseBreakPrice) — tolerant of
+  // markdown fences, prose, truncation, AND a model that emits a corrected
+  // second JSON block. The old `raw.match(/\[[\s\S]*\]/)` + JSON.parse was
+  // greedy: it spanned both arrays + the interleaved prose and threw
+  // "Unexpected non-whitespace character after JSON" on the self-correction
+  // case, dropping the (correct) result entirely.
+  const parsed = (salvageJsonArrayObjects(raw) ?? []) as ParsedUpdate[];
+  if (parsed.length === 0) {
+    console.warn(`[insights-parser] no parseable JSON objects in response`);
+    return { updates: [], debug: { ...debugBase, parsedRawCount: 0, droppedReasons: ['no parseable JSON objects in response'] } };
   }
   console.log(`[insights-parser] parsed ${parsed.length} raw updates before validation`);
 
@@ -1141,9 +1139,13 @@ export function summarizeUpdate(u: ParsedUpdate): string {
  * Returns null only when no `[` is found at all.
  */
 export function salvageJsonArrayObjects(raw: string): unknown[] | null {
-  // Strip a single code-fence wrapper if present. Tolerates both ```json and bare ```.
-  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  let body = fenced ? fenced[1] : raw;
+  // Use the LAST code-fenced block, not the first. Haiku sometimes emits a
+  // first attempt, reconsiders in prose ("Wait, Russell Wilson IS in the
+  // roster…"), then emits a CORRECTED second ```json block. The model's final
+  // answer is the last block; taking the first bound the wrong player and broke
+  // the parse on the interleaved prose. (2026-06-05 Russell Wilson incident.)
+  const fences = [...raw.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)];
+  let body = fences.length > 0 ? fences[fences.length - 1][1] : raw;
 
   const start = body.indexOf('[');
   if (start === -1) return null;
