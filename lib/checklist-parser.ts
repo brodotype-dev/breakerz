@@ -565,6 +565,26 @@ const COUNT_METADATA_RE = /^\d+\s+cards?\.?$/i;
 // Also matches labels without print runs ("Refractor", "Geometric", "Oil Spill").
 const PARALLEL_LABEL_RE = /\/\d+\s*$/;
 
+// Topps Motif Basketball ships parallels with the pack odds glued onto the
+// label, e.g. "Platinum (Hobby - 1:157; FDI - 1:157)" or "Pastel Pink (No
+// odds given)". Without recognizing these, each parallel line falls through to
+// "new base section header" and overwrites the real subset title (the parser
+// produced 15 garbage odds-named sections before this).
+//
+// Closing paren is OPTIONAL — the Motif source file has malformed lines missing
+// it, e.g. "Platinum (Hobby - 1:949; FDI - 1:633" (no `)`).
+const PAREN_ODDS_PARALLEL_RE = /\((?:hobby|fdi|first day issue|retail|jumbo|no odds given)\b[^)]*\)?\s*$/i;
+// A bare subset pack-odds line ("Hobby - 1:17; FDI - 1:11") is metadata, not a
+// section header and not a parallel — skip it entirely.
+const BARE_ODDS_RE = /^(?:hobby|fdi|first day issue|retail|jumbo)\b.*\d+\s*:\s*\d/i;
+// Returns the clean parallel name (text before the odds parenthetical) when the
+// label is a Motif-style parenthetical-odds parallel, else null.
+function parenOddsParallelName(label: string): string | null {
+  if (!PAREN_ODDS_PARALLEL_RE.test(label)) return null;
+  const name = label.replace(/\s*\([^)]*\)?\s*$/, '').trim();
+  return name.length > 0 ? name : null;
+}
+
 // ---------------------------------------------------------------------------
 // parseChecklistXlsx  (Bowman/Topps XLSX format with parallel expansion)
 //
@@ -701,16 +721,22 @@ export function parseChecklistXlsx(buffer: Buffer): ParsedChecklist {
         // ("400 cards", "70 cards"), so the trailing-period rule misses them
         // and they get promoted to section names. Skip explicitly.
         if (COUNT_METADATA_RE.test(label)) continue;
+        // Bare subset pack-odds line ("Hobby - 1:17; FDI - 1:11") — metadata,
+        // neither a section header nor a parallel.
+        if (BARE_ODDS_RE.test(label)) continue;
         if (STRUCTURAL_LABEL_RE.test(label)) continue;
 
-        if (isParallelLabel(label)) {
+        // Motif-style parallel with glued odds ("Platinum (Hobby - 1:157…)")
+        // resolves to its clean name; otherwise the existing parallel test.
+        const parenParallel = parenOddsParallelName(label);
+        if (parenParallel || isParallelLabel(label)) {
           // A parallel label after a block's data rows signals a new sub-block
           // of the same base section (shouldn't normally happen, but be safe).
           if (sawDataInBlock) {
             parallels = [];
             sawDataInBlock = false;
           }
-          parallels.push(label);
+          parallels.push(parenParallel ?? label);
           continue;
         }
 

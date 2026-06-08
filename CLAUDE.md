@@ -37,6 +37,7 @@ Full strategy:
 - [docs/manufacturer-rules/bowman.md](./docs/manufacturer-rules/bowman.md) — Bowman/Topps prefix names, CH naming conventions, match rate history
 - [docs/manufacturer-rules/panini.md](./docs/manufacturer-rules/panini.md) — Panini Master Checklist XLSX format, section model, known gaps (no RC flag, no odds)
 - [docs/manufacturer-rules/upper-deck.md](./docs/manufacturer-rules/upper-deck.md) — Upper Deck / O-Pee-Chee parser playbook: Beckett XLSX (`Master Card List`) + URL scrape, 8-format Stated Odds column, admin workflow
+- [docs/manufacturer-rules/topps-motif.md](./docs/manufacturer-rules/topps-motif.md) — Topps Motif / Beckett **parenthetical-odds parallel** dialect (parallels with pack odds glued onto the label, e.g. `"Platinum (Hobby - 1:157; FDI - 1:157)"`). Format-general handling in `parseChecklistXlsx` (`PAREN_ODDS_PARALLEL_RE` / `BARE_ODDS_RE` / `parenOddsParallelName`); regression test `scripts/verify-motif-parser.mjs`. CH catalog gap — matching blocked until CH adds the set.
 - [docs/breaker-identity-prd.md](./docs/breaker-identity-prd.md) — Breaker role + crowdsourced case pricing PRD (backlogged, post-public-beta)
 - [docs/product-lifecycle.md](./docs/product-lifecycle.md) — pre_release / live / dormant lifecycle: schema, crons, transitions, consumer rendering
 - [docs/plans/2026-04-29-break-analysis-v2.md](./docs/plans/2026-04-29-break-analysis-v2.md) — Break Analysis v2 plan (multi-format, multi-team, insight capture roadmap; Phase 2 rewritten 2026-04-29 as Discord-driven)
