@@ -5,6 +5,20 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-06-08 — Catalog pagination drift fix + Chrome Football full re-hydrate
+
+**Symptom (via River / CardHedger):** "2025 Topps Chrome Football total cards was way low." Investigation showed the product was the *only* active product still on the legacy parse→match path (0% `ch-native`) — its checklist file carries no chrome parallels (those come from CH-catalog hydration, like every other product), and it was never hydrated because its CH catalog wasn't matched until the June 4 re-match. Result: 5,022 variants (1% parallels, base + photo-variations only) + 1,720 duplicate rows, EV built without the refractor/colored ladder where the chase value lives.
+
+**Re-hydrated** Chrome Football from the now-complete CH catalog via `hydrateVariantsFromCatalog` → **36,970 `ch-native` variants, all 73 parallels, pre-matched**, then refreshed pricing (399/400 players live). River's flag resolved.
+
+**Root-cause bug caught mid-hydrate:** [lib/cardhedger-catalog.ts](lib/cardhedger-catalog.ts) `loadCatalogIndex` paginated `ch_set_cache` with `.range()` but **no `.order()`** — PostgREST returns rows in undefined heap order that drifts across page boundaries, so on a 37K-row set the first hydrate produced **exactly 1,000 duplicate card_ids AND ~1,000 silently-missing cards** (36,970 rows / 35,970 distinct). Football's heap order had just been churned by the re-match, making the drift acute. **This affected every hydrate and every catalog match** that builds the in-memory index. Fix (PR [#195](https://github.com/brodotype-dev/breakerz/pull/195)): `.order('card_id', { ascending: true })` (unique per set → deterministic paging) + a defensive de-dup by `card_id` when building `index.cards`. Re-hydrate against the fixed code → 36,970 rows = 36,970 distinct, 0 dups, 0 missing. **Heads-up:** Chrome Football slot prices shifted — they now reflect the full parallel ladder instead of base-only (the correct number).
+
+## 2026-06-08 — Topps Motif Basketball: re-import with clean parser (odds matching unblocked)
+
+`/admin/products/<motif>` odds import showed **0 matched / 127 unmatched**. Root cause: the Motif checklist was imported *before* the parenthetical-odds parser fix (2026-06-07, PR #194) deployed, so every variant name had the pack odds glued in (`"Platinum (Hobby - 1:436; FDI - 1:291)"`, `"Hobby - 1:17; FDI - 1:11"`, the malformed `"Platinum (Hobby - 1:949; FDI - 1:633"`). The odds matcher scores by token overlap, so those tokenize into odds digits and score ~0 against any odds subset → nothing matched. The roster (players) imported fine, masking it.
+
+Fix (operational, no code): deleted the 769 garbage variants (scoped to the one product; players/player_products untouched), re-imported the checklist via the now-live fixed parser → **4,676 clean variants** (`Base`, `Pastel Pink`, `Quin Gold`, … `Platinum` + autograph sections). Odds now match (re-run odds import in the UI). Known coarseness: pure base-autograph odds rows (`"Motif Rookie Relic Autographs"` with no color) can stay unmatched because the importer names a card's no-parallel row `"Base"` rather than the section name — pre-existing, affects all products, not the Motif bug. Motif remains a CardHedger catalog gap (pre-release, display-only) until CH adds the set.
+
 ## 2026-06-07 — Checklist parser: Topps Motif / Beckett parenthetical-odds parallel dialect
 
 Topps Motif Basketball imported as garbage — ~15 odds-named sections (`"Platinum (Hobby - 1:157; FDI - 1:157)"`) instead of real subset titles. Root cause: Motif is the same Beckett multi-sheet XLSX the generic `parseChecklistXlsx` already walks, but each parallel label carries its pack odds glued on (`"Platinum (Hobby - 1:157; FDI - 1:157)"`, `"Pastel Pink (No odds given)"`). Those failed `isParallelLabel()`, fell through to "new section header," and clobbered the real subset title.
