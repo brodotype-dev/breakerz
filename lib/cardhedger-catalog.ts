@@ -243,6 +243,14 @@ export async function loadCatalogIndex(setName: string): Promise<CatalogIndex> {
       .from('ch_set_cache')
       .select('card_id, number, player_name, variant, year, category, rookie, card_description')
       .eq('ch_set_name', setName)
+      // STABLE SORT IS LOAD-BEARING: PostgREST `.range()` pagination without an
+      // explicit ORDER BY returns rows in undefined (heap) order, which drifts
+      // across pages — some rows repeat on a later page, others are skipped
+      // entirely. On a 37K-row set that produced ~1,000 duplicate card_ids AND
+      // ~1,000 silently-missing cards when hydrating 2025 Topps Chrome Football
+      // (its heap order was freshly churned by a re-match). card_id is unique
+      // per set, so ordering on it makes paging deterministic.
+      .order('card_id', { ascending: true })
       .range(offset, offset + PAGE_SIZE - 1);
 
     if (error) throw new Error(`ch_set_cache load failed for "${setName}": ${error.message}`);
@@ -251,9 +259,14 @@ export async function loadCatalogIndex(setName: string): Promise<CatalogIndex> {
     if (page.length < PAGE_SIZE) break;
   }
 
-  const data = allRows;
+  // Defensive de-dup by card_id (unique per set). Belt-and-suspenders against
+  // any residual page drift / concurrent catalog writes mid-scan — keeps
+  // index.cards one-row-per-card so callers (hydrate, matcher) never double-count.
+  const byCardId = new Map<string, (typeof allRows)[number]>();
+  for (const r of allRows) if (!byCardId.has(r.card_id)) byCardId.set(r.card_id, r);
+  const data = Array.from(byCardId.values());
 
-  const cards: CatalogCard[] = (data ?? []).map(r => ({
+  const cards: CatalogCard[] = data.map(r => ({
     card_id: r.card_id,
     number: r.number ?? '',
     player_name: r.player_name ?? '',
