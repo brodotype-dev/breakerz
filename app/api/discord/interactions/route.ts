@@ -40,7 +40,14 @@ import {
 } from '@/lib/tracked-source-proposal';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+// 300s (Vercel Pro max) — the sync ACK returns in <1s, but the after() block
+// runs the Claude vision parse + DB writes. Sonnet 4.6 vision on dense
+// screenshots can take 30-60s, and the Anthropic SDK retries (default 2) on a
+// timed-out attempt. At maxDuration=60 a retry chain (≤3 × 60s call timeout)
+// got hard-killed mid-flight → "Vercel Runtime Timeout Error" → the deferred
+// /break-price reply never landed ("application did not respond"). 300s gives
+// the parse + bounded retries room to finish and edit the interaction reply.
+export const maxDuration = 300;
 
 /**
  * Single Discord interactions endpoint. Three things land here:

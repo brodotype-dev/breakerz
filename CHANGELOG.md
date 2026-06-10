@@ -5,6 +5,12 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-06-09 — Fix: `/break-price` "application did not respond" (Sonnet vision timeout × retries)
+
+Discord `/break-price` (and image `/insight`) started failing with "The application did not respond" / stuck "BreakIQ is thinking…". Root cause was the **Sonnet 4.6 upgrade (2026-06-05) colliding with the retry math**: the Anthropic client runs the default 2 retries, the vision parse had a 30s per-attempt timeout (tuned for Haiku), and the Discord function was `maxDuration = 60`. Sonnet 4.6 vision on dense multi-screenshot price sheets exceeds 30s, so the first attempt timed out → SDK retried → the ≤3-attempt chain overran 60s → the function was hard-killed mid-flight ("Vercel Runtime Timeout Error" in the logs at the exact failure timestamps), so the deferred reply never landed. Text-only `/insight` was unaffected (fast, no vision), which is why only screenshot captures broke.
+
+Fix: [app/api/discord/interactions/route.ts](app/api/discord/interactions/route.ts) `maxDuration` 60 → **300** (the sync ACK still returns in <1s; the `after()` block now has room for the parse + bounded retries), and [lib/insights-parser.ts](lib/insights-parser.ts) raised the vision/web-source Anthropic call timeout 30s → **60s** in both `parseInsights` and `parseBreakPrice` so Sonnet completes on the first attempt instead of triggering the retry storm. Text-only calls stay at 25s. No model rollback — keeps the Sonnet accuracy win from #192.
+
 ## 2026-06-08 — Catalog pagination drift fix + Chrome Football full re-hydrate
 
 **Symptom (via River / CardHedger):** "2025 Topps Chrome Football total cards was way low." Investigation showed the product was the *only* active product still on the legacy parse→match path (0% `ch-native`) — its checklist file carries no chrome parallels (those come from CH-catalog hydration, like every other product), and it was never hydrated because its CH catalog wasn't matched until the June 4 re-match. Result: 5,022 variants (1% parallels, base + photo-variations only) + 1,720 duplicate rows, EV built without the refractor/colored ladder where the chase value lives.
