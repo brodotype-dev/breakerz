@@ -640,7 +640,10 @@ CRITICAL:
       max_tokens: hadImage || webSource ? 8192 : 2048,
       messages: [{ role: 'user', content: userContent }],
     },
-    { timeout: hadImage || webSource ? 30_000 : 25_000 },
+    // 60s for vision/web (Sonnet 4.6 on dense screenshots routinely needs
+    // 30-50s; the old 30s cap timed out on the first attempt and triggered SDK
+    // retries that overran the function budget). Text-only stays tight at 25s.
+    { timeout: hadImage || webSource ? 60_000 : 25_000 },
   );
 
   const raw = (message.content[0] as { type: string; text: string }).text.trim();
@@ -1527,7 +1530,10 @@ RULES:
       max_tokens: 8192,
       messages: [{ role: 'user', content: userContent }],
     },
-    { timeout: 30_000 },
+    // 60s — parseBreakPrice is always vision; Sonnet 4.6 on multi-screenshot
+    // price sheets exceeds the old 30s cap, which triggered SDK retries that
+    // overran the Discord function budget (maxDuration). See route maxDuration note.
+    { timeout: 60_000 },
   );
 
   const raw = (message.content[0] as { type: string; text: string }).text.trim();
