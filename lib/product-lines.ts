@@ -41,6 +41,7 @@ export const PRODUCT_LINES: ProductLineDef[] = [
   { key: 'topps_dynasty',        label: 'Topps Dynasty',        manufacturer: 'Topps', family: 'topps', is_specialty: true  },
   { key: 'topps_definitive',     label: 'Topps Definitive',     manufacturer: 'Topps', family: 'topps', is_specialty: true  },
   { key: 'topps_update',         label: 'Topps Update',         manufacturer: 'Topps', family: 'topps', is_specialty: false },
+  { key: 'topps_cactus_jack',    label: 'Topps Cactus Jack',    manufacturer: 'Topps', family: 'topps', is_specialty: true  },
 
   // Panini
   { key: 'panini_prizm',              label: 'Prizm',              manufacturer: 'Panini', family: 'panini', is_specialty: false },
