@@ -628,23 +628,20 @@ CRITICAL:
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const message = await client.messages.create(
-    {
-      model: MODELS.matcher,
-      // Vision responses run wider (multiple players + sentiments per screenshot
-      // are routine); 2048 was the silent failure mode for parseBreakPrice
-      // before May 14. Match the 8192 ceiling there for parity. Web sources
-      // (long articles / feeds) also run wide — a dense page can yield a
-      // dozen-plus updates, so they get 8192 too. Text-only /insight calls
-      // stay at 2048 — max_tokens is an upper bound, not a billed amount.
-      max_tokens: hadImage || webSource ? 8192 : 2048,
-      messages: [{ role: 'user', content: userContent }],
-    },
-    // 60s for vision/web (Sonnet 4.6 on dense screenshots routinely needs
-    // 30-50s; the old 30s cap timed out on the first attempt and triggered SDK
-    // retries that overran the function budget). Text-only stays tight at 25s.
-    { timeout: hadImage || webSource ? 60_000 : 25_000 },
-  );
+  // Heavy paths (vision screenshots, long web sources) can emit a big array —
+  // a dense price-sheet screenshot is ~11-15K tokens. STREAM those on a single
+  // generous attempt (max_tokens=16000, 220s, no retries) so a long generation
+  // doesn't truncate or trip a short timeout + retry pile-up. Text-only stays
+  // on the fast non-streaming path (2048 / 25s) — same behavior as before.
+  const isHeavy = hadImage || webSource;
+  const createParams = {
+    model: MODELS.matcher,
+    max_tokens: isHeavy ? 16000 : 2048,
+    messages: [{ role: 'user' as const, content: userContent }],
+  };
+  const message = isHeavy
+    ? await client.messages.stream(createParams, { timeout: 220_000, maxRetries: 0 }).finalMessage()
+    : await client.messages.create(createParams, { timeout: 25_000 });
 
   const raw = (message.content[0] as { type: string; text: string }).text.trim();
   console.log(`[insights-parser] roster=${players.length} products=${products.length} narrative_chars=${narrativeText.length} images=${imageList.length} raw_response_chars=${raw.length}`);
@@ -1520,21 +1517,26 @@ RULES:
   const { default: Anthropic } = await import('@anthropic-ai/sdk');
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-  const message = await client.messages.create(
-    {
-      model: MODELS.matcher,
-      // 8192 fits ~30 asking_price rows (~250 tokens each) — covers Dan-Reed-style
-      // 18-team price-sheet screenshots without truncating the closing `]`.
-      // Previous 1024 was the silent failure: response cut off mid-object,
-      // regex found no array, all rows discarded.
-      max_tokens: 8192,
-      messages: [{ role: 'user', content: userContent }],
-    },
-    // 60s — parseBreakPrice is always vision; Sonnet 4.6 on multi-screenshot
-    // price sheets exceeds the old 30s cap, which triggered SDK retries that
-    // overran the Discord function budget (maxDuration). See route maxDuration note.
-    { timeout: 60_000 },
-  );
+  // STREAM a single generous attempt. A full price sheet (e.g. 75 team/player
+  // rows) emits ~11-15K tokens of JSON — each row is a verbose object (full
+  // product_id, product_name, source_note, …). The old non-streaming create()
+  // with max_tokens=8192 truncated the array AND, at a 60s timeout with the
+  // SDK's default 2 retries, burned ~36s retrying a request that could never
+  // finish in time → "Parser error: Request timed out". Streaming holds the
+  // connection open through a long generation; max_tokens=16000 fits ~90 rows;
+  // maxRetries:0 keeps one attempt inside the route's 300s maxDuration (a 220s
+  // call retried even once would overrun it). Truncation guard downstream still
+  // salvages whatever parsed if an even-larger sheet exceeds 16K.
+  const message = await client.messages
+    .stream(
+      {
+        model: MODELS.matcher,
+        max_tokens: 16000,
+        messages: [{ role: 'user', content: userContent }],
+      },
+      { timeout: 220_000, maxRetries: 0 },
+    )
+    .finalMessage();
 
   const raw = (message.content[0] as { type: string; text: string }).text.trim();
   const debug = {

@@ -5,6 +5,14 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-06-16 — Fix: `/break-price` timeout on large price sheets (stream the vision parse)
+
+`/break-price` failed with "⚠️ Parser error: Request timed out" on a **75-row** price sheet (full team + player slot list). The #197 fix (maxDuration 300 + 60s timeout) stopped the *hard* kills but exposed the real ceiling: each output row is a verbose ~120-160 token JSON object (full `product_id`, `product_name`, `source_note`, …), so 75 rows ≈ **11-15K output tokens** — which both **overflowed `max_tokens: 8192`** (truncated array) and **took ~150s to generate**, blowing the 60s timeout. With the SDK's default 2 retries, the call burned ~36s thrashing on a request it could never finish in time.
+
+Fix in [lib/insights-parser.ts](lib/insights-parser.ts): the heavy paths (`parseBreakPrice`, and the image/web branch of `parseInsights`) now **stream** the Anthropic call (`messages.stream(...).finalMessage()`) — streaming holds the connection open through a long generation instead of tripping a single-request read timeout — with **`max_tokens: 16000`** (fits ~90 rows) and **`{ timeout: 220_000, maxRetries: 0 }`** (one generous attempt; a 220s call retried even once would overrun the route's 300s `maxDuration`). Text-only `/insight` keeps the fast non-streaming path (2048 / 25s) — unchanged. The downstream truncation-salvage still recovers parseable rows if an even-larger sheet exceeds 16K.
+
+Follow-up (not done): genuinely huge sheets (>~90 rows) still bound by `max_tokens`/time — durable answer is a leaner per-row output schema (factor out the constant product_id/name, drop source_note) or chunked parsing of tabular exports. Noted for when it bites.
+
 ## 2026-06-09 — Parser: Topps Chrome × Cactus Jack (bare-ratio odds dialect) + re-import + product line
 
 Admin "BreakIQ Insights Debrief" showed **"No players found for this product"** on the new 2025-26 Topps Chrome × Cactus Jack Basketball, despite the roster existing. Root cause was the checklist parser choking on this product's format (a cousin of the Motif bug), which cascaded into **all 141 player_products flagged `insert_only = true`** (the debrief filters to `insert_only = false`). Three distinct quirks, all fixed in [lib/checklist-parser.ts](lib/checklist-parser.ts):
