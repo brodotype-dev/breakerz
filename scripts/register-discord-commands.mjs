@@ -147,9 +147,10 @@ const commands = [
         required: false,
         max_length: 500,
       },
-      // Tabular price-sheet inputs. Either url (public Google Sheet) or file
-      // (.xlsx/.xls/.csv) — converted to a markdown table that Claude reads
-      // alongside any screenshots/narrative. Mixed sheets (team buckets +
+      // Tabular price-sheet inputs. url (public Google Sheet) or file
+      // (.xlsx/.xls/.csv) → converted to a markdown table that Claude reads.
+      // A .json file is ingested DETERMINISTICALLY (no LLM) — the escape hatch
+      // for sheets too big for the inline parse. Mixed sheets (team buckets +
       // per-player rows) extract BOTH types in one call.
       {
         name: 'url',
@@ -160,7 +161,7 @@ const commands = [
       },
       {
         name: 'file',
-        description: 'Optional: .xlsx / .xls / .csv price sheet (≤5 MB)',
+        description: 'Optional: .xlsx/.xls/.csv price sheet, or a .json of slot asks (≤5 MB). For a .json, pin the product.',
         type: 11, // ATTACHMENT
         required: false,
       },

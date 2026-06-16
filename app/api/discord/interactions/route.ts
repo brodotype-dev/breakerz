@@ -14,6 +14,7 @@ import {
 import {
   parseInsights,
   parseBreakPrice,
+  parseBreakPriceJson,
   summarizeUpdate,
   type BreakPriceImage,
   type BreakPriceImageMediaType,
@@ -796,6 +797,81 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
   // seconds and we only have 3s to ack.
   after(async () => {
     try {
+      // Structured-upload escape hatch: a .json file of slot asks is ingested
+      // DETERMINISTICALLY (names→ids resolved against the roster, NO LLM call),
+      // so it never times out regardless of row count — the durable fix for
+      // sheets too big for the inline vision parse (see parseBreakPriceJson).
+      // Handled before the markdown/vision flow. Apply/Discard only — Refine
+      // re-runs the LLM, which doesn't apply here (re-upload a corrected file).
+      if (fileAttachment && /\.json$/i.test(fileAttachment.filename)) {
+        let jsonText: string;
+        try {
+          const res = await fetch(fileAttachment.url);
+          if (!res.ok) throw new Error(`fetch HTTP ${res.status}`);
+          const buf = Buffer.from(await res.arrayBuffer());
+          if (buf.byteLength > 5_000_000) throw new Error(`${(buf.byteLength / 1024 / 1024).toFixed(1)} MB exceeds 5 MB cap`);
+          jsonText = buf.toString('utf8');
+        } catch (err) {
+          await editInteractionResponse(interaction.application_id, interaction.token, {
+            content: `⚠️ Couldn't read \`${fileAttachment.filename}\`: ${err instanceof Error ? err.message : 'fetch failed'}`,
+          });
+          return;
+        }
+
+        const { updates, debug } = await parseBreakPriceJson({ json: jsonText, productId, sourceNote: notes });
+        if (updates.length === 0) {
+          await editInteractionResponse(interaction.application_id, interaction.token, {
+            content:
+              `❓ Couldn't ingest \`${fileAttachment.filename}\`.\n` +
+              `**Debug:** products=${debug.productsCount}, roster=${debug.rosterSize}, rows=${debug.parsedRawCount}, drops=${debug.droppedReasons.length}\n` +
+              (debug.droppedReasons.length > 0
+                ? `**Dropped:** ${debug.droppedReasons.slice(0, 6).join(' | ')}`
+                : debug.rawResponseExcerpt),
+          });
+          return;
+        }
+
+        const { data: pending, error: pendErr } = await supabaseAdmin
+          .from('pending_insights')
+          .insert({
+            discord_channel_id: interaction.channel_id,
+            source_user_id: user.id,
+            source_text: `[json: ${fileAttachment.filename}, ${updates.length} ask${updates.length === 1 ? '' : 's'}]`,
+            parsed_updates: updates as unknown as object,
+            source_kind: 'break_price',
+            source_attachments: [{ url: fileAttachment.url, filename: fileAttachment.filename, content_type: fileAttachment.content_type ?? null }],
+          })
+          .select('id')
+          .single();
+        if (pendErr || !pending) {
+          await editInteractionResponse(interaction.application_id, interaction.token, {
+            content: `⚠️ Ingested ${updates.length} ask${updates.length === 1 ? '' : 's'} but couldn't stage them: ${pendErr?.message ?? 'unknown error'}`,
+          });
+          return;
+        }
+
+        const handle = user.global_name ?? user.username;
+        const lines = updates.map((u, i) => `**${i + 1}.** ${summarizeUpdate(u)}`);
+        const sourceLabel = `_(structured upload: ${fileAttachment.filename}, ${updates.length} row${updates.length === 1 ? '' : 's'} — no LLM)_`;
+        const { header: targetsHeader } = buildTargetsHeader(updates);
+        const targetsBlock = targetsHeader ? `${targetsHeader}\n\n` : '';
+        const head = `**Slot ask from @${handle}:**\n${sourceLabel}\n\n` + targetsBlock + `**Proposed (${updates.length}):**`;
+        const { summary } = formatProposalSummary(lines, 2000 - (head.length + 40));
+        await editInteractionResponse(interaction.application_id, interaction.token, {
+          content: `${head}\n${summary}\n\nClick ✅ to apply, ❌ to discard.`,
+          components: [
+            {
+              type: ComponentType.ACTION_ROW,
+              components: [
+                { type: ComponentType.BUTTON, style: ButtonStyle.SUCCESS, label: 'Apply', custom_id: `confirm:${pending.id}`, emoji: { name: '✅' } },
+                { type: ComponentType.BUTTON, style: ButtonStyle.DANGER, label: 'Discard', custom_id: `discard:${pending.id}`, emoji: { name: '❌' } },
+              ],
+            },
+          ],
+        });
+        return;
+      }
+
       // Convert a Google Sheets URL or .xlsx/.csv attachment into a markdown
       // table that parseBreakPrice can chew on. File takes precedence when
       // both are supplied — direct upload beats indirect link. Short-circuit

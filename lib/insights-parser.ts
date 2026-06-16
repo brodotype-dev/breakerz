@@ -1650,3 +1650,227 @@ RULES:
     },
   };
 }
+
+// ---------------------------------------------------------------------------
+// parseBreakPriceJson — deterministic structured-upload path (NO LLM)
+//
+// The escape hatch for captures too big for the inline vision parse (a 75-row
+// price sheet emits ~11-15K tokens and times out — see #197/#199). The
+// contributor produces a JSON file offline (e.g. by running a messy capture
+// through Claude with no time limit, or exporting a clean sheet) keyed by
+// NAMES, and we resolve names → ids against the active roster here. Instant,
+// unbounded by row count, and emits the same asking_price ParsedUpdate[] as
+// parseBreakPrice so staging + apply + the ✅/❌ flow are unchanged.
+//
+// Accepted JSON (lenient):
+//   [ <row>, <row>, … ]                              // bare array
+//   { product?, source?, source_note?, rows: [ … ] } // wrapped
+// Each <row>:
+//   { scope?: "team"|"player", team?, player?, name?,
+//     price? | price_low?+price_high?,
+//     format?: "hobby"|"bd"|"jumbo", composition?: { … },
+//     source?, source_note? }
+// Product comes from (in order): the pinned `product` option → doc-level
+// `product` name → per-row `product` name. Names resolve normalized-exact,
+// with a unique-substring fallback for products. Ambiguous/unmatched rows are
+// dropped with a reason (never guessed — wrong attribution is worse than a gap).
+export interface BreakPriceJsonInput {
+  json: string;
+  productId?: string;   // pinned via the /break-price `product` autocomplete option
+  sourceNote?: string;  // from the /break-price `notes` option
+}
+
+const normalizeForMatch = (s: string): string =>
+  s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+
+export async function parseBreakPriceJson(input: BreakPriceJsonInput): Promise<BreakPriceResult> {
+  const debug: BreakPriceResult['debug'] = {
+    rosterSize: 0, productsCount: 0, rawResponseExcerpt: '', parsedRawCount: 0,
+    droppedReasons: [], hadImage: false, hadNarrative: false, hadTabular: true,
+  };
+
+  let doc: unknown;
+  try { doc = JSON.parse(input.json); }
+  catch (e) {
+    return { updates: [], debug: { ...debug, rawResponseExcerpt: `invalid JSON: ${e instanceof Error ? e.message : 'parse error'}`, droppedReasons: ['file is not valid JSON'] } };
+  }
+
+  const docObj = (doc && typeof doc === 'object' && !Array.isArray(doc)) ? doc as Record<string, unknown> : {};
+  const rawRows: unknown[] = Array.isArray(doc) ? doc : Array.isArray(docObj.rows) ? docObj.rows as unknown[] : [];
+  debug.parsedRawCount = rawRows.length;
+  if (rawRows.length === 0) {
+    return { updates: [], debug: { ...debug, rawResponseExcerpt: 'no rows', droppedReasons: ['no rows: expected a JSON array or { rows: [...] }'] } };
+  }
+
+  const validSources = new Set(['stream_ask', 'ebay_listing', 'social_post', 'other']);
+  const docProductName = typeof docObj.product === 'string' ? docObj.product
+    : typeof docObj.product_name === 'string' ? docObj.product_name : undefined;
+  const docSource: AskingPriceSource = typeof docObj.source === 'string' && validSources.has(docObj.source) ? docObj.source as AskingPriceSource : 'other';
+  const docSourceNote = input.sourceNote || (typeof docObj.source_note === 'string' ? docObj.source_note : '') || 'structured upload';
+
+  const { data: products } = await supabaseAdmin
+    .from('products')
+    .select('id, name')
+    .eq('is_active', true)
+    .in('lifecycle_status', ['live', 'pre_release']);
+  debug.productsCount = products?.length ?? 0;
+  if (!products?.length) {
+    return { updates: [], debug: { ...debug, droppedReasons: ['no active products'] } };
+  }
+
+  const productByNorm = new Map<string, { id: string; name: string }>();
+  for (const p of products) productByNorm.set(normalizeForMatch(p.name), { id: p.id, name: p.name });
+
+  const resolveProduct = (name?: string): { id: string; name: string } | null => {
+    if (!name) return null;
+    const n = normalizeForMatch(name);
+    const exact = productByNorm.get(n);
+    if (exact) return exact;
+    const subs = products.filter(p => { const pn = normalizeForMatch(p.name); return pn.includes(n) || n.includes(pn); });
+    return subs.length === 1 ? { id: subs[0].id, name: subs[0].name } : null;
+  };
+
+  const pinnedProduct = input.productId ? (products.find(p => p.id === input.productId) ?? null) : null;
+  const defaultProduct = pinnedProduct ? { id: pinnedProduct.id, name: pinnedProduct.name } : resolveProduct(docProductName);
+  if (!defaultProduct && !rawRows.some(r => r && typeof r === 'object' && typeof (r as Record<string, unknown>).product === 'string')) {
+    return { updates: [], debug: { ...debug, droppedReasons: [`could not resolve a product${docProductName ? ` ("${docProductName}")` : ''} — pin it with the product option or set "product" in the JSON`] } };
+  }
+
+  // Roster: load once across all active products, indexed by product so each
+  // row matches names against its own product's roster (team set + players).
+  const teamByNormByProduct = new Map<string, Map<string, string>>();
+  const playersByNormByProduct = new Map<string, Map<string, { id: string; name: string }[]>>();
+  const ensureProductMaps = (pid: string) => {
+    if (!teamByNormByProduct.has(pid)) teamByNormByProduct.set(pid, new Map());
+    if (!playersByNormByProduct.has(pid)) playersByNormByProduct.set(pid, new Map());
+  };
+  const neededProductIds = new Set<string>();
+  if (defaultProduct) neededProductIds.add(defaultProduct.id);
+  for (const r of rawRows) {
+    if (r && typeof r === 'object') {
+      const pn = (r as Record<string, unknown>).product;
+      if (typeof pn === 'string') { const rp = resolveProduct(pn); if (rp) neededProductIds.add(rp.id); }
+    }
+  }
+  for (const pid of neededProductIds) {
+    ensureProductMaps(pid);
+    const teamMap = teamByNormByProduct.get(pid)!;
+    const playerMap = playersByNormByProduct.get(pid)!;
+    const seen = new Set<string>();
+    const PAGE = 1000;
+    for (let from = 0; ; from += PAGE) {
+      const { data } = await supabaseAdmin
+        .from('players')
+        .select('id, name, team, player_products!inner(product_id)')
+        .eq('player_products.product_id', pid)
+        .order('name')
+        .range(from, from + PAGE - 1);
+      if (!data || data.length === 0) break;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const r of data as any[]) {
+        if (seen.has(r.id)) continue;
+        seen.add(r.id);
+        debug.rosterSize++;
+        const pn = normalizeForMatch(r.name);
+        const arr = playerMap.get(pn) ?? []; arr.push({ id: r.id, name: r.name }); playerMap.set(pn, arr);
+        if (r.team) teamMap.set(normalizeForMatch(r.team), r.team);
+      }
+      if (data.length < PAGE) break;
+    }
+  }
+
+  const updates: Extract<ParsedUpdate, { kind: 'asking_price' }>[] = [];
+  const dropped: string[] = [];
+
+  rawRows.forEach((rr, i) => {
+    const label = `row ${i + 1}`;
+    if (!rr || typeof rr !== 'object' || Array.isArray(rr)) { dropped.push(`${label}: not an object`); return; }
+    const row = rr as Record<string, unknown>;
+
+    const product = (typeof row.product === 'string' ? resolveProduct(row.product) : null) ?? defaultProduct;
+    if (!product) { dropped.push(`${label}: no product (pin one or set "product")`); return; }
+
+    const lo = Number(row.price_low ?? row.price);
+    const hi = Number(row.price_high ?? row.price ?? row.price_low);
+    if (!Number.isFinite(lo) || lo <= 0 || !Number.isFinite(hi) || hi < lo) {
+      dropped.push(`${label}: bad price (low=${row.price_low ?? row.price}, high=${row.price_high ?? ''})`); return;
+    }
+
+    let comp: SlotComposition;
+    if (row.composition) {
+      const c = validateComposition(row.composition);
+      if (!c.ok) { dropped.push(`${label}: ${c.reason}`); return; }
+      comp = c.comp;
+    } else {
+      const fmt = (typeof row.format === 'string' ? row.format : 'hobby').toLowerCase();
+      const c = validateComposition({ [fmt]: null });
+      if (!c.ok) { dropped.push(`${label}: bad format "${row.format}"`); return; }
+      comp = c.comp;
+    }
+
+    const teamMap = teamByNormByProduct.get(product.id) ?? new Map<string, string>();
+    const playerMap = playersByNormByProduct.get(product.id) ?? new Map<string, { id: string; name: string }[]>();
+    const explicitScope = typeof row.scope === 'string' ? row.scope.toLowerCase() : undefined;
+    const teamStr = typeof row.team === 'string' ? row.team : undefined;
+    const playerStr = typeof row.player === 'string' ? row.player : undefined;
+    const nameStr = typeof row.name === 'string' ? row.name : undefined;
+
+    let scope_type: 'team' | 'player' | undefined;
+    let scope_team: string | undefined;
+    let scope_player_id: string | undefined;
+    let scope_player_name: string | undefined;
+
+    const matchTeam = (s?: string): boolean => {
+      if (!s) return false;
+      const c = teamMap.get(normalizeForMatch(s));
+      if (c) { scope_type = 'team'; scope_team = c; return true; }
+      return false;
+    };
+    const matchPlayer = (s?: string): 'ok' | 'ambiguous' | 'none' => {
+      if (!s) return 'none';
+      const m = playerMap.get(normalizeForMatch(s));
+      if (!m || m.length === 0) return 'none';
+      if (m.length > 1) return 'ambiguous';
+      scope_type = 'player'; scope_player_id = m[0].id; scope_player_name = m[0].name; return 'ok';
+    };
+
+    if (explicitScope === 'team') {
+      if (!matchTeam(teamStr ?? nameStr)) { dropped.push(`${label}: team "${teamStr ?? nameStr ?? ''}" not in ${product.name}`); return; }
+    } else if (explicitScope === 'player') {
+      const r = matchPlayer(playerStr ?? nameStr);
+      if (r === 'none') { dropped.push(`${label}: player "${playerStr ?? nameStr ?? ''}" not in ${product.name} roster`); return; }
+      if (r === 'ambiguous') { dropped.push(`${label}: player "${playerStr ?? nameStr ?? ''}" ambiguous in ${product.name}`); return; }
+    } else {
+      // Infer: explicit team field, then explicit player field, then a bare name.
+      if (!(teamStr && matchTeam(teamStr))) {
+        const pr = playerStr ? matchPlayer(playerStr) : 'none';
+        if (pr === 'ambiguous') { dropped.push(`${label}: player "${playerStr}" ambiguous in ${product.name}`); return; }
+        if (pr !== 'ok') {
+          if (!matchTeam(nameStr)) {
+            const nr = matchPlayer(nameStr);
+            if (nr === 'ambiguous') { dropped.push(`${label}: "${nameStr}" ambiguous in ${product.name}`); return; }
+            if (nr !== 'ok') { dropped.push(`${label}: "${teamStr ?? playerStr ?? nameStr ?? ''}" matched neither a team nor a player in ${product.name}`); return; }
+          }
+        }
+      }
+    }
+
+    updates.push({
+      kind: 'asking_price',
+      product_id: product.id,
+      product_name: product.name,
+      scope_type: scope_type!,
+      scope_team,
+      scope_player_id,
+      scope_player_name,
+      composition: comp,
+      price_low: Math.round(lo),
+      price_high: Math.round(hi),
+      source: typeof row.source === 'string' && validSources.has(row.source) ? row.source as AskingPriceSource : docSource,
+      source_note: typeof row.source_note === 'string' && row.source_note.trim() ? row.source_note.trim() : docSourceNote,
+      confidence: 0.95,
+    });
+  });
+
+  return { updates, debug: { ...debug, droppedReasons: dropped } };
+}
