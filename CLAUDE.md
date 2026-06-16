@@ -63,7 +63,8 @@ Full strategy:
 - [lib/product-lines.ts](./lib/product-lines.ts) — Canonical brand-line taxonomy (~35 values: `bowman_flagship`, `bowman_chrome`, `bowman_best`, `topps_chrome`, `topps_cosmic_chrome`, `panini_prizm`, `panini_donruss_optic`, …). Drives form dropdown + parser context. New lines = TypeScript edit, not a migration. Shipped 2026-05-15.
 - [docs/icebox.md](./docs/icebox.md) — Long-running tracking doc for deferred ideas: per-sale time-weighted pricing, per-product chase rule library, asking-price → fair-value calibration, build-vs-buy CH revisited
 - [docs/edge-cases.md](./docs/edge-cases.md) — Running log of known-but-deferred edge cases with decision + revisit trigger. Multi-team / multi-format `/break-price` bundles, price-range handling, etc.
-- [lib/insights-parser.ts](./lib/insights-parser.ts) — Discord `/insight` Claude parser rules (the prompt). Edit this when you want to add/change extraction rules — sentiment scoring guidance, new hype-tag categories, new risk flags, anti-substitution rules, etc.
+- [lib/insights-parser.ts](./lib/insights-parser.ts) — Discord `/insight` Claude parser rules (the prompt). Edit this when you want to add/change extraction rules — sentiment scoring guidance, new hype-tag categories, new risk flags, anti-substitution rules, etc. Also home of `parseBreakPriceJson` — the deterministic (no-LLM) structured-upload ingest for `/break-price`.
+- [docs/break-price-structured-upload.md](./docs/break-price-structured-upload.md) — `/break-price` **structured `.json` upload** escape hatch for sheets too big for the inline LLM parse: schema (names→ids resolved deterministically against the roster), Apply/Discard flow, and the "run a messy capture through Claude offline → upload the JSON" producer workflow. The inline vision/tabular paths are bounded by output tokens + the 300s function cap (~90 rows); this scales to any size.
 
 Update CHANGELOG.md at the end of every session with what changed and why.
 

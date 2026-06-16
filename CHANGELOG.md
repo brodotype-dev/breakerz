@@ -5,6 +5,14 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-06-16 — `/break-price` structured JSON upload (deterministic, no-LLM escape hatch)
+
+The durable answer to the large-sheet timeout class. The inline `/break-price` parser runs an LLM whose output is bounded by tokens + the 300s function cap, so past ~90 rows it can't finish (streaming in #199 raised the ceiling but didn't remove it). New path: upload a **`.json` file of slot asks** and BreakIQ ingests it **deterministically — no LLM call** — resolving names→ids against the active roster. Instant, unbounded by row count.
+
+New `parseBreakPriceJson()` in [lib/insights-parser.ts](lib/insights-parser.ts): accepts a bare array or `{ product?, source?, source_note?, rows: [...] }`, each row keyed by **names** (`team`/`player`/`name`, `price` or `price_low`+`price_high`, `format`/`composition`). Product resolves from the pinned `product` option → doc `product` → per-row `product` (normalized-exact then unique-substring); teams/players resolve against that product's roster; **ambiguous/unmatched rows are dropped with a reason, never guessed**. Emits the same `asking_price` `ParsedUpdate[]` as `parseBreakPrice`, so staging + the ✅/❌ apply flow are unchanged. [app/api/discord/interactions/route.ts](app/api/discord/interactions/route.ts) `handleBreakPrice` branches on `.json` before the markdown/vision flow and posts an **Apply/Discard** proposal (no Refine — that re-runs the LLM, N/A for a deterministic upload). The existing `.xlsx/.xls/.csv` + Google-Sheets-URL tabular path (LLM) is unchanged.
+
+Producer workflow: run a messy/huge capture through Claude offline (no time limit) → emit the schema → upload; or hand-build/export for clean sheets. Schema + workflow: [docs/break-price-structured-upload.md](docs/break-price-structured-upload.md). Operational: re-run `node scripts/register-discord-commands.mjs` (the `file` option description now mentions `.json`; no schema change to the command itself). Keeps inline screenshots for quick small/medium captures; this is the fallback for big-or-failed ones.
+
 ## 2026-06-16 — Fix: `/break-price` timeout on large price sheets (stream the vision parse)
 
 `/break-price` failed with "⚠️ Parser error: Request timed out" on a **75-row** price sheet (full team + player slot list). The #197 fix (maxDuration 300 + 60s timeout) stopped the *hard* kills but exposed the real ceiling: each output row is a verbose ~120-160 token JSON object (full `product_id`, `product_name`, `source_note`, …), so 75 rows ≈ **11-15K output tokens** — which both **overflowed `max_tokens: 8192`** (truncated array) and **took ~150s to generate**, blowing the 60s timeout. With the SDK's default 2 retries, the call burned ~36s thrashing on a request it could never finish in time.
