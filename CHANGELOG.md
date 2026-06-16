@@ -5,6 +5,20 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-06-09 — Parser: Topps Chrome × Cactus Jack (bare-ratio odds dialect) + re-import + product line
+
+Admin "BreakIQ Insights Debrief" showed **"No players found for this product"** on the new 2025-26 Topps Chrome × Cactus Jack Basketball, despite the roster existing. Root cause was the checklist parser choking on this product's format (a cousin of the Motif bug), which cascaded into **all 141 player_products flagged `insert_only = true`** (the debrief filters to `insert_only = false`). Three distinct quirks, all fixed in [lib/checklist-parser.ts](lib/checklist-parser.ts):
+
+1. **Bare-ratio odds on every parallel label** — `"White (1:7)"`, `"Cactus Jack Refractor (1:184)"`. The Motif fix (#194) only recognized *keyword*-led parens (`(Hobby - …)`), so these failed `isParallelLabel`, leaked into the section name, and overwrote the real `Base Set` header. `PAREN_ODDS_PARALLEL_RE` extended with a bare-ratio `(1:N)` alternative.
+2. **Ratio-led odds lines** — `"1:208 packs"`, `"1:8 packs"` (section pull rates on their own line) were becoming garbage sections. `BARE_ODDS_RE` extended to skip `N:N packs` lines.
+3. **Leading-space sheet name** — the base sheet ships as `" Base"`; used as the fallback section name it failed `isBaseSectionName`'s `^Base` anchor → every base player flagged `insert_only`. Now the sheet name is trimmed before the skip check and section-name use.
+
+Combined, the base-section header was destroyed → base detection failed → no slot-eligible players. After the fix: parsing yields 8 clean sections / 338 cards / 0 odds-named sections / 0 odds-in-variant-names; the `Base` section's 100 numeric cards register as base.
+
+Operational repair (prod): deleted the 2,070 garbage variants for the product and re-imported the clean parse (parsed locally with the fixed parser, POSTed to the import route) → **3,370 clean variants, base players 0 → 100, 41 insert-only** (autographs/inserts). Debrief now finds the roster.
+
+New manufacturer-rules doc [docs/manufacturer-rules/topps-cactus-jack.md](docs/manufacturer-rules/topps-cactus-jack.md) (sibling of topps-motif.md) and new product line **`topps_cactus_jack`** ("Topps Cactus Jack") in [lib/product-lines.ts](lib/product-lines.ts).
+
 ## 2026-06-09 — Fix: `/break-price` "application did not respond" (Sonnet vision timeout × retries)
 
 Discord `/break-price` (and image `/insight`) started failing with "The application did not respond" / stuck "BreakIQ is thinking…". Root cause was the **Sonnet 4.6 upgrade (2026-06-05) colliding with the retry math**: the Anthropic client runs the default 2 retries, the vision parse had a 30s per-attempt timeout (tuned for Haiku), and the Discord function was `maxDuration = 60`. Sonnet 4.6 vision on dense multi-screenshot price sheets exceeds 30s, so the first attempt timed out → SDK retried → the ≤3-attempt chain overran 60s → the function was hard-killed mid-flight ("Vercel Runtime Timeout Error" in the logs at the exact failure timestamps), so the deferred reply never landed. Text-only `/insight` was unaffected (fast, no vision), which is why only screenshot captures broke.

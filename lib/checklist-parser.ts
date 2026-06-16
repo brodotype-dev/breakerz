@@ -573,10 +573,21 @@ const PARALLEL_LABEL_RE = /\/\d+\s*$/;
 //
 // Closing paren is OPTIONAL — the Motif source file has malformed lines missing
 // it, e.g. "Platinum (Hobby - 1:949; FDI - 1:633" (no `)`).
-const PAREN_ODDS_PARALLEL_RE = /\((?:hobby|fdi|first day issue|retail|jumbo|no odds given)\b[^)]*\)?\s*$/i;
-// A bare subset pack-odds line ("Hobby - 1:17; FDI - 1:11") is metadata, not a
-// section header and not a parallel — skip it entirely.
-const BARE_ODDS_RE = /^(?:hobby|fdi|first day issue|retail|jumbo)\b.*\d+\s*:\s*\d/i;
+//
+// Two trailing-parenthetical shapes count as glued odds:
+//   1. keyword-led — "(Hobby - 1:157; FDI - 1:157)", "(No odds given)" (Motif)
+//   2. bare ratio  — "(1:184)", "(1:1,509)" (Topps Chrome x Cactus Jack, whose
+//      EVERY parallel label is "<Name> (1:N)" — "White (1:7)", "Lasers (1:44)",
+//      "Cactus Jack Refractor (1:184)"). Without (2) the non-color labels leak
+//      into the section name and overwrite the real "Base Set" header, which in
+//      turn makes the base-section check fail and flags every player insert_only.
+const PAREN_ODDS_PARALLEL_RE =
+  /\((?:(?:hobby|fdi|first day issue|retail|jumbo|no odds given)\b[^)]*|\s*\d[\d,]*\s*:\s*\d[\d,]*\s*)\)?\s*$/i;
+// A bare subset pack-odds line is metadata, not a section header and not a
+// parallel — skip it entirely. Two forms: keyword-led ("Hobby - 1:17; FDI -
+// 1:11") and ratio-led ("1:208 packs", "1:8 packs" — Cactus Jack autograph/
+// insert sheets list the section's pull rate on its own line).
+const BARE_ODDS_RE = /^(?:(?:hobby|fdi|first day issue|retail|jumbo)\b.*\d+\s*:\s*\d|\d[\d,]*\s*:\s*\d[\d,]*\s+packs?\b)/i;
 // Returns the clean parallel name (text before the odds parenthetical) when the
 // label is a Motif-style parenthetical-odds parallel, else null.
 function parenOddsParallelName(label: string): string | null {
@@ -687,13 +698,18 @@ export function parseChecklistXlsx(buffer: Buffer): ParsedChecklist {
   };
 
   for (const sheetName of wb.SheetNames) {
-    if (XLSX_SKIP_SHEETS.has(sheetName)) continue;
+    // Trim the sheet name before every use: the Cactus Jack workbook ships its
+    // base sheet as " Base" (leading space), which both dodges XLSX_SKIP_SHEETS
+    // matches and — when it falls through as the section name — fails
+    // isBaseSectionName's `^Base` anchor, flagging every base player insert_only.
+    const cleanSheetName = sheetName.trim();
+    if (XLSX_SKIP_SHEETS.has(cleanSheetName)) continue;
 
     const ws = wb.Sheets[sheetName];
     const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1 });
 
     // Per-sheet block state.
-    let baseSection = sheetName;
+    let baseSection = cleanSheetName;
     let parallels: string[] = [];
     let sawDataInBlock = false;
 
