@@ -7,7 +7,7 @@ import { formatCurrency, computeSignal, formatPct, computeEffectiveScore } from 
 import SignalBadge from '@/components/breakiq/SignalBadge';
 import { IconPlayerBadge, BullishBadge, BearishBadge, HighVolatilityBadge, RiskFlagBadge } from '@/components/breakiq/SocialBadges';
 import PricingFeedback from '@/components/breakiq/PricingFeedback';
-import { ProspectRankChip } from '@/components/breakiq/ds';
+import { ProspectRankChip, ProspectRankKey } from '@/components/breakiq/ds';
 import { compositionSimilarity, recencyWeight, renderComposition } from '@/lib/observation-ranking';
 import { PH_EVENTS } from '@/lib/posthog-events';
 import type { AskingPriceObsRow, BreakFormat, SlotComposition, TeamSlot } from '@/lib/types';
@@ -123,8 +123,15 @@ export default function TeamSlotsTable({
     });
   };
 
+  const hasProspects = teams.some(t => t.players.some(p => p.player?.prospect_rank != null && p.player.prospect_rank <= 100));
+
   return (
     <div className="rounded-lg overflow-hidden border" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
+      {hasProspects && (
+        <div className="px-4 py-1.5 border-b" style={{ borderColor: 'var(--terminal-border)' }}>
+          <ProspectRankKey />
+        </div>
+      )}
       <div className="overflow-x-auto">
         {/* Header */}
         <div
