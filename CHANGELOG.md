@@ -5,6 +5,12 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-06-17 — `/break-price` proposals attach a full-list `.md` when truncated
+
+Discord caps a message at 2000 chars, so a large `/break-price` proposal (e.g. an 88-row sheet) showed only the first ~14 rows + "… and 74 more (full list applies on ✅)". The ✅ always applied the complete staged set — the cutoff was cosmetic — but approving 74 unseen rows blind is a real verification gap (did every team/player resolve to the right DB object?).
+
+Now, whenever the inline preview truncates (`formatProposalSummary` returns `hiddenCount > 0`), the bot attaches **`proposed-updates.md`** — a Markdown table of EVERY staged row with its resolved DB targets: `kind`, product (+ `product_id`), scope, the resolved team / player name, `target_id` (player_id), composition, price, source. The reviewer scans the whole list before clicking ✅. New `editInteractionResponseWithAttachment()` in [lib/discord.ts](lib/discord.ts) (multipart — `discordFetch` forces JSON), `buildProposalMarkdown()` in [lib/tracked-source-proposal.ts](lib/tracked-source-proposal.ts), and a `postProposalReply()` helper in [app/api/discord/interactions/route.ts](app/api/discord/interactions/route.ts) wired into all three break-price reply paths (JSON upload, slash vision/tabular, message context-menu). Inline preview unchanged when nothing's hidden. Verification-only — no change to what ✅ applies. (The `/insight` + refine paths reuse the same helper if extended later.)
+
 ## 2026-06-16 — Prospect pricing: Track A activation + pre-release base EV floor (Bowman)
 
 Kyle flagged that Bowman products have no "rookies" in the MLB sense — every player is a prospect — so the rookie-weighted model systematically underweighted headline Bowman 1st / Chrome / Draft cards. Track A (prospect-rank → weight bump) was ~95% built but inert: the engine reads `players.prospect_rank`, which was never populated (the MLB Pipeline scraper wrote a separate `prospect_rankings` time-series table; the two lanes never connected). This wires them together, adds a rank-tiered base EV floor for thin-data pre-release cards, and puts both behind one kill switch.

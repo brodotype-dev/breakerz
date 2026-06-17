@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import {
   verifyDiscordSignature,
   editInteractionResponse,
+  editInteractionResponseWithAttachment,
   editChannelMessage,
   InteractionType,
   InteractionResponseType,
@@ -37,6 +38,7 @@ import {
 import {
   formatProposalSummary,
   buildTargetsHeader,
+  buildProposalMarkdown,
   scrapeAndStageProposal,
 } from '@/lib/tracked-source-proposal';
 
@@ -49,6 +51,30 @@ export const dynamic = 'force-dynamic';
 // /break-price reply never landed ("application did not respond"). 300s gives
 // the parse + bounded retries room to finish and edit the interaction reply.
 export const maxDuration = 300;
+
+/**
+ * Post a proposal reply, attaching a full-list `.md` when the inline preview
+ * truncated (hiddenCount > 0) so the reviewer can verify EVERY row's resolved
+ * DB target before clicking ✅ — the ✅ already applies the complete staged
+ * set, so the cutoff is cosmetic, but a 88-row apply shouldn't be approved
+ * blind. Falls back to a plain edit when nothing's hidden.
+ */
+async function postProposalReply(
+  applicationId: string,
+  interactionToken: string,
+  body: { content: string; components: unknown[] },
+  updates: ParsedUpdate[],
+  hiddenCount: number,
+): Promise<void> {
+  if (hiddenCount > 0) {
+    await editInteractionResponseWithAttachment(applicationId, interactionToken, body, {
+      filename: 'proposed-updates.md',
+      content: buildProposalMarkdown(updates),
+    });
+  } else {
+    await editInteractionResponse(applicationId, interactionToken, body);
+  }
+}
 
 /**
  * Single Discord interactions endpoint. Three things land here:
@@ -856,8 +882,8 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
         const { header: targetsHeader } = buildTargetsHeader(updates);
         const targetsBlock = targetsHeader ? `${targetsHeader}\n\n` : '';
         const head = `**Slot ask from @${handle}:**\n${sourceLabel}\n\n` + targetsBlock + `**Proposed (${updates.length}):**`;
-        const { summary } = formatProposalSummary(lines, 2000 - (head.length + 40));
-        await editInteractionResponse(interaction.application_id, interaction.token, {
+        const { summary, hiddenCount } = formatProposalSummary(lines, 2000 - (head.length + 40));
+        await postProposalReply(interaction.application_id, interaction.token, {
           content: `${head}\n${summary}\n\nClick ✅ to apply, ❌ to discard.`,
           components: [
             {
@@ -868,7 +894,7 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
               ],
             },
           ],
-        });
+        }, updates, hiddenCount);
         return;
       }
 
@@ -1054,9 +1080,9 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
         targetsBlock +
         `**Proposed (${updates.length}):**\n\n\n` +
         `Click ✅ to apply, ❌ to discard.`;
-      const { summary } = formatProposalSummary(lines, 2000 - wrapping.length);
+      const { summary, hiddenCount } = formatProposalSummary(lines, 2000 - wrapping.length);
 
-      await editInteractionResponse(interaction.application_id, interaction.token, {
+      await postProposalReply(interaction.application_id, interaction.token, {
         content:
           `**Slot ask from @${handle}:**\n${sourceLabel}\n\n` +
           targetsBlock +
@@ -1090,7 +1116,7 @@ async function handleBreakPrice(interaction: SlashCommandInteraction): Promise<N
             ],
           },
         ],
-      });
+      }, updates, hiddenCount);
     } catch (err) {
       console.error('[discord/break-price] parse failed', err);
       await editInteractionResponse(interaction.application_id, interaction.token, {
@@ -1374,9 +1400,9 @@ async function handleBreakPriceFromMessage(interaction: SlashCommandInteraction)
         targetsBlock +
         `**Proposed (${updates.length}):**\n\n\n` +
         `Click ✅ to apply, ❌ to discard.`;
-      const { summary } = formatProposalSummary(lines, 2000 - wrapping.length);
+      const { summary, hiddenCount } = formatProposalSummary(lines, 2000 - wrapping.length);
 
-      await editInteractionResponse(interaction.application_id, interaction.token, {
+      await postProposalReply(interaction.application_id, interaction.token, {
         content:
           `**Slot ask from @${handle}:**\n${sourceLabel}\n\n` +
           targetsBlock +
@@ -1410,7 +1436,7 @@ async function handleBreakPriceFromMessage(interaction: SlashCommandInteraction)
             ],
           },
         ],
-      });
+      }, updates, hiddenCount);
     } catch (err) {
       console.error('[discord/break-price-ctx] parse failed', err);
       await editInteractionResponse(interaction.application_id, interaction.token, {
