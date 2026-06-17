@@ -1310,15 +1310,39 @@ export async function parseBreakPrice(input: BreakPriceInput): Promise<BreakPric
   // (input.productId), we scope the candidate list to just that product
   // and tell Claude to use it directly. Removes the most common reason
   // for empty parses ("which Topps Chrome did you mean?").
+  // Pin handling. Discord's `product` autocomplete sends the product UUID as
+  // the option value WHEN the user picks a suggestion — but if they type the
+  // name and press Enter without selecting one, Discord sends the raw typed
+  // string. Using a non-UUID as `.eq('id', ...)` makes Postgres throw "invalid
+  // input syntax for type uuid" and the whole parse dies. So only filter by id
+  // when it's a real UUID; otherwise treat it as a typed product name and
+  // resolve it against the active set (scope to matches; fall through to the
+  // full set so Claude can still infer when nothing matches).
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const pinnedId = input.productId && UUID_RE.test(input.productId) ? input.productId : null;
+  const typedProductName = input.productId && !pinnedId ? input.productId : null;
+
   let productQuery = supabaseAdmin
     .from('products')
     .select('id, name, year, lifecycle_status, product_line, hobby_case_cost, bd_case_cost, jumbo_case_cost')
     .eq('is_active', true)
     .in('lifecycle_status', ['live', 'pre_release']);
-  if (input.productId) {
-    productQuery = productQuery.eq('id', input.productId);
+  if (pinnedId) {
+    productQuery = productQuery.eq('id', pinnedId);
   }
-  const { data: products, error: prodErr } = await productQuery;
+  const { data: allProducts, error: prodErr } = await productQuery;
+
+  let products = allProducts;
+  if (typedProductName && allProducts?.length) {
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    const q = norm(typedProductName);
+    const matches = allProducts.filter(p => {
+      const label = norm(`${p.year} ${p.name}`);
+      const name = norm(p.name);
+      return label.includes(q) || q.includes(name) || name.includes(q);
+    });
+    if (matches.length > 0) products = matches;
+  }
 
   if (prodErr || !products?.length) {
     return {
@@ -1730,7 +1754,12 @@ export async function parseBreakPriceJson(input: BreakPriceJsonInput): Promise<B
     return subs.length === 1 ? { id: subs[0].id, name: subs[0].name } : null;
   };
 
-  const pinnedProduct = input.productId ? (products.find(p => p.id === input.productId) ?? null) : null;
+  // input.productId is a UUID when the user picked an autocomplete suggestion;
+  // if they typed the name and hit Enter, Discord sends the raw string — fall
+  // back to resolving it as a product name (same as a non-UUID pin elsewhere).
+  const pinnedProduct = input.productId
+    ? (products.find(p => p.id === input.productId) ?? resolveProduct(input.productId))
+    : null;
   const defaultProduct = pinnedProduct ? { id: pinnedProduct.id, name: pinnedProduct.name } : resolveProduct(docProductName);
   if (!defaultProduct && !rawRows.some(r => r && typeof r === 'object' && typeof (r as Record<string, unknown>).product === 'string')) {
     return { updates: [], debug: { ...debug, droppedReasons: [`could not resolve a product${docProductName ? ` ("${docProductName}")` : ''} — pin it with the product option or set "product" in the JSON`] } };
