@@ -22,6 +22,8 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { computeLiveEV, searchAndComputeEV, get90DayPrices, batchPriceEstimate } from '@/lib/cardhedger';
 import { aggregatePlayerEV, type AnchorStrategy } from '@/lib/pricing-anchors';
 import { lifecycleEvMultiplier } from '@/lib/market-markup';
+import { isFeatureFlagEnabled, PROSPECT_RANK_FLAG } from '@/lib/feature-flags';
+import { computeFallbackBaseEV } from '@/lib/pre-release-base-ev';
 import type { ProductLifecycle } from '@/lib/types';
 
 const CACHE_TTL_HOURS = 24;
@@ -90,9 +92,14 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
 
   const { data: product } = await supabaseAdmin
     .from('products')
-    .select('name, year, anchor_strategy, anchor_variant_patterns, lifecycle_status, live_since')
+    .select('name, year, anchor_strategy, anchor_variant_patterns, lifecycle_status, live_since, product_line')
     .eq('id', productId)
     .single();
+
+  // Track A kill switch — gates the rank-tiered base EV floor in the thin-data
+  // fallback paths below (Levels 4). When off, falls back to legacy $15/$8.
+  const prospectEnabled = await isFeatureFlagEnabled(PROSPECT_RANK_FLAG);
+  const productLine = (product as { product_line?: string | null } | null)?.product_line ?? null;
 
   // Anchor configuration: defaults preserve pre-2026-05-11 sets-weighted behavior.
   // Validate the strategy string to a narrow union — fall back if a future column value
@@ -122,7 +129,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
 
   const { data: playerProducts, error } = await supabaseAdmin
     .from('player_products')
-    .select('id, player_id, cardhedger_card_id, player:players(id, name, is_rookie)')
+    .select('id, player_id, cardhedger_card_id, player:players(id, name, is_rookie, prospect_rank)')
     .eq('product_id', productId)
     .eq('insert_only', false)
     .order('id');
@@ -573,7 +580,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     id: string;
     player_id: string;
     cardhedger_card_id: string | null;
-    player: { id: string; name: string; is_rookie: boolean } | null;
+    player: { id: string; name: string; is_rookie: boolean; prospect_rank: number | null } | null;
   };
 
   await mapLimit(playerProducts as unknown as PP[], OUTER_CONCURRENCY, async pp => {
@@ -642,7 +649,9 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
         return;
       }
 
-      const evMid = playerIsRookie ? 15 : 8;
+      const evMid = prospectEnabled
+        ? computeFallbackBaseEV({ isRookie: playerIsRookie, prospectRank: pp.player?.prospect_rank, productLine })
+        : (playerIsRookie ? 15 : 8);
       cacheRows.push({
         player_product_id: pp.id,
         cardhedger_card_id: pp.cardhedger_card_id ?? null,
@@ -716,7 +725,9 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
       return;
     }
 
-    const evMid = playerIsRookie ? 15 : 8;
+    const evMid = prospectEnabled
+      ? computeFallbackBaseEV({ isRookie: playerIsRookie, prospectRank: pp.player?.prospect_rank, productLine })
+      : (playerIsRookie ? 15 : 8);
     cacheRows.push({
       player_product_id: pp.id,
       cardhedger_card_id: pp.cardhedger_card_id ?? null,

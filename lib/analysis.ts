@@ -4,6 +4,8 @@ import { computeLiveEV, get90DayPrices } from '@/lib/cardhedger';
 import { computeSlotPricing, computeTeamSlotPricing, computeSignal, formatCurrency } from '@/lib/engine';
 import { computeRiskAdjustment, computeHypeAdjustment, type HypeObservation, type HypeTag } from '@/lib/score-modulation';
 import { computeProspectAdjustment } from '@/lib/prospect-score';
+import { isFeatureFlagEnabled, PROSPECT_RANK_FLAG } from '@/lib/feature-flags';
+import { computeFallbackBaseEV } from '@/lib/pre-release-base-ev';
 import {
   loadCascadeObservations,
   filterObservationsForPlayer,
@@ -86,6 +88,10 @@ export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisRe
     .eq('id', productId)
     .single();
   if (!product) throw new Error('Product not found');
+
+  // Track A kill switch — gates BOTH the prospect weight-share bump (below)
+  // AND the rank-tiered base EV floor in the thin-data fallback paths.
+  const prospectEnabled = await isFeatureFlagEnabled(PROSPECT_RANK_FLAG);
 
   const { data: playerProducts } = await supabaseAdmin
     .from('player_products')
@@ -182,7 +188,9 @@ export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisRe
               evHigh: raw.max_price > evMid ? Math.round(raw.max_price) : Math.round(evMid * 2.5),
             };
           } else {
-            const evMid = pp.player?.is_rookie ? 15 : 8;
+            const evMid = prospectEnabled
+              ? computeFallbackBaseEV({ isRookie: pp.player?.is_rookie ?? false, prospectRank: pp.player?.prospect_rank, productLine: product.product_line })
+              : (pp.player?.is_rookie ? 15 : 8);
             ev = { evLow: Math.round(evMid * 0.35), evMid, evHigh: Math.round(evMid * 2.5) };
           }
           hobbyEVPerBox = ev.evMid;
@@ -209,7 +217,9 @@ export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisRe
           pricingSource: 'live' as const,
         };
       } catch {
-        const evMid = pp.player?.is_rookie ? 15 : 8;
+        const evMid = prospectEnabled
+          ? computeFallbackBaseEV({ isRookie: pp.player?.is_rookie ?? false, prospectRank: pp.player?.prospect_rank, productLine: product.product_line })
+          : (pp.player?.is_rookie ? 15 : 8);
         return {
           ...pp,
           evLow: Math.round(evMid * 0.35), evMid, evHigh: Math.round(evMid * 2.5),
@@ -319,11 +329,13 @@ export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisRe
       ...p,
       risk_score_adj: riskAdjMap.get(p.id) ?? 0,
       hype_score_adj: computeHypeAdjustment(all),
-      prospect_score_adj: computeProspectAdjustment({
-        prospect_rank: p.player?.prospect_rank,
-        prospect_status: p.player?.prospect_status,
-        sportSlug,
-      }),
+      prospect_score_adj: prospectEnabled
+        ? computeProspectAdjustment({
+            prospect_rank: p.player?.prospect_rank,
+            prospect_status: p.player?.prospect_status,
+            sportSlug,
+          })
+        : 0,
       cascade_score_adj: cascade.adjustment,
     };
   });

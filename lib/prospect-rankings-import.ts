@@ -24,6 +24,10 @@ export interface ProspectImportSummary {
   scraped: number;
   matched: number;
   written: number;
+  // Slice 1: how many players.prospect_rank rows the dual-write updated. This
+  // is the column the engine actually reads — prospect_rankings is the
+  // time-series record, players.prospect_rank is the denormalized current state.
+  denormUpdated: number;
   unmatchedNames: string[];
   capturedAt: string;
 }
@@ -152,12 +156,49 @@ export async function importMlbPipelineRankings(
     written += slice.length;
   }
 
+  // Dual-write the denormalized current-state column the engine actually reads
+  // (players.prospect_rank). The insert above is the time-series record; this
+  // is what computeProspectAdjustment + the base-EV floor consume. Each row has
+  // its own rank, so this is a per-id update (not a single .in()) — fired in
+  // small parallel chunks; ~40-100 rows, perf is not the bottleneck.
+  //
+  // prospect_status is DELIBERATELY not touched — that column belongs to the
+  // bulk institutional importer (graduated_rc / international_signee); an MLB
+  // Pipeline scrape overwriting it would blow away that intel. Cross-importer
+  // conflict resolves most-recent-write-wins via prospect_rank_updated_at.
+  let denormUpdated = 0;
+  const UPDATE_CHUNK = 50;
+  for (let i = 0; i < dedupedRows.length; i += UPDATE_CHUNK) {
+    const slice = dedupedRows.slice(i, i + UPDATE_CHUNK);
+    const results = await Promise.all(
+      slice.map(r =>
+        supabaseAdmin
+          .from('players')
+          .update({
+            prospect_rank: r.rank_value,
+            prospect_rank_source: r.source,
+            prospect_rank_updated_at: r.captured_at,
+          })
+          .eq('id', r.player_id)
+          .then(({ error }) => {
+            if (error) {
+              console.error('[prospect-import] denorm update failed:', r.player_id, error.message);
+              return false;
+            }
+            return true;
+          }),
+      ),
+    );
+    denormUpdated += results.filter(Boolean).length;
+  }
+
   return {
     source,
     sourceUrl,
     scraped: rows.length,
     matched: matchedRowCount,
     written,
+    denormUpdated,
     unmatchedNames,
     capturedAt,
   };
