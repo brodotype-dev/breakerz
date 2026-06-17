@@ -26,6 +26,9 @@ interface PlayerCompsPayload {
   team: string;
   is_rookie: boolean;
   is_icon: boolean;
+  prospect_rank: number | null;
+  prospect_rank_source: string | null;
+  prospect_rank_updated_at: string | null;
   variants: VariantWithPrices[];
   recentComps: Array<{ sale_price: number; sale_date: string; grade: string; platform: string }>;
 }
@@ -36,7 +39,7 @@ interface PlayerCompsPayload {
 async function loadPlayerCompsRaw(playerProductId: string): Promise<PlayerCompsPayload | null> {
   const { data: playerProduct } = await supabaseAdmin
     .from('player_products')
-    .select('id, player:players(id, name, team, is_rookie, is_icon), player_product_variants(id, variant_name, card_number, cardhedger_card_id, hobby_odds, breaker_odds, match_tier)')
+    .select('id, player:players(id, name, team, is_rookie, is_icon, prospect_rank, prospect_rank_source, prospect_rank_updated_at), player_product_variants(id, variant_name, card_number, cardhedger_card_id, hobby_odds, breaker_odds, match_tier)')
     .eq('id', playerProductId)
     .single();
 
@@ -161,6 +164,9 @@ async function loadPlayerCompsRaw(playerProductId: string): Promise<PlayerCompsP
     team: player?.team ?? '',
     is_rookie: player?.is_rookie ?? false,
     is_icon: player?.is_icon ?? false,
+    prospect_rank: player?.prospect_rank ?? null,
+    prospect_rank_source: player?.prospect_rank_source ?? null,
+    prospect_rank_updated_at: player?.prospect_rank_updated_at ?? null,
     variants: variantRows,
     recentComps,
   };

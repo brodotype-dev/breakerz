@@ -4,7 +4,7 @@ import { formatCurrency, computeEffectiveScore, confidenceTier } from '@/lib/eng
 import { IconPlayerBadge, BullishBadge, BearishBadge, HighVolatilityBadge, RiskFlagBadge } from '@/components/breakiq/SocialBadges';
 import ChaseHeartButton, { ChaseSetProvider } from '@/components/breakiq/ChaseHeartButton';
 import PricingFeedback from '@/components/breakiq/PricingFeedback';
-import { InfoTip } from '@/components/breakiq/ds';
+import { InfoTip, ProspectRankChip } from '@/components/breakiq/ds';
 import type { BreakFormat, PlayerWithPricing } from '@/lib/types';
 import type { PlayerPypResult } from '@/lib/player-pyp-pricing';
 
@@ -178,6 +178,11 @@ export default function PlayerTable({
                           RC
                         </span>
                       )}
+                      <ProspectRankChip
+                        rank={row.player.prospect_rank}
+                        source={row.player.prospect_rank_source}
+                        updatedAt={row.player.prospect_rank_updated_at}
+                      />
                       {row.player.is_icon    && <IconPlayerBadge />}
                       {score > 0.1           && <BullishBadge />}
                       {score < -0.1          && <BearishBadge />}

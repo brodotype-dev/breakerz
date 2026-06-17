@@ -7,6 +7,7 @@ import { formatCurrency, computeSignal, formatPct, computeEffectiveScore } from 
 import SignalBadge from '@/components/breakiq/SignalBadge';
 import { IconPlayerBadge, BullishBadge, BearishBadge, HighVolatilityBadge, RiskFlagBadge } from '@/components/breakiq/SocialBadges';
 import PricingFeedback from '@/components/breakiq/PricingFeedback';
+import { ProspectRankChip } from '@/components/breakiq/ds';
 import { compositionSimilarity, recencyWeight, renderComposition } from '@/lib/observation-ranking';
 import { PH_EVENTS } from '@/lib/posthog-events';
 import type { AskingPriceObsRow, BreakFormat, SlotComposition, TeamSlot } from '@/lib/types';
@@ -376,6 +377,11 @@ export default function TeamSlotsTable({
                         {p.player.is_rookie && (
                           <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ backgroundColor: 'rgba(59,130,246,0.15)', color: 'var(--accent-blue)' }}>RC</span>
                         )}
+                        <ProspectRankChip
+                          rank={p.player.prospect_rank}
+                          source={p.player.prospect_rank_source}
+                          updatedAt={p.player.prospect_rank_updated_at}
+                        />
                         {p.player.is_icon    && <IconPlayerBadge />}
                         {score > 0.1         && <BullishBadge />}
                         {score < -0.1        && <BearishBadge />}

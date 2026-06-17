@@ -33,6 +33,7 @@ import { supabaseAdmin } from './supabase';
 import { loadCached } from './pricing-read';
 import { computeRiskAdjustment, computeHypeAdjustment, type HypeObservation } from './score-modulation';
 import { computeProspectAdjustment } from './prospect-score';
+import { isFeatureFlagEnabled, PROSPECT_RANK_FLAG } from './feature-flags';
 import {
   computeCascadeAdjustment,
   filterObservationsForPlayer,
@@ -231,6 +232,9 @@ async function loadBreakPageDataRaw(product: ProductWithSport): Promise<BreakPag
   ];
 
   // ─── Augment each player with the per-player score adjustments ─────────
+  // Track A kill switch (gates the prospect weight-share bump). When off,
+  // prospect_score_adj is 0 → WhyThisPriceCard's Track A row naturally hides.
+  const prospectEnabled = await isFeatureFlagEnabled(PROSPECT_RANK_FLAG);
   const rawPlayers: PlayerWithPricing[] = players.map(p => {
     const teamObs = teamScope.get(p.player?.team ?? '') ?? [];
     const playerObs = playerScope.get(p.player_id) ?? [];
@@ -244,11 +248,13 @@ async function loadBreakPageDataRaw(product: ProductWithSport): Promise<BreakPag
       ...p,
       risk_score_adj: riskAdjMap.get(p.id) ?? 0,
       hype_score_adj: computeHypeAdjustment(all),
-      prospect_score_adj: computeProspectAdjustment({
-        prospect_rank: p.player?.prospect_rank,
-        prospect_status: p.player?.prospect_status,
-        sportSlug,
-      }),
+      prospect_score_adj: prospectEnabled
+        ? computeProspectAdjustment({
+            prospect_rank: p.player?.prospect_rank,
+            prospect_status: p.player?.prospect_status,
+            sportSlug,
+          })
+        : 0,
       cascade_score_adj: cascade.adjustment,
     };
   });

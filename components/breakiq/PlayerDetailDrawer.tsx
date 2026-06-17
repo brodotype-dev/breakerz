@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import ChaseHeartButton from '@/components/breakiq/ChaseHeartButton';
 import WhyThisPriceCard, { type WhyThisPriceProps } from '@/components/breakiq/WhyThisPriceCard';
+import { ProspectRankChip } from '@/components/breakiq/ds';
 import type { VariantWithPrices } from '@/lib/types';
 
 interface PlayerCompsData {
@@ -11,6 +12,9 @@ interface PlayerCompsData {
   team: string;
   is_rookie: boolean;
   is_icon: boolean;
+  prospect_rank: number | null;
+  prospect_rank_source: string | null;
+  prospect_rank_updated_at: string | null;
   variants: VariantWithPrices[];
   recentComps: Array<{ sale_price: number; sale_date: string; grade: string; platform: string }>;
 }
@@ -137,6 +141,12 @@ export default function PlayerDetailDrawer({ playerProductId, onClose, topOffset
                       RC
                     </span>
                   )}
+                  <ProspectRankChip
+                    rank={data.prospect_rank}
+                    source={data.prospect_rank_source}
+                    updatedAt={data.prospect_rank_updated_at}
+                    size="md"
+                  />
                 </div>
                 <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>{data.team}</p>
               </div>
