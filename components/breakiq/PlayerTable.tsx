@@ -4,7 +4,7 @@ import { formatCurrency, computeEffectiveScore, confidenceTier } from '@/lib/eng
 import { IconPlayerBadge, BullishBadge, BearishBadge, HighVolatilityBadge, RiskFlagBadge } from '@/components/breakiq/SocialBadges';
 import ChaseHeartButton, { ChaseSetProvider } from '@/components/breakiq/ChaseHeartButton';
 import PricingFeedback from '@/components/breakiq/PricingFeedback';
-import { InfoTip, ProspectRankChip } from '@/components/breakiq/ds';
+import { InfoTip, ProspectRankChip, ProspectRankKey } from '@/components/breakiq/ds';
 import type { BreakFormat, PlayerWithPricing } from '@/lib/types';
 import type { PlayerPypResult } from '@/lib/player-pyp-pricing';
 
@@ -113,6 +113,11 @@ export default function PlayerTable({
   return (
     <ChaseSetProvider playerIds={players.map(p => p.player.id).filter(Boolean) as string[]}>
     <div className="rounded-lg overflow-hidden border" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
+      {players.some(p => p.player?.prospect_rank != null && p.player.prospect_rank <= 100) && (
+        <div className="px-3 py-1.5 border-b" style={{ borderColor: 'var(--terminal-border)' }}>
+          <ProspectRankKey />
+        </div>
+      )}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>

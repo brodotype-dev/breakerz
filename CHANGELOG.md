@@ -5,6 +5,10 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-06-17 — Prospect chip: `#N` → `P-N` + table legend
+
+The bare `#46` prospect chip didn't read as "prospect rank" — could be a card number, a slot, anything. Relabeled to **`P-46`** (Prospect-rank) in [components/breakiq/ds/ProspectRankChip.tsx](components/breakiq/ds/ProspectRankChip.tsx), and added a compact **`ProspectRankKey`** legend (`P-# = MLB Pipeline prospect rank` + the tier color swatches ≤10/≤30/≤100) rendered above [PlayerTable](components/breakiq/PlayerTable.tsx) and [TeamSlotsTable](components/breakiq/TeamSlotsTable.tsx) — only when a ranked prospect is actually in view, so rosters without prospects stay clean. Tooltip reworded to "Prospect rank #N…". Display-only; tier colors still mirror `PROSPECT_RANK_TIERS`.
+
 ## 2026-06-17 — Fix: `/break-price` crash when the `product` option is typed, not selected
 
 `/break-price` with a pinned product failed hard with `invalid input syntax for type uuid: "2026 2025-26 Topps Chrome Cactus Jack Basketball"` (`products=0`, "pinned product not in active set"). Root cause: Discord's `product` autocomplete sends the product **UUID** as the option value *only when the user picks a suggestion*. If they type the name and press Enter without selecting, Discord sends the raw typed string (which matches the autocomplete label `${year} ${name}`). `parseBreakPrice` used that string in `.eq('id', productId)` → Postgres rejected the non-UUID and the whole parse died.
