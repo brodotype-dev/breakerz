@@ -5,6 +5,12 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-06-17 — Fix: `/break-price` crash when the `product` option is typed, not selected
+
+`/break-price` with a pinned product failed hard with `invalid input syntax for type uuid: "2026 2025-26 Topps Chrome Cactus Jack Basketball"` (`products=0`, "pinned product not in active set"). Root cause: Discord's `product` autocomplete sends the product **UUID** as the option value *only when the user picks a suggestion*. If they type the name and press Enter without selecting, Discord sends the raw typed string (which matches the autocomplete label `${year} ${name}`). `parseBreakPrice` used that string in `.eq('id', productId)` → Postgres rejected the non-UUID and the whole parse died.
+
+Fix in [lib/insights-parser.ts](lib/insights-parser.ts): only `.eq('id', …)` when the pin is a real UUID; otherwise treat it as a typed product name and resolve it against the active set (normalized label / name substring match), scoping to the matches and falling through to the full set so Claude can still infer if nothing matches. `parseBreakPriceJson` gets the same fallback (`resolveProduct(productId)` when the id isn't a row match). No more hard crash on a free-typed pin. (Separately: a 169-row sheet like this still exceeds the inline LLM parse's practical row ceiling — use the structured `.json` upload for full coverage; this fix just stops the pin from crashing.)
+
 ## 2026-06-17 — `/break-price` proposals attach a full-list `.md` when truncated
 
 Discord caps a message at 2000 chars, so a large `/break-price` proposal (e.g. an 88-row sheet) showed only the first ~14 rows + "… and 74 more (full list applies on ✅)". The ✅ always applied the complete staged set — the cutoff was cosmetic — but approving 74 unseen rows blind is a real verification gap (did every team/player resolve to the right DB object?).
