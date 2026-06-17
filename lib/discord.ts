@@ -129,6 +129,44 @@ export async function editInteractionResponse(
 }
 
 /**
+ * Edit the original interaction response AND attach a file (multipart).
+ * Used to ship the full proposed-updates list as a .md when the inline
+ * preview truncates (Discord's 2000-char cap) — the reviewer can verify every
+ * row's DB target before ✅. discordFetch can't do this (it forces a JSON
+ * content-type); we send FormData and let fetch set the multipart boundary.
+ */
+export async function editInteractionResponseWithAttachment(
+  applicationId: string,
+  interactionToken: string,
+  body: Record<string, unknown>,
+  file: { filename: string; content: string; contentType?: string },
+) {
+  const form = new FormData();
+  form.append(
+    'payload_json',
+    JSON.stringify({ ...body, attachments: [{ id: 0, filename: file.filename }] }),
+  );
+  form.append(
+    'files[0]',
+    new Blob([file.content], { type: file.contentType ?? 'text/markdown' }),
+    file.filename,
+  );
+  const res = await fetch(
+    `${DISCORD_API}/webhooks/${applicationId}/${interactionToken}/messages/@original`,
+    {
+      method: 'PATCH',
+      headers: { Authorization: `Bot ${botToken()}` }, // no Content-Type — fetch sets the multipart boundary
+      body: form,
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`Discord API ${res.status}: ${text}`);
+  }
+  return res;
+}
+
+/**
  * Edit any message in a channel (used when a button click confirms or
  * discards a pending insight — we update the original bot message to
  * show the resolved state and remove the buttons).

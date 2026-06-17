@@ -18,6 +18,7 @@ import {
   type ParseResult,
 } from '@/lib/insights-parser';
 import { ComponentType, ButtonStyle } from '@/lib/discord';
+import { renderComposition } from '@/lib/observation-ranking';
 
 /**
  * Discord caps message `content` at 2000 chars. A capture from a dense web
@@ -85,6 +86,46 @@ export function buildTargetsHeader(
     ([id, { name, count }]) => `• ${name} \`${id}\` (${count})`,
   );
   return { header: `**Writing to:**\n${lines.join('\n')}`, lineCount: lines.length + 1 };
+}
+
+/**
+ * Full proposed-updates list as a Markdown table, for attaching to a proposal
+ * whose inline preview truncated (Discord's 2000-char cap). The reviewer can
+ * scan EVERY row's resolved DB targets — product (+ product_id), scope, the
+ * resolved team / player name, the player_id, composition, price — before
+ * clicking ✅. The ✅ already applies the full staged set; this is purely for
+ * verification, not correctness.
+ */
+export function buildProposalMarkdown(updates: ParsedUpdate[]): string {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const esc = (v: any): string => String(v ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ').trim();
+  const out: string[] = [];
+  out.push(`# Proposed updates (${updates.length})`);
+  out.push('');
+  out.push('Every staged row. Clicking ✅ on the Discord proposal applies all of them.');
+  out.push('');
+  out.push('| # | kind | product | product_id | scope | target | target_id | composition | price | source |');
+  out.push('|--:|------|---------|------------|-------|--------|-----------|-------------|-------|--------|');
+  updates.forEach((u, i) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r = u as Record<string, any>;
+    const kind = r.kind ?? '';
+    const product = r.product_name ?? '';
+    const productId = r.product_id ?? '';
+    const scope = r.scope_type ?? r.scope ?? (kind === 'team_sentiment' ? 'team' : '');
+    const target = r.scope_team ?? r.scope_player_name ?? r.player_name ?? r.team_name ?? r.variant_name ?? '';
+    const targetId = r.scope_player_id ?? r.player_id ?? '';
+    const comp = r.composition ? renderComposition(r.composition) : '';
+    const price =
+      r.price_low != null
+        ? (r.price_low === r.price_high ? `$${r.price_low}` : `$${r.price_low}–$${r.price_high}`)
+        : '';
+    const source = r.source ?? '';
+    out.push(
+      `| ${i + 1} | ${esc(kind)} | ${esc(product)} | \`${esc(productId)}\` | ${esc(scope)} | ${esc(target)} | ${targetId ? `\`${esc(targetId)}\`` : ''} | ${esc(comp)} | ${esc(price)} | ${esc(source)} |`,
+    );
+  });
+  return out.join('\n');
 }
 
 export interface ProposalMessageBody {
