@@ -1,4 +1,14 @@
 import { supabaseAdmin } from '@/lib/supabase';
+import { isFeatureFlagEnabled } from '@/lib/feature-flags';
+
+// Private-beta switch — toggle via SQL (feature_flags.private_beta_unlimited),
+// no deploy. While ON, every user gets unlimited analyses / slab lookups /
+// break logging (gates on /api/analysis, /api/card-lookup, /api/my-breaks all
+// flow through checkAndIncrementUsage). Rationale (Brody, 2026-06): with this
+// few users we need DATA more than revenue. Not forever — flip off when ready.
+// The actual usage DATA (break records, analysis runs, PostHog events) is
+// captured independently, so bypassing the counter loses no signal.
+export const PRIVATE_BETA_UNLIMITED_FLAG = 'private_beta_unlimited';
 
 interface UsageResult {
   allowed: boolean;
@@ -19,6 +29,12 @@ const LIMITS: Record<string, number> = {
 };
 
 export async function checkAndIncrementUsage(userId: string): Promise<UsageResult> {
+  // Private-beta unlimited: short-circuit before any plan/limit logic. Flip
+  // off via the feature flag to restore paid tiers.
+  if (await isFeatureFlagEnabled(PRIVATE_BETA_UNLIMITED_FLAG)) {
+    return { allowed: true, remaining: null, plan: 'beta' };
+  }
+
   // Admin/contributor users always have unlimited access
   const { data: roles } = await supabaseAdmin
     .from('user_roles')

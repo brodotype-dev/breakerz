@@ -5,6 +5,10 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-06-17 — Private-beta: unlimited analyses / slabs / breaks (flag-gated)
+
+Brody's call: with this few users we need DATA more than revenue, so during private beta every user gets unlimited usage. All three paywalled actions (`/api/analysis`, `/api/card-lookup`, `/api/my-breaks`) flow through `checkAndIncrementUsage` in [lib/usage.ts](lib/usage.ts); added a short-circuit at the top — when `feature_flags.private_beta_unlimited` is ON, it returns `{ allowed: true, remaining: null, plan: 'beta' }` before any plan/limit logic. Toggle via SQL, no deploy. **Not permanent** — flip the flag off to restore Free/Hobby/Pro tiers (the limit constants are untouched). The usage *data* we actually want (break records, analysis runs, PostHog events) is captured independently, so bypassing the counter loses no signal. Note: `/subscribe` still shows the tier copy (5 free / Hobby / Pro) — left as-is since billing returns when the flag flips; revisit the copy if beta runs long.
+
 ## 2026-06-17 — "Bought in? Log this break" CTA (analyze → log handoff, prefilled)
 
 After running a break analysis there was no path to log it — the user had to navigate to My Breaks and re-enter the same product / teams / format mix / ask. Added a **"Bought in? Log this break →"** button on [AnalysisResultPanel](components/breakiq/AnalysisResultPanel.tsx) (so it shows on both `/analysis` and the inline `/break/[slug]` analyzer). It deep-links to `/my-breaks?view=new` with the analyzed config in query params (`productId`, `teams`, `hobby`/`bd`/`jumbo`, `ask`). [My Breaks](app/(consumer)/my-breaks/page.tsx) parses those into a `BreakFormPrefill` and hydrates the new-break form's product / teams / format counters / ask price, so the log is one click + confirm. Guarded the form's product-change reset so it fires only on an actual change, not the prefilled mount (which would otherwise wipe the carried-over teams). No new params required — an empty/normal "Log a Break" still opens a blank form.
