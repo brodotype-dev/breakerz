@@ -84,6 +84,14 @@ function summarizeFormatMix(formats: { hobby: number; bd: number; jumbo: number 
 
 type View = 'list' | 'new' | 'log';
 
+// Carried from the analyzer's "Log this break" CTA via query params → BreakForm.
+type BreakFormPrefill = {
+  productId: string;
+  teams: string[];
+  formats: { hobby: number; bd: number; jumbo: number };
+  askPrice: string;
+};
+
 const PLATFORMS: { value: Platform; label: string }[] = [
   { value: 'fanatics_live', label: 'Fanatics Live' },
   { value: 'whatnot', label: 'Whatnot' },
@@ -217,6 +225,22 @@ export default function MyBreaksPage() {
     return v === 'new' || v === 'log' ? v : 'list';
   })();
   const [view, setView] = useState<View>(initialView);
+
+  // Prefill from the analyzer's "Log this break" CTA — carries the config the
+  // user just analyzed (product / teams / format mix / ask) so they don't
+  // re-enter it. Only meaningful on the `new` form; absent params → empty form.
+  const prefill = ((): BreakFormPrefill | undefined => {
+    const productId = searchParams.get('productId');
+    if (!productId) return undefined;
+    const num = (k: string) => { const n = Number(searchParams.get(k)); return Number.isFinite(n) && n > 0 ? n : 0; };
+    return {
+      productId,
+      teams: (searchParams.get('teams') ?? '').split(',').map(t => t.trim()).filter(Boolean),
+      formats: { hobby: num('hobby'), bd: num('bd'), jumbo: num('jumbo') },
+      askPrice: searchParams.get('ask') ?? '',
+    };
+  })();
+
   const [breaks, setBreaks] = useState<BreakRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [products, setProducts] = useState<Product[]>([]);
@@ -315,6 +339,7 @@ export default function MyBreaksPage() {
           <BreakForm
             mode={view === 'new' ? 'new' : 'log'}
             products={products}
+            prefill={view === 'new' ? prefill : undefined}
             onSaved={() => { refreshBreaks(); setView('list'); }}
             onCancel={() => setView('list')}
           />
@@ -1094,21 +1119,26 @@ function CompletedBreakCard({ brk, onRefresh }: { brk: BreakRecord; onRefresh: (
 function BreakForm({
   mode,
   products,
+  prefill,
   onSaved,
   onCancel,
 }: {
   mode: 'new' | 'log';
   products: Product[];
+  prefill?: BreakFormPrefill;
   onSaved: () => void;
   onCancel: () => void;
 }) {
-  const [productId, setProductId] = useState('');
+  const prefillHasFormat = !!prefill && (prefill.formats.hobby > 0 || prefill.formats.bd > 0 || prefill.formats.jumbo > 0);
+  const [productId, setProductId] = useState(prefill?.productId ?? '');
   const [allPlayers, setAllPlayers] = useState<PlayerOption[]>([]);
-  const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
+  const [selectedTeams, setSelectedTeams] = useState<string[]>(prefill?.teams ?? []);
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
   const [playerSearch, setPlayerSearch] = useState('');
-  const [cases, setCases] = useState<{ hobby: number; bd: number; jumbo: number }>({ hobby: 1, bd: 0, jumbo: 0 });
-  const [askPrice, setAskPrice] = useState('');
+  const [cases, setCases] = useState<{ hobby: number; bd: number; jumbo: number }>(
+    prefillHasFormat ? prefill!.formats : { hobby: 1, bd: 0, jumbo: 0 },
+  );
+  const [askPrice, setAskPrice] = useState(prefill?.askPrice ?? '');
   const [platform, setPlatform] = useState<Platform | ''>('');
   const [platformOther, setPlatformOther] = useState('');
   const [outcome, setOutcome] = useState<BreakOutcome | null>(null);
@@ -1193,9 +1223,16 @@ function BreakForm({
     }
   }
 
+  // Reset the team/player selection when the product CHANGES — but not on the
+  // initial mount, so a prefilled selection (from the analyzer's "Log this
+  // break" CTA) survives. allPlayers always reloads for the current product.
+  const productHydratedRef = useRef(false);
   useEffect(() => {
-    setSelectedTeams([]);
-    setSelectedPlayerIds([]);
+    if (productHydratedRef.current) {
+      setSelectedTeams([]);
+      setSelectedPlayerIds([]);
+    }
+    productHydratedRef.current = true;
     setAllPlayers([]);
     if (!productId) return;
     supabase
