@@ -44,6 +44,17 @@ export default function AnalysisResultPanel({ result, productId, productSlug }: 
     result.extraPlayerNames.length ? `${result.extraPlayerNames.length} player slot${result.extraPlayerNames.length === 1 ? '' : 's'}` : null,
   ].filter(Boolean).join(' + ');
 
+  // "Bought in? Log this break" — carry the analyzed config into the My Breaks
+  // new-break form so the user doesn't re-enter what they just configured.
+  const logBreakHref = (() => {
+    const params = new URLSearchParams({ view: 'new', productId, ask: String(Math.round(result.askPrice)) });
+    if (result.teams.length) params.set('teams', result.teams.join(','));
+    (['hobby', 'bd', 'jumbo'] as const).forEach(k => {
+      if (result.formats[k] > 0) params.set(k, String(result.formats[k]));
+    });
+    return `/my-breaks?${params.toString()}`;
+  })();
+
   return (
     <div className="space-y-4">
       <div className="rounded-lg p-6 border-2" style={{ backgroundColor: cfg.bgColor, borderColor: cfg.borderColor }}>
@@ -170,6 +181,16 @@ export default function AnalysisResultPanel({ result, productId, productSlug }: 
             </div>
           ))}
         </div>
+      )}
+
+      {productId && (
+        <Link
+          href={logBreakHref}
+          className="block w-full text-center rounded-lg px-4 py-2.5 text-sm font-bold transition-opacity hover:opacity-90"
+          style={{ backgroundColor: 'var(--accent-blue)', color: 'white' }}
+        >
+          Bought in? Log this break →
+        </Link>
       )}
 
       {productSlug && (

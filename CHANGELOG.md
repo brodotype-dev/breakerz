@@ -5,6 +5,10 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-06-17 — "Bought in? Log this break" CTA (analyze → log handoff, prefilled)
+
+After running a break analysis there was no path to log it — the user had to navigate to My Breaks and re-enter the same product / teams / format mix / ask. Added a **"Bought in? Log this break →"** button on [AnalysisResultPanel](components/breakiq/AnalysisResultPanel.tsx) (so it shows on both `/analysis` and the inline `/break/[slug]` analyzer). It deep-links to `/my-breaks?view=new` with the analyzed config in query params (`productId`, `teams`, `hobby`/`bd`/`jumbo`, `ask`). [My Breaks](app/(consumer)/my-breaks/page.tsx) parses those into a `BreakFormPrefill` and hydrates the new-break form's product / teams / format counters / ask price, so the log is one click + confirm. Guarded the form's product-change reset so it fires only on an actual change, not the prefilled mount (which would otherwise wipe the carried-over teams). No new params required — an empty/normal "Log a Break" still opens a blank form.
+
 ## 2026-06-17 — Prospect chip: `#N` → `P-N` + table legend
 
 The bare `#46` prospect chip didn't read as "prospect rank" — could be a card number, a slot, anything. Relabeled to **`P-46`** (Prospect-rank) in [components/breakiq/ds/ProspectRankChip.tsx](components/breakiq/ds/ProspectRankChip.tsx), and added a compact **`ProspectRankKey`** legend (`P-# = MLB Pipeline prospect rank` + the tier color swatches ≤10/≤30/≤100) rendered above [PlayerTable](components/breakiq/PlayerTable.tsx) and [TeamSlotsTable](components/breakiq/TeamSlotsTable.tsx) — only when a ranked prospect is actually in view, so rosters without prospects stay clean. Tooltip reworded to "Prospect rank #N…". Display-only; tier colors still mirror `PROSPECT_RANK_TIERS`.
