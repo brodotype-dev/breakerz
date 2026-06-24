@@ -11,6 +11,8 @@ type WaitlistEntry = {
   invite_code: string | null;
   invite_sent_at: string | null;
   created_at: string;
+  // From auth.users.last_sign_in_at, matched by email. null = never logged in.
+  last_login_at?: string | null;
 };
 
 type Tab = 'pending' | 'approved' | 'converted' | 'rejected';
@@ -25,6 +27,8 @@ const STATUS_COLORS: Record<string, string> = {
 export default function WaitlistTable({ entries }: { entries: WaitlistEntry[] }) {
   const [tab, setTab] = useState<Tab>('pending');
   const [approving, setApproving] = useState<string | null>(null);
+  const [resending, setResending] = useState<string | null>(null);
+  const [resentIds, setResentIds] = useState<Set<string>>(new Set());
   const [rejecting, setRejecting] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [localEntries, setLocalEntries] = useState(entries);
@@ -59,6 +63,26 @@ export default function WaitlistTable({ entries }: { entries: WaitlistEntry[] })
       alert(`Failed to approve: ${error}`);
     }
     setApproving(null);
+  }
+
+  async function handleResend(id: string) {
+    setResending(id);
+    setEmailErrors(prev => { const next = { ...prev }; delete next[id]; return next; });
+    const res = await fetch(`/api/admin/waitlist/${id}/resend`, { method: 'POST' });
+    if (res.ok) {
+      const { emailDelivered, emailError } = await res.json();
+      setLocalEntries(prev => prev.map(e => (e.id === id ? { ...e, invite_sent_at: new Date().toISOString() } : e)));
+      if (emailDelivered === false) {
+        setEmailErrors(prev => ({ ...prev, [id]: emailError ?? 'Unknown email error' }));
+      } else {
+        setResentIds(prev => new Set(prev).add(id));
+        setTimeout(() => setResentIds(prev => { const next = new Set(prev); next.delete(id); return next; }), 4000);
+      }
+    } else {
+      const { error } = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      alert(`Failed to resend: ${error}`);
+    }
+    setResending(null);
   }
 
   async function handleReject(id: string, email: string) {
@@ -159,6 +183,15 @@ export default function WaitlistTable({ entries }: { entries: WaitlistEntry[] })
                           Sent {new Date(entry.invite_sent_at).toLocaleDateString()}
                         </p>
                       )}
+                      {entry.last_login_at ? (
+                        <p className="text-[10px] mt-0.5 font-semibold" style={{ color: 'var(--signal-buy)' }}>
+                          ✓ Logged in {new Date(entry.last_login_at).toLocaleDateString()}
+                        </p>
+                      ) : (entry.status === 'approved' || entry.status === 'converted') ? (
+                        <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-disabled)' }}>
+                          Not logged in yet
+                        </p>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       <div className="inline-flex items-center gap-2">
@@ -188,6 +221,21 @@ export default function WaitlistTable({ entries }: { entries: WaitlistEntry[] })
                               {rejecting === entry.id ? 'Rejecting…' : 'Reject'}
                             </button>
                           </>
+                        )}
+                        {entry.status === 'approved' && (
+                          <button
+                            onClick={() => handleResend(entry.id)}
+                            disabled={resending === entry.id || deleting === entry.id}
+                            className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
+                            style={{
+                              backgroundColor: 'rgba(59,130,246,0.15)',
+                              color: 'var(--accent-blue)',
+                              border: '1px solid rgba(59,130,246,0.3)',
+                            }}
+                            title="Resend the invite email (reuses the existing invite code)"
+                          >
+                            {resending === entry.id ? 'Sending…' : resentIds.has(entry.id) ? '✓ Sent' : 'Resend invite'}
+                          </button>
                         )}
                         {entry.status !== 'converted' && (
                           <button
