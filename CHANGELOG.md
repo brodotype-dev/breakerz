@@ -5,6 +5,10 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-06-22 — Admin waitlist: resend invite + login status
+
+Two adds to `/admin/waitlist`. (1) **Resend invite** — a button on every `approved` row re-sends the invite email, reusing the existing `invite_code` (so prior links keep working) and bumping `invite_sent_at`. New `POST /api/admin/waitlist/[id]/resend` ([route](app/api/admin/waitlist/[id]/resend/route.ts)) mirrors `/approve`'s best-effort send + `emailDelivered` reporting; the table surfaces a send failure inline and shows a transient "✓ Sent" on success. (2) **Login status** — each row now shows whether (and when) the user has actually signed in, sourced from `auth.users.last_sign_in_at` matched by email ([page](app/admin/waitlist/page.tsx) enriches via `auth.admin.listUsers`). Ground truth independent of the `converted` status: green "✓ Logged in {date}" when they've signed in, muted "Not logged in yet" for approved/converted who haven't. Header gains a "N logged in" count. [WaitlistTable](app/admin/waitlist/WaitlistTable.tsx).
+
 ## 2026-06-17 — Private-beta: unlimited analyses / slabs / breaks (flag-gated)
 
 Brody's call: with this few users we need DATA more than revenue, so during private beta every user gets unlimited usage. All three paywalled actions (`/api/analysis`, `/api/card-lookup`, `/api/my-breaks`) flow through `checkAndIncrementUsage` in [lib/usage.ts](lib/usage.ts); added a short-circuit at the top — when `feature_flags.private_beta_unlimited` is ON, it returns `{ allowed: true, remaining: null, plan: 'beta' }` before any plan/limit logic. Toggle via SQL, no deploy. **Not permanent** — flip the flag off to restore Free/Hobby/Pro tiers (the limit constants are untouched). The usage *data* we actually want (break records, analysis runs, PostHog events) is captured independently, so bypassing the counter loses no signal. Note: `/subscribe` still shows the tier copy (5 free / Hobby / Pro) — left as-is since billing returns when the flag flips; revisit the copy if beta runs long.

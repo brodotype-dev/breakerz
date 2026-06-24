@@ -10,6 +10,19 @@ export default async function WaitlistPage() {
     .select('*')
     .order('created_at', { ascending: false });
 
+  // Ground-truth login signal: match each waitlist email to its auth user's
+  // last_sign_in_at. More reliable than waitlist.status='converted' (which only
+  // flips on the first invite-flow signup) and shows actual recent activity.
+  const loginByEmail = new Map<string, string | null>();
+  const { data: authData } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
+  for (const u of authData?.users ?? []) {
+    if (u.email) loginByEmail.set(u.email.toLowerCase(), u.last_sign_in_at ?? null);
+  }
+  const enriched = (entries ?? []).map(e => ({
+    ...e,
+    last_login_at: loginByEmail.get((e.email ?? '').toLowerCase()) ?? null,
+  }));
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div>
@@ -22,10 +35,12 @@ export default async function WaitlistPage() {
           {(entries ?? []).filter(e => e.status === 'approved').length} invited
           {' · '}
           {(entries ?? []).filter(e => e.status === 'converted').length} converted
+          {' · '}
+          {enriched.filter(e => e.last_login_at).length} logged in
         </p>
       </div>
 
-      <WaitlistTable entries={entries ?? []} />
+      <WaitlistTable entries={enriched} />
     </div>
   );
 }
