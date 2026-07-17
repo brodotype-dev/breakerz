@@ -8,6 +8,29 @@ target: ship before active product count crosses 25
 
 Rearchitect pricing refresh from "process one product end-to-end inside a single Vercel invocation" to "stream variants through a stateless cache, aggregate cheaply on a separate cron." Resolves the throughput ceiling that makes the current system unworkable past ~15-20 active products.
 
+## 2026-07-17 scope refresh (measured state + interim mitigations)
+
+Surfaced by a system audit: the nightly pricing cron finished **`partial: true`** on **2025 Topps Chrome Football** at ~286s of the 300s Vercel kill. Not broken (it self-heals across firings via `ch_price_cache`, and every live product is currently 100% priced + ~13h fresh), but there's zero headroom, and Brody is loading more products this week.
+
+**Measured load today (distinct CH cards = the fetch driver; 3 grades/card, `PRICE_CHUNK=100`, `PRICE_FETCH_CONCURRENCY=4`):**
+
+| Product | distinct CH cards | ~price chunks | ~CH calls (fully stale) |
+|---|--:|--:|--:|
+| 2025 Topps Chrome Football | 33,924 | 339 | ~1,017 |
+| 2025-26 Topps Chrome Basketball | 28,910 | 289 | ~867 |
+| 2026 Bowman Baseball | 19,651 | 197 | ~590 |
+| Cosmic Chrome Football (pre-release) | 4,391 | 44 | — |
+| (6 others) | ≤3,400 each | ≤34 | — |
+
+**The ceiling, concretely:** `ch_price_cache` TTL is 24h, so every big product goes **fully stale every night** and needs ~a full 300s invocation to re-price. 5 firings × CONCURRENCY 3 = **15 product-slots/night**; the 3 big products each eat ~1 slot (Chrome Football spills to ~2 via partial). At **10 active products today** it fits (~12 slots used of 15). Adding a few more — especially Chrome-sized (30K-variant) products this week — tips us past the ceiling: the stalest products start missing the 22h window and `CronStatusPanel` goes stale. This is exactly the "crosses ~15-20 products" wall this plan predicted.
+
+**Interim mitigations (config-only, low-risk — buy runway without the rearchitecture):**
+1. **More cron firings** (best bang for buck) — [vercel.json](../../vercel.json) has 5 `refresh-pricing` firings (4:00–6:30 AM). Each firing = 3 more product-slots. Going to ~8–10 firings across a wider window (e.g. every 20 min 3:00–6:20 AM) ≈ **doubles nightly capacity** (15 → ~24–30 slots) with zero architecture change — `ch_price_cache` self-heals partials and stale-first selection means extra firings only pick up unfinished products. Covers ~20 products.
+2. **Longer `CH_PRICE_CACHE_TTL_HOURS` for the big three** — the 30K-variant chrome sets barely move day-to-day; a 36–48h TTL halves their nightly re-fetch volume (they'd only fully re-price every other night). Global bump is simplest; per-product would be cleaner. Trade-off: prices up to ~2 days old on low-volatility variants.
+3. (Lower priority) `CONCURRENCY` 3→4 in the orchestrator — modest; 16 previously starved CH bandwidth, but the 2026-05-26 AbortController makes partials safe. Small gain, some rate-limit risk.
+
+**Revised trigger:** the structural rearchitecture below is now **near-term, not "before 25"** — we're at 10 and loading up. Recommended sequence: **(a) ship interim #1 now** (a vercel.json edit) to cover this week; **(b) build the streaming Cron1/Cron2 design before active count crosses ~18**, which at the current loading pace is weeks, not months. The interim does not remove the ceiling — it moves it.
+
 ## Why the current architecture can't scale
 
 The pipeline today does product-by-product end-to-end work inside a single Vercel function:
