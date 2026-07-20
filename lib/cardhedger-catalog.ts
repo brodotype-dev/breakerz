@@ -176,7 +176,11 @@ export async function refreshSetCatalog(
         category: c.category ?? null,
         rookie: c.rookie ?? null,
         card_description: c.description || null,
-        raw: c as unknown as Record<string, unknown>,
+        // NOTE: the full CH card payload used to be persisted here as a `raw`
+        // JSONB column. It was written every nightly catalog refresh but read
+        // nowhere — pure write-IO + ~half the table's 259 MB. Dropped 2026-07-19
+        // (Disk IO reduction). If a future feature needs the untransformed CH
+        // fields, re-add the column AND a reader in the same change.
       }));
       const { error } = await supabaseAdmin.from('ch_set_cache').insert(slice);
       if (error) throw new Error(`ch_set_cache insert failed at offset ${i}: ${error.message}`);
