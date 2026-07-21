@@ -80,9 +80,17 @@ export async function checkRole(...roles: UserRole[]): Promise<{ user: { id: str
  * Asserts the current user is authenticated and has one of the required roles.
  * Redirects to /admin/login if not authenticated, or throws if wrong role.
  * Use in server components and server actions that need protection.
+ *
+ * Reads identity from the signed session JWT (no network round-trip to
+ * Supabase Auth) — this runs on EVERY admin page render, and the network
+ * `getUser()` call was adding ~100-300ms to each navigation. The cookie is
+ * HMAC-signed so it can't be forged for access; this is a page-guard redirect,
+ * and every mutating API route / server action still calls `getUser()` to
+ * verify against the server before any state change. Same rationale as the
+ * middleware path-protection (see middleware.ts).
  */
 export async function requireRole(...roles: UserRole[]) {
-  const user = await getCurrentUser();
+  const user = await getCurrentUserFromSession();
   if (!user) redirect('/admin/login');
 
   const userRoles = await getUserRoles(user.id);
