@@ -16,6 +16,16 @@ import ChaseCardsManager from './ChaseCardsManager';
 import WaxstatPanel from './WaxstatPanel';
 import { getLatestWaxstatSnapshots } from '@/lib/waxstat-importer';
 
+// This dashboard reads live pipeline state (variant/odds/match counts, pricing
+// freshness, catalog rows) via supabaseAdmin and does NOT touch cookies/headers
+// itself (auth is enforced by middleware), so without this it has no dynamic
+// signal and Next.js Full-Route-Caches it — serving a stale render after any
+// odds apply / hydrate / pricing refresh. Every sibling admin data page
+// (products list, players, market-delta, data-health) already sets this; this
+// page was the outlier. Symptom that surfaced it: applying odds by SQL left the
+// "N variants with odds" readout frozen at 0.
+export const dynamic = 'force-dynamic';
+
 type PageProps = { params: Promise<{ id: string }> };
 
 function Section({
