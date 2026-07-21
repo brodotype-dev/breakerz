@@ -313,6 +313,7 @@ export default function ProductsTableView({
                     <div className="flex items-center gap-2">
                       <Link
                         href={`/admin/products/${p.id}`}
+                        prefetch={false}
                         className="hover:underline"
                         style={{ color: 'var(--text-primary)' }}
                       >
@@ -377,6 +378,7 @@ export default function ProductsTableView({
                     <div className="flex items-center gap-2.5">
                       <Link
                         href={`/admin/products/${p.id}/edit`}
+                        prefetch={false}
                         className="text-muted-foreground hover:text-foreground transition-colors"
                         title="Edit product"
                       >
@@ -384,6 +386,7 @@ export default function ProductsTableView({
                       </Link>
                       <Link
                         href={`/admin/products/${p.id}/players`}
+                        prefetch={false}
                         className="text-muted-foreground hover:text-foreground transition-colors"
                         title="Manage players"
                       >
@@ -392,6 +395,7 @@ export default function ProductsTableView({
                       {p.slug && (
                         <Link
                           href={`/break/${p.slug}`}
+                          prefetch={false}
                           className="text-muted-foreground hover:text-foreground transition-colors"
                           title="View consumer page"
                           target="_blank"
