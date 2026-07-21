@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/cron/refresh-pricing",
-      "schedule": "*/20 3-6 * * *"
+      "schedule": "*/30 3-6 * * *"
     },
     {
       "path": "/api/cron/update-scores",

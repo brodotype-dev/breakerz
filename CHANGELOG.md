@@ -5,6 +5,15 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-07-19 — Disk IO reduction: cron 12 → 8 firings + drop unused `ch_set_cache.raw`
+
+Supabase sent a "High Disk IO Consumption" warning on prod (`zucuzhtiitibsvryenpi`). Diagnosis: the IO-heavy nightly pipeline (catalog delete-reinsert of 196K rows into the 259 MB `ch_set_cache` + pricing scans over the 280K-variant / 143K-price-cache hot tables) on a small compute tier, with the 2026-07-17 cron bump (5 → 12 firings) adding ~2.4× read passes right before the warning fired. Two free reductions, no compute upgrade:
+
+1. **Pricing cron 12 → 8 firings** — [vercel.json](vercel.json) `*/20 3-6` → `*/30 3-6` (fires :00/:30 across 3–6 AM UTC). ~24 product-slots/night at 3 workers/firing, still well above the pre-audit 15 and enough for current ~16 active products. Partly reverses the 07-17 increase while keeping headroom.
+2. **Stopped writing `ch_set_cache.raw`** — the full untransformed CH card payload was persisted as a JSONB column ([lib/cardhedger-catalog.ts](lib/cardhedger-catalog.ts)) on every nightly catalog refresh but read *nowhere* (`loadCatalogIndex`, `ch-coverage.ts`, the product page all select specific columns). It was ~half the table's 259 MB and pure write-IO. Removed from the insert; column dropped via migration. The table shrinks progressively as each set's rows get delete-reinserted (smaller) on subsequent nightly catalog refreshes. If a future feature needs the raw CH fields, re-add the column *and* a reader together.
+
+Structural fix (streaming pricing rearchitecture) still owed before ~18 active products — this buys runway.
+
 ## 2026-07-17 — Pricing cron: 5 → 12 nightly firings (interim throughput bump)
 
 A system audit found the nightly pricing cron finishing `partial: true` on 2025 Topps Chrome Football (33.9K variants) at ~286s of the 300s Vercel kill — self-healing, but zero headroom with more products loading. Interim fix: replaced the 5 scattered `refresh-pricing` firings in [vercel.json](vercel.json) with a single `*/20 3-6 * * *` window (every 20 min, 3:00–6:40 AM UTC = 12 firings). At 3 concurrent workers/firing that's ~36 product-slots/night (up from 15), ~2.4× capacity — covers ~30 active products. Self-limiting: firings quick-exit when nothing's stale (stale-first selection), so extra firings only spend CH calls when there's real work. Config-only; no code change. This moves the ceiling, it doesn't remove it — the structural fix is the streaming rearchitecture ([docs/plans/2026-05-10-streaming-pricing-refresh.md](docs/plans/2026-05-10-streaming-pricing-refresh.md), now targeted before ~18 active products). Also dropped the 4 stale `archive_junk_*` backup tables from the June cleanup (clears 4 DB advisories).
