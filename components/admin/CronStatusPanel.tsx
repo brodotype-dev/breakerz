@@ -13,8 +13,8 @@ import { CheckCircle2, AlertTriangle, Clock } from 'lucide-react';
  */
 
 const CRON_LABELS: Record<string, { label: string; schedule: string }> = {
-  '/api/cron/refresh-pricing':         { label: 'Pricing Refresh',          schedule: '4–6:30 AM UTC ×5' },
-  '/api/cron/refresh-ch-catalogs':     { label: 'Catalog Refresh',          schedule: '3 AM UTC daily' },
+  '/api/cron/refresh-pricing':         { label: 'Pricing Refresh',          schedule: '3–6:30 AM UTC ×8' },
+  '/api/cron/refresh-ch-catalogs':     { label: 'Catalog Refresh',          schedule: 'Sun 1 AM UTC weekly' },
   '/api/cron/update-scores':           { label: 'C-Score Update',           schedule: '5 AM UTC daily' },
   '/api/cron/refresh-dormant-pricing': { label: 'Dormant Pricing Refresh',  schedule: '7 AM UTC, 1st + 15th' },
 };
@@ -89,9 +89,13 @@ export default async function CronStatusPanel() {
           const lastSuccess = lastSuccessByPath.get(path);
           const meta = CRON_LABELS[path];
 
-          // Stale threshold: pricing/catalogs/scores are daily so 26h is the
-          // alarm line. Dormant runs every two weeks, so 17 days for that one.
-          const staleHours = path === '/api/cron/refresh-dormant-pricing' ? 17 * 24 : 26;
+          // Stale threshold: pricing + scores are daily so 26h is the alarm
+          // line. Catalog refresh went weekly (2026-07-27, Disk IO reduction)
+          // so it gets an 8-day window. Dormant runs every two weeks → 17 days.
+          const staleHours =
+            path === '/api/cron/refresh-dormant-pricing' ? 17 * 24 :
+            path === '/api/cron/refresh-ch-catalogs' ? 8 * 24 :
+            26;
           const successAgeMs = lastSuccess ? Date.now() - new Date(lastSuccess.started_at).getTime() : Infinity;
           const isStale = successAgeMs > staleHours * 3600_000;
           const lastFailed = last && !last.success;

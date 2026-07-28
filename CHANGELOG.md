@@ -5,6 +5,14 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-07-27 — Disk IO reduction #2: catalog refresh nightly → weekly
+
+Supabase sent a **second** High Disk IO warning — the 07-19 cuts helped but didn't get under the compute tier's baseline, and 5 more products are landing this week. Diagnosis: the nightly **catalog refresh** is the biggest remaining write-IO event — `refresh-ch-catalogs` does a full delete-then-insert of every active product's entire CH catalog every night (`ch_set_cache` is 259 MB / 252K rows = ~500K row writes + index churn nightly), even though card catalogs barely change after a set releases.
+
+Moved it from nightly (`0 3 * * *`) to **weekly, Sunday 01:00 UTC** (`0 1 * * 0`) in [vercel.json](vercel.json) — isolated from the 3–6:30 AM pricing window so the heavy write no longer stacks on pricing scans. Cuts the single biggest nightly write by ~85% with no real freshness loss: new products still refresh on-demand via the "Refresh CH Catalog" button at setup, and CH adding cards to existing sets is caught by the nightly `ch_additions` feed → manual `drive-rematch`. [CronStatusPanel](components/admin/CronStatusPanel.tsx) gets an 8-day stale threshold for the catalog cron (was 26h) so weekly cadence doesn't false-alarm, plus a corrected pricing-schedule label (×8, not ×5).
+
+Companion one-time `VACUUM FULL public.ch_set_cache` (reclaims ~100 MB of free space retained from the dropped `raw` column → smaller table to scan/vacuum) is owed — run manually from the Supabase SQL editor (it takes a brief ACCESS EXCLUSIVE lock). Brody is also upgrading the Supabase compute add-on to raise the IO baseline for growth; these free cuts extend whatever tier we land on. Structural fix (streaming pricing rearchitecture) still the long-term answer.
+
 ## 2026-07-19 — Disk IO reduction: cron 12 → 8 firings + drop unused `ch_set_cache.raw`
 
 Supabase sent a "High Disk IO Consumption" warning on prod (`zucuzhtiitibsvryenpi`). Diagnosis: the IO-heavy nightly pipeline (catalog delete-reinsert of 196K rows into the 259 MB `ch_set_cache` + pricing scans over the 280K-variant / 143K-price-cache hot tables) on a small compute tier, with the 2026-07-17 cron bump (5 → 12 firings) adding ~2.4× read passes right before the warning fired. Two free reductions, no compute upgrade:
