@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/refresh-ch-catalogs",
-      "schedule": "0 3 * * *"
+      "schedule": "0 1 * * 0"
     },
     {
       "path": "/api/cron/refresh-pricing",
