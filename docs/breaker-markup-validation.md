@@ -32,3 +32,10 @@ Our slot price = EV-proportional allocation + a **flat** markup, so it over-weig
 
 ## Recommendation
 If we build a markup curve, model **compression** (floor + top-dampen) keyed on EV share — **not** the amplify-big curve the call assumed. Cheap to prototype in the display-markup layer (`lib/market-markup.ts`). Validate against fresh captures per product before hard-coding, since premium hoops may want the opposite tweak.
+
+## Follow-up — the floor number (Fanatics call, Aug 14)
+Kyle put a concrete number on the small-spot floor: on **Fanatics**, the floor for smaller breaks is roughly **case-cost-share + ~10% margin** — they'll run a small spot near break-even (or a slight loss) to make it move, and carry the margin on the big spots. Two implications for the compression curve:
+- The small-spot floor isn't arbitrary — anchor it to **that team's share of case cost + ~10%**, not to raw EV. That's the natural floor to clamp small slots up to.
+- Fanatics runs ~20–25% blended margin but prices individual breaks nearer ~10%; their loss (when it happens) is in the **platform/breaking cost** (~20% take), not the break EV. So a break priced at cost+10% is normal, not a steal.
+
+Also confirmed our pricing basis: breakers price off the **secondary market** (what we use — CH comps), *not* their allocation cost. Allocation is noisy — product arrives in waves (cheaper direct-from-Topps + much pricier from distributors) — which is exactly why secondary-market comps are the right anchor.
