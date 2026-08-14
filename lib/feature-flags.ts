@@ -30,3 +30,8 @@ export async function isFeatureFlagEnabled(key: string, ttlMs = DEFAULT_TTL_MS):
 // rank-tiered base EV floor (computeFallbackBaseEV). See the prospect-pricing
 // plan + CHANGELOG 2026-06-16.
 export const PROSPECT_RANK_FLAG = 'prospect_rank_enabled';
+
+// Compression markup — reallocate a break's flat display markup across slots
+// (floor small spots, dampen big) instead of applying it uniformly. Display
+// layer only; conserves each break's total. See docs/plans/2026-08-14-market-compression-markup.md.
+export const COMPRESSION_MARKUP_FLAG = 'compression_markup_enabled';

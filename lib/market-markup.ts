@@ -25,6 +25,43 @@ export function getMarketMarkup(lifecycle: ProductLifecycle | null | undefined):
     : MARKET_MARKUP_BY_LIFECYCLE.live;
 }
 
+// ── Compression markup (2026-08-14) ───────────────────────────────────────
+// The flat markup above multiplies every slot equally. But breakers price
+// slots FLATTER than EV — they floor small spots (run them near cost+10% to
+// move them) and dampen the big spots (they sell anyway), carrying margin on
+// the top. Validated over 10 full-break captures (see
+// docs/breaker-markup-validation.md; PRD: docs/plans/2026-08-14-market-compression-markup.md).
+//
+// `compressionMarkups` reallocates a break's flat markup across its slots so
+// small spots lift and big spots dampen, CONSERVING the total (Σ cost×markup is
+// unchanged) — a redistribution, not an inflation. Per-slot markup:
+//   perSlotMarkup_i = M · s_i^(γ−1) / Σ s_j^γ    where s_i = cost_i / Σcost
+// γ=1 is the identity (today's flat markup); γ<1 compresses. Data implies
+// γ≈0.35; we start at 0.5 and tune toward it via Market Delta once live.
+export const COMPRESSION_GAMMA = 0.5;
+
+// Returns a per-slot effective markup aligned to `modelCosts`. Falls back to a
+// uniform `baseMarkup` for degenerate inputs (empty / all-zero) and for γ=1.
+export function compressionMarkups(
+  modelCosts: number[],
+  baseMarkup: number,
+  gamma: number = COMPRESSION_GAMMA,
+): number[] {
+  const n = modelCosts.length;
+  if (n === 0) return [];
+  const uniform = () => modelCosts.map(() => baseMarkup);
+  if (gamma === 1) return uniform();
+
+  const total = modelCosts.reduce((s, c) => s + Math.max(0, c), 0);
+  if (total <= 0) return uniform();
+
+  const shares = modelCosts.map(c => Math.max(0, c) / total);
+  const denom = shares.reduce((s, sh) => s + (sh > 0 ? Math.pow(sh, gamma) : 0), 0);
+  if (denom <= 0) return uniform();
+
+  return shares.map(sh => (sh > 0 ? (baseMarkup * Math.pow(sh, gamma - 1)) / denom : baseMarkup));
+}
+
 export interface MarketRange {
   low: number;
   mid: number;

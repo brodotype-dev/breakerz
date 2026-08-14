@@ -9,6 +9,7 @@ import { IconPlayerBadge, BullishBadge, BearishBadge, HighVolatilityBadge, RiskF
 import PricingFeedback from '@/components/breakiq/PricingFeedback';
 import { ProspectRankChip, ProspectRankKey } from '@/components/breakiq/ds';
 import { compositionSimilarity, recencyWeight, renderComposition } from '@/lib/observation-ranking';
+import { compressionMarkups } from '@/lib/market-markup';
 import { PH_EVENTS } from '@/lib/posthog-events';
 import type { AskingPriceObsRow, BreakFormat, SlotComposition, TeamSlot } from '@/lib/types';
 
@@ -22,6 +23,10 @@ interface Props {
   // Plan B: lifecycle-aware market markup applied to slot cost at display.
   // 1 = no markup. computeSignal is run against the market-adjusted number.
   marketMarkup?: number;
+  // Compression exponent (flag-gated). When set, the flat markup is
+  // reallocated across teams (floor small, dampen big), conserving the total.
+  // undefined = off. See docs/plans/2026-08-14-market-compression-markup.md.
+  compressionGamma?: number;
   // Step #3 — side-by-side comparison. Map keyed by team name to the raw
   // asking-price observations for this product. Each row gets ranked
   // against `targetComposition` and renders a sub-line under the team row
@@ -100,12 +105,19 @@ export default function TeamSlotsTable({
   riskFlagMap = new Map(),
   productId = null,
   marketMarkup = 1,
+  compressionGamma,
   askObservations,
   targetComposition,
 }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [askPrices, setAskPrices] = useState<Record<string, string>>({});
   const showMarketMarkup = marketMarkup !== 1;
+  // Per-team compression markup (flag-gated). null = off → every row uses the
+  // flat marketMarkup. Shares are over the current viewFormat's model slots;
+  // the total is conserved so the break's overall ask is unchanged.
+  const teamMarkups = compressionGamma != null
+    ? compressionMarkups(teams.map(t => pickSlot(t, viewFormat).slot), marketMarkup, compressionGamma)
+    : null;
 
   if (teams.length === 0) {
     return (
@@ -149,9 +161,11 @@ export default function TeamSlotsTable({
             const isOpen = expanded.has(row.team);
             const { slot: modelSlotCost, perCase: modelPerCase } = pickSlot(row, viewFormat);
             // Plan B: market-adjusted slot drives display + signal; model EV
-            // is shown beneath as a sub-line for transparency.
-            const slotCost = modelSlotCost * marketMarkup;
-            const perCase  = modelPerCase  * marketMarkup;
+            // is shown beneath as a sub-line for transparency. rowMarkup is the
+            // per-team compressed markup when the flag is on, else the flat one.
+            const rowMarkup = teamMarkups ? teamMarkups[i] : marketMarkup;
+            const slotCost = modelSlotCost * rowMarkup;
+            const perCase  = modelPerCase  * rowMarkup;
             const askRaw = askPrices[row.team] ?? '';
             const askNum = parseFloat(askRaw);
             const dealCheck = askRaw && !isNaN(askNum) && slotCost > 0
@@ -403,7 +417,7 @@ export default function TeamSlotsTable({
                       {/* Slot cost for this player (market-adjusted) */}
                       <div className="flex items-center">
                         <span className="font-mono text-xs" style={{ color: 'var(--text-t-tertiary)' }}>
-                          {formatCurrency((viewFormat === 'hobby' ? p.hobbySlotCost : viewFormat === 'bd' ? p.bdSlotCost : p.jumboSlotCost) * marketMarkup)}
+                          {formatCurrency((viewFormat === 'hobby' ? p.hobbySlotCost : viewFormat === 'bd' ? p.bdSlotCost : p.jumboSlotCost) * rowMarkup)}
                         </span>
                       </div>
                       <div />

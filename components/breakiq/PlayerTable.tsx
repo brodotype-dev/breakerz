@@ -5,6 +5,7 @@ import { IconPlayerBadge, BullishBadge, BearishBadge, HighVolatilityBadge, RiskF
 import ChaseHeartButton, { ChaseSetProvider } from '@/components/breakiq/ChaseHeartButton';
 import PricingFeedback from '@/components/breakiq/PricingFeedback';
 import { InfoTip, ProspectRankChip, ProspectRankKey } from '@/components/breakiq/ds';
+import { compressionMarkups } from '@/lib/market-markup';
 import type { BreakFormat, PlayerWithPricing } from '@/lib/types';
 import type { PlayerPypResult } from '@/lib/player-pyp-pricing';
 
@@ -20,6 +21,10 @@ interface Props {
   // Plan B: lifecycle-aware market markup applied to slot cost at display.
   // 1 = no markup (model EV shown as-is). Caller resolves via getMarketMarkup().
   marketMarkup?: number;
+  // Compression exponent (flag-gated). When set, the flat markup is
+  // reallocated across players (floor small, dampen big), conserving the total.
+  // undefined = off. See docs/plans/2026-08-14-market-compression-markup.md.
+  compressionGamma?: number;
   /**
    * Per-player PYP (Pick Your Player) slot-price predictions for the
    * current break configuration. When provided AND showPyp is true, the
@@ -94,10 +99,19 @@ export default function PlayerTable({
   onPlayerClick,
   productId = null,
   marketMarkup = 1,
+  compressionGamma,
   pypByPlayerProductId,
   showPyp = false,
 }: Props) {
   const showMarketMarkup = marketMarkup !== 1;
+  // Per-player compression markup (flag-gated), keyed by player_product id.
+  // null = off → every row uses the flat marketMarkup. Total conserved.
+  const playerMarkups: Map<string, number> | null = compressionGamma != null
+    ? (() => {
+        const m = compressionMarkups(players.map(p => pickSlot(p, viewFormat)), marketMarkup, compressionGamma);
+        return new Map(players.map((p, i) => [p.id, m[i]]));
+      })()
+    : null;
   const columns = buildColumns(showPyp);
   if (players.length === 0) {
     return (
@@ -277,7 +291,8 @@ export default function PlayerTable({
                       <td className="px-2 sm:px-4 py-2.5 text-right">
                         {(() => {
                           const modelSlot = pickSlot(row, viewFormat);
-                          const marketSlot = modelSlot * marketMarkup;
+                          const rowMarkup = playerMarkups?.get(row.id) ?? marketMarkup;
+                          const marketSlot = modelSlot * rowMarkup;
                           return (
                             <div className="flex flex-col items-end leading-tight">
                               <span className="font-mono text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
