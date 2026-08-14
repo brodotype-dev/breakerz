@@ -25,6 +25,8 @@ import BetaBanner from '@/components/breakiq/BetaBanner';
 import { loadBreakPageData, loadProductBySlug, type ProductWithSport } from '@/lib/break-page-data';
 import BreakPageClient from './BreakPageClient';
 import BreakPageSkeleton from './BreakPageSkeleton';
+import { isFeatureFlagEnabled, COMPRESSION_MARKUP_FLAG } from '@/lib/feature-flags';
+import { COMPRESSION_GAMMA } from '@/lib/market-markup';
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -44,6 +46,13 @@ export default async function BreakPage({ params }: PageProps) {
   const lifecycle = (product.lifecycle_status ?? 'live') as 'pre_release' | 'live' | 'dormant';
   const isPreRelease = lifecycle === 'pre_release';
   const isDormant = lifecycle === 'dormant';
+
+  // Compression markup (flag-gated). Off → γ undefined → tables use the flat
+  // markup unchanged. Cheap cached flag read; the heavy pricing data still
+  // streams via dataPromise. See docs/plans/2026-08-14-market-compression-markup.md.
+  const compressionGamma = (await isFeatureFlagEnabled(COMPRESSION_MARKUP_FLAG))
+    ? COMPRESSION_GAMMA
+    : undefined;
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: 'var(--terminal-bg)' }}>
@@ -76,7 +85,7 @@ export default async function BreakPage({ params }: PageProps) {
       <main className="px-3 sm:px-4 md:px-6 py-4 sm:py-6 space-y-5 max-w-[1400px] mx-auto">
         <BetaBanner surface="break_page" />
         <Suspense fallback={<BreakPageSkeleton />}>
-          <BreakPageClient product={product} dataPromise={dataPromise} />
+          <BreakPageClient product={product} dataPromise={dataPromise} compressionGamma={compressionGamma} />
         </Suspense>
       </main>
     </div>

@@ -29,9 +29,13 @@ const FORMAT_DEFS: Array<{ key: BreakFormat; label: string; short: string }> = [
 interface BreakPageClientProps {
   product: ProductWithSport;
   dataPromise: Promise<BreakPageData>;
+  // Compression exponent (flag-gated, server-resolved). undefined = off →
+  // slot tables apply the flat markup unchanged. See
+  // docs/plans/2026-08-14-market-compression-markup.md.
+  compressionGamma?: number;
 }
 
-export default function BreakPageClient({ product, dataPromise }: BreakPageClientProps) {
+export default function BreakPageClient({ product, dataPromise, compressionGamma }: BreakPageClientProps) {
   // ─── Suspense unwrap ───────────────────────────────────────────────────
   // React 19's `use()` hook: throws while the promise is pending (which
   // surfaces the parent <Suspense>'s fallback), resolves to the data
@@ -560,6 +564,7 @@ export default function BreakPageClient({ product, dataPromise }: BreakPageClien
             riskFlagMap={riskFlagMap}
             productId={product.id}
             marketMarkup={getMarketMarkup(lifecycle)}
+            compressionGamma={compressionGamma}
             askObservations={askObservationsByTeam}
             targetComposition={targetComposition}
           />
@@ -572,6 +577,7 @@ export default function BreakPageClient({ product, dataPromise }: BreakPageClien
             onPlayerClick={id => setActivePlayerProductId(id)}
             productId={product.id}
             marketMarkup={getMarketMarkup(lifecycle)}
+            compressionGamma={compressionGamma}
             pypByPlayerProductId={pypTable.byPlayerProductId}
             showPyp={pypTable.oddsCoverageOk}
           />
