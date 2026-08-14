@@ -69,6 +69,7 @@ export async function POST(req: NextRequest) {
       platformOther,
       outcome,
       outcomeNotes,
+      isTest,
     } = body;
 
     const teamList = Array.isArray(teams) ? teams.filter((t): t is string => typeof t === 'string') : [];
@@ -139,6 +140,7 @@ export async function POST(req: NextRequest) {
         snapshot_hv_players: analysis.hvPlayers,
         outcome: isLog ? (outcome as BreakOutcome) : null,
         outcome_notes: isLog ? outcomeNotes ?? null : null,
+        is_test: !!isTest,
         status: isLog ? 'completed' : 'pending',
         completed_at: isLog ? new Date().toISOString() : null,
       })

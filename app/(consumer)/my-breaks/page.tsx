@@ -57,6 +57,7 @@ interface BreakRecord {
   outcome: BreakOutcome | null;
   outcome_notes: string | null;
   status: BreakStatus;
+  is_test?: boolean;
   created_at: string;
   completed_at: string | null;
   product?: { id: string; name: string; year: string; slug: string; sport: { name: string } };
@@ -930,8 +931,17 @@ function PendingBreakCard({ brk, onComplete }: { brk: BreakRecord; onComplete: (
     <div className="rounded-lg overflow-hidden" style={{ border: '1px solid var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
       <div className="p-4 flex items-center justify-between cursor-pointer" onClick={() => !editing && setExpanded(!expanded)}>
         <div>
-          <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-            {brk.product?.name ?? 'Unknown Product'} — {(brk.teams ?? []).join(', ') || '—'}
+          <p className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+            <span>{brk.product?.name ?? 'Unknown Product'} — {(brk.teams ?? []).join(', ') || '—'}</span>
+            {brk.is_test && (
+              <span
+                className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide shrink-0"
+                style={{ backgroundColor: 'rgba(234,179,8,0.15)', color: 'var(--signal-watch)' }}
+                title="Test break — excluded from analytics"
+              >
+                Test
+              </span>
+            )}
           </p>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
             {formatCurrency(brk.ask_price)} · {summarizeFormatMix(brk.formats ?? { hobby: 0, bd: 0, jumbo: 0 })} · {platformLabel} · {new Date(brk.created_at).toLocaleDateString()}
@@ -1077,8 +1087,17 @@ function CompletedBreakCard({ brk, onRefresh }: { brk: BreakRecord; onRefresh: (
       <div className="p-4">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-              {brk.product?.name ?? 'Unknown Product'} — {(brk.teams ?? []).join(', ') || '—'}
+            <p className="text-sm font-semibold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+              <span>{brk.product?.name ?? 'Unknown Product'} — {(brk.teams ?? []).join(', ') || '—'}</span>
+              {brk.is_test && (
+                <span
+                  className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide shrink-0"
+                  style={{ backgroundColor: 'rgba(234,179,8,0.15)', color: 'var(--signal-watch)' }}
+                  title="Test break — excluded from analytics"
+                >
+                  Test
+                </span>
+              )}
             </p>
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
               {formatCurrency(brk.ask_price)} · {summarizeFormatMix(brk.formats ?? { hobby: 0, bd: 0, jumbo: 0 })} · {platformLabel} · {new Date(brk.created_at).toLocaleDateString()}
@@ -1143,6 +1162,19 @@ function BreakForm({
   const [platformOther, setPlatformOther] = useState('');
   const [outcome, setOutcome] = useState<BreakOutcome | null>(null);
   const [outcomeNotes, setOutcomeNotes] = useState('');
+  // Test-break flag — keeps dry-run / demo breaks out of Market Delta + analytics.
+  // Sticky per device (testers log many in a row) via localStorage; read after
+  // mount to avoid a hydration mismatch.
+  const [isTest, setIsTest] = useState(false);
+  useEffect(() => {
+    if (typeof window !== 'undefined' && localStorage.getItem('breakiq_break_is_test') === '1') {
+      setIsTest(true);
+    }
+  }, []);
+  function toggleTest(v: boolean) {
+    setIsTest(v);
+    if (typeof window !== 'undefined') localStorage.setItem('breakiq_break_is_test', v ? '1' : '0');
+  }
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1318,6 +1350,7 @@ function BreakForm({
           platformOther: platform === 'other' ? platformOther : undefined,
           outcome: mode === 'log' ? outcome : undefined,
           outcomeNotes: mode === 'log' && outcomeNotes ? outcomeNotes : undefined,
+          isTest,
         }),
       });
       const data = await res.json();
@@ -1665,6 +1698,31 @@ function BreakForm({
               />
             </>
           )}
+
+          {/* Test-break flag — keeps dry-run / demo breaks out of Market Delta
+              + analytics. Sticky per device so testers don't re-toggle each time. */}
+          <label
+            className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 cursor-pointer select-none"
+            style={{
+              borderColor: isTest ? 'var(--signal-watch)' : 'var(--terminal-border)',
+              backgroundColor: 'var(--terminal-bg)',
+            }}
+          >
+            <div className="min-w-0">
+              <div className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                Test break
+              </div>
+              <div className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                Dry run with placeholder numbers — kept out of pricing analytics.
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              checked={isTest}
+              onChange={e => toggleTest(e.target.checked)}
+              className="h-4 w-4 shrink-0 cursor-pointer"
+            />
+          </label>
 
           {error && (
             <p className="text-sm" style={{ color: 'var(--signal-pass)' }}>{error}</p>

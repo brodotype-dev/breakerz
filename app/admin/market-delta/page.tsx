@@ -251,6 +251,7 @@ export default async function MarketDeltaPage({
     .not('snapshot_fair_value', 'is', null)
     .not('ask_price', 'is', null)
     .neq('status', 'abandoned')
+    .neq('is_test', true) // exclude dry-run / demo breaks from the delta thesis
     .gt('snapshot_fair_value', 0)
     .order('created_at', { ascending: false })
     .limit(2000);
