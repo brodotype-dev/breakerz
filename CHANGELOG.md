@@ -5,6 +5,12 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-08-14 — Roster Sentiment editor (per-product pre-release scoring) + breaker-markup validation
+
+From the 2026-08-14 Kyle call: pre-release value = product-specific baseline + **manual per-product sentiment** assigned down the checklist. The plumbing already existed — `player_products.breakerz_score` (+ `breakerz_note`) is per-product and the engine reads it via `computeEffectiveScore`; a bulk `saveBreakerzBets` action and the ±0.5 pill ladder were already built for the narrative Insights Debrief. The gap was a **full-roster editor** (the Debrief only touches players you mention). New [RosterSentimentEditor](app/admin/products/[id]/players/RosterSentimentEditor.tsx) on the product `/players` sub-page: every slot-eligible player as a row, the existing pill control pre-filled to their current score, a note field, team/search/"changed only" filters, one **Save all**, plus **CSV export/import** (`player,score,note`, matched by name; CSV accepts any numeric value for finer control than the pills). Reuses the existing bulk save action; the moment you save, pricing reflects it on next refresh. Read-only roster reference (set counts / insert-only) collapsed below.
+
+Also landed a data investigation ([docs/breaker-markup-validation.md](docs/breaker-markup-validation.md)): tested Kyle's "breakers up-charge big spots, discount small ones" claim against 10 full-break `/break-price` captures (7 products). Result is the **opposite** in 8/10 — the market prices slots *flatter* than our EV model (small teams floored at ~2.4× their EV share, big teams dampened to ~0.67×). The 2 exceptions are premium basketball with a singular marquee chase (Cosmic Chrome BB, Cactus Jack). Implication: any future markup curve should **compress** (floor small + dampen big), not amplify the top. No engine change yet — validation only.
+
 ## 2026-07-27 — Disk IO reduction #2: catalog refresh nightly → weekly
 
 Supabase sent a **second** High Disk IO warning — the 07-19 cuts helped but didn't get under the compute tier's baseline, and 5 more products are landing this week. Diagnosis: the nightly **catalog refresh** is the biggest remaining write-IO event — `refresh-ch-catalogs` does a full delete-then-insert of every active product's entire CH catalog every night (`ch_set_cache` is 259 MB / 252K rows = ~500K row writes + index churn nightly), even though card catalogs barely change after a set releases.

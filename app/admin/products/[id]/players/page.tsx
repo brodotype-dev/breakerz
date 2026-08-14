@@ -5,6 +5,7 @@ import { ArrowLeft, ChevronDown, Star } from 'lucide-react';
 import ChecklistUpload from '@/components/admin/ChecklistUpload';
 import PlayerBulkForm from '@/components/admin/PlayerBulkForm';
 import PlayersManager, { type PlayerRow } from './PlayersManager';
+import RosterSentimentEditor, { type SentimentRow } from './RosterSentimentEditor';
 import type { Product, PlayerProduct, Player, Sport } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -43,6 +44,22 @@ export default async function AdminPlayersPage({ params }: PageProps) {
       hobbySets: pp.hobby_sets ?? 0,
       bdOnlySets: pp.bd_only_sets ?? 0,
       insertOnly: !!pp.insert_only,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  // Per-product sentiment rows for the Roster Sentiment editor. Same roster,
+  // carrying the current breakerz_score / breakerz_note so the grid is
+  // pre-populated (the engine reads these via computeEffectiveScore).
+  const sentimentRows: SentimentRow[] = playerProducts
+    .filter(pp => pp.player?.name)
+    .map(pp => ({
+      playerProductId: pp.id,
+      name: pp.player?.name ?? '',
+      team: pp.player?.team ?? '',
+      isRookie: !!pp.player?.is_rookie,
+      insertOnly: !!pp.insert_only,
+      score: pp.breakerz_score ?? 0,
+      note: pp.breakerz_note ?? '',
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -85,8 +102,32 @@ export default async function AdminPlayersPage({ params }: PageProps) {
         Manage player attributes (icon · high-volatility · risk flags) in the global Players directory →
       </Link>
 
-      {/* Product roster — read-only list of who's in this product */}
-      <PlayersManager players={players} />
+      {/* Roster Sentiment — per-product ± score editor over the full checklist.
+          The pre-release "assign a score to every player" surface (2026-08-14
+          Kyle call). Writes player_products.breakerz_score, read by the engine. */}
+      <div
+        className="rounded-lg border p-4"
+        style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
+      >
+        <RosterSentimentEditor productId={id} players={sentimentRows} />
+      </div>
+
+      {/* Product roster — read-only reference (set counts / insert-only) */}
+      <details
+        className="rounded-lg border overflow-hidden group"
+        style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
+      >
+        <summary className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-[var(--terminal-surface-hover)] list-none">
+          <div>
+            <h2 className="text-sm font-semibold">Roster reference</h2>
+            <p className="text-xs text-muted-foreground">Read-only — set counts, insert-only flags</p>
+          </div>
+          <ChevronDown className="w-4 h-4 transition-transform group-open:rotate-180 text-muted-foreground" />
+        </summary>
+        <div className="px-4 py-4 border-t" style={{ borderColor: 'var(--terminal-border)' }}>
+          <PlayersManager players={players} />
+        </div>
+      </details>
 
       {/* Add players — collapsed by default */}
       <details
