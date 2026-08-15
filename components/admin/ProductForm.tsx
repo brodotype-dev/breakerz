@@ -157,6 +157,9 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
   );
 
   const [chSetName, setChSetName] = useState(product?.ch_set_name ?? '');
+  // Per-product compression exponent (market-compression markup). Blank → global
+  // default. <1 compress (commodity), 1 flat, >1 amplify (premium w/ singular chase).
+  const [compressionGamma, setCompressionGamma] = useState(product?.compression_gamma?.toString() ?? '');
   const [setSearchQuery, setSetSearchQuery] = useState('');
   const [setSearchResults, setSetSearchResults] = useState<CHSetResult[]>([]);
   const [setSearching, setSetSearching] = useState(false);
@@ -280,6 +283,7 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
       ch_set_name: chSetName || null,
       is_active: targetIsActive,
       lifecycle_status: lifecycleStatus,
+      compression_gamma: compressionGamma.trim() ? parseFloat(compressionGamma) : null,
     };
 
     const result = product
@@ -503,6 +507,15 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
           <FormInput label="Hobby AM / Case" hint="(after-market)" value={hobbyAmCaseCost} onChange={e => setHobbyAmCaseCost(e.target.value)} prefix="$" placeholder="Optional" type="number" mono />
           <FormInput label="BD AM / Case" hint="(after-market)" value={bdAmCaseCost} onChange={e => setBdAmCaseCost(e.target.value)} prefix="$" placeholder="Optional" type="number" mono />
           <FormInput label="Jumbo AM / Case" hint="(after-market)" value={jumboAmCaseCost} onChange={e => setJumboAmCaseCost(e.target.value)} prefix="$" placeholder="Optional" type="number" mono />
+          <FormInput
+            label="Compression γ"
+            hint="(<1 compress · 1 flat · >1 amplify · blank = global)"
+            value={compressionGamma}
+            onChange={e => setCompressionGamma(e.target.value)}
+            placeholder="0.5"
+            type="number"
+            mono
+          />
           <FormInput
             label="Release Date"
             hint="(used for pre-release banner)"

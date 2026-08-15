@@ -48,10 +48,12 @@ export default async function BreakPage({ params }: PageProps) {
   const isDormant = lifecycle === 'dormant';
 
   // Compression markup (flag-gated). Off → γ undefined → tables use the flat
-  // markup unchanged. Cheap cached flag read; the heavy pricing data still
-  // streams via dataPromise. See docs/plans/2026-08-14-market-compression-markup.md.
+  // markup unchanged. When on, use the product's own γ if set (per-product
+  // override — compress commodity, amplify premium-with-chase), else the global
+  // default. Cheap cached flag read; heavy pricing data still streams via
+  // dataPromise. See docs/plans/2026-08-14-market-compression-markup.md.
   const compressionGamma = (await isFeatureFlagEnabled(COMPRESSION_MARKUP_FLAG))
-    ? COMPRESSION_GAMMA
+    ? (product.compression_gamma != null ? Number(product.compression_gamma) : COMPRESSION_GAMMA)
     : undefined;
 
   return (

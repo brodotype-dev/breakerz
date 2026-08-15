@@ -1,6 +1,6 @@
 # PRD — Market Compression Markup
 
-**Status:** Implemented flag-gated (2026-08-14), `compression_markup_enabled` = OFF in prod. Flip on after live validation.
+**Status:** Implemented flag-gated (2026-08-14), `compression_markup_enabled` = **ON** in prod. **Per-product γ shipped** (`products.compression_gamma`) — the market's slot-shape varies by product character, so γ is set per product, not global.
 **Owner:** Brody · **Source:** 2026-08-14 Kyle calls + [docs/breaker-markup-validation.md](../breaker-markup-validation.md)
 
 ## Problem
@@ -40,14 +40,23 @@ where `M` is the flat lifecycle markup and `γ` is the compression exponent.
 ## Known limitation — player-drawer audit view
 The "Why this price?" drawer (`PlayerDetailDrawer` / `WhyThisPriceCard`) keeps the **flat** markup in v1 — it decomposes a single slot's price and has no cross-slot set to compress against. So with the flag on, a player's price in the table (compressed) can differ slightly from the drawer's final number (flat). Acceptable while the flag is off; revisit when validating (pass the player's compressed markup into the drawer).
 
-## Known limitation — premium-hoops exception
-2 of 10 breaks (Cosmic Chrome Basketball, Cactus Jack) showed the **opposite** — the market slightly *amplifies* the top, driven by a singular marquee-rookie chase (Flagg/Wemby). A single global `γ < 1` mis-compresses those. Accepted for v1 (they're the minority and the effect is small); **per-product γ override** is the follow-up once we have more captures per product.
+## Per-product γ (shipped) — product character drives the shape
+The market's slot-shape isn't uniform. Commodity products with flatter talent and less staying power **compress** (γ<1). Premium products where a singular marquee chase carries the whole break (Flagg in Cosmic Chrome Basketball, the Cactus Jack chase) **amplify** the top (γ>1) — that chase is the entire reason people buy the break. Same first-principles reason product **sentiment** is per-product: quality / desirability / staying power vary by SKU.
+
+So γ is **per-product**: `products.compression_gamma numeric` (nullable). NULL → the global `COMPRESSION_GAMMA` (0.5, compress — the 8/10 default). The compression function handles both directions from one number:
+- `γ < 1` → compress (floor small / dampen big)
+- `γ = 1` → flat (no reshape — identical to pre-compression)
+- `γ > 1` → amplify (lift the top)
+
+Set on the product edit form (**Pricing → Compression γ**), read server-side on the break page (`product.compression_gamma ?? COMPRESSION_GAMMA` when the flag is on). **Interim:** the two known premium-hoops products (Cosmic Chrome Basketball, Cactus Jack) are set to **γ=1.0** (flat — safe, not mis-compressed) until their amplify value is dialed in from Market Delta. Deriving γ per product from `/break-price` captures (fit the exponent to observed Asks÷EV) is the future step; today it's a judgment call by Brody/Kyle, like sentiment.
+
+Same idea extends to the markup **level** (a desirable product carries more margin over EV than a commodity one — today the level is lifecycle-flat). That's the next layer; γ is the dimension the data speaks to now.
 
 ## Rollout
 1. Ship flag-gated OFF (this PR). Zero consumer change.
 2. Flip `compression_markup_enabled` on via SQL; eyeball a few break pages vs. known breaker asks.
-3. Tune `COMPRESSION_GAMMA` toward the data (~0.35) using Market Delta Section 2 (`/break-price` captures) — the same source that validated the pattern.
-4. Later: per-product γ (amplify for premium hoops with a singular chase).
+3. Tune the global `COMPRESSION_GAMMA` toward the data (~0.35) using Market Delta Section 2 (`/break-price` captures) — the same source that validated the pattern.
+4. ✅ Per-product γ shipped (`products.compression_gamma`) — set premium-with-chase products > 1 to amplify. Next: derive γ per product from captures instead of by hand; per-product markup *level* (premium carries more margin than commodity).
 
 ## Risk
 - Reallocation, not inflation — total ask per break is conserved, so no across-the-board price shift. Worst case if γ is mis-tuned: small spots slightly over/under, correctable by one constant.

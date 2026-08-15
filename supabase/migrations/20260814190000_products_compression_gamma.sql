@@ -1,0 +1,11 @@
+-- Per-product compression exponent (2026-08-14). The market's slot-price shape
+-- varies by product character: commodity products COMPRESS (floor small spots,
+-- dampen big → γ<1); premium products with a singular marquee chase AMPLIFY the
+-- top (γ>1). A single global γ mis-prices the premium-hoops minority. This
+-- per-product override reflects the product's quality/desirability/staying
+-- power, set by admin like sentiment. NULL → fall back to the global
+-- COMPRESSION_GAMMA (lib/market-markup.ts). Only read when
+-- feature_flags.compression_markup_enabled is on. γ=1 = flat (no reshape).
+-- Inherits products grants; applied via Supabase MCP.
+-- See docs/plans/2026-08-14-market-compression-markup.md.
+alter table public.products add column if not exists compression_gamma numeric;
