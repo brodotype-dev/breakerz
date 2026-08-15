@@ -36,8 +36,11 @@ export function getMarketMarkup(lifecycle: ProductLifecycle | null | undefined):
 // small spots lift and big spots dampen, CONSERVING the total (Σ cost×markup is
 // unchanged) — a redistribution, not an inflation. Per-slot markup:
 //   perSlotMarkup_i = M · s_i^(γ−1) / Σ s_j^γ    where s_i = cost_i / Σcost
-// γ=1 is the identity (today's flat markup); γ<1 compresses. Data implies
-// γ≈0.35; we start at 0.5 and tune toward it via Market Delta once live.
+// γ=1 is the identity (today's flat markup); γ<1 compresses; γ>1 amplifies the
+// top. Data implies γ≈0.35; we start at 0.5 and tune via Market Delta once live.
+// This is the GLOBAL default — the break page prefers a per-product override
+// (`products.compression_gamma`) when set, since product character varies
+// (commodity compresses, premium-with-singular-chase amplifies).
 export const COMPRESSION_GAMMA = 0.5;
 
 // Returns a per-slot effective markup aligned to `modelCosts`. Falls back to a

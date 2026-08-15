@@ -24,6 +24,7 @@ export async function createProduct(formData: {
   ch_set_name?: string | null;
   is_active?: boolean;
   lifecycle_status?: ProductLifecycle;
+  compression_gamma?: number | null;
 }): Promise<{ id?: string; error?: string }> {
   await requireRole('admin', 'contributor');
   const slug = formData.name
@@ -69,6 +70,7 @@ export async function updateProduct(
     ch_set_name?: string | null;
     is_active: boolean;
     lifecycle_status?: ProductLifecycle;
+    compression_gamma?: number | null;
   }
 ): Promise<{ error?: string }> {
   await requireRole('admin', 'contributor');
