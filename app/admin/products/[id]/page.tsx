@@ -13,6 +13,7 @@ import BreakIQBetsDebrief from './BreakIQBetsDebrief';
 import BreakerComparisonPanel from './BreakerComparisonPanel';
 import PricingBreakdownPanel from './PricingBreakdownPanel';
 import ChaseCardsManager from './ChaseCardsManager';
+import BuildBaselineButton from './BuildBaselineButton';
 import WaxstatPanel from './WaxstatPanel';
 import { getLatestWaxstatSnapshots } from '@/lib/waxstat-importer';
 
@@ -595,6 +596,18 @@ export default async function ProductDashboardPage({ params }: PageProps) {
             <OddsUpload productId={id} />
           </Section>
         </div>
+
+        {/* Pre-Release Baseline — synthesize per-player baseline EV from last
+            cycle + comps. Pre-release only; superseded by real pricing once live. */}
+        {product.lifecycle_status === 'pre_release' && (
+          <Section title="Pre-Release Baseline" accent="linear-gradient(135deg, #a855f7 0%, #ec4899 100%)">
+            <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>
+              Synthesize a baseline EV per player (previous-cycle value → 90d comp for non-rookies; rank-tiered floor for rookies).
+              Link a prior-cycle product in Product Details for product-specific comps. Roster Sentiment (below, on the Players page) adjusts from here.
+            </p>
+            <BuildBaselineButton productId={id} />
+          </Section>
+        )}
 
         {/* Chase Cards */}
         <Section title="Chase Cards" accent="linear-gradient(135deg, #a855f7 0%, #3b82f6 100%)">

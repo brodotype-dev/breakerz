@@ -62,3 +62,9 @@ Long term, if CH coverage gaps keep biting us (Bowman Draft Sapphire missing, To
 **Trigger:** revisit when we have 50+ active products and CH coverage is the rate-limiter, or if CH pricing accuracy 👎 feedback share doesn't drop below 10% after Plans A/B/C/3c.
 
 eBay developer API caps at 5,000 calls/day per Brody's spike during the 2026-05-11 call — that ceiling will likely shape the actual architecture (queue-based per-card refresh rather than synchronous).
+
+## Pre-release baseline: sale-amount trend adjustment (v2)
+
+The [pre-release pricing model](plans/2026-08-14-pre-release-pricing.md) v1 baselines a non-rookie off the previous cycle's flat value (previous-product EV, else `raw_avg_90d`). v2: nudge that baseline by the player's **recent sale-amount trend** (rising/falling) so a hot player leans up going into the new product. Source: CardHedger `top-movers` / price-history / `gain`. Deferred from v1 (Brody, 2026-08-14) to keep the first baseline simple and legible.
+
+**Trigger:** once the flat-baseline pre-release board is live and we've eyeballed a couple of pre-releases — add trend if the flat number lags obvious risers/fallers.

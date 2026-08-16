@@ -136,6 +136,9 @@ export interface Product {
   // Only read when feature_flags.compression_markup_enabled is on.
   // See docs/plans/2026-08-14-market-compression-markup.md.
   compression_gamma: number | null;
+  // Prior-cycle product (admin-linked) — the baseline source for a non-rookie's
+  // pre-release value. See docs/plans/2026-08-14-pre-release-pricing.md.
+  previous_product_id: string | null;
   // Brand-line taxonomy (bowman_flagship, bowman_chrome, bowman_best,
   // topps_chrome, panini_prizm, etc.). Canonical list + display labels
   // live in lib/product-lines.ts. Drives parser context and format
@@ -176,6 +179,10 @@ export interface PlayerProduct {
   buzz_score: number | null;
   breakerz_score: number | null;
   breakerz_note: string | null;
+  // Synthesized pre-release baseline EV (previous-cycle value / raw comp for
+  // non-rookies, rank-tiered floor for rookies). Modulated by breakerz_score.
+  // Superseded by pricing_cache once live. See docs/plans/2026-08-14-pre-release-pricing.md.
+  pre_release_base_ev: number | null;
   // LEGACY (2026-06-02): HV moved to players.is_high_volatility. This column
   // still exists during the transition deploy but read sites source HV off the
   // player join. Dropped in the cleanup migration.
