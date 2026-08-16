@@ -4,6 +4,11 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { requireRole } from '@/lib/auth';
 import { revalidatePath } from 'next/cache';
 import type { ProductLifecycle } from '@/lib/types';
+import {
+  computePreReleaseBaselines,
+  writePreReleaseBaselines,
+  type BaselineResult,
+} from '@/lib/pre-release-baseline';
 
 export async function createProduct(formData: {
   name: string;
@@ -25,6 +30,7 @@ export async function createProduct(formData: {
   is_active?: boolean;
   lifecycle_status?: ProductLifecycle;
   compression_gamma?: number | null;
+  previous_product_id?: string | null;
 }): Promise<{ id?: string; error?: string }> {
   await requireRole('admin', 'contributor');
   const slug = formData.name
@@ -71,6 +77,7 @@ export async function updateProduct(
     is_active: boolean;
     lifecycle_status?: ProductLifecycle;
     compression_gamma?: number | null;
+    previous_product_id?: string | null;
   }
 ): Promise<{ error?: string }> {
   await requireRole('admin', 'contributor');
@@ -170,6 +177,25 @@ export async function saveBreakerzBets(
     return { saved };
   } catch (err) {
     return { saved: 0, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
+// Pre-release baseline — synthesize pre_release_base_ev per player from last
+// cycle + comps (docs/plans/2026-08-14-pre-release-pricing.md). `write=false`
+// previews (compute only); `write=true` persists. Idempotent + re-runnable.
+export async function buildPreReleaseBaseline(
+  productId: string,
+  write: boolean,
+): Promise<{ result?: BaselineResult; written?: number; error?: string }> {
+  await requireRole('admin', 'contributor');
+  try {
+    const result = await computePreReleaseBaselines(productId);
+    if (!write) return { result };
+    const written = await writePreReleaseBaselines(result.rows);
+    revalidatePath(`/admin/products/${productId}`);
+    return { result, written };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Unknown error' };
   }
 }
 

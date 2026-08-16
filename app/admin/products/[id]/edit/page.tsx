@@ -16,13 +16,23 @@ async function getSports(): Promise<Sport[]> {
   return data ?? [];
 }
 
+// Lightweight list for the "prior-cycle product" picker (pre-release baseline).
+async function getProductOptions(): Promise<{ id: string; name: string; year: string | null }[]> {
+  const { data } = await supabaseAdmin
+    .from('products')
+    .select('id, name, year')
+    .order('year', { ascending: false })
+    .order('name');
+  return data ?? [];
+}
+
 export default async function EditProductPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [product, sports] = await Promise.all([getProduct(id), getSports()]);
+  const [product, sports, productOptions] = await Promise.all([getProduct(id), getSports(), getProductOptions()]);
 
   if (!product) notFound();
 
@@ -75,7 +85,7 @@ export default async function EditProductPage({
       >
         <div className="h-1" style={{ background: 'var(--gradient-blue)' }} />
         <div className="p-6">
-          <ProductForm sports={sports} product={product} />
+          <ProductForm sports={sports} product={product} productOptions={productOptions.filter(p => p.id !== id)} />
         </div>
       </div>
 

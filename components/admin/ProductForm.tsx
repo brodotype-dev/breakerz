@@ -11,6 +11,8 @@ interface Props {
   sports: Sport[];
   product?: Product;
   onSaved?: (id: string) => void;
+  // Other products for the "prior-cycle product" picker (pre-release baseline).
+  productOptions?: { id: string; name: string; year: string | null }[];
 }
 
 const MANUFACTURERS = [
@@ -133,7 +135,7 @@ function FormSelect({
   );
 }
 
-export default function ProductForm({ sports, product, onSaved }: Props) {
+export default function ProductForm({ sports, product, onSaved, productOptions = [] }: Props) {
   const [sportId, setSportId] = useState(product?.sport_id ?? '');
   // If the product's existing manufacturer isn't in our list, treat it as "Other"
   const existingMfr = product?.manufacturer ?? '';
@@ -160,6 +162,8 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
   // Per-product compression exponent (market-compression markup). Blank → global
   // default. <1 compress (commodity), 1 flat, >1 amplify (premium w/ singular chase).
   const [compressionGamma, setCompressionGamma] = useState(product?.compression_gamma?.toString() ?? '');
+  // Prior-cycle product — baseline source for non-rookie pre-release pricing.
+  const [previousProductId, setPreviousProductId] = useState(product?.previous_product_id ?? '');
   const [setSearchQuery, setSetSearchQuery] = useState('');
   const [setSearchResults, setSetSearchResults] = useState<CHSetResult[]>([]);
   const [setSearching, setSetSearching] = useState(false);
@@ -284,6 +288,7 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
       is_active: targetIsActive,
       lifecycle_status: lifecycleStatus,
       compression_gamma: compressionGamma.trim() ? parseFloat(compressionGamma) : null,
+      previous_product_id: previousProductId || null,
     };
 
     const result = product
@@ -516,6 +521,12 @@ export default function ProductForm({ sports, product, onSaved }: Props) {
             type="number"
             mono
           />
+          <FormSelect label="Prior-cycle product" value={previousProductId} onChange={setPreviousProductId}>
+            <option value="">— none (uses 90d comp) —</option>
+            {productOptions.map(p => (
+              <option key={p.id} value={p.id}>{p.year ? `${p.year} · ` : ''}{p.name}</option>
+            ))}
+          </FormSelect>
           <FormInput
             label="Release Date"
             hint="(used for pre-release banner)"
