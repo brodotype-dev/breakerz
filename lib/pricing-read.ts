@@ -95,3 +95,46 @@ export async function loadCached(productId: string): Promise<PlayerWithPricing[]
     { revalidate: 30, tags: [`pricing-${productId}`] },
   )();
 }
+
+// Pre-release Phase 2 — build the same PlayerWithPricing rows as loadCached, but
+// with EV from the synthesized `pre_release_base_ev` (there's no pricing_cache
+// for an unreleased product). Feeds the same slot-pricing engine, so sentiment
+// (breakerz_score) + compression apply. Only slot-eligible players with a
+// baseline are included. See docs/plans/2026-08-14-pre-release-pricing.md.
+async function loadPreReleaseBaselineRaw(productId: string): Promise<PlayerWithPricing[]> {
+  const { data: playerProducts, error } = await supabaseAdmin
+    .from('player_products')
+    .select('*, player:players(*), buzz_score, breakerz_score, c_score')
+    .eq('product_id', productId)
+    .eq('insert_only', false)
+    .order('id');
+  if (error) throw error;
+  if (!playerProducts?.length) return [];
+
+  // Return the FULL roster (so PreReleaseLayout still shows every player). A
+  // player with a baseline gets EV from it + source 'pre_release_baseline';
+  // one without stays evMid=0 / 'none' (exactly like the old loadCached path
+  // for pre-release). The board self-gates on "any baseline present".
+  return playerProducts.map(pp => {
+    const hasBaseline = pp.pre_release_base_ev != null && Number(pp.pre_release_base_ev) > 0;
+    const evMid = hasBaseline ? Number(pp.pre_release_base_ev) : 0;
+    return {
+      ...pp,
+      is_high_volatility: pp.player?.is_high_volatility ?? false,
+      evLow: evMid, evMid, evHigh: evMid,
+      hobbyEVPerBox: evMid,
+      hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
+      totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
+      pricingSource: hasBaseline ? ('pre_release_baseline' as const) : ('none' as const),
+      confidence: null,
+    };
+  });
+}
+
+export async function loadPreReleaseBaseline(productId: string): Promise<PlayerWithPricing[]> {
+  return unstable_cache(
+    () => loadPreReleaseBaselineRaw(productId),
+    ['pre-release-baseline-read', productId],
+    { revalidate: 30, tags: [`pricing-${productId}`] },
+  )();
+}

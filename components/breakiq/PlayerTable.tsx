@@ -152,7 +152,7 @@ export default function PlayerTable({
               const unpriced = row.pricingSource === 'none';
               const score = computeEffectiveScore(row.buzz_score, row.breakerz_score, row.player?.is_icon ?? false);
               const playerFlags = riskFlagMap.get(row.id) ?? [];
-              const isEstimated = row.pricingSource === 'search-fallback' || row.pricingSource === 'cross-product' || row.pricingSource === 'default';
+              const isEstimated = row.pricingSource === 'search-fallback' || row.pricingSource === 'cross-product' || row.pricingSource === 'default' || row.pricingSource === 'pre_release_baseline';
               // Bucket CH confidence into named tiers (Strong/Solid/Stale/Cold).
               // Skipped on fallback-priced rows since they don't have a modeled
               // confidence — the `est` chip already signals that case.

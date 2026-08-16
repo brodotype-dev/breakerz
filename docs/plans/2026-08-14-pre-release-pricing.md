@@ -40,8 +40,8 @@ No prior cycle (they're new). Use the **rank-tiered floor** ([lib/pre-release-ba
 - Schema above.
 - Admin action **"Build pre-release baseline"** on the pre-release product page: for each roster player → rookie ? floor : (previous-cycle value ?? `raw_avg_90d`) × trend → write `pre_release_base_ev`. Idempotent, re-runnable. Shows a preview table (player · baseline · source) before writing.
 
-**Phase 2 — priced pre-release board (the payoff).**
-- When `pre_release_base_ev` is populated, feed it into the slot-pricing engine as the player's EV and render the **real slot board** (reuse `TeamSlotsTable` / `PlayerTable`) on the pre-release page, **shown alongside** the existing chase/hype layout (decision #3 — both).
+**Phase 2 — priced pre-release board (the payoff). ✅ SHIPPED 2026-08-14.**
+- `loadPreReleaseBaseline` ([lib/pricing-read.ts](../../lib/pricing-read.ts)) builds the same `PlayerWithPricing` rows as `loadCached` but with EV from `pre_release_base_ev` (`pricingSource: 'pre_release_baseline'`); the break-page loader picks it for pre-release products. `BreakPageClient` renders a **"Projected Slot Pricing"** board (`TeamSlotsTable` / `PlayerTable`, teams/players toggle) **below the chase layout** — self-gating on "any baseline present," so a product with no baseline is byte-for-byte unchanged.
 - Sentiment (`breakerz_score` via the Roster editor) modulates it; compression + per-product γ reshape the display. **All existing machinery, no new pricing code.**
 - **No feature flag** (decision #4) — this is the standard pre-release surface. It only renders when a baseline exists, so it's self-gating: no baseline built → no board, exactly as today.
 

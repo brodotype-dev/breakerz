@@ -245,7 +245,7 @@ export interface PlayerWithPricing extends PlayerProduct {
   bdPerCase: number;
   jumboPerCase: number;
   maxPay: number;
-  pricingSource: 'live' | 'cached' | 'search-fallback' | 'cross-product' | 'default' | 'none';
+  pricingSource: 'live' | 'cached' | 'search-fallback' | 'cross-product' | 'default' | 'pre_release_baseline' | 'none';
   // CH batch-price-estimate confidence (0..1), sales-weighted across the
   // priced variants for this player_product. null when the row was built from
   // a fallback rung (search/sibling/default) — those don't have a modeled
