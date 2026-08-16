@@ -30,7 +30,7 @@
 
 import { unstable_cache } from 'next/cache';
 import { supabaseAdmin } from './supabase';
-import { loadCached } from './pricing-read';
+import { loadCached, loadPreReleaseBaseline } from './pricing-read';
 import { computeRiskAdjustment, computeHypeAdjustment, type HypeObservation } from './score-modulation';
 import { computeProspectAdjustment } from './prospect-score';
 import { isFeatureFlagEnabled, PROSPECT_RANK_FLAG } from './feature-flags';
@@ -99,8 +99,13 @@ async function loadBreakPageDataRaw(product: ProductWithSport): Promise<BreakPag
 
   // Phase 1 — pricing + chase cards in parallel. Pricing comes from the
   // shared 30s cache; chase cards are a direct DB read.
+  // Pre-release products have no pricing_cache — source EV from the synthesized
+  // baseline instead (Phase 2). Live/dormant use the real cache.
+  const loadPlayers = product.lifecycle_status === 'pre_release'
+    ? loadPreReleaseBaseline(productId)
+    : loadCached(productId);
   const [players, chaseRes] = await Promise.all([
-    loadCached(productId),
+    loadPlayers,
     supabaseAdmin
       .from('product_chase_cards')
       .select('*, player_product:player_products(*, player:players(*))')

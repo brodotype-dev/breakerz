@@ -168,17 +168,74 @@ export default function BreakPageClient({ product, dataPromise, compressionGamma
 
   // ─── PRE-RELEASE PATH ─────────────────────────────────────────────────
   if (isPreRelease) {
+    // Phase 2: when a baseline exists (players sourced from pre_release_base_ev),
+    // render a projected slot board ALONGSIDE the chase/hype layout. Sentiment
+    // (via computeSlotPricing) + market markup + compression all apply. No
+    // baseline → just the chase layout, exactly as before (self-gating).
+    const hasBoard = players.some(p => p.pricingSource === 'pre_release_baseline');
     return (
-      <PreReleaseLayout
-        product={product}
-        chaseCards={chaseCards}
-        players={rawPlayers}
-        riskFlagMap={riskFlagMap}
-        hypeObs={hypeObsRows}
-        askingPriceObs={askingPriceObsRows}
-        sportPrimary={primary}
-        sportGradient={gradient}
-      />
+      <div className="space-y-5">
+        <PreReleaseLayout
+          product={product}
+          chaseCards={chaseCards}
+          players={rawPlayers}
+          riskFlagMap={riskFlagMap}
+          hypeObs={hypeObsRows}
+          askingPriceObs={askingPriceObsRows}
+          sportPrimary={primary}
+          sportGradient={gradient}
+        />
+
+        {hasBoard && (
+          <div className="space-y-3">
+            <div>
+              <h2 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Projected Slot Pricing</h2>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-t-secondary)' }}>
+                Estimated from last cycle + our read — there are no live sales yet. Refines to real pricing the moment the product releases. Our sentiment and market shaping are already baked in.
+              </p>
+            </div>
+            <div className="flex gap-1">
+              {(['teams', 'players'] as const).map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
+                  style={
+                    activeTab === tab
+                      ? { backgroundColor: 'rgba(59,130,246,0.15)', color: 'var(--accent-blue)' }
+                      : { color: 'var(--text-t-secondary)', border: '1px solid var(--terminal-border)' }
+                  }
+                >
+                  {tab === 'teams' ? 'Teams' : 'Players'}
+                </button>
+              ))}
+            </div>
+            {activeTab === 'teams' ? (
+              <TeamSlotsTable
+                teams={teamSlots}
+                viewFormat={viewFormat}
+                riskFlagMap={riskFlagMap}
+                productId={product.id}
+                marketMarkup={getMarketMarkup(lifecycle)}
+                compressionGamma={compressionGamma}
+                askObservations={askObservationsByTeam}
+                targetComposition={targetComposition}
+              />
+            ) : (
+              <PlayerTable
+                players={players}
+                viewFormat={viewFormat}
+                riskFlagMap={riskFlagMap}
+                productId={product.id}
+                marketMarkup={getMarketMarkup(lifecycle)}
+                compressionGamma={compressionGamma}
+                pypByPlayerProductId={pypTable.byPlayerProductId}
+                showPyp={pypTable.oddsCoverageOk}
+              />
+            )}
+          </div>
+        )}
+      </div>
     );
   }
 
