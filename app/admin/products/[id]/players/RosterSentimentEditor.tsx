@@ -4,7 +4,7 @@ import { useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, X, Download, Upload, FileDown } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { saveBreakerzBets } from '../../actions';
+import { saveBreakerzBets, saveEvOverrides } from '../../actions';
 
 // Per-product pre-release sentiment editor. Writes player_products.breakerz_score
 // (+ breakerz_note) — the per-product subjective layer the engine already reads
@@ -21,7 +21,15 @@ export interface SentimentRow {
   insertOnly: boolean;
   score: number;
   note: string;
+  // Manual base-EV override ($). null = none. Flows through markup/compression
+  // at render, so the slot price ends up above this number. See lib/ev-override.ts.
+  evOverride: number | null;
+  // Modeled EV (pricing_cache.ev_mid, or pre-release baseline) — context shown
+  // as the override input's placeholder.
+  modeledEvMid: number | null;
 }
+
+type EditState = { score: number; note: string; evOverride: number | null };
 
 // Same pill ladder as the Insights Debrief so the two surfaces feel identical.
 // CSV import accepts any numeric value (e.g. +0.2) for finer control.
@@ -46,12 +54,12 @@ export default function RosterSentimentEditor({ productId, players }: Props) {
   const router = useRouter();
   // Original values keyed by ppId — the baseline we diff against for "changed".
   const original = useMemo(() => {
-    const m = new Map<string, { score: number; note: string }>();
-    for (const p of players) m.set(p.playerProductId, { score: p.score, note: p.note });
+    const m = new Map<string, EditState>();
+    for (const p of players) m.set(p.playerProductId, { score: p.score, note: p.note, evOverride: p.evOverride });
     return m;
   }, [players]);
 
-  const [edits, setEdits] = useState<Map<string, { score: number; note: string }>>(
+  const [edits, setEdits] = useState<Map<string, EditState>>(
     () => new Map(original),
   );
   const [search, setSearch] = useState('');
@@ -70,22 +78,29 @@ export default function RosterSentimentEditor({ productId, players }: Props) {
     [players],
   );
 
-  function edit(ppId: string, patch: Partial<{ score: number; note: string }>) {
+  function edit(ppId: string, patch: Partial<EditState>) {
     setEdits(prev => {
       const next = new Map(prev);
-      const cur = next.get(ppId) ?? { score: 0, note: '' };
+      const cur = next.get(ppId) ?? { score: 0, note: '', evOverride: null };
       next.set(ppId, { ...cur, ...patch });
       return next;
     });
     setSavedNote(null);
   }
 
-  const isChanged = (ppId: string) => {
+  const sentimentChanged = (ppId: string) => {
     const o = original.get(ppId);
     const e = edits.get(ppId);
     if (!o || !e) return false;
     return o.score !== e.score || (o.note ?? '') !== (e.note ?? '');
   };
+  const overrideChanged = (ppId: string) => {
+    const o = original.get(ppId);
+    const e = edits.get(ppId);
+    if (!o || !e) return false;
+    return (o.evOverride ?? null) !== (e.evOverride ?? null);
+  };
+  const isChanged = (ppId: string) => sentimentChanged(ppId) || overrideChanged(ppId);
 
   const changedIds = useMemo(
     () => players.filter(p => isChanged(p.playerProductId)).map(p => p.playerProductId),
@@ -109,19 +124,36 @@ export default function RosterSentimentEditor({ productId, players }: Props) {
     if (changedIds.length === 0) return;
     setSaving(true);
     setSavedNote(null);
-    const updates = changedIds.map(ppId => {
-      const e = edits.get(ppId)!;
-      return { playerProductId: ppId, score: e.score, note: e.note ?? '' };
-    });
-    const res = await saveBreakerzBets(productId, updates);
+
+    // Sentiment (breakerz_score/note) and EV overrides are separate columns
+    // with separate write paths — split the changed rows and save both.
+    const sentimentUpdates = changedIds
+      .filter(sentimentChanged)
+      .map(ppId => {
+        const e = edits.get(ppId)!;
+        return { playerProductId: ppId, score: e.score, note: e.note ?? '' };
+      });
+    const overrideUpdates = changedIds
+      .filter(overrideChanged)
+      .map(ppId => ({ playerProductId: ppId, value: edits.get(ppId)!.evOverride }));
+
+    const [sentimentRes, overrideRes] = await Promise.all([
+      sentimentUpdates.length ? saveBreakerzBets(productId, sentimentUpdates) : Promise.resolve({ saved: 0 as number, error: undefined as string | undefined }),
+      overrideUpdates.length ? saveEvOverrides(productId, overrideUpdates) : Promise.resolve({ saved: 0 as number, error: undefined as string | undefined }),
+    ]);
     setSaving(false);
-    if (res.error) {
-      setSavedNote(`Error: ${res.error}`);
+
+    const err = sentimentRes.error || overrideRes.error;
+    if (err) {
+      setSavedNote(`Error: ${err}`);
       return;
     }
     // Fold saved edits into the baseline so they're no longer "changed".
     for (const ppId of changedIds) original.set(ppId, { ...edits.get(ppId)! });
-    setSavedNote(`Saved ${res.saved} player${res.saved === 1 ? '' : 's'}. Pricing reflects it on next refresh.`);
+    const parts: string[] = [];
+    if (sentimentUpdates.length) parts.push(`${sentimentUpdates.length} sentiment`);
+    if (overrideUpdates.length) parts.push(`${overrideUpdates.length} override${overrideUpdates.length === 1 ? '' : 's'}`);
+    setSavedNote(`Saved ${parts.join(' + ')}. Overrides apply now; sentiment on next refresh.`);
     router.refresh();
   }
 
@@ -200,7 +232,7 @@ export default function RosterSentimentEditor({ productId, players }: Props) {
         <div>
           <h2 className="text-sm font-semibold">Roster Sentiment</h2>
           <p className="text-xs text-muted-foreground">
-            Per-product ± score per player (pre-release hype / fade). Feeds the pricing engine directly.
+            Per-product ± sentiment (pre-release hype / fade) and a manual base-EV override per player. Both feed the pricing engine directly — overrides apply immediately, sentiment on the next refresh.
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -332,12 +364,13 @@ export default function RosterSentimentEditor({ productId, players }: Props) {
               <TableHead>Player</TableHead>
               <TableHead className="w-[130px]">Team</TableHead>
               <TableHead className="w-[300px]">Sentiment</TableHead>
+              <TableHead className="w-[150px]">EV Override</TableHead>
               <TableHead>Note</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.map(p => {
-              const e = edits.get(p.playerProductId) ?? { score: 0, note: '' };
+              const e = edits.get(p.playerProductId) ?? { score: 0, note: '', evOverride: null };
               const changed = isChanged(p.playerProductId);
               return (
                 <TableRow
@@ -381,6 +414,30 @@ export default function RosterSentimentEditor({ productId, players }: Props) {
                           </button>
                         );
                       })}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div
+                      className="flex items-center gap-1 rounded-md px-2 h-8"
+                      style={{
+                        border: '1px solid var(--terminal-border)',
+                        backgroundColor: e.evOverride != null ? 'rgba(59,130,246,0.08)' : 'transparent',
+                      }}
+                    >
+                      <span className="text-xs text-muted-foreground">$</span>
+                      <input
+                        type="number"
+                        min="1"
+                        inputMode="numeric"
+                        value={e.evOverride ?? ''}
+                        onChange={ev => {
+                          const v = ev.target.value.trim();
+                          edit(p.playerProductId, { evOverride: v === '' ? null : Number(v) });
+                        }}
+                        placeholder={p.modeledEvMid != null ? `model ${Math.round(p.modeledEvMid)}` : 'model —'}
+                        title={p.modeledEvMid != null ? `Model EV: $${Math.round(p.modeledEvMid)}. Override flows through markup + compression, so the slot price ends up higher.` : 'No modeled EV yet. Override flows through markup + compression.'}
+                        className="w-full bg-transparent border-0 outline-none text-sm font-mono placeholder:text-muted-foreground placeholder:font-sans [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
                     </div>
                   </TableCell>
                   <TableCell>
