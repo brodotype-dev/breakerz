@@ -69,14 +69,28 @@ access only), no functions (no NOTIFY):
 
 ## Admin UX
 
-"EV Overrides" section on `/admin/products/[id]`
-([EvOverridesManager.tsx](../../app/admin/products/%5Bid%5D/EvOverridesManager.tsx)),
-placed right after Pricing Anchor Strategy. Debounced player search (scoped to
-the product's roster) → enter base EV + optional note + who set it → Save.
-Active overrides list shows the override next to the current modeled EV
-(`$350` vs `model $121`) with a Clear button. API:
-[app/api/admin/ev-overrides/route.ts](../../app/api/admin/ev-overrides/route.ts)
-(GET list+search / POST set / DELETE clear; `checkRole('admin','contributor')`).
+An **EV Override column** on the **Roster Sentiment** grid
+([RosterSentimentEditor.tsx](../../app/admin/products/%5Bid%5D/players/RosterSentimentEditor.tsx),
+`/admin/products/[id]/players`) — the per-player surface that already carries the
+sentiment ± lever, has search / team-filter / slot-eligible controls, and states
+"feeds the pricing engine directly." A per-row `$` input sits next to Sentiment;
+the modeled EV shows as the placeholder (`model 121`) for context, and blanking
+the field clears the override. The grid's single **Save all** persists both
+levers: `saveBreakerzBets` for changed sentiment rows and the new
+`saveEvOverrides` for changed override rows ([actions.ts](../../app/admin/products/actions.ts),
+`checkRole('admin','contributor')`), run in parallel. Overrides apply
+immediately (read-time); sentiment reflects on the next refresh.
+
+> **Design note (2026-08-16):** the first cut shipped a standalone "EV Overrides"
+> section with its own player-search picker on the product **dashboard**
+> (`EvOverridesManager.tsx` + `/api/admin/ev-overrides`). Brody flagged the
+> Roster Sentiment grid as the natural home — one per-player surface, no second
+> search UI. Moved onto the grid; the dashboard section + its component + route
+> were deleted.
+
+CSV Template / Export / Import on that grid stay **sentiment-only** for now —
+the override is set inline. Adding it to the CSV round-trip is a possible
+follow-up (needs a column added to the positional import parser).
 
 ## Consumer transparency
 

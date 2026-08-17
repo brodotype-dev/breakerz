@@ -13,7 +13,6 @@ import BreakIQBetsDebrief from './BreakIQBetsDebrief';
 import BreakerComparisonPanel from './BreakerComparisonPanel';
 import PricingBreakdownPanel from './PricingBreakdownPanel';
 import ChaseCardsManager from './ChaseCardsManager';
-import EvOverridesManager from './EvOverridesManager';
 import BuildBaselineButton from './BuildBaselineButton';
 import WaxstatPanel from './WaxstatPanel';
 import { getLatestWaxstatSnapshots } from '@/lib/waxstat-importer';
@@ -582,12 +581,6 @@ export default async function ProductDashboardPage({ params }: PageProps) {
             </div>
             <ActionLink href={`/admin/products/${id}/anchor-config`} label="Configure →" />
           </div>
-        </Section>
-
-        {/* Per-player manual EV override — set a base EV for a player the model
-            mis-prices. Applied at read time; markup + compression still layer on. */}
-        <Section title="EV Overrides" accent="linear-gradient(135deg, #f59e0b 0%, #3b82f6 100%)">
-          <EvOverridesManager productId={id} />
         </Section>
 
         {/* Odds upload */}

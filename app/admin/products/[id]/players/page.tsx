@@ -31,6 +31,20 @@ export default async function AdminPlayersPage({ params }: PageProps) {
 
   const playerProducts = playerProductsRaw ?? [];
 
+  // Modeled EV per player_product (pricing_cache.ev_mid) — shown as context
+  // next to the override input ("model $121"). Falls back to the pre-release
+  // baseline for unreleased products. Chunked .in() (gotcha #11).
+  const ppIds = playerProducts.map(pp => pp.id);
+  const modeledEvById = new Map<string, number>();
+  for (let i = 0; i < ppIds.length; i += 200) {
+    const slice = ppIds.slice(i, i + 200);
+    const { data } = await supabaseAdmin
+      .from('pricing_cache')
+      .select('player_product_id, ev_mid')
+      .in('player_product_id', slice);
+    for (const c of data ?? []) if (c.ev_mid != null) modeledEvById.set(c.player_product_id, c.ev_mid);
+  }
+
   // Player-global attributes (icon / HV / risk flags) moved to /admin/players
   // in the 2026-06-02 re-model — this page is now the product roster only.
   const players: PlayerRow[] = playerProducts
@@ -60,6 +74,8 @@ export default async function AdminPlayersPage({ params }: PageProps) {
       insertOnly: !!pp.insert_only,
       score: pp.breakerz_score ?? 0,
       note: pp.breakerz_note ?? '',
+      evOverride: pp.ev_override != null ? Number(pp.ev_override) : null,
+      modeledEvMid: modeledEvById.get(pp.id) ?? (pp.pre_release_base_ev != null ? Number(pp.pre_release_base_ev) : null),
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 
