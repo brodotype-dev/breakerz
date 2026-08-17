@@ -434,9 +434,9 @@ export default function RosterSentimentEditor({ productId, players }: Props) {
                           const v = ev.target.value.trim();
                           edit(p.playerProductId, { evOverride: v === '' ? null : Number(v) });
                         }}
-                        placeholder={p.modeledEvMid != null ? `model ${Math.round(p.modeledEvMid)}` : 'model —'}
-                        title={p.modeledEvMid != null ? `Model EV: $${Math.round(p.modeledEvMid)}. Override flows through markup + compression, so the slot price ends up higher.` : 'No modeled EV yet. Override flows through markup + compression.'}
-                        className="w-full bg-transparent border-0 outline-none text-sm font-mono placeholder:text-muted-foreground placeholder:font-sans [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        placeholder={p.modeledEvMid != null ? `${Math.round(p.modeledEvMid)}` : '—'}
+                        title={p.modeledEvMid != null ? `Current model EV: $${Math.round(p.modeledEvMid)}. Override flows through markup + compression, so the slot price ends up higher.` : 'No modeled EV yet. Override flows through markup + compression.'}
+                        className="w-full bg-transparent border-0 outline-none text-sm font-mono placeholder:text-muted-foreground [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                     </div>
                   </TableCell>
