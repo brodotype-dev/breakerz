@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, X, Download, Upload } from 'lucide-react';
+import { Search, X, Download, Upload, FileDown } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { saveBreakerzBets } from '../../actions';
 
@@ -142,8 +142,28 @@ export default function RosterSentimentEditor({ productId, players }: Props) {
     URL.revokeObjectURL(url);
   }
 
-  // Paste "player,score,note" rows — matched to the roster by exact
-  // (case-insensitive) name. Numeric score can be any value (e.g. 0.2).
+  // Blank fill-in template: every slot-eligible player with team, empty score +
+  // note. Fill it offline, then paste/upload back through Import CSV.
+  function downloadTemplate() {
+    const rows = [['player', 'team', 'score', 'note']];
+    for (const p of players) {
+      if (p.insertOnly) continue;
+      rows.push([p.name, p.team, '', '']);
+    }
+    const csv = rows
+      .map(r => r.map(c => (/[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(','))
+      .join('\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    const a = linkRef.current!;
+    a.href = url;
+    a.download = 'roster-sentiment-template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Paste/upload rows — matched to the roster by exact (case-insensitive) name.
+  // Accepts BOTH the template/export shape "player,team,score,note" and the
+  // shorthand "player,score,note". Numeric score can be any value (e.g. 0.2).
   function applyImport() {
     const byName = new Map(players.map(p => [p.name.trim().toLowerCase(), p]));
     let matched = 0;
@@ -153,8 +173,14 @@ export default function RosterSentimentEditor({ productId, players }: Props) {
       if (!line || /^player\s*,/i.test(line)) continue;
       const parts = line.split(',');
       const name = parts[0]?.trim();
-      const score = parseFloat(parts[1] ?? '');
-      const note = parts.slice(2).join(',').trim();
+      // "player,score,note": parts[1] is the score. "player,team,score,note"
+      // (template/export): parts[1] is a non-numeric team, so score is parts[2].
+      let score = parseFloat(parts[1] ?? '');
+      let note = parts.slice(2).join(',').trim();
+      if (Number.isNaN(score) && parts.length >= 3) {
+        score = parseFloat(parts[2] ?? '');
+        note = parts.slice(3).join(',').trim();
+      }
       if (!name || Number.isNaN(score)) continue;
       const p = byName.get(name.toLowerCase());
       if (!p) { unmatched.push(name); continue; }
@@ -179,9 +205,18 @@ export default function RosterSentimentEditor({ productId, players }: Props) {
         </div>
         <div className="flex items-center gap-2">
           <button
+            onClick={downloadTemplate}
+            className="flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-medium hover:bg-[var(--terminal-surface-hover)]"
+            style={{ border: '1px solid var(--terminal-border)', color: 'var(--text-secondary)' }}
+            title="Blank fill-in template — every slot-eligible player, empty score/note"
+          >
+            <FileDown className="w-3.5 h-3.5" /> Template
+          </button>
+          <button
             onClick={exportCsv}
             className="flex items-center gap-1.5 h-9 px-3 rounded-lg text-xs font-medium hover:bg-[var(--terminal-surface-hover)]"
             style={{ border: '1px solid var(--terminal-border)', color: 'var(--text-secondary)' }}
+            title="Export current scores"
           >
             <Download className="w-3.5 h-3.5" /> Export CSV
           </button>
@@ -201,13 +236,23 @@ export default function RosterSentimentEditor({ productId, players }: Props) {
           style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
         >
           <p className="text-xs text-muted-foreground">
-            Paste rows as <code>player,score,note</code> (one per line). Matched by name; unmatched are reported. Score can be any number.
+            Upload the filled <b>Template</b> (or paste rows). Accepts <code>player,team,score,note</code> or <code>player,score,note</code>, one per line — matched by name; unmatched are reported. Score can be any number.
           </p>
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            onChange={async e => {
+              const f = e.target.files?.[0];
+              if (f) setImportText(await f.text());
+              e.target.value = '';
+            }}
+            className="text-xs"
+          />
           <textarea
             value={importText}
             onChange={e => setImportText(e.target.value)}
             rows={5}
-            placeholder={'Cooper Flagg,0.5,singular chase\nDylan Harper,0.25,'}
+            placeholder={'Cooper Flagg,Dallas Mavericks,0.5,singular chase\nDylan Harper,San Antonio Spurs,0.25,'}
             className="w-full rounded-md p-2 text-sm font-mono bg-transparent outline-none"
             style={{ border: '1px solid var(--terminal-border)' }}
           />
