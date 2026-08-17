@@ -6,6 +6,7 @@ import { computeRiskAdjustment, computeHypeAdjustment, type HypeObservation, typ
 import { computeProspectAdjustment } from '@/lib/prospect-score';
 import { isFeatureFlagEnabled, PROSPECT_RANK_FLAG } from '@/lib/feature-flags';
 import { computeFallbackBaseEV } from '@/lib/pre-release-base-ev';
+import { evOverrideFor } from '@/lib/ev-override';
 import {
   loadCascadeObservations,
   filterObservationsForPlayer,
@@ -136,6 +137,21 @@ export async function runBreakAnalysis(input: AnalysisInput): Promise<AnalysisRe
 
   const rawPlayers: PlayerWithPricing[] = await Promise.all(
     playerProducts.map(async pp => {
+      // Manual override wins over cache + live-fetch. Skip all CH work.
+      const override = evOverrideFor(pp);
+      if (override) {
+        return {
+          ...pp,
+          evLow: override.evLow, evMid: override.evMid, evHigh: override.evHigh,
+          hobbyEVPerBox: override.evMid,
+          hobbyWeight: 0, bdWeight: 0, jumboWeight: 0,
+          hobbySlotCost: 0, bdSlotCost: 0, jumboSlotCost: 0,
+          totalCost: 0,
+          hobbyPerCase: 0, bdPerCase: 0, jumboPerCase: 0,
+          maxPay: 0,
+          pricingSource: 'override' as const,
+        };
+      }
       const c = cacheMap.get(pp.id);
       if (c) {
         return {

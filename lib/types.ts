@@ -183,6 +183,14 @@ export interface PlayerProduct {
   // non-rookies, rank-tiered floor for rookies). Modulated by breakerz_score.
   // Superseded by pricing_cache once live. See docs/plans/2026-08-14-pre-release-pricing.md.
   pre_release_base_ev: number | null;
+  // Manual base-EV override (Kyle/Brody) for a player the model mis-prices.
+  // NULL = use modeled EV. Applied at read time via lib/ev-override.ts; flows
+  // through markup / compression / pool weighting at render. See
+  // docs/plans/2026-08-16-ev-override.md.
+  ev_override: number | null;
+  ev_override_note: string | null;
+  ev_override_set_by: string | null;
+  ev_override_set_at: string | null;
   // LEGACY (2026-06-02): HV moved to players.is_high_volatility. This column
   // still exists during the transition deploy but read sites source HV off the
   // player join. Dropped in the cleanup migration.
@@ -245,7 +253,7 @@ export interface PlayerWithPricing extends PlayerProduct {
   bdPerCase: number;
   jumboPerCase: number;
   maxPay: number;
-  pricingSource: 'live' | 'cached' | 'search-fallback' | 'cross-product' | 'default' | 'pre_release_baseline' | 'none';
+  pricingSource: 'live' | 'cached' | 'search-fallback' | 'cross-product' | 'default' | 'pre_release_baseline' | 'override' | 'none';
   // CH batch-price-estimate confidence (0..1), sales-weighted across the
   // priced variants for this player_product. null when the row was built from
   // a fallback rung (search/sibling/default) — those don't have a modeled

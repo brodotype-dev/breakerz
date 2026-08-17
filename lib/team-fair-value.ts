@@ -16,6 +16,7 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import { computeSlotPricing, computeTeamSlotPricing } from '@/lib/engine';
 import { getMarketMarkup } from '@/lib/market-markup';
+import { evOverrideFor } from '@/lib/ev-override';
 import type { BreakConfig, PlayerWithPricing, ProductLifecycle } from '@/lib/types';
 
 export interface TeamFairValue {
@@ -85,21 +86,24 @@ export async function getTeamFairValuesForProduct(productId: string): Promise<Pr
   // not a replacement for the consumer page itself.
   const players: PlayerWithPricing[] = pps.map(pp => {
     const c = cacheMap.get(pp.id);
-    const evMid = c?.ev_mid ?? 0;
+    // Manual override wins so the admin Δ-vs-model column reflects what the
+    // consumer break page actually shows.
+    const override = evOverrideFor(pp);
+    const evMid = override?.evMid ?? c?.ev_mid ?? 0;
     return {
       ...pp,
       // HV is player-global now (2026-06-02 re-model) — read off the player.
       is_high_volatility: pp.player?.is_high_volatility ?? false,
-      evLow: c?.ev_low ?? 0,
+      evLow: override?.evLow ?? c?.ev_low ?? 0,
       evMid,
-      evHigh: c?.ev_high ?? 0,
+      evHigh: override?.evHigh ?? c?.ev_high ?? 0,
       hobbyEVPerBox: evMid,
       hobbyWeight: 0, bdWeight: 0, jumboWeight: 0,
       hobbySlotCost: 0, bdSlotCost: 0, jumboSlotCost: 0,
       totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, jumboPerCase: 0,
       maxPay: 0,
-      pricingSource: c ? 'cached' : 'none',
-      confidence: c?.confidence ?? null,
+      pricingSource: override ? 'override' : c ? 'cached' : 'none',
+      confidence: override ? null : c?.confidence ?? null,
       risk_score_adj: 0,
       hype_score_adj: 0,
       prospect_score_adj: 0,
