@@ -180,6 +180,35 @@ export async function saveBreakerzBets(
   }
 }
 
+// Per-player-per-product manual EV override (docs/plans/2026-08-16-ev-override.md).
+// Bulk-save from the Roster Sentiment grid, alongside saveBreakerzBets. A null
+// value clears the override (and its attribution); a number sets it. Applied at
+// read time via lib/ev-override.ts — no pricing refresh needed.
+export async function saveEvOverrides(
+  productId: string,
+  updates: Array<{ playerProductId: string; value: number | null }>
+): Promise<{ saved: number; error?: string }> {
+  await requireRole('admin', 'contributor');
+  try {
+    let saved = 0;
+    for (const u of updates) {
+      const patch = u.value == null || !Number.isFinite(u.value) || u.value <= 0
+        ? { ev_override: null, ev_override_note: null, ev_override_set_by: null, ev_override_set_at: null }
+        : { ev_override: Math.round(u.value), ev_override_set_at: new Date().toISOString() };
+      const { error } = await supabaseAdmin
+        .from('player_products')
+        .update(patch)
+        .eq('id', u.playerProductId);
+      if (error) { console.error('saveEvOverrides update failed:', u.playerProductId, error); continue; }
+      saved++;
+    }
+    revalidatePath(`/admin/products/${productId}`);
+    return { saved };
+  } catch (err) {
+    return { saved: 0, error: err instanceof Error ? err.message : 'Unknown error' };
+  }
+}
+
 // Pre-release baseline — synthesize pre_release_base_ev per player from last
 // cycle + comps (docs/plans/2026-08-14-pre-release-pricing.md). `write=false`
 // previews (compute only); `write=true` persists. Idempotent + re-runnable.
