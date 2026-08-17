@@ -82,8 +82,11 @@ export default function WhyThisPriceCard({
   // contribution as a separate line. cached evMid already incorporates
   // lifecycleMath, so baseEv ≈ evMid / lifecycleMath. We only display this
   // when the multiplier is doing real work (≠ 1.0).
+  // Manual override: the base EV was set by hand (Kyle/Brody), not modeled from
+  // CH sales — and it's applied at read time, so no lifecycle math sits on top.
+  const isOverride = row.pricingSource === 'override';
   const baseEv = lifecycleMath > 0 ? row.evMid / lifecycleMath : row.evMid;
-  const showLifecycleLine = Math.abs(lifecycleMath - 1) > 0.001;
+  const showLifecycleLine = !isOverride && Math.abs(lifecycleMath - 1) > 0.001;
 
   const scoreRows = useMemo(() => {
     if (isIcon) {
@@ -179,9 +182,11 @@ export default function WhyThisPriceCard({
         {/* Baseline */}
         <Row
           label="Baseline EV (mid)"
-          detail={`CardHedger sales aggregate · raw → PSA 9 → PSA 10`}
+          detail={isOverride
+            ? 'Manual override — base EV set by BreakIQ'
+            : 'CardHedger sales aggregate · raw → PSA 9 → PSA 10'}
           value={formatCurrency(showLifecycleLine ? baseEv : row.evMid)}
-          valueColor="var(--text-primary)"
+          valueColor={isOverride ? 'var(--accent-blue)' : 'var(--text-primary)'}
         />
 
         {showLifecycleLine && (

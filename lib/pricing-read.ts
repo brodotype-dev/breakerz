@@ -22,6 +22,7 @@
 
 import { unstable_cache } from 'next/cache';
 import { supabaseAdmin } from './supabase';
+import { evOverrideFor } from './ev-override';
 import type { PlayerWithPricing } from './types';
 
 async function loadCachedRaw(productId: string): Promise<PlayerWithPricing[]> {
@@ -56,20 +57,23 @@ async function loadCachedRaw(productId: string): Promise<PlayerWithPricing[]> {
 
   const players: PlayerWithPricing[] = playerProducts.map(pp => {
     const c = cacheMap.get(pp.id);
-    const evMid = c?.ev_mid ?? 0;
+    // Manual override wins over the cached modeled EV. Flows through markup /
+    // compression / pool weighting at render like any base EV.
+    const override = evOverrideFor(pp);
+    const evMid = override?.evMid ?? c?.ev_mid ?? 0;
     return {
       ...pp,
       // HV is player-global now — source it off the player join, not the
       // legacy player_products column (2026-06-02 re-model).
       is_high_volatility: pp.player?.is_high_volatility ?? false,
-      evLow: c?.ev_low ?? 0,
+      evLow: override?.evLow ?? c?.ev_low ?? 0,
       evMid,
-      evHigh: c?.ev_high ?? 0,
+      evHigh: override?.evHigh ?? c?.ev_high ?? 0,
       hobbyEVPerBox: evMid,
       hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
       totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
-      pricingSource: c ? 'cached' as const : 'none' as const,
-      confidence: c?.confidence ?? null,
+      pricingSource: override ? 'override' as const : c ? 'cached' as const : 'none' as const,
+      confidence: override ? null : c?.confidence ?? null,
     };
   });
 
@@ -116,16 +120,19 @@ async function loadPreReleaseBaselineRaw(productId: string): Promise<PlayerWithP
   // one without stays evMid=0 / 'none' (exactly like the old loadCached path
   // for pre-release). The board self-gates on "any baseline present".
   return playerProducts.map(pp => {
+    // Manual override wins over the synthesized baseline. Derives a low/high
+    // band (0.35 / 2.5) so the pre-release board renders a sensible range.
+    const override = evOverrideFor(pp);
     const hasBaseline = pp.pre_release_base_ev != null && Number(pp.pre_release_base_ev) > 0;
-    const evMid = hasBaseline ? Number(pp.pre_release_base_ev) : 0;
+    const evMid = override?.evMid ?? (hasBaseline ? Number(pp.pre_release_base_ev) : 0);
     return {
       ...pp,
       is_high_volatility: pp.player?.is_high_volatility ?? false,
-      evLow: evMid, evMid, evHigh: evMid,
+      evLow: override?.evLow ?? evMid, evMid, evHigh: override?.evHigh ?? evMid,
       hobbyEVPerBox: evMid,
       hobbyWeight: 0, bdWeight: 0, hobbySlotCost: 0, bdSlotCost: 0,
       totalCost: 0, hobbyPerCase: 0, bdPerCase: 0, maxPay: 0,
-      pricingSource: hasBaseline ? ('pre_release_baseline' as const) : ('none' as const),
+      pricingSource: override ? ('override' as const) : hasBaseline ? ('pre_release_baseline' as const) : ('none' as const),
       confidence: null,
     };
   });
