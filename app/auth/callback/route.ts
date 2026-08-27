@@ -12,6 +12,13 @@ const supabaseUrl =
 const supabaseAnonKey =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? process.env.SUPABASE_ANON_KEY!;
 
+// Escape LIKE/ILIKE wildcards so a full-string ilike is a case-insensitive
+// EXACT match, not a pattern. Emails can contain `_` (a single-char wildcard),
+// which would otherwise over-match a different approved address.
+function escapeLike(s: string): string {
+  return s.replace(/([\\%_])/g, '\\$1');
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get('code');
@@ -81,18 +88,37 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
 
     if (!hasRole) {
-      if (!inviteCode) {
-        await supabase.auth.signOut();
-        return NextResponse.redirect(`${origin}/waitlist?error=missing_invite`);
+      // Access is granted by waitlist APPROVAL — keyed off EITHER a valid
+      // invite_code param OR the OAuth-verified email matching an approved
+      // waitlist row. The email fallback covers approved invitees who
+      // authenticate WITHOUT the code in the URL — e.g. from /auth/signin, a
+      // bookmark, or any flow where the code didn't round-trip. The email is
+      // provider-verified (Google/Discord), so an approved row for it is
+      // legitimate. Before this, a code-less flow was an automatic bounce even
+      // for approved users (the Ted Mann incident, 2026-08-27).
+      let invited = false;
+      if (inviteCode) {
+        const { data: entry } = await supabaseAdmin
+          .from('waitlist')
+          .select('id, status')
+          .eq('invite_code', inviteCode)
+          .maybeSingle();
+        invited = !!entry && entry.status === 'approved';
       }
-      const { data: entry } = await supabaseAdmin
-        .from('waitlist')
-        .select('id, status')
-        .eq('invite_code', inviteCode)
-        .maybeSingle();
-      if (!entry || entry.status !== 'approved') {
+      if (!invited && user.email) {
+        const { data: byEmail } = await supabaseAdmin
+          .from('waitlist')
+          .select('id, status')
+          .ilike('email', escapeLike(user.email))
+          .maybeSingle();
+        // approved (fresh) or converted (already used once but profile missing)
+        invited = !!byEmail && (byEmail.status === 'approved' || byEmail.status === 'converted');
+      }
+      if (!invited) {
         await supabase.auth.signOut();
-        return NextResponse.redirect(`${origin}/waitlist?error=invalid_invite`);
+        return NextResponse.redirect(
+          `${origin}/waitlist?error=${inviteCode ? 'invalid_invite' : 'missing_invite'}`,
+        );
       }
     }
   }
@@ -161,19 +187,27 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Mark the invite as converted (re-fetch to handle the returning-user path that skipped validation)
-  if (inviteCode) {
-    const { data: entry } = await supabaseAdmin
-      .from('waitlist')
-      .select('id, status')
-      .eq('invite_code', inviteCode)
-      .maybeSingle();
-
-    if (entry && entry.status === 'approved') {
+  // Mark the invite as converted. Resolve the waitlist row by code first, then
+  // fall back to the verified email so users who came in via the email-approval
+  // path also flip approved → converted (keeps the funnel accurate). Only an
+  // 'approved' row is advanced, so already-converted rows aren't re-touched.
+  {
+    let entryId: string | null = null;
+    if (inviteCode) {
+      const { data: entry } = await supabaseAdmin
+        .from('waitlist').select('id, status').eq('invite_code', inviteCode).maybeSingle();
+      if (entry && entry.status === 'approved') entryId = entry.id;
+    }
+    if (!entryId && user.email) {
+      const { data: entry } = await supabaseAdmin
+        .from('waitlist').select('id, status').ilike('email', escapeLike(user.email)).maybeSingle();
+      if (entry && entry.status === 'approved') entryId = entry.id;
+    }
+    if (entryId) {
       await supabaseAdmin
         .from('waitlist')
         .update({ status: 'converted', converted_at: new Date().toISOString() })
-        .eq('id', entry.id);
+        .eq('id', entryId);
     }
   }
 

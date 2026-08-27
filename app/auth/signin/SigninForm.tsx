@@ -14,8 +14,10 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
  * The callback skips the invite-code gate when a profile already exists
  * (the returning-user case) and leaves the existing legal-acceptance row
  * untouched, so we don't need to round-trip those params here. A brand-new
- * user who somehow lands on signin without a profile gets bounced to
- * /waitlist?error=missing_invite — correct behavior.
+ * but APPROVED invitee who lands on signin without an invite_code is still
+ * admitted — the callback falls back to matching their OAuth-verified email
+ * against an approved waitlist row (added 2026-08-27). Only an un-approved
+ * email is bounced to /waitlist.
  */
 function buildRedirectTo(): string {
   return `${window.location.origin}/auth/callback`;

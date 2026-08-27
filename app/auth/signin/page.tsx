@@ -1,9 +1,12 @@
 // Consumer sign-in. Returning users hit this when they already have an
 // account (OAuth or email signup), so there's no invite-code gate and no
 // legal-acceptance checkbox (already captured at signup). Three providers:
-// Google, Discord, email magic link. New users get bounced here if they
-// somehow start the OAuth flow without a profile — /auth/callback redirects
-// them to /waitlist?error=missing_invite, which is correct.
+// Google, Discord, email magic link. A NEW but APPROVED invitee who starts
+// here (no invite_code in the URL) is still let in: /auth/callback grants
+// access by matching their OAuth-verified email to an approved waitlist row.
+// Only a genuinely un-approved email is bounced to /waitlist. (This email
+// fallback was added 2026-08-27 — before it, code-less flows bounced approved
+// users too.)
 //
 // Admin sign-in is intentionally kept separate at /admin/login (different
 // mechanism — email+password, not advertised on the marketing surface).
