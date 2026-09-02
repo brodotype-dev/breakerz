@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { Zap, TrendingUp, Search, ChevronRight } from 'lucide-react';
 import posthog from 'posthog-js';
 import { PH_EVENTS } from '@/lib/posthog-events';
@@ -10,6 +11,38 @@ import { DiscordIcon } from '@/components/icons/DiscordIcon';
 import { DISCORD_INVITE_URL, isDiscordInviteConfigured } from '@/lib/community';
 
 type State = 'idle' | 'loading' | 'success' | 'already' | 'error';
+
+// Explains WHY an authenticated user was bounced here by /auth/callback.
+// Before this, `/waitlist?error=missing_invite` rendered the bare request
+// form with no message — a user who had just signed in successfully was
+// told nothing, re-submitted, hit the "already on the list" 409, and was
+// stuck in a loop (Ted Mann, 2026-08-27). Caller wraps this in <Suspense>
+// because useSearchParams needs a boundary for the static prerender.
+function AuthBounceBanner() {
+  const params = useSearchParams();
+  const error = params.get('error');
+  if (error !== 'missing_invite' && error !== 'invalid_invite') return null;
+  const message =
+    error === 'invalid_invite'
+      ? "That invite link isn't valid or has already been used."
+      : "You signed in, but we couldn't find an approved invite for that account. Make sure you're using the email address you requested access with.";
+  return (
+    <div
+      role="alert"
+      className="rounded-lg p-3 text-sm"
+      style={{ border: '1px solid rgba(234,179,8,0.4)', backgroundColor: 'rgba(234,179,8,0.08)' }}
+    >
+      <p className="font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>We couldn&apos;t let you in yet</p>
+      <p style={{ color: 'var(--text-secondary)' }}>{message}</p>
+      <p className="mt-2" style={{ color: 'var(--text-secondary)' }}>
+        Already invited?{' '}
+        <Link href="/auth/signin" style={{ color: 'var(--accent-blue)' }}>
+          Sign in with your approved email →
+        </Link>
+      </p>
+    </div>
+  );
+}
 
 export default function WaitlistPage() {
   const [state, setState] = useState<State>('idle');
@@ -184,6 +217,9 @@ export default function WaitlistPage() {
             >
               <div className="h-1" style={{ background: 'var(--gradient-blue)' }} />
               <div className="p-8 space-y-6">
+                <Suspense fallback={null}>
+                  <AuthBounceBanner />
+                </Suspense>
                 <div>
                   <h2 className="text-lg font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
                     Request beta access
