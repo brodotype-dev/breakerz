@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { ExperienceLevel, MonthlySpend, Platform, ReferralSource } from '@/lib/types';
+import { TERMS_VERSION, PRIVACY_VERSION } from '@/lib/legal';
 
 const VALID_EXPERIENCE: ExperienceLevel[] = ['beginner', 'casual', 'regular', 'serious'];
 const VALID_SPEND: MonthlySpend[] = ['under_150', '150_500', '500_1000', '1000_5000', '5000_plus'];
@@ -36,6 +37,8 @@ export async function PUT(req: NextRequest) {
       monthly_spend,
       referral_source,
       best_pull,
+      accept_terms,
+      accept_privacy,
     } = body;
 
     if (typeof is_over_18 !== 'boolean') {
@@ -72,9 +75,35 @@ export async function PUT(req: NextRequest) {
       : [];
 
     const db = isDev && !user ? supabaseAdmin : supabase;
+
+    // Legal acceptance round-tripped from the wizard. The client only sends
+    // accept_* when the profile lacks acceptance — e.g. users admitted via
+    // /auth/signin by the email-approval fallback, whose bare /auth/callback
+    // carried no accept_* params and so landed with terms_accepted_at = null
+    // and no surface to fix it. Same rules as /auth/callback: honor only the
+    // CURRENT published versions, and never overwrite an existing timestamp.
+    let legalFields: Record<string, string> = {};
+    if (accept_terms === TERMS_VERSION && accept_privacy === PRIVACY_VERSION) {
+      const { data: cur } = await db
+        .from('profiles')
+        .select('terms_accepted_at, privacy_accepted_at')
+        .eq('id', userId)
+        .maybeSingle();
+      if (!cur?.terms_accepted_at || !cur?.privacy_accepted_at) {
+        const nowIso = new Date().toISOString();
+        legalFields = {
+          terms_accepted_at: nowIso,
+          terms_version: TERMS_VERSION,
+          privacy_accepted_at: nowIso,
+          privacy_version: PRIVACY_VERSION,
+        };
+      }
+    }
+
     const { data: updated, error } = await db
       .from('profiles')
       .update({
+        ...legalFields,
         is_over_18,
         experience_level,
         favorite_sports: cleanSports,

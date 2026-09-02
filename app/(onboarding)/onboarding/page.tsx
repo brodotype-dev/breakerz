@@ -6,6 +6,7 @@ import { Sparkles, ShieldCheck, XCircle } from 'lucide-react';
 import { Logo } from '@/components/Logo';
 import posthog from 'posthog-js';
 import { PH_EVENTS } from '@/lib/posthog-events';
+import { TERMS_VERSION, PRIVACY_VERSION, TERMS_PATH, PRIVACY_PATH } from '@/lib/legal';
 
 type Step = 1 | 2 | 3;
 
@@ -65,6 +66,14 @@ export default function OnboardingPage() {
 
   // Step 1
   const [isOver18, setIsOver18] = useState<boolean | null>(null);
+  // Legal acceptance. Users admitted via /auth/signin by the email-approval
+  // fallback arrive with a bare /auth/callback (no accept_* params), so their
+  // profile has terms_accepted_at = null and no other surface lets them
+  // accept. Capture it here when missing. Defaults to TRUE (over-ask) until
+  // the profile probe below confirms acceptance exists — never under-capture.
+  const [needsLegal, setNeedsLegal] = useState(true);
+  const [legalAccepted, setLegalAccepted] = useState(false);
+  const [legalError, setLegalError] = useState(false);
 
   // Step 2
   const [experience, setExperience] = useState('');
@@ -80,7 +89,9 @@ export default function OnboardingPage() {
   // Check if onboarding already completed
   useEffect(() => {
     fetch('/api/profile').then(r => r.json()).then(d => {
-      if (d.profile?.onboarding_completed_at) router.replace('/');
+      if (d.profile?.onboarding_completed_at) { router.replace('/'); return; }
+      // Only show the Terms/Privacy checkbox when acceptance is missing.
+      setNeedsLegal(!(d.profile?.terms_accepted_at && d.profile?.privacy_accepted_at));
     }).catch(() => {});
   }, [router]);
 
@@ -107,6 +118,10 @@ export default function OnboardingPage() {
           monthly_spend: spend,
           referral_source: referral,
           best_pull: bestPull || null,
+          // Round-trip legal acceptance (versions, not booleans — mirrors
+          // /auth/callback). JSON drops the undefineds when not applicable.
+          accept_terms: needsLegal && legalAccepted ? TERMS_VERSION : undefined,
+          accept_privacy: needsLegal && legalAccepted ? PRIVACY_VERSION : undefined,
         }),
       });
       const data = await res.json();
@@ -188,9 +203,47 @@ export default function OnboardingPage() {
                   </div>
                 )}
 
+                {needsLegal && (
+                  <label htmlFor="onboarding-legal" className="flex items-start gap-2.5 cursor-pointer select-none">
+                    <input
+                      id="onboarding-legal"
+                      type="checkbox"
+                      checked={legalAccepted}
+                      onChange={e => {
+                        setLegalAccepted(e.target.checked);
+                        if (e.target.checked) setLegalError(false);
+                      }}
+                      className="mt-0.5 h-4 w-4 cursor-pointer"
+                      style={{ accentColor: 'var(--accent-blue)' }}
+                    />
+                    <span className="text-xs leading-snug" style={{ color: 'var(--text-secondary)' }}>
+                      I agree to the{' '}
+                      <a href={TERMS_PATH} target="_blank" rel="noopener" className="underline" style={{ color: 'var(--accent-blue)' }}>
+                        Terms &amp; Conditions
+                      </a>
+                      {' '}and{' '}
+                      <a href={PRIVACY_PATH} target="_blank" rel="noopener" className="underline" style={{ color: 'var(--accent-blue)' }}>
+                        Privacy Policy
+                      </a>
+                      .
+                    </span>
+                  </label>
+                )}
+                {legalError && (
+                  <p className="text-xs" style={{ color: 'var(--signal-pass)' }}>
+                    You need to accept the Terms and Privacy Policy to continue.
+                  </p>
+                )}
+
                 <div className="flex gap-3">
                   <button
-                    onClick={() => { setIsOver18(true); setStep(2); }}
+                    onClick={() => {
+                      // Surface the reason instead of silently disabling the
+                      // button (the hidden-reason pattern is audit finding #5).
+                      if (needsLegal && !legalAccepted) { setLegalError(true); return; }
+                      setIsOver18(true);
+                      setStep(2);
+                    }}
                     className="flex-1 py-3 rounded-lg text-sm font-bold text-white transition-all hover:opacity-90"
                     style={{ background: 'var(--gradient-blue)' }}
                   >

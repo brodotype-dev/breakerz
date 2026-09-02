@@ -52,27 +52,35 @@ export default function WaitlistPage() {
     setState('loading');
 
     const formData = new FormData(e.currentTarget);
-    const res = await fetch('/api/waitlist', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        email: formData.get('email'),
-        full_name: formData.get('full_name') || null,
-        use_case: formData.get('use_case') || null,
-      }),
-    });
-
-    if (res.ok) {
-      posthog.capture(PH_EVENTS.waitlist_signup_submitted, {
-        has_name: !!formData.get('full_name'),
-        has_use_case: !!formData.get('use_case'),
-        result: 'success',
+    // try/catch: a dropped connection REJECTS the fetch. Before 2026-08-31
+    // nothing caught that, so setState('error') was never reached and the
+    // button sat on "Submitting…" until a page reload.
+    try {
+      const res = await fetch('/api/waitlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: formData.get('email'),
+          full_name: formData.get('full_name') || null,
+          use_case: formData.get('use_case') || null,
+        }),
       });
-      setState('success');
-    } else if (res.status === 409) {
-      posthog.capture(PH_EVENTS.waitlist_signup_submitted, { result: 'already_exists' });
-      setState('already');
-    } else {
+
+      if (res.ok) {
+        posthog.capture(PH_EVENTS.waitlist_signup_submitted, {
+          has_name: !!formData.get('full_name'),
+          has_use_case: !!formData.get('use_case'),
+          result: 'success',
+        });
+        setState('success');
+      } else if (res.status === 409) {
+        posthog.capture(PH_EVENTS.waitlist_signup_submitted, { result: 'already_exists' });
+        setState('already');
+      } else {
+        posthog.capture(PH_EVENTS.waitlist_signup_submitted, { result: 'error' });
+        setState('error');
+      }
+    } catch {
       posthog.capture(PH_EVENTS.waitlist_signup_submitted, { result: 'error' });
       setState('error');
     }
