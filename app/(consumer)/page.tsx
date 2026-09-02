@@ -326,7 +326,7 @@ export default async function HomePage() {
               style={{ borderColor: 'var(--terminal-border)', color: 'var(--text-secondary)' }}
             >
               <p className="font-semibold mb-1">No products yet</p>
-              <p className="text-sm">Add sports and products via the Supabase dashboard.</p>
+              <p className="text-sm">No breaks are live right now — check back soon.</p>
             </div>
           </>
         ) : (

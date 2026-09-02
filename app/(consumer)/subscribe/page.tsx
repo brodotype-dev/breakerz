@@ -38,7 +38,10 @@ export default function SubscribePage() {
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      if (data.url) window.location.href = data.url;
+      if (data.url) { window.location.href = data.url; return; }
+      // Neither error nor url: previously fell through and `loading` was never
+      // cleared, leaving both buttons disabled on "Redirecting to checkout…".
+      throw new Error('Checkout did not return a redirect. Please try again.');
     } catch (err) {
       posthog.captureException(err);
       setError(err instanceof Error ? err.message : 'Something went wrong');
