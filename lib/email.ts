@@ -186,7 +186,7 @@ export async function sendWelcomeEmail({
         <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="width:100%; margin: 0 0 24px;">
           <tr>
             <td style="padding: 12px 0; border-top: 1px solid #1e293b;">
-              <a href="${base}/break" style="font-size: 15px; font-weight: 700; color: #3b82f6; text-decoration: none;">Browse upcoming breaks →</a>
+              <a href="${base}/" style="font-size: 15px; font-weight: 700; color: #3b82f6; text-decoration: none;">Browse upcoming breaks →</a>
               <p style="font-size: 13px; line-height: 1.5; color: #94a3b8; margin: 4px 0 0;">
                 Every active product, with our model's verdict on each.
               </p>
