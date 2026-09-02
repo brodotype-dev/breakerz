@@ -35,8 +35,16 @@ export async function GET(request: NextRequest) {
   const acceptedTerms = acceptTermsParam === TERMS_VERSION ? TERMS_VERSION : null;
   const acceptedPrivacy = acceptPrivacyParam === PRIVACY_VERSION ? PRIVACY_VERSION : null;
 
+  // Where to send a FAILED sign-in. A flow carrying an invite_code came from
+  // the signup page. Anything else (expired magic link, OAuth started from
+  // /auth/signin) is a RETURNING user — sending them to /auth/signup?error=…
+  // told them to "try your invite link again" (they have none) with only
+  // "Back to waitlist" as an exit. Route those to /auth/signin, which renders
+  // the error and lets them retry. (2026-08-31)
+  const errorBase = inviteCode ? '/auth/signup' : '/auth/signin';
+
   if (!code && !tokenHash) {
-    return NextResponse.redirect(`${origin}/auth/signup?error=missing_code`);
+    return NextResponse.redirect(`${origin}${errorBase}?error=missing_code`);
   }
 
   const cookieStore = await cookies();
@@ -70,7 +78,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (sessionError || !sessionData?.user) {
-    return NextResponse.redirect(`${origin}/auth/signup?error=session_failed`);
+    return NextResponse.redirect(`${origin}${errorBase}?error=session_failed`);
   }
 
   const user = sessionData.user!;

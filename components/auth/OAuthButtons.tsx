@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 
 /**
@@ -31,20 +32,40 @@ export function OAuthButtons({
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
+  // Per-button pending state + a surfaced error. Before 2026-08-31 the
+  // `{ error }` from signInWithOAuth was discarded, so a blocked popup, a
+  // misconfigured provider, or a network failure meant the button did
+  // literally nothing — no spinner, no message. On SUCCESS the browser
+  // navigates away to the provider, so `pending` intentionally stays set.
+  const [pending, setPending] = useState<'google' | 'discord' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
   async function signInWith(provider: 'google' | 'discord') {
     if (onBeforeRedirect && !onBeforeRedirect()) return;
-    const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
-    await supabase.auth.signInWithOAuth({
-      provider,
-      options: { redirectTo: getRedirectTo() },
-    });
+    setError(null);
+    setPending(provider);
+    const label = provider === 'google' ? 'Google' : 'Discord';
+    try {
+      const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo: getRedirectTo() },
+      });
+      if (oauthError) {
+        setError(oauthError.message || `Couldn't start ${label} sign-in. Please try again.`);
+        setPending(null);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : `Couldn't start ${label} sign-in. Please try again.`);
+      setPending(null);
+    }
   }
 
   return (
     <div className="space-y-3">
       <button
         onClick={() => signInWith('google')}
-        disabled={disabled}
+        disabled={disabled || pending !== null}
         className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
         style={{
           backgroundColor: '#fff',
@@ -53,12 +74,12 @@ export function OAuthButtons({
         }}
       >
         <GoogleIcon />
-        Continue with Google
+        {pending === 'google' ? 'Redirecting to Google…' : 'Continue with Google'}
       </button>
 
       <button
         onClick={() => signInWith('discord')}
-        disabled={disabled}
+        disabled={disabled || pending !== null}
         className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-lg text-sm font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
         style={{
           backgroundColor: '#5865F2',
@@ -67,8 +88,13 @@ export function OAuthButtons({
         }}
       >
         <DiscordIcon />
-        Continue with Discord
+        {pending === 'discord' ? 'Redirecting to Discord…' : 'Continue with Discord'}
       </button>
+      {error && (
+        <p role="alert" className="text-xs" style={{ color: 'var(--signal-pass)' }}>
+          {error}
+        </p>
+      )}
     </div>
   );
 }

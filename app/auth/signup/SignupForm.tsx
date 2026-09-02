@@ -144,9 +144,13 @@ export default function SignupForm({
             </p>
           )}
 
+          {/* Buttons stay ENABLED; guardAccepted() surfaces "accept the Terms"
+              on click. Before 2026-08-31 they were disabled={!accepted}, so
+              the click never fired, guardAccepted never ran, and the error
+              message below was unreachable — four greyed-out buttons with no
+              explanation (funnel audit #5). */}
           <OAuthButtons
             getRedirectTo={() => buildRedirectTo(inviteCode)}
-            disabled={!accepted}
             onBeforeRedirect={guardAccepted}
           />
 
@@ -193,7 +197,7 @@ export default function SignupForm({
               )}
               <button
                 onClick={signUpWithEmail}
-                disabled={emailLoading || !email || password.length < 6 || !accepted}
+                disabled={emailLoading || !email || password.length < 6}
                 className="w-full px-4 py-3 rounded-lg text-sm font-bold text-white transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ background: 'var(--gradient-blue)' }}
               >
