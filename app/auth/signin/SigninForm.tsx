@@ -23,7 +23,23 @@ function buildRedirectTo(): string {
   return `${window.location.origin}/auth/callback`;
 }
 
-export default function SigninForm() {
+// Copy for a failed sign-in the callback bounced back here (2026-08-31).
+// Before this, a returning user whose magic link expired was sent to
+// /auth/signup and told to "try your invite link again" — they have none —
+// with only "Back to waitlist" as an exit. Now they land here with a reason
+// and an immediate retry path.
+function signinErrorMessage(code: string): string {
+  switch (code) {
+    case 'session_failed':
+      return "That sign-in link didn't work — it may have expired or already been used. Request a fresh one below.";
+    case 'missing_code':
+      return 'That link was missing its sign-in code. Request a fresh one below.';
+    default:
+      return 'Something went wrong signing you in. Try again below.';
+  }
+}
+
+export default function SigninForm({ initialError = null }: { initialError?: string | null }) {
   const [email, setEmail] = useState('');
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailError, setEmailError] = useState<string | null>(null);
@@ -64,6 +80,19 @@ export default function SigninForm() {
           Sign in to BreakIQ.
         </p>
       </div>
+
+      {initialError && (
+        <div
+          role="alert"
+          className="rounded-lg p-3 text-sm"
+          style={{ border: '1px solid rgba(234,179,8,0.4)', backgroundColor: 'rgba(234,179,8,0.08)' }}
+        >
+          <p className="font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
+            Sign-in didn&apos;t complete
+          </p>
+          <p style={{ color: 'var(--text-secondary)' }}>{signinErrorMessage(initialError)}</p>
+        </div>
+      )}
 
       {emailSent ? (
         <div

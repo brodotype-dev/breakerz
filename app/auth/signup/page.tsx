@@ -11,7 +11,12 @@ export default async function SignupPage({
   const { code, error } = await searchParams;
 
   if (error) {
-    return <ErrorState message="Something went wrong during sign-in. Please try your invite link again." />;
+    return (
+      <ErrorState
+        message="Something went wrong during sign-in. Try your invite link again — or, if you already have an account, sign in below."
+        showSignIn
+      />
+    );
   }
 
   if (!code) {

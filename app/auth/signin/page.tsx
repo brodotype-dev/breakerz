@@ -18,13 +18,21 @@ export const metadata = {
   description: 'Sign in to BreakIQ.',
 };
 
-export default function SigninPage() {
+// Reads ?error= so a failed sign-in the callback bounces here (expired magic
+// link, OAuth started from this page) shows a REASON instead of a blank form.
+// Same server-side searchParams pattern as /auth/signup — no Suspense needed.
+export default async function SigninPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  const { error } = await searchParams;
   return (
     <div
       className="min-h-screen flex items-center justify-center px-4"
       style={{ backgroundColor: 'var(--terminal-bg)' }}
     >
-      <SigninForm />
+      <SigninForm initialError={error ?? null} />
     </div>
   );
 }
