@@ -7,6 +7,7 @@ import { Logo } from '@/components/Logo';
 import posthog from 'posthog-js';
 import { PH_EVENTS } from '@/lib/posthog-events';
 import { TERMS_VERSION, PRIVACY_VERSION, TERMS_PATH, PRIVACY_PATH } from '@/lib/legal';
+import { logout } from '@/app/(consumer)/actions';
 
 type Step = 1 | 2 | 3;
 
@@ -63,6 +64,8 @@ export default function OnboardingPage() {
   const [step, setStep] = useState<Step>(1);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Hold the wizard until the profile probe answers (see early return below).
+  const [probing, setProbing] = useState(true);
 
   // Step 1
   const [isOver18, setIsOver18] = useState<boolean | null>(null);
@@ -92,7 +95,8 @@ export default function OnboardingPage() {
       if (d.profile?.onboarding_completed_at) { router.replace('/'); return; }
       // Only show the Terms/Privacy checkbox when acceptance is missing.
       setNeedsLegal(!(d.profile?.terms_accepted_at && d.profile?.privacy_accepted_at));
-    }).catch(() => {});
+      setProbing(false);
+    }).catch(() => setProbing(false)); // never trap the user on a failed probe
   }, [router]);
 
   function toggleChip(list: string[], item: string, setter: (v: string[]) => void) {
@@ -139,6 +143,17 @@ export default function OnboardingPage() {
       setError(err instanceof Error ? err.message : 'Something went wrong');
       setSubmitting(false);
     }
+  }
+
+  // Hold the wizard until the profile probe answers, so a completed user
+  // never sees step 1 flash before the redirect, and an incomplete one
+  // doesn't see the legal checkbox pop in after first paint (audit P2).
+  if (probing) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: 'var(--terminal-bg)' }}>
+        <p className="text-sm" style={{ color: 'var(--text-tertiary)' }}>Loading…</p>
+      </div>
+    );
   }
 
   return (
@@ -235,28 +250,45 @@ export default function OnboardingPage() {
                   </p>
                 )}
 
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => {
-                      // Surface the reason instead of silently disabling the
-                      // button (the hidden-reason pattern is audit finding #5).
-                      if (needsLegal && !legalAccepted) { setLegalError(true); return; }
-                      setIsOver18(true);
-                      setStep(2);
-                    }}
-                    className="flex-1 py-3 rounded-lg text-sm font-bold text-white transition-all hover:opacity-90"
-                    style={{ background: 'var(--gradient-blue)' }}
-                  >
-                    Yes, I'm 18+
-                  </button>
-                  <button
-                    onClick={() => setIsOver18(false)}
-                    className="flex-1 py-3 rounded-lg text-sm font-semibold transition-all"
-                    style={{ backgroundColor: 'var(--terminal-bg)', color: 'var(--text-secondary)', border: '1px solid var(--terminal-border)' }}
-                  >
-                    No
-                  </button>
-                </div>
+                {isOver18 === false ? (
+                  // An under-18 answer is final. Before 2026-08-31 the "Yes"
+                  // button stayed clickable after "No" (the gate was trivially
+                  // reversed) and there was no way out — the only live control
+                  // was the one that lies (audit #11). Offer the honest exit.
+                  <form action={logout}>
+                    <button
+                      type="submit"
+                      onClick={() => { try { posthog.reset(); } catch { /* swallow */ } }}
+                      className="w-full py-3 rounded-lg text-sm font-semibold transition-all hover:opacity-90"
+                      style={{ backgroundColor: 'var(--terminal-bg)', color: 'var(--text-secondary)', border: '1px solid var(--terminal-border)' }}
+                    >
+                      Sign out
+                    </button>
+                  </form>
+                ) : (
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => {
+                        // Surface the reason instead of silently disabling the
+                        // button (the hidden-reason pattern is audit finding #5).
+                        if (needsLegal && !legalAccepted) { setLegalError(true); return; }
+                        setIsOver18(true);
+                        setStep(2);
+                      }}
+                      className="flex-1 py-3 rounded-lg text-sm font-bold text-white transition-all hover:opacity-90"
+                      style={{ background: 'var(--gradient-blue)' }}
+                    >
+                      Yes, I'm 18+
+                    </button>
+                    <button
+                      onClick={() => setIsOver18(false)}
+                      className="flex-1 py-3 rounded-lg text-sm font-semibold transition-all"
+                      style={{ backgroundColor: 'var(--terminal-bg)', color: 'var(--text-secondary)', border: '1px solid var(--terminal-border)' }}
+                    >
+                      No
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -390,7 +422,7 @@ export default function OnboardingPage() {
                     className="flex-1 py-2.5 rounded-lg text-sm font-bold text-white transition-all hover:opacity-90 disabled:opacity-40 flex items-center justify-center gap-2"
                     style={{ background: 'var(--gradient-blue)' }}
                   >
-                    {submitting ? 'Saving…' : <><Sparkles className="w-4 h-4" /> Show me my dashboard</>}
+                    {submitting ? 'Saving…' : <><Sparkles className="w-4 h-4" /> Pick your plan</>}
                   </button>
                 </div>
               </div>
