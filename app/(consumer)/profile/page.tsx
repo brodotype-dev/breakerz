@@ -70,7 +70,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     fetch('/api/profile')
-      .then(r => r.json())
+      .then(async r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then(({ profile: p }) => {
         if (p) {
           setProfile(p);
@@ -79,6 +79,7 @@ export default function ProfilePage() {
           setPlayersInput(toCSV(p.chasing_players ?? []));
         }
       })
+      .catch(() => setError('Could not load your profile. Refresh to try again.'))
       .finally(() => setLoading(false));
   }, []);
 

@@ -44,6 +44,12 @@ export default function SigninForm({ initialError = null }: { initialError?: str
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [emailSent, setEmailSent] = useState(false);
+  // Password path — SignupForm lets people create an email+password account,
+  // but signin only offered a magic link (audit P2).
+  const [usePassword, setUsePassword] = useState(false);
+  const [password, setPassword] = useState('');
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwError, setPwError] = useState<string | null>(null);
 
   async function sendMagicLink() {
     if (!email) return;
@@ -67,6 +73,22 @@ export default function SigninForm({ initialError = null }: { initialError?: str
       setEmailSent(true);
     }
     setEmailLoading(false);
+  }
+
+  async function signInWithPassword() {
+    if (!email || !password) return;
+    setPwLoading(true);
+    setPwError(null);
+    const supabase = createBrowserClient(supabaseUrl, supabaseAnonKey);
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      setPwError(error.message);
+      setPwLoading(false);
+      return;
+    }
+    // Full navigation (not router.replace) so middleware + the consumer layout
+    // read the freshly-set session cookies on the first request.
+    window.location.assign('/');
   }
 
   return (
@@ -141,6 +163,43 @@ export default function SigninForm({ initialError = null }: { initialError?: str
             >
               {emailLoading ? 'Sending link…' : 'Email me a sign-in link'}
             </button>
+
+            {!usePassword ? (
+              <button
+                onClick={() => setUsePassword(true)}
+                className="w-full text-xs underline"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                Signed up with a password? Use it instead
+              </button>
+            ) : (
+              <div className="space-y-2 pt-1">
+                <input
+                  type="password"
+                  placeholder="Password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') signInWithPassword(); }}
+                  className="w-full rounded-lg border px-4 py-3 text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  style={{
+                    borderColor: 'var(--terminal-border)',
+                    backgroundColor: 'var(--terminal-bg)',
+                    color: 'var(--text-primary)',
+                  }}
+                />
+                {pwError && (
+                  <p className="text-xs" style={{ color: 'var(--signal-pass)' }}>{pwError}</p>
+                )}
+                <button
+                  onClick={signInWithPassword}
+                  disabled={pwLoading || !email || !password}
+                  className="w-full px-4 py-3 rounded-lg text-sm font-bold transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{ backgroundColor: 'var(--terminal-surface)', color: 'var(--text-primary)', border: '1px solid var(--terminal-border)' }}
+                >
+                  {pwLoading ? 'Signing in…' : 'Sign in with password'}
+                </button>
+              </div>
+            )}
           </div>
         </>
       )}

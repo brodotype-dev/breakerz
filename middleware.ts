@@ -87,7 +87,8 @@ export async function middleware(request: NextRequest) {
     pathname.startsWith('/my-breaks') ||
     pathname.startsWith('/onboarding') ||
     pathname.startsWith('/player') ||
-    pathname.startsWith('/subscribe');
+    pathname.startsWith('/subscribe') ||
+    pathname.startsWith('/profile');
 
   if (isConsumerRoute && !user && process.env.NODE_ENV !== 'development') {
     const waitlistUrl = request.nextUrl.clone();
@@ -114,5 +115,7 @@ export const config = {
     '/player/:path*',
     '/onboarding',
     '/subscribe',
+    '/profile',
+    '/profile/:path*',
   ],
 };

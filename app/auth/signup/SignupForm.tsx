@@ -46,6 +46,8 @@ export default function SignupForm({
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [emailSent, setEmailSent] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resendMsg, setResendMsg] = useState<string | null>(null);
 
   function guardAccepted(): boolean {
     if (accepted) return true;
@@ -72,6 +74,16 @@ export default function SignupForm({
     setEmailLoading(false);
   }
 
+  // The "Check your email" state had no resend and no way back to the OAuth
+  // options — a typo'd address or a lost email was a dead end (audit P2).
+  async function resendConfirmation() {
+    setResending(true);
+    setResendMsg(null);
+    const { error } = await getSupabase().auth.resend({ type: 'signup', email });
+    setResendMsg(error ? error.message : 'Sent — check your inbox (and spam).');
+    setResending(false);
+  }
+
   return (
     <div className="w-full max-w-sm space-y-6">
       <div className="space-y-2">
@@ -95,6 +107,27 @@ export default function SignupForm({
           <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
             We sent a confirmation link to {email}. Click it to finish signing up.
           </p>
+          <div className="mt-3 flex items-center justify-center gap-3 text-xs">
+            <button
+              onClick={resendConfirmation}
+              disabled={resending}
+              className="underline disabled:opacity-50"
+              style={{ color: 'var(--accent-blue)' }}
+            >
+              {resending ? 'Resending…' : "Didn't get it? Resend"}
+            </button>
+            <span style={{ color: 'var(--text-disabled)' }}>·</span>
+            <button
+              onClick={() => { setEmailSent(false); setResendMsg(null); }}
+              className="underline"
+              style={{ color: 'var(--text-secondary)' }}
+            >
+              Use a different method
+            </button>
+          </div>
+          {resendMsg && (
+            <p className="text-xs mt-2" style={{ color: 'var(--text-secondary)' }}>{resendMsg}</p>
+          )}
         </div>
       ) : (
         <>
