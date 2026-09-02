@@ -41,6 +41,15 @@ export async function PUT(req: NextRequest) {
     if (typeof is_over_18 !== 'boolean') {
       return NextResponse.json({ error: 'is_over_18 required' }, { status: 400 });
     }
+    // The 18+ gate is enforced HERE, not only in the client. Before
+    // 2026-08-31 an `is_over_18: false` payload was accepted and STILL marked
+    // onboarding complete — the age gate was client-side theater.
+    if (is_over_18 === false) {
+      return NextResponse.json(
+        { error: 'You must be 18 or older to use BreakIQ.' },
+        { status: 403 },
+      );
+    }
     if (!VALID_EXPERIENCE.includes(experience_level)) {
       return NextResponse.json({ error: 'Invalid experience_level' }, { status: 400 });
     }
@@ -63,7 +72,7 @@ export async function PUT(req: NextRequest) {
       : [];
 
     const db = isDev && !user ? supabaseAdmin : supabase;
-    const { error } = await db
+    const { data: updated, error } = await db
       .from('profiles')
       .update({
         is_over_18,
@@ -76,9 +85,15 @@ export async function PUT(req: NextRequest) {
         best_pull: best_pull ? String(best_pull).trim().slice(0, 500) : null,
         onboarding_completed_at: new Date().toISOString(),
       })
-      .eq('id', userId);
+      .eq('id', userId)
+      .select('id')
+      .maybeSingle();
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    // Zero rows matched (no profile row, or RLS filtered it). Previously the
+    // bare `.update().eq()` returned `{ ok: true }` here, so the client routed
+    // on as if onboarding had completed when nothing was written.
+    if (!updated) return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
 
     return NextResponse.json({ ok: true });
   } catch (err) {
