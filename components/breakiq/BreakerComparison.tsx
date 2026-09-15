@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { Input } from '@/components/ui/input';
-import { computeSignal, formatCurrency, formatPct } from '@/lib/engine';
+import { computeSignal, formatCurrency, formatPct, signalLabel } from '@/lib/engine';
 import type { PlayerWithPricing, Signal } from '@/lib/types';
 
 interface Props {
@@ -133,7 +133,7 @@ function SignalBadge({ signal }: { signal: Signal }) {
     : 'signal-pass-badge';
   return (
     <span className={`inline-block px-2.5 py-1 rounded text-[10px] uppercase tracking-wider ${cls}`}>
-      {signal}
+      {signalLabel(signal)}
     </span>
   );
 }
