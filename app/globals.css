@@ -52,9 +52,9 @@
   --radius: 0.625rem;
 
   /* Surface */
-  --background: #0a0e1a;
-  --foreground: #f5f5f7;
-  --card: #131820;
+  --background: var(--bg);
+  --foreground: var(--ink);
+  --card: var(--panel);
   --card-foreground: #f5f5f7;
   --popover: #131820;
   --popover-foreground: #f5f5f7;
@@ -76,7 +76,7 @@
   --destructive-foreground: #ffffff;
 
   /* Borders / inputs */
-  --border: #1e2533;
+  --border: var(--rule);
   --input: #131820;
   --input-background: #131820;
   --ring: #3b82f6;
@@ -119,25 +119,86 @@
    Non-layered CSS — overrides @layer base body rule above
    ══════════════════════════════════════════════════════════════ */
 
+/* ═══════════════════════════════════════════════════════════════
+   UX rethink design tokens (2026-09-15 handoff).
+
+   The handoff's palette is the SOURCE here; the long-standing
+   --terminal-* / --text-* / --signal-* names are re-pointed at it just
+   below. That keeps ~93 files working untouched while they inherit the
+   new look — deliberately chosen over a mass find-and-replace, per
+   docs/plans/2026-09-15-ux-rethink-build-plan.md.
+
+   THEME: dark is the default and stays the default. The light palette is
+   defined and works via [data-theme="light"], but is NOT wired to
+   prefers-color-scheme — auto-switching on OS preference would hand every
+   light-mode user a different app, which is a behavior change, not a UI
+   one. Flip it later by adding the media query.
+   ═══════════════════════════════════════════════════════════════ */
 :root {
-  /* Background layers */
-  --terminal-bg: #0a0e1a;
-  --terminal-surface: #131820;
-  --terminal-surface-hover: #1a1f2e;
-  --terminal-surface-active: #222838;
-  --terminal-border: #1e2533;
-  --terminal-border-hover: #2a3142;
+  --bg: #101215;
+  --panel: #14171b;
+  --subtle: #171b20;
+  --rule: #22262c;
+  --rule-faint: #1a1e23;
+  --rule-strong: #2e343c;
+  --ink: #e6e8ea;
+  --ink2: #8b9099;
+  --ink3: #5f656d;
+  --accent-key: #7fa8c9;
+  --buy: #6f9e7d;
+  --hold: #a89060;
+  --pass: #c2705f;
+  --btn-bg: #e6e8ea;
+  --btn-fg: #101215;
+  --sel: #1c2126;
+  --crown: #c9a227;
+  /* Button background for legacy buttons that hard-code white label text.
+     The design's primary is near-white on dark, but flipping these to
+     --btn-bg would render their white text invisible. Later phases replace
+     those buttons; this keeps them legible and un-gradiented meanwhile. */
+  --btn-legacy-bg: #3f6d94;
+}
+
+[data-theme="light"] {
+  --bg: #fbfaf8;
+  --panel: #ffffff;
+  --subtle: #f5f4f1;
+  --rule: #e3e1dc;
+  --rule-faint: #ededea;
+  --rule-strong: #cfccc5;
+  --ink: #16181c;
+  --ink2: #5f656d;
+  --ink3: #8b9099;
+  --accent-key: #33628c;
+  --buy: #2f6b43;
+  --hold: #8a6a1f;
+  --pass: #9c2f22;
+  --btn-bg: #16181c;
+  --btn-fg: #fbfaf8;
+  --sel: #f0eeea;
+  --crown: #8a6a1f;
+  --btn-legacy-bg: #33628c;
+}
+
+:root {
+  /* Background layers — re-pointed */
+  --terminal-bg: var(--bg);
+  --terminal-surface: var(--panel);
+  --terminal-surface-hover: var(--subtle);
+  --terminal-surface-active: var(--sel);
+  --terminal-border: var(--rule);
+  --terminal-border-hover: var(--rule-strong);
 
   /* Accent colors */
-  --accent-blue: #3b82f6;
-  --accent-blue-dim: #2563eb;
-  --accent-blue-bright: #60a5fa;
-  --accent-red: #dc2626;
-  --accent-red-dim: #991b1b;
-  --accent-green: #22c55e;
-  --accent-orange: #f59e0b;
-  --accent-purple: #8b5cf6;
-  --accent-purple-dim: #7c3aed;
+  --accent-blue: var(--accent-key);
+  --accent-blue-dim: #5d87a6;
+  --accent-blue-bright: #9dbfd8;
+  --accent-red: var(--pass);
+  --accent-red-dim: #8f5346;
+  --accent-green: var(--buy);
+  --accent-orange: var(--hold);
+  --accent-purple: #8d86b8;
+  --accent-purple-dim: #6f6899;
 
   /* Sport colors */
   --sport-baseball-primary: #3b82f6;
@@ -148,55 +209,60 @@
   --sport-football-secondary: #4ade80;
 
   /* Gradients */
-  --gradient-blue: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-  --gradient-orange: linear-gradient(135deg, #f97316 0%, #ef4444 100%);
-  --gradient-green: linear-gradient(135deg, #22c55e 0%, #10b981 100%);
-  --gradient-purple: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
-  --gradient-hero: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
-  --gradient-card: linear-gradient(180deg, rgba(59, 130, 246, 0.1) 0%, rgba(59, 130, 246, 0) 100%);
+  /* Flattened — the handoff removes gradient fills entirely. Names kept so
+     the ~25 files referencing them keep working; each now resolves to a
+     solid color. */
+  --gradient-blue: var(--btn-legacy-bg);
+  --gradient-orange: var(--hold);
+  --gradient-green: var(--buy);
+  --gradient-purple: #6f6899;
+  --gradient-hero: var(--bg);
+  --gradient-card: transparent;
 
   /* Glow effects */
-  --glow-blue: 0 0 20px rgba(59, 130, 246, 0.4);
-  --glow-orange: 0 0 20px rgba(249, 115, 22, 0.4);
-  --glow-green: 0 0 20px rgba(34, 197, 94, 0.4);
-  --glow-purple: 0 0 20px rgba(168, 85, 247, 0.4);
+  /* Neutralized — "glow shadows: remove entirely" (handoff). Names kept so
+     the ~18 files referencing them keep working; each is now a no-op. */
+  --glow-blue: none;
+  --glow-orange: none;
+  --glow-green: none;
+  --glow-purple: none;
 
   /* Text */
-  --text-primary: #f5f5f7;
-  --text-secondary: #a8adb8;
-  --text-tertiary: #6b7280;
-  --text-disabled: #4b5563;
+  --text-primary: var(--ink);
+  --text-secondary: var(--ink2);
+  --text-tertiary: var(--ink3);
+  --text-disabled: #474c53;
   /* Aliased (used by adapted components) */
-  --text-t-primary: #f5f5f7;
-  --text-t-secondary: #a8adb8;
-  --text-t-tertiary: #6b7280;
+  --text-t-primary: var(--ink);
+  --text-t-secondary: var(--ink2);
+  --text-t-tertiary: var(--ink3);
 
   /* Status */
-  --status-live: #22c55e;
-  --status-pre-release: #f59e0b;
-  --status-error: #dc2626;
+  --status-live: var(--buy);
+  --status-pre-release: var(--hold);
+  --status-error: var(--pass);
 
   /* Signal colors */
-  --signal-buy: #22c55e;
-  --signal-buy-bg: rgba(34, 197, 94, 0.1);
-  --signal-buy-border: rgba(34, 197, 94, 0.3);
-  --signal-watch: #f59e0b;
-  --signal-watch-bg: rgba(245, 158, 11, 0.1);
-  --signal-watch-border: rgba(245, 158, 11, 0.3);
-  --signal-pass: #dc2626;
-  --signal-pass-bg: rgba(220, 38, 38, 0.1);
-  --signal-pass-border: rgba(220, 38, 38, 0.3);
-  --signal-fail: #dc2626;
+  --signal-buy: var(--buy);
+  --signal-buy-bg: rgba(111, 158, 125, 0.12);
+  --signal-buy-border: rgba(111, 158, 125, 0.32);
+  --signal-watch: var(--hold);
+  --signal-watch-bg: rgba(168, 144, 96, 0.12);
+  --signal-watch-border: rgba(168, 144, 96, 0.32);
+  --signal-pass: var(--pass);
+  --signal-pass-bg: rgba(194, 112, 95, 0.12);
+  --signal-pass-border: rgba(194, 112, 95, 0.32);
+  --signal-fail: var(--pass);
 
   /* Badge colors */
-  --badge-icon: #f59e0b;
-  --badge-icon-color: #f59e0b;
-  --badge-bullish: #22c55e;
-  --badge-bearish: #dc2626;
-  --badge-hv: #f59e0b;
-  --badge-injury: #f59e0b;
-  --badge-trade: #3b82f6;
-  --badge-legal: #dc2626;
+  --badge-icon: var(--crown);
+  --badge-icon-color: var(--crown);
+  --badge-bullish: var(--buy);
+  --badge-bearish: var(--pass);
+  --badge-hv: var(--hold);
+  --badge-injury: var(--hold);
+  --badge-trade: var(--accent-key);
+  --badge-legal: var(--pass);
 
   /* Shadows */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
@@ -208,8 +274,8 @@
   --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
 
   /* Typography — reference Next.js font variables from layout.tsx */
-  --font-sans: var(--font-inter), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: var(--font-jetbrains-mono), 'SF Mono', Monaco, monospace;
+  --font-sans: var(--font-public-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: var(--font-roboto-mono), 'SF Mono', Monaco, monospace;
 }
 
 /* Non-layered body rule — overrides the @layer base bg-background above */
