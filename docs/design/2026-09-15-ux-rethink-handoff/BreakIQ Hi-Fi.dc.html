@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet"><style>
+body{margin:0;background:#06090f;color:#f5f5f7;font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#60a5fa;text-decoration:none}a:hover{color:#93c5fd}
+::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-track{background:#131820}::-webkit-scrollbar-thumb{background:#2a3142;border-radius:9999px}
+</style></helmet>
+
+<div style="min-height:100vh;background:#06090f;padding:28px 24px 56px;display:flex;flex-direction:column;gap:24px;align-items:center">
+
+<div style="width:100%;max-width:1560px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+  <div style="display:flex;flex-direction:column;gap:4px">
+    <span style="font:700 13px/1 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#6b7280">BreakIQ · hi-fi</span>
+    <span style="font:500 15px/1.4 Inter,sans-serif;color:#a8adb8">Four phases, terminal system. Click the rail, the tabs, or step through onboarding.</span>
+  </div>
+  <div style="display:flex;gap:6px;padding:6px;background:#0a0e1a;border:1px solid #1e2533;border-radius:10px">
+    <button onClick="{{ modeApp }}" style="font:700 13px Inter,sans-serif;padding:8px 16px;border:none;border-radius:6px;cursor:pointer;background: {{ mbg_app }};color: {{ mfg_app }};box-shadow: {{ mgl_app }}">App</button>
+    <button onClick="{{ modeOnb }}" style="font:700 13px Inter,sans-serif;padding:8px 16px;border:none;border-radius:6px;cursor:pointer;background: {{ mbg_onb }};color: {{ mfg_onb }};box-shadow: {{ mgl_onb }}">Onboarding</button>
+  </div>
+</div>
+
+<sc-if value="{{ isApp }}" hint-placeholder-val="{{ true }}">
+<div style="width:100%;max-width:1560px;display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap">
+
+  <div style="flex:1;min-width:640px;height:760px;background:#0a0e1a;border:1px solid #1e2533;border-radius:14px;box-shadow:0 4px 24px rgba(0,0,0,.4);overflow:hidden;display:flex">
+
+    <div style="width:212px;flex:none;background:#0d1117;border-right:1px solid #1e2533;padding:18px 12px;display:flex;flex-direction:column;gap:2px">
+      <div style="display:flex;align-items:center;gap:9px;padding:0 6px 22px">
+        <div style="width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,#3b82f6 0%,#8b5cf6 100%);box-shadow:0 0 20px rgba(59,130,246,.3);display:flex;align-items:center;justify-content:center;font:700 12px 'JetBrains Mono',monospace;color:#fff">IQ</div>
+        <span style="font:700 16px Inter,sans-serif;letter-spacing:-.01em">BreakIQ</span>
+      </div>
+
+      <button onClick="{{ goBreaks }}" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:10px 11px;border:none;border-radius:8px;cursor:pointer;font:600 14px Inter,sans-serif;transition:all 200ms cubic-bezier(.4,0,.2,1);background: {{ rbg_breaks }};color: {{ rfg_breaks }}">
+        <span style="width:16px;height:16px;border:2px solid currentColor;border-radius:4px;flex:none;opacity:.85"></span>Breaks
+      </button>
+      <span style="font:500 10px/1.3 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#4b5563;padding:1px 11px 8px 37px">recent analyses · 5</span>
+
+      <button onClick="{{ goResearch }}" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:10px 11px;border:none;border-radius:8px;cursor:pointer;font:600 14px Inter,sans-serif;transition:all 200ms cubic-bezier(.4,0,.2,1);background: {{ rbg_research }};color: {{ rfg_research }}">
+        <span style="width:16px;height:16px;border:2px solid currentColor;border-radius:50%;flex:none;opacity:.85"></span>Research
+      </button>
+      <span style="font:500 10px/1.3 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#4b5563;padding:1px 11px 8px 37px">price · compare · slabs</span>
+
+      <button onClick="{{ goLog }}" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:10px 11px;border:none;border-radius:8px;cursor:pointer;font:600 14px Inter,sans-serif;transition:all 200ms cubic-bezier(.4,0,.2,1);background: {{ rbg_log }};color: {{ rfg_log }}">
+        <span style="width:16px;height:16px;border:2px solid currentColor;border-radius:4px 4px 9px 9px;flex:none;opacity:.85"></span>Log
+        <span style="margin-left:auto;font:700 11px 'JetBrains Mono',monospace;background:rgba(59,130,246,.16);color:#60a5fa;border:1px solid rgba(59,130,246,.3);border-radius:999px;padding:2px 7px">2</span>
+      </button>
+      <span style="font:500 10px/1.3 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#4b5563;padding:1px 11px 8px 37px">my breaks · results</span>
+
+      <button onClick="{{ goLearn }}" style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:10px 11px;border:none;border-radius:8px;cursor:pointer;font:600 14px Inter,sans-serif;transition:all 200ms cubic-bezier(.4,0,.2,1);background: {{ rbg_learn }};color: {{ rfg_learn }}">
+        <span style="width:16px;height:16px;border:2px solid currentColor;flex:none;opacity:.85;transform:rotate(45deg)"></span>Learn
+      </button>
+      <span style="font:500 10px/1.3 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#4b5563;padding:1px 11px 8px 37px">what you saved</span>
+
+      <div style="margin-top:auto;display:flex;flex-direction:column;gap:10px">
+        <div style="background:#131820;border:1px solid #1e2533;border-radius:10px;padding:12px">
+          <div style="font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b7280;margin-bottom:7px">plan · {{ planLabel }}</div>
+          <div style="font:500 13px/1.3 Inter,sans-serif;color:#a8adb8;margin-bottom:9px">{{ planDetail }}</div>
+          <div style="height:4px;background:#0a0e1a;border-radius:999px;overflow:hidden"><div style="height:100%;width: {{ planBar }};background:linear-gradient(90deg,#3b82f6,#8b5cf6)"></div></div>
+        </div>
+        <button style="display:flex;align-items:center;gap:10px;width:100%;text-align:left;padding:9px 11px;border:none;border-radius:8px;cursor:pointer;font:500 14px Inter,sans-serif;background:transparent;color:#6b7280">
+          <span style="width:22px;height:22px;border-radius:50%;background:#1e2533;flex:none"></span>Kyle
+        </button>
+      </div>
+    </div>
+
+    <div style="flex:1;min-width:0;overflow-y:auto;padding:22px 26px 26px">
+
+      <sc-if value="{{ p_breaks }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:18px">
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
+            <div>
+              <h1 style="margin:0 0 5px;font:700 24px/1.2 Inter,sans-serif;letter-spacing:-.015em">Recently analyzed</h1>
+              <p style="margin:0;font:400 14px/1.5 Inter,sans-serif;color:#a8adb8">Every break you've run through BreakIQ, newest first. Verdicts refresh as comps move.</p>
+            </div>
+            <button onClick="{{ goResearch }}" style="height:44px;padding:0 20px;border:none;border-radius:9px;cursor:pointer;background:#3b82f6;color:#fff;font:700 14px Inter,sans-serif;box-shadow:0 0 20px rgba(59,130,246,.4);flex:none">Analyze a break</button>
+          </div>
+
+          <sc-if value="{{ showNext }}" hint-placeholder-val="{{ true }}">
+            <div style="background:#131820;border:2px solid rgba(59,130,246,.45);border-radius:12px;padding:18px 20px;display:flex;align-items:center;gap:18px;flex-wrap:wrap;box-shadow:0 4px 24px rgba(0,0,0,.4)">
+              <div style="flex:1;min-width:280px;display:flex;flex-direction:column;gap:6px">
+                <span style="font:700 10px/1 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#60a5fa">do this first</span>
+                <span style="font:600 18px/1.35 Inter,sans-serif">Your Bowman Chrome PYT numbers are 3 days old — comps have moved</span>
+                <span style="font:400 13px/1.5 Inter,sans-serif;color:#a8adb8">Fair value on the Orioles spot is up $18 since you ran it. You've paid over fair value on this product twice.</span>
+              </div>
+              <button onClick="{{ goResearch }}" style="height:44px;padding:0 20px;border:none;border-radius:9px;cursor:pointer;background:#3b82f6;color:#fff;font:700 14px Inter,sans-serif;box-shadow:0 0 20px rgba(59,130,246,.4)">Re-analyze</button>
+            </div>
+          </sc-if>
+
+          <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start">
+            <div style="flex:1;min-width:330px;display:flex;flex-direction:column;gap:9px">
+              <span style="font:500 11px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b7280">analyzed · 5</span>
+
+              <div style="background:#131820;border:1px solid #1e2533;border-radius:11px;padding:13px;display:flex;gap:13px;align-items:center;transition:all 200ms cubic-bezier(.4,0,.2,1)" style-hover="background:#1a1f2e;border-color:#2a3142">
+                <div style="width:40px;height:54px;border-radius:6px;background:linear-gradient(135deg,#3b82f6 0%,#8b5cf6 100%);opacity:.28;flex:none"></div>
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
+                  <span style="font:600 15px/1.3 Inter,sans-serif">2025 Bowman Chrome · PYT</span>
+                  <span style="font:400 12px/1 'JetBrains Mono',monospace;color:#6b7280">4 slots priced · 3d ago · stale</span>
+                </div>
+                <div style="display:flex;flex-direction:column;align-items:flex-end;gap:5px">
+                  <span style="font:700 11px/1 'JetBrains Mono',monospace;letter-spacing:.06em;padding:5px 9px;border-radius:6px;background:rgba(34,197,94,.1);color:#22c55e;border:1px solid rgba(34,197,94,.3)">BUY</span>
+                  <span style="font:500 10px 'JetBrains Mono',monospace;color:#6b7280">$210 ASK</span>
+                </div>
+              </div>
+
+              <div style="background:#131820;border:1px solid #1e2533;border-radius:11px;padding:13px;display:flex;gap:13px;align-items:center">
+                <div style="width:40px;height:54px;border-radius:6px;background:linear-gradient(135deg,#f97316 0%,#ef4444 100%);opacity:.28;flex:none"></div>
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
+                  <span style="font:600 15px/1.3 Inter,sans-serif">2025 Topps Chrome · Team</span>
+                  <span style="font:400 12px/1 'JetBrains Mono',monospace;color:#6b7280">6 slots priced · 2h ago</span>
+                </div>
+                <span style="font:700 11px/1 'JetBrains Mono',monospace;letter-spacing:.06em;padding:5px 9px;border-radius:6px;background:rgba(245,158,11,.1);color:#f59e0b;border:1px solid rgba(245,158,11,.3)">WATCH</span>
+              </div>
+
+              <div style="background:#131820;border:1px solid #1e2533;border-radius:11px;padding:13px;display:flex;gap:13px;align-items:center">
+                <div style="width:40px;height:54px;border-radius:6px;background:linear-gradient(135deg,#a855f7 0%,#ec4899 100%);opacity:.28;flex:none"></div>
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
+                  <span style="font:600 15px/1.3 Inter,sans-serif">2025 Panini Prizm · Random</span>
+                  <span style="font:400 12px/1 'JetBrains Mono',monospace;color:#6b7280">1 slot priced · yesterday</span>
+                </div>
+                <span style="font:700 11px/1 'JetBrains Mono',monospace;letter-spacing:.06em;padding:5px 9px;border-radius:6px;background:rgba(220,38,38,.1);color:#dc2626;border:1px solid rgba(220,38,38,.3)">PASS</span>
+              </div>
+
+              <div style="background:#0d1117;border:1px dashed #1e2533;border-radius:11px;padding:13px;display:flex;gap:13px;align-items:center;opacity:.75">
+                <div style="width:40px;height:54px;border-radius:6px;background:#1e2533;flex:none"></div>
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px">
+                  <span style="font:600 15px/1.3 Inter,sans-serif;color:#a8adb8">2025 Topps Chrome Update</span>
+                  <span style="font:400 12px/1 'JetBrains Mono',monospace;color:#4b5563">pre-release · baseline only, comps thin</span>
+                </div>
+                <span style="font:700 11px/1 'JetBrains Mono',monospace;letter-spacing:.06em;padding:5px 9px;border-radius:6px;background:rgba(245,158,11,.08);color:#f59e0b;border:1px dashed rgba(245,158,11,.3)">EST</span>
+              </div>
+            </div>
+
+            <div style="width:300px;flex:none;display:flex;flex-direction:column;gap:9px">
+              <span style="font:500 11px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b7280">waiting on you · 2</span>
+              <div style="background:#131820;border:1px solid #2a3142;border-radius:11px;padding:14px;display:flex;flex-direction:column;gap:10px">
+                <div style="display:flex;flex-direction:column;gap:3px">
+                  <span style="font:600 15px Inter,sans-serif">Orioles · Bowman Chrome</span>
+                  <span style="font:400 12px 'JetBrains Mono',monospace;color:#6b7280">paid $340 · pending · logged 12 sep</span>
+                </div>
+                <button onClick="{{ goLog }}" style="height:38px;border:1px solid #2a3142;border-radius:8px;cursor:pointer;background:#0a0e1a;color:#f5f5f7;font:700 13px Inter,sans-serif">Log results</button>
+              </div>
+              <div style="background:#131820;border:1px solid #1e2533;border-radius:11px;padding:14px;display:flex;flex-direction:column;gap:3px">
+                <span style="font:600 15px Inter,sans-serif;color:#a8adb8">Braves · Topps Chrome</span>
+                <span style="font:400 12px 'JetBrains Mono',monospace;color:#6b7280">paid $210 · pending · logged 13 sep</span>
+              </div>
+              <div style="background:#0d1117;border:1px solid #1e2533;border-radius:11px;padding:14px;display:flex;flex-direction:column;gap:5px;margin-top:6px">
+                <span style="font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b7280">this month</span>
+                <span style="font:700 26px/1 'JetBrains Mono',monospace;color:#22c55e">+$410</span>
+                <span style="font:400 13px/1.4 Inter,sans-serif;color:#a8adb8">saved by passing on overpriced slots</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ p_research }}">
+        <div style="display:flex;flex-direction:column;gap:18px">
+          <div>
+            <h1 style="margin:0 0 5px;font:700 24px/1.2 Inter,sans-serif;letter-spacing:-.015em">Research</h1>
+            <p style="margin:0;font:400 14px/1.5 Inter,sans-serif;color:#a8adb8">Price a slot against historical returns, comps and analyst notes.</p>
+          </div>
+
+          <div style="display:flex;gap:8px;padding:5px;background:#0d1117;border:1px solid #1e2533;border-radius:10px;align-self:flex-start">
+            <span style="font:700 13px Inter,sans-serif;padding:8px 15px;border-radius:7px;background:#3b82f6;color:#fff;box-shadow:0 0 20px rgba(59,130,246,.35)">Price a slot</span>
+            <span style="font:600 13px Inter,sans-serif;padding:8px 15px;border-radius:7px;color:#a8adb8">Compare all slots</span>
+            <span style="font:600 13px Inter,sans-serif;padding:8px 15px;border-radius:7px;color:#a8adb8">Slab lookup</span>
+          </div>
+
+          <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
+            <div style="width:290px;flex:none;background:#131820;border:1px solid #1e2533;border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:14px">
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <label style="font:700 11px/1 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#a8adb8">product</label>
+                <div style="background:#0a0e1a;border:1px solid #1e2533;border-radius:8px;padding:11px 12px;font:500 14px Inter,sans-serif">2025 Bowman Chrome</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <label style="font:700 11px/1 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#a8adb8">spot</label>
+                <div style="background:#0a0e1a;border:1px solid #1e2533;border-radius:8px;padding:11px 12px;font:500 14px Inter,sans-serif">Baltimore Orioles</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <label style="font:700 11px/1 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#a8adb8">breaker's ask</label>
+                <div style="background:#0a0e1a;border:1px solid #1e2533;border-radius:8px;padding:9px 12px;display:flex;align-items:center;gap:8px">
+                  <span style="font:700 15px 'JetBrains Mono',monospace;color:#6b7280">$</span>
+                  <span style="font:700 22px/1.2 'JetBrains Mono',monospace">340</span>
+                </div>
+              </div>
+              <button style="height:48px;border:none;border-radius:9px;cursor:pointer;background:#3b82f6;color:#fff;font:700 16px Inter,sans-serif;box-shadow:0 0 20px rgba(59,130,246,.4)">Get verdict</button>
+              <span style="font:500 11px 'JetBrains Mono',monospace;color:#6b7280;text-align:center">{{ planDetail }}</span>
+            </div>
+
+            <div style="flex:1;min-width:330px;display:flex;flex-direction:column;gap:12px">
+              <div style="background:#131820;border:2px solid rgba(220,38,38,.35);border-radius:12px;padding:20px;display:flex;flex-direction:column;gap:16px;box-shadow:0 4px 24px rgba(0,0,0,.4)">
+                <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+                  <span style="font:700 20px/1 'JetBrains Mono',monospace;letter-spacing:.06em;padding:12px 18px;border-radius:9px;background:rgba(220,38,38,.12);color:#dc2626;border:1px solid rgba(220,38,38,.35)">PASS</span>
+                  <div style="display:flex;flex-direction:column;gap:3px">
+                    <span style="font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#6b7280">fair market value</span>
+                    <span style="font:700 30px/1 'JetBrains Mono',monospace">$215</span>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:3px;padding-left:18px;border-left:1px solid #1e2533">
+                    <span style="font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#6b7280">ask is over by</span>
+                    <span style="font:700 30px/1 'JetBrains Mono',monospace;color:#dc2626">58%</span>
+                  </div>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <span style="font:500 11px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b7280">how we got there · 4 sources</span>
+                  <div style="background:#0a0e1a;border:1px solid #1e2533;border-radius:9px;padding:12px 13px;display:flex;align-items:center;gap:12px">
+                    <span style="font:700 11px 'JetBrains Mono',monospace;color:#60a5fa;width:64px;flex:none">COMPS</span>
+                    <span style="flex:1;font:400 13px/1.4 Inter,sans-serif;color:#f5f5f7">18 Orioles spots sold in 30 days · median $206</span>
+                    <span style="font:500 11px 'JetBrains Mono',monospace;color:#6b7280">44%</span>
+                  </div>
+                  <div style="background:#0a0e1a;border:1px solid #1e2533;border-radius:9px;padding:12px 13px;display:flex;align-items:center;gap:12px">
+                    <span style="font:700 11px 'JetBrains Mono',monospace;color:#60a5fa;width:64px;flex:none">PROSPECT</span>
+                    <span style="flex:1;font:400 13px/1.4 Inter,sans-serif;color:#f5f5f7">Basallo #14 overall · one top-100 arm behind him</span>
+                    <span style="font:500 11px 'JetBrains Mono',monospace;color:#6b7280">26%</span>
+                  </div>
+                  <div style="background:#0a0e1a;border:1px solid #1e2533;border-radius:9px;padding:12px 13px;display:flex;align-items:center;gap:12px">
+                    <span style="font:700 11px 'JetBrains Mono',monospace;color:#60a5fa;width:64px;flex:none">HIT RATE</span>
+                    <span style="flex:1;font:400 13px/1.4 Inter,sans-serif;color:#f5f5f7">12-box config returns 1.4 numbered Orioles on average</span>
+                    <span style="font:500 11px 'JetBrains Mono',monospace;color:#6b7280">18%</span>
+                  </div>
+                  <div style="background:#0a0e1a;border:1px solid #1e2533;border-radius:9px;padding:12px 13px;display:flex;align-items:center;gap:12px">
+                    <span style="font:700 11px 'JetBrains Mono',monospace;color:#f59e0b;width:64px;flex:none">ANALYST</span>
+                    <span style="flex:1;font:400 13px/1.4 Inter,sans-serif;color:#f5f5f7">"Orioles spots run hot on Whatnot — wait for the second pass"</span>
+                    <span style="font:500 11px 'JetBrains Mono',monospace;color:#6b7280">12%</span>
+                  </div>
+                </div>
+                <div style="display:flex;gap:9px;flex-wrap:wrap">
+                  <button style="height:40px;padding:0 16px;border:1px solid #2a3142;border-radius:8px;cursor:pointer;background:#0a0e1a;color:#f5f5f7;font:700 13px Inter,sans-serif">Save to chase list</button>
+                  <button onClick="{{ goLog }}" style="height:40px;padding:0 16px;border:1px solid #2a3142;border-radius:8px;cursor:pointer;background:#0a0e1a;color:#f5f5f7;font:700 13px Inter,sans-serif">I bought it anyway</button>
+                  <button style="height:40px;padding:0 16px;border:1px solid #2a3142;border-radius:8px;cursor:pointer;background:#0a0e1a;color:#a8adb8;font:700 13px Inter,sans-serif">Share</button>
+                </div>
+              </div>
+              <div style="background:#0d1117;border:1px solid #1e2533;border-radius:11px;padding:14px 16px;display:flex;align-items:center;gap:12px">
+                <span style="font:700 10px 'JetBrains Mono',monospace;letter-spacing:.1em;color:#f59e0b">CHEAPER SPOT</span>
+                <span style="flex:1;font:400 13px/1.4 Inter,sans-serif;color:#a8adb8">Braves in the same break asks $210 against $265 fair value.</span>
+                <span style="font:700 11px 'JetBrains Mono',monospace;padding:5px 9px;border-radius:6px;background:rgba(34,197,94,.1);color:#22c55e;border:1px solid rgba(34,197,94,.3)">BUY</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ p_log }}">
+        <div style="display:flex;flex-direction:column;gap:18px">
+          <div>
+            <h1 style="margin:0 0 5px;font:700 24px/1.2 Inter,sans-serif;letter-spacing:-.015em">Log</h1>
+            <p style="margin:0;font:400 14px/1.5 Inter,sans-serif;color:#a8adb8">Every slot you bought, what it returned, and whether the call was right.</p>
+          </div>
+
+          <div style="background:#131820;border:2px solid rgba(59,130,246,.45);border-radius:12px;padding:16px 20px;display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+            <div style="flex:1;min-width:260px;display:flex;flex-direction:column;gap:4px">
+              <span style="font:700 10px/1 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#60a5fa">2 breaks missing results</span>
+              <span style="font:600 17px/1.3 Inter,sans-serif">Log what you pulled to keep your savings number honest</span>
+            </div>
+            <button style="height:42px;padding:0 18px;border:none;border-radius:9px;cursor:pointer;background:#3b82f6;color:#fff;font:700 14px Inter,sans-serif;box-shadow:0 0 20px rgba(59,130,246,.4)">Log next break</button>
+          </div>
+
+          <div style="display:flex;gap:14px;flex-wrap:wrap">
+            <div style="flex:1;min-width:150px;background:#131820;border:1px solid #1e2533;border-radius:11px;padding:15px;display:flex;flex-direction:column;gap:5px">
+              <span style="font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b7280">slots bought</span>
+              <span style="font:700 24px/1 'JetBrains Mono',monospace">14</span>
+            </div>
+            <div style="flex:1;min-width:150px;background:#131820;border:1px solid #1e2533;border-radius:11px;padding:15px;display:flex;flex-direction:column;gap:5px">
+              <span style="font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b7280">total in</span>
+              <span style="font:700 24px/1 'JetBrains Mono',monospace">$2,840</span>
+            </div>
+            <div style="flex:1;min-width:150px;background:#131820;border:1px solid #1e2533;border-radius:11px;padding:15px;display:flex;flex-direction:column;gap:5px">
+              <span style="font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b7280">pulled value</span>
+              <span style="font:700 24px/1 'JetBrains Mono',monospace;color:#22c55e">$3,105</span>
+            </div>
+            <div style="flex:1;min-width:150px;background:#131820;border:1px solid #1e2533;border-radius:11px;padding:15px;display:flex;flex-direction:column;gap:5px">
+              <span style="font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b7280">net</span>
+              <span style="font:700 24px/1 'JetBrains Mono',monospace;color:#22c55e">+$265</span>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:7px;flex-wrap:wrap">
+            <span style="font:700 12px Inter,sans-serif;padding:7px 13px;border-radius:999px;background:#3b82f6;color:#fff">All 14</span>
+            <span style="font:600 12px Inter,sans-serif;padding:7px 13px;border-radius:999px;background:#131820;border:1px solid #1e2533;color:#a8adb8">Wins 8</span>
+            <span style="font:600 12px Inter,sans-serif;padding:7px 13px;border-radius:999px;background:#131820;border:1px solid #1e2533;color:#a8adb8">Busts 4</span>
+            <span style="font:600 12px Inter,sans-serif;padding:7px 13px;border-radius:999px;background:#131820;border:1px solid #1e2533;color:#a8adb8">Open 2</span>
+          </div>
+
+          <div style="background:#131820;border:1px solid #1e2533;border-radius:12px;overflow:hidden">
+            <div style="display:flex;padding:11px 16px;background:#0d1117;border-bottom:1px solid #1e2533">
+              <span style="flex:1;font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b7280">break · spot</span>
+              <span style="width:88px;font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b7280">paid</span>
+              <span style="width:88px;font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b7280">pulled</span>
+              <span style="width:88px;font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b7280">our call</span>
+              <span style="width:80px;font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b7280">result</span>
+            </div>
+            <div style="display:flex;align-items:center;padding:14px 16px;border-bottom:1px solid #1e2533">
+              <div style="flex:1;display:flex;flex-direction:column;gap:3px"><span style="font:600 14px Inter,sans-serif">Topps Chrome · Braves</span><span style="font:400 11px 'JetBrains Mono',monospace;color:#6b7280">whatnot · 04 sep</span></div>
+              <span style="width:88px;font:500 14px 'JetBrains Mono',monospace">$210</span>
+              <span style="width:88px;font:500 14px 'JetBrains Mono',monospace;color:#22c55e">$330</span>
+              <span style="width:88px;font:700 11px 'JetBrains Mono',monospace;color:#22c55e">BUY</span>
+              <span style="width:80px"><span style="font:700 10px 'JetBrains Mono',monospace;padding:4px 8px;border-radius:5px;background:rgba(34,197,94,.1);color:#22c55e;border:1px solid rgba(34,197,94,.3)">RIGHT</span></span>
+            </div>
+            <div style="display:flex;align-items:center;padding:14px 16px;border-bottom:1px solid #1e2533">
+              <div style="flex:1;display:flex;flex-direction:column;gap:3px"><span style="font:600 14px Inter,sans-serif">Panini Prizm · Bulls</span><span style="font:400 11px 'JetBrains Mono',monospace;color:#6b7280">ebay · 29 aug</span></div>
+              <span style="width:88px;font:500 14px 'JetBrains Mono',monospace">$180</span>
+              <span style="width:88px;font:500 14px 'JetBrains Mono',monospace;color:#dc2626">$95</span>
+              <span style="width:88px;font:700 11px 'JetBrains Mono',monospace;color:#dc2626">PASS</span>
+              <span style="width:80px"><span style="font:700 10px 'JetBrains Mono',monospace;padding:4px 8px;border-radius:5px;background:rgba(34,197,94,.1);color:#22c55e;border:1px solid rgba(34,197,94,.3)">RIGHT</span></span>
+            </div>
+            <div style="display:flex;align-items:center;padding:14px 16px;border-bottom:1px solid #1e2533">
+              <div style="flex:1;display:flex;flex-direction:column;gap:3px"><span style="font:600 14px Inter,sans-serif">Topps Series 2 · Dodgers</span><span style="font:400 11px 'JetBrains Mono',monospace;color:#6b7280">fanatics · 21 aug</span></div>
+              <span style="width:88px;font:500 14px 'JetBrains Mono',monospace">$400</span>
+              <span style="width:88px;font:500 14px 'JetBrains Mono',monospace;color:#f59e0b">$385</span>
+              <span style="width:88px;font:700 11px 'JetBrains Mono',monospace;color:#f59e0b">WATCH</span>
+              <span style="width:80px"><span style="font:700 10px 'JetBrains Mono',monospace;padding:4px 8px;border-radius:5px;background:rgba(245,158,11,.1);color:#f59e0b;border:1px solid rgba(245,158,11,.3)">EVEN</span></span>
+            </div>
+            <div style="display:flex;align-items:center;padding:14px 16px;background:rgba(59,130,246,.05)">
+              <div style="flex:1;display:flex;flex-direction:column;gap:3px"><span style="font:600 14px Inter,sans-serif">Bowman Chrome · Orioles</span><span style="font:400 11px 'JetBrains Mono',monospace;color:#6b7280">whatnot · 12 sep</span></div>
+              <span style="width:88px;font:500 14px 'JetBrains Mono',monospace">$340</span>
+              <span style="width:88px;font:500 14px 'JetBrains Mono',monospace;color:#4b5563">—</span>
+              <span style="width:88px;font:700 11px 'JetBrains Mono',monospace;color:#dc2626">PASS</span>
+              <span style="width:80px"><button style="font:700 10px 'JetBrains Mono',monospace;padding:5px 9px;border-radius:5px;background:#3b82f6;color:#fff;border:none;cursor:pointer">LOG</button></span>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ p_learn }}">
+        <div style="display:flex;flex-direction:column;gap:18px">
+          <div>
+            <h1 style="margin:0 0 5px;font:700 24px/1.2 Inter,sans-serif;letter-spacing:-.015em">Learn</h1>
+            <p style="margin:0;font:400 14px/1.5 Inter,sans-serif;color:#a8adb8">What your buying looks like over time, and where the edge actually came from.</p>
+          </div>
+
+          <div style="display:flex;gap:14px;flex-wrap:wrap">
+            <div style="flex:1;min-width:230px;background:#131820;border:1px solid #1e2533;border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:7px;background-image:linear-gradient(180deg,rgba(34,197,94,.08) 0%,rgba(34,197,94,0) 100%)">
+              <span style="font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b7280">saved · last 30 days</span>
+              <span style="font:700 34px/1 'JetBrains Mono',monospace;color:#22c55e">$3,400</span>
+              <span style="font:400 13px/1.45 Inter,sans-serif;color:#a8adb8">by passing on slots priced above fair value</span>
+            </div>
+            <div style="flex:1;min-width:230px;background:#131820;border:1px solid #1e2533;border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:7px">
+              <span style="font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b7280">verdict accuracy</span>
+              <span style="font:700 34px/1 'JetBrains Mono',monospace">11<span style="color:#6b7280;font-size:20px"> / 14</span></span>
+              <span style="font:400 13px/1.45 Inter,sans-serif;color:#a8adb8">calls that matched what the slot returned</span>
+            </div>
+            <div style="flex:1;min-width:230px;background:#131820;border:1px solid #1e2533;border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:7px">
+              <span style="font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b7280">avg overpay avoided</span>
+              <span style="font:700 34px/1 'JetBrains Mono',monospace;color:#f59e0b">31%</span>
+              <span style="font:400 13px/1.45 Inter,sans-serif;color:#a8adb8">on the slots you walked away from</span>
+            </div>
+          </div>
+
+          <div style="background:#131820;border:1px solid #1e2533;border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:12px">
+            <span style="font:500 11px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b7280">your pattern</span>
+            <span style="font:600 19px/1.4 Inter,sans-serif;text-wrap:pretty">You beat fair value on baseball PYT breaks and overpay on basketball randoms.</span>
+            <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:2px">
+              <div style="flex:1;min-width:200px;display:flex;flex-direction:column;gap:7px">
+                <div style="display:flex;justify-content:space-between;font:500 12px 'JetBrains Mono',monospace"><span style="color:#a8adb8">Baseball PYT</span><span style="color:#22c55e">+18%</span></div>
+                <div style="height:8px;background:#0a0e1a;border-radius:999px;overflow:hidden"><div style="height:100%;width:72%;background:#22c55e"></div></div>
+                <div style="display:flex;justify-content:space-between;font:500 12px 'JetBrains Mono',monospace"><span style="color:#a8adb8">Baseball team</span><span style="color:#22c55e">+6%</span></div>
+                <div style="height:8px;background:#0a0e1a;border-radius:999px;overflow:hidden"><div style="height:100%;width:40%;background:#22c55e"></div></div>
+                <div style="display:flex;justify-content:space-between;font:500 12px 'JetBrains Mono',monospace"><span style="color:#a8adb8">Basketball random</span><span style="color:#dc2626">−24%</span></div>
+                <div style="height:8px;background:#0a0e1a;border-radius:999px;overflow:hidden"><div style="height:100%;width:55%;background:#dc2626"></div></div>
+              </div>
+              <div style="flex:1;min-width:220px;height:150px;border:1px dashed #2a3142;border-radius:10px;background:repeating-linear-gradient(45deg,rgba(59,130,246,.05) 0 8px,transparent 8px 16px);display:flex;align-items:center;justify-content:center;text-align:center;padding:12px;font:500 11px/1.5 'JetBrains Mono',monospace;color:#4b5563">chart placeholder<br>spend vs. returned value by month</div>
+            </div>
+          </div>
+
+          <div style="background:#0d1117;border:1px solid #1e2533;border-radius:12px;padding:16px 18px;display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+            <span style="font:700 10px 'JetBrains Mono',monospace;letter-spacing:.1em;color:#60a5fa">SUGGESTION</span>
+            <span style="flex:1;min-width:240px;font:400 14px/1.45 Inter,sans-serif;color:#f5f5f7">Your wins cluster on Bowman Chrome PYT spots under $230. Anything above that, walk.</span>
+            <button onClick="{{ goResearch }}" style="height:38px;padding:0 15px;border:1px solid #2a3142;border-radius:8px;cursor:pointer;background:#131820;color:#f5f5f7;font:700 13px Inter,sans-serif">Analyze one</button>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+
+  <div style="width:392px;flex:none;display:flex;flex-direction:column;gap:12px">
+    <span style="font:700 10px/1 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#6b7280">same four phases · mobile</span>
+    <div style="height:760px;background:#0a0e1a;border:1px solid #2a3142;border-radius:32px;padding:8px;box-shadow:0 4px 24px rgba(0,0,0,.5);display:flex;flex-direction:column">
+      <div style="flex:1;min-height:0;background:#06090f;border-radius:25px;overflow:hidden;display:flex;flex-direction:column">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px 8px;flex:none">
+          <span style="font:700 12px 'JetBrains Mono',monospace">9:41</span>
+          <div style="display:flex;gap:5px;align-items:center"><span style="width:16px;height:9px;border:1px solid #6b7280;border-radius:2px"></span></div>
+        </div>
+
+        <div style="flex:1;min-height:0;overflow-y:auto;padding:6px 16px 16px;display:flex;flex-direction:column;gap:13px">
+          <sc-if value="{{ p_breaks }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:13px">
+              <div style="display:flex;align-items:baseline;justify-content:space-between">
+                <h2 style="margin:0;font:700 21px/1.2 Inter,sans-serif;letter-spacing:-.015em">Recent</h2>
+                <span style="font:500 11px 'JetBrains Mono',monospace;color:#6b7280">5 ANALYSES</span>
+              </div>
+              <button onClick="{{ goResearch }}" style="height:48px;border:none;border-radius:10px;background:#3b82f6;color:#fff;font:700 15px Inter,sans-serif;cursor:pointer;box-shadow:0 0 20px rgba(59,130,246,.4)">Analyze a break</button>
+              <div style="background:#131820;border:2px solid rgba(59,130,246,.45);border-radius:12px;padding:15px;display:flex;flex-direction:column;gap:9px">
+                <span style="font:700 10px/1 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#60a5fa">do this first</span>
+                <span style="font:600 16px/1.35 Inter,sans-serif">Your Bowman Chrome PYT numbers are 3 days old — fair value moved $18</span>
+                <button onClick="{{ goResearch }}" style="height:46px;border:none;border-radius:9px;background:#3b82f6;color:#fff;font:700 15px Inter,sans-serif;cursor:pointer;box-shadow:0 0 20px rgba(59,130,246,.4)">Re-analyze</button>
+              </div>
+              <div style="background:#131820;border:1px solid #1e2533;border-radius:11px;padding:13px;display:flex;gap:12px;align-items:center">
+                <div style="width:36px;height:48px;border-radius:5px;background:linear-gradient(135deg,#3b82f6,#8b5cf6);opacity:.28;flex:none"></div>
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+                  <span style="font:600 14px/1.3 Inter,sans-serif">Bowman Chrome · PYT</span>
+                  <span style="font:400 11px 'JetBrains Mono',monospace;color:#6b7280">4 priced · 3d ago</span>
+                </div>
+                <span style="font:700 10px 'JetBrains Mono',monospace;padding:5px 8px;border-radius:6px;background:rgba(34,197,94,.1);color:#22c55e;border:1px solid rgba(34,197,94,.3)">BUY</span>
+              </div>
+              <div style="background:#131820;border:1px solid #1e2533;border-radius:11px;padding:13px;display:flex;gap:12px;align-items:center">
+                <div style="width:36px;height:48px;border-radius:5px;background:linear-gradient(135deg,#f97316,#ef4444);opacity:.28;flex:none"></div>
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+                  <span style="font:600 14px/1.3 Inter,sans-serif">Topps Chrome · Team</span>
+                  <span style="font:400 11px 'JetBrains Mono',monospace;color:#6b7280">6 priced · 2h ago</span>
+                </div>
+                <span style="font:700 10px 'JetBrains Mono',monospace;padding:5px 8px;border-radius:6px;background:rgba(245,158,11,.1);color:#f59e0b;border:1px solid rgba(245,158,11,.3)">WATCH</span>
+              </div>
+              <div style="background:#131820;border:1px solid #1e2533;border-radius:11px;padding:13px;display:flex;gap:12px;align-items:center">
+                <div style="width:36px;height:48px;border-radius:5px;background:linear-gradient(135deg,#a855f7,#ec4899);opacity:.28;flex:none"></div>
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+                  <span style="font:600 14px/1.3 Inter,sans-serif">Panini Prizm · Random</span>
+                  <span style="font:400 11px 'JetBrains Mono',monospace;color:#6b7280">1 priced · yesterday</span>
+                </div>
+                <span style="font:700 10px 'JetBrains Mono',monospace;padding:5px 8px;border-radius:6px;background:rgba(220,38,38,.1);color:#dc2626;border:1px solid rgba(220,38,38,.3)">PASS</span>
+              </div>
+              <span style="font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b7280;margin-top:2px">waiting on you · 2</span>
+              <div style="background:#131820;border:1px solid #2a3142;border-radius:11px;padding:13px;display:flex;flex-direction:column;gap:9px">
+                <span style="font:600 14px Inter,sans-serif">Orioles · Bowman · paid $340</span>
+                <span style="font:400 11px 'JetBrains Mono',monospace;color:#6b7280">pending · logged 12 sep</span>
+                <button onClick="{{ goLog }}" style="height:40px;border:1px solid #2a3142;border-radius:8px;background:#0a0e1a;color:#f5f5f7;font:700 13px Inter,sans-serif;cursor:pointer">Log results</button>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ p_research }}">
+            <div style="display:flex;flex-direction:column;gap:13px">
+              <h2 style="margin:0;font:700 21px/1.2 Inter,sans-serif;letter-spacing:-.015em">Research</h2>
+              <div style="background:#131820;border:2px solid rgba(220,38,38,.35);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px">
+                <div style="display:flex;align-items:center;gap:14px">
+                  <span style="font:700 17px/1 'JetBrains Mono',monospace;letter-spacing:.06em;padding:11px 15px;border-radius:9px;background:rgba(220,38,38,.12);color:#dc2626;border:1px solid rgba(220,38,38,.35)">PASS</span>
+                  <div style="display:flex;flex-direction:column;gap:2px">
+                    <span style="font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#6b7280">fair value</span>
+                    <span style="font:700 26px/1 'JetBrains Mono',monospace">$215</span>
+                  </div>
+                </div>
+                <span style="font:400 13px/1.45 Inter,sans-serif;color:#a8adb8">Orioles · Bowman Chrome · asking $340, over by 58%</span>
+                <button style="height:42px;border:1px solid #2a3142;border-radius:8px;background:#0a0e1a;color:#f5f5f7;font:700 13px Inter,sans-serif;cursor:pointer">Show the 4 sources</button>
+              </div>
+              <div style="background:#0d1117;border:1px solid #1e2533;border-radius:11px;padding:13px;display:flex;align-items:center;gap:11px">
+                <span style="font:700 9px 'JetBrains Mono',monospace;letter-spacing:.1em;color:#f59e0b;flex:none">CHEAPER</span>
+                <span style="flex:1;font:400 12.5px/1.4 Inter,sans-serif;color:#a8adb8">Braves · $210 vs $265 fair</span>
+                <span style="font:700 10px 'JetBrains Mono',monospace;padding:4px 8px;border-radius:6px;background:rgba(34,197,94,.1);color:#22c55e;border:1px solid rgba(34,197,94,.3)">BUY</span>
+              </div>
+              <div style="background:#131820;border:1px solid #1e2533;border-radius:12px;padding:15px;display:flex;flex-direction:column;gap:11px">
+                <span style="font:700 10px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#a8adb8">price another slot</span>
+                <div style="background:#0a0e1a;border:1px solid #1e2533;border-radius:8px;padding:11px;font:500 13px Inter,sans-serif;color:#6b7280">Product</div>
+                <div style="display:flex;gap:9px">
+                  <div style="flex:1;background:#0a0e1a;border:1px solid #1e2533;border-radius:8px;padding:11px;font:500 13px Inter,sans-serif;color:#6b7280">Spot</div>
+                  <div style="width:92px;background:#0a0e1a;border:1px solid #1e2533;border-radius:8px;padding:11px;font:500 13px 'JetBrains Mono',monospace;color:#6b7280">$ ask</div>
+                </div>
+                <button style="height:46px;border:none;border-radius:9px;background:#3b82f6;color:#fff;font:700 15px Inter,sans-serif;cursor:pointer;box-shadow:0 0 20px rgba(59,130,246,.4)">Get verdict</button>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ p_log }}">
+            <div style="display:flex;flex-direction:column;gap:13px">
+              <h2 style="margin:0;font:700 21px/1.2 Inter,sans-serif;letter-spacing:-.015em">Log</h2>
+              <div style="background:#131820;border:2px solid rgba(59,130,246,.45);border-radius:12px;padding:15px;display:flex;flex-direction:column;gap:9px">
+                <span style="font:700 10px/1 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#60a5fa">needs results · 2</span>
+                <span style="font:600 16px/1.35 Inter,sans-serif">Bowman Chrome · Orioles · $340</span>
+                <button style="height:46px;border:none;border-radius:9px;background:#3b82f6;color:#fff;font:700 15px Inter,sans-serif;cursor:pointer;box-shadow:0 0 20px rgba(59,130,246,.4)">Log what you pulled</button>
+              </div>
+              <div style="display:flex;gap:11px">
+                <div style="flex:1;background:#131820;border:1px solid #1e2533;border-radius:11px;padding:13px;display:flex;flex-direction:column;gap:4px">
+                  <span style="font:500 10px 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b7280">total in</span>
+                  <span style="font:700 19px 'JetBrains Mono',monospace">$2,840</span>
+                </div>
+                <div style="flex:1;background:#131820;border:1px solid #1e2533;border-radius:11px;padding:13px;display:flex;flex-direction:column;gap:4px">
+                  <span style="font:500 10px 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b7280">net</span>
+                  <span style="font:700 19px 'JetBrains Mono',monospace;color:#22c55e">+$265</span>
+                </div>
+              </div>
+              <span style="font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b7280">history</span>
+              <div style="background:#131820;border:1px solid #1e2533;border-radius:11px;padding:13px;display:flex;align-items:center;gap:11px">
+                <div style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="font:600 14px Inter,sans-serif">Topps · Braves</span><span style="font:400 11px 'JetBrains Mono',monospace;color:#6b7280">$210 → $330</span></div>
+                <span style="font:700 14px 'JetBrains Mono',monospace;color:#22c55e">+$120</span>
+              </div>
+              <div style="background:#131820;border:1px solid #1e2533;border-radius:11px;padding:13px;display:flex;align-items:center;gap:11px">
+                <div style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="font:600 14px Inter,sans-serif">Prizm · Bulls</span><span style="font:400 11px 'JetBrains Mono',monospace;color:#6b7280">$180 → $95</span></div>
+                <span style="font:700 14px 'JetBrains Mono',monospace;color:#dc2626">−$85</span>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ p_learn }}">
+            <div style="display:flex;flex-direction:column;gap:13px">
+              <h2 style="margin:0;font:700 21px/1.2 Inter,sans-serif;letter-spacing:-.015em">Learn</h2>
+              <div style="background:#131820;border:1px solid #1e2533;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:6px;background-image:linear-gradient(180deg,rgba(34,197,94,.08) 0%,rgba(34,197,94,0) 100%)">
+                <span style="font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b7280">saved · 30 days</span>
+                <span style="font:700 30px/1 'JetBrains Mono',monospace;color:#22c55e">$3,400</span>
+                <span style="font:400 13px/1.4 Inter,sans-serif;color:#a8adb8">by passing on overpriced slots</span>
+              </div>
+              <div style="background:#131820;border:1px solid #1e2533;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px">
+                <span style="font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b7280">your pattern</span>
+                <span style="font:600 16px/1.4 Inter,sans-serif;text-wrap:pretty">You beat fair value on baseball PYT and overpay on basketball randoms.</span>
+                <div style="display:flex;flex-direction:column;gap:6px">
+                  <div style="display:flex;justify-content:space-between;font:500 11px 'JetBrains Mono',monospace"><span style="color:#a8adb8">Baseball PYT</span><span style="color:#22c55e">+18%</span></div>
+                  <div style="height:7px;background:#0a0e1a;border-radius:999px;overflow:hidden"><div style="height:100%;width:72%;background:#22c55e"></div></div>
+                  <div style="display:flex;justify-content:space-between;font:500 11px 'JetBrains Mono',monospace"><span style="color:#a8adb8">Basketball random</span><span style="color:#dc2626">−24%</span></div>
+                  <div style="height:7px;background:#0a0e1a;border-radius:999px;overflow:hidden"><div style="height:100%;width:55%;background:#dc2626"></div></div>
+                </div>
+              </div>
+              <div style="height:120px;border:1px dashed #2a3142;border-radius:11px;background:repeating-linear-gradient(45deg,rgba(59,130,246,.05) 0 8px,transparent 8px 16px);display:flex;align-items:center;justify-content:center;font:500 10px/1.5 'JetBrains Mono',monospace;color:#4b5563;text-align:center;padding:10px">chart placeholder<br>spend vs. returned value</div>
+            </div>
+          </sc-if>
+        </div>
+
+        <div style="flex:none;display:flex;border-top:1px solid #1e2533;background:#0a0e1a;padding:6px 4px 10px">
+          <button onClick="{{ goBreaks }}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;background:none;border:none;cursor:pointer;padding:7px 0;font:700 9.5px 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color: {{ rfg_breaks }}">
+            <span style="width:19px;height:19px;border:2px solid currentColor;border-radius:5px"></span>Breaks
+          </button>
+          <button onClick="{{ goResearch }}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;background:none;border:none;cursor:pointer;padding:7px 0;font:700 9.5px 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color: {{ rfg_research }}">
+            <span style="width:19px;height:19px;border:2px solid currentColor;border-radius:50%"></span>Research
+          </button>
+          <button onClick="{{ goLog }}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;background:none;border:none;cursor:pointer;padding:7px 0;font:700 9.5px 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color: {{ rfg_log }}">
+            <span style="width:19px;height:19px;border:2px solid currentColor;border-radius:5px 5px 10px 10px"></span>Log
+          </button>
+          <button onClick="{{ goLearn }}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;background:none;border:none;cursor:pointer;padding:7px 0;font:700 9.5px 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color: {{ rfg_learn }}">
+            <span style="width:19px;height:19px;border:2px solid currentColor;transform:rotate(45deg)"></span>Learn
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isOnb }}">
+<div style="width:100%;max-width:1560px;display:flex;flex-direction:column;gap:18px;align-items:center">
+  <div style="display:flex;gap:7px;flex-wrap:wrap;justify-content:center">
+    <button onClick="{{ step1 }}" style="font:700 12px Inter,sans-serif;padding:8px 14px;border-radius:999px;cursor:pointer;border:1px solid #1e2533;background: {{ sbg_1 }};color: {{ sfg_1 }}">1 · Gate</button>
+    <button onClick="{{ step2 }}" style="font:700 12px Inter,sans-serif;padding:8px 14px;border-radius:999px;cursor:pointer;border:1px solid #1e2533;background: {{ sbg_2 }};color: {{ sfg_2 }}">2 · One question</button>
+    <button onClick="{{ step3 }}" style="font:700 12px Inter,sans-serif;padding:8px 14px;border-radius:999px;cursor:pointer;border:1px solid #1e2533;background: {{ sbg_3 }};color: {{ sfg_3 }}">3 · Try it</button>
+    <button onClick="{{ step4 }}" style="font:700 12px Inter,sans-serif;padding:8px 14px;border-radius:999px;cursor:pointer;border:1px solid #1e2533;background: {{ sbg_4 }};color: {{ sfg_4 }}">4 · Payoff</button>
+    <button onClick="{{ step5 }}" style="font:700 12px Inter,sans-serif;padding:8px 14px;border-radius:999px;cursor:pointer;border:1px solid #1e2533;background: {{ sbg_5 }};color: {{ sfg_5 }}">5 · Plan</button>
+  </div>
+
+  <div style="width:392px;height:760px;background:#0a0e1a;border:1px solid #2a3142;border-radius:32px;padding:8px;box-shadow:0 4px 24px rgba(0,0,0,.5)">
+    <div style="height:100%;background:#06090f;border-radius:25px;overflow:hidden;display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px 8px;flex:none">
+        <span style="font:700 12px 'JetBrains Mono',monospace">9:41</span>
+        <span style="width:16px;height:9px;border:1px solid #6b7280;border-radius:2px"></span>
+      </div>
+      <div style="flex:1;min-height:0;overflow-y:auto;padding:14px 20px 22px;display:flex;flex-direction:column">
+
+        <sc-if value="{{ o1 }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:14px;flex:1">
+            <div style="display:flex;align-items:center;gap:10px;margin-top:22px">
+              <div style="width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#3b82f6 0%,#8b5cf6 100%);box-shadow:0 0 20px rgba(59,130,246,.3);display:flex;align-items:center;justify-content:center;font:700 14px 'JetBrains Mono',monospace;color:#fff">IQ</div>
+              <span style="font:700 19px Inter,sans-serif;letter-spacing:-.01em">BreakIQ</span>
+            </div>
+            <h1 style="margin:22px 0 0;font:700 30px/1.2 Inter,sans-serif;letter-spacing:-.02em;text-wrap:pretty">Stop buying into breaks blind.</h1>
+            <p style="margin:0;font:400 15px/1.55 Inter,sans-serif;color:#a8adb8">Fair market value for any slot, from real sales and historical returns. Two things before we start.</p>
+            <div style="background:#131820;border:1px solid #1e2533;border-radius:11px;padding:15px;display:flex;gap:12px;align-items:flex-start;margin-top:8px">
+              <span style="width:20px;height:20px;border:2px solid #3b82f6;border-radius:5px;background:#3b82f6;flex:none;display:flex;align-items:center;justify-content:center;font:700 12px Inter,sans-serif;color:#fff">✓</span>
+              <span style="font:500 14px/1.45 Inter,sans-serif">I'm 18 or older</span>
+            </div>
+            <div style="background:#131820;border:1px solid #1e2533;border-radius:11px;padding:15px;display:flex;gap:12px;align-items:flex-start">
+              <span style="width:20px;height:20px;border:2px solid #2a3142;border-radius:5px;flex:none"></span>
+              <span style="font:500 14px/1.45 Inter,sans-serif;color:#a8adb8">I agree to the <a href="#">terms</a> and <a href="#">privacy policy</a></span>
+            </div>
+            <button onClick="{{ step2 }}" style="margin-top:auto;height:56px;border:none;border-radius:10px;background:#3b82f6;color:#fff;font:700 17px Inter,sans-serif;cursor:pointer;box-shadow:0 0 20px rgba(59,130,246,.4)">Start</button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ o2 }}">
+          <div style="display:flex;flex-direction:column;gap:16px;flex:1">
+            <div style="display:flex;gap:5px">
+              <div style="height:4px;flex:1;border-radius:999px;background:#3b82f6"></div>
+              <div style="height:4px;flex:1;border-radius:999px;background:#1e2533"></div>
+            </div>
+            <h1 style="margin:10px 0 0;font:700 26px/1.25 Inter,sans-serif;letter-spacing:-.02em">What do you break?</h1>
+            <p style="margin:0;font:400 14px/1.5 Inter,sans-serif;color:#a8adb8">Two answers, and only because they change what you see next.</p>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:4px">
+              <span style="font:700 11px/1 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#a8adb8">sports</span>
+              <div style="display:flex;flex-wrap:wrap;gap:8px">
+                <span style="font:700 13px Inter,sans-serif;padding:10px 15px;border-radius:999px;background:#3b82f6;color:#fff;box-shadow:0 0 20px rgba(59,130,246,.3)">Baseball</span>
+                <span style="font:600 13px Inter,sans-serif;padding:10px 15px;border-radius:999px;background:#131820;border:1px solid #1e2533;color:#a8adb8">Basketball</span>
+                <span style="font:600 13px Inter,sans-serif;padding:10px 15px;border-radius:999px;background:#131820;border:1px solid #1e2533;color:#a8adb8">Football</span>
+                <span style="font:600 13px Inter,sans-serif;padding:10px 15px;border-radius:999px;background:#131820;border:1px solid #1e2533;color:#a8adb8">Hockey</span>
+                <span style="font:600 13px Inter,sans-serif;padding:10px 15px;border-radius:999px;background:#131820;border:1px solid #1e2533;color:#a8adb8">Pokémon</span>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
+              <span style="font:700 11px/1 'JetBrains Mono',monospace;letter-spacing:.06em;text-transform:uppercase;color:#a8adb8">where you buy in</span>
+              <div style="display:flex;flex-wrap:wrap;gap:8px">
+                <span style="font:700 13px Inter,sans-serif;padding:10px 15px;border-radius:999px;background:#3b82f6;color:#fff;box-shadow:0 0 20px rgba(59,130,246,.3)">Whatnot</span>
+                <span style="font:600 13px Inter,sans-serif;padding:10px 15px;border-radius:999px;background:#131820;border:1px solid #1e2533;color:#a8adb8">Fanatics Live</span>
+                <span style="font:600 13px Inter,sans-serif;padding:10px 15px;border-radius:999px;background:#131820;border:1px solid #1e2533;color:#a8adb8">eBay Live</span>
+                <span style="font:600 13px Inter,sans-serif;padding:10px 15px;border-radius:999px;background:#131820;border:1px solid #1e2533;color:#a8adb8">Instagram</span>
+              </div>
+            </div>
+            <button onClick="{{ step3 }}" style="margin-top:auto;height:56px;border:none;border-radius:10px;background:#3b82f6;color:#fff;font:700 17px Inter,sans-serif;cursor:pointer;box-shadow:0 0 20px rgba(59,130,246,.4)">Next</button>
+            <button onClick="{{ step3 }}" style="height:40px;border:none;background:none;color:#6b7280;font:600 13px Inter,sans-serif;cursor:pointer">Skip — I'll set this later</button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ o3 }}">
+          <div style="display:flex;flex-direction:column;gap:14px;flex:1">
+            <div style="display:flex;gap:5px">
+              <div style="height:4px;flex:1;border-radius:999px;background:#3b82f6"></div>
+              <div style="height:4px;flex:1;border-radius:999px;background:#3b82f6"></div>
+            </div>
+            <span style="font:700 10px/1 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#60a5fa;margin-top:8px">try it on a real product</span>
+            <h1 style="margin:0;font:700 24px/1.3 Inter,sans-serif;letter-spacing:-.02em;text-wrap:pretty">2025 Bowman Chrome, 12-box PYT. Which spot would you take?</h1>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:2px">
+              <span style="font:600 13px Inter,sans-serif;padding:10px 15px;border-radius:999px;background:#131820;border:1px solid #1e2533;color:#a8adb8">Orioles</span>
+              <span style="font:700 13px Inter,sans-serif;padding:10px 15px;border-radius:999px;background:#3b82f6;color:#fff;box-shadow:0 0 20px rgba(59,130,246,.3)">Braves</span>
+              <span style="font:600 13px Inter,sans-serif;padding:10px 15px;border-radius:999px;background:#131820;border:1px solid #1e2533;color:#a8adb8">Dodgers</span>
+              <span style="font:600 13px Inter,sans-serif;padding:10px 15px;border-radius:999px;background:#131820;border:1px solid #1e2533;color:#a8adb8">Yankees</span>
+            </div>
+            <div style="background:#131820;border:1px solid #1e2533;border-radius:11px;padding:15px;display:flex;align-items:center;justify-content:space-between;margin-top:6px">
+              <span style="font:500 14px Inter,sans-serif;color:#a8adb8">Typical ask for that spot</span>
+              <span style="font:700 22px 'JetBrains Mono',monospace">$210</span>
+            </div>
+            <p style="margin:0;font:400 13px/1.5 Inter,sans-serif;color:#6b7280">No account needed yet. Real product, real sold comps behind the number.</p>
+            <button onClick="{{ step4 }}" style="margin-top:auto;height:56px;border:none;border-radius:10px;background:#3b82f6;color:#fff;font:700 17px Inter,sans-serif;cursor:pointer;box-shadow:0 0 20px rgba(59,130,246,.4)">Show me the verdict</button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ o4 }}">
+          <div style="display:flex;flex-direction:column;gap:13px;flex:1">
+            <div style="background:#131820;border:2px solid rgba(34,197,94,.4);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:12px;box-shadow:0 4px 24px rgba(0,0,0,.4)">
+              <div style="display:flex;align-items:center;gap:15px">
+                <span style="font:700 18px/1 'JetBrains Mono',monospace;letter-spacing:.06em;padding:12px 16px;border-radius:9px;background:rgba(34,197,94,.12);color:#22c55e;border:1px solid rgba(34,197,94,.35)">BUY</span>
+                <div style="display:flex;flex-direction:column;gap:2px">
+                  <span style="font:500 10px/1 'JetBrains Mono',monospace;letter-spacing:.1em;text-transform:uppercase;color:#6b7280">fair value</span>
+                  <span style="font:700 28px/1 'JetBrains Mono',monospace">$265</span>
+                </div>
+              </div>
+              <div style="background:#0a0e1a;border:1px solid #1e2533;border-radius:9px;padding:13px">
+                <span style="font:400 14px/1.5 Inter,sans-serif">At a $210 ask the Braves spot is <b style="color:#22c55e">$55 under</b> fair value. That's the gap most people never see before they bid.</span>
+              </div>
+            </div>
+            <span style="font:500 11px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#6b7280;margin-top:2px">how we got there</span>
+            <div style="background:#131820;border:1px solid #1e2533;border-radius:10px;padding:12px 13px;display:flex;align-items:center;gap:11px">
+              <span style="font:700 10px 'JetBrains Mono',monospace;color:#60a5fa;width:58px;flex:none">COMPS</span>
+              <span style="flex:1;font:400 12.5px/1.4 Inter,sans-serif">18 Braves spots sold in 30 days</span>
+            </div>
+            <div style="background:#131820;border:1px solid #1e2533;border-radius:10px;padding:12px 13px;display:flex;align-items:center;gap:11px">
+              <span style="font:700 10px 'JetBrains Mono',monospace;color:#60a5fa;width:58px;flex:none">PROSPECT</span>
+              <span style="flex:1;font:400 12.5px/1.4 Inter,sans-serif">Two top-50 bats in this checklist</span>
+            </div>
+            <div style="background:#131820;border:1px solid #1e2533;border-radius:10px;padding:12px 13px;display:flex;align-items:center;gap:11px">
+              <span style="font:700 10px 'JetBrains Mono',monospace;color:#60a5fa;width:58px;flex:none">HIT RATE</span>
+              <span style="flex:1;font:400 12.5px/1.4 Inter,sans-serif">12-box config returns 1.6 numbered</span>
+            </div>
+            <div style="background:#131820;border:1px solid #1e2533;border-radius:10px;padding:12px 13px;display:flex;align-items:center;gap:11px">
+              <span style="font:700 10px 'JetBrains Mono',monospace;color:#f59e0b;width:58px;flex:none">ANALYST</span>
+              <span style="flex:1;font:400 12.5px/1.4 Inter,sans-serif">Kyle, 2 days ago</span>
+            </div>
+            <button onClick="{{ step5 }}" style="margin-top:auto;height:56px;border:none;border-radius:10px;background:#3b82f6;color:#fff;font:700 17px Inter,sans-serif;cursor:pointer;box-shadow:0 0 20px rgba(59,130,246,.4)">Keep going</button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ o5 }}">
+          <div style="display:flex;flex-direction:column;gap:13px;flex:1">
+            <h1 style="margin:14px 0 0;font:700 26px/1.25 Inter,sans-serif;letter-spacing:-.02em;text-wrap:pretty">You just found $55 of edge in 20 seconds.</h1>
+            <p style="margin:0;font:400 14px/1.5 Inter,sans-serif;color:#a8adb8">Pick how you want to keep going. Both land you on your recent analyses.</p>
+            <div style="background:#131820;border:1px solid #1e2533;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:7px;margin-top:6px">
+              <div style="display:flex;align-items:baseline;justify-content:space-between">
+                <span style="font:700 11px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#a8adb8">free</span>
+                <span style="font:700 16px 'JetBrains Mono',monospace;color:#a8adb8">$0</span>
+              </div>
+              <span style="font:400 13.5px/1.5 Inter,sans-serif;color:#a8adb8">3 verdicts a month, logging and history stay open</span>
+            </div>
+            <div style="background:#131820;border:2px solid rgba(59,130,246,.5);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:9px;background-image:linear-gradient(180deg,rgba(59,130,246,.1) 0%,rgba(59,130,246,0) 100%);box-shadow:0 4px 24px rgba(0,0,0,.4)">
+              <div style="display:flex;align-items:baseline;justify-content:space-between">
+                <span style="font:700 11px/1 'JetBrains Mono',monospace;letter-spacing:.08em;text-transform:uppercase;color:#60a5fa">pro</span>
+                <span style="font:700 20px 'JetBrains Mono',monospace">$24.99<span style="font-size:12px;color:#6b7280">/mo</span></span>
+              </div>
+              <span style="font:400 13.5px/1.5 Inter,sans-serif">Unlimited verdicts, the full source trail, chase list and slab lookup</span>
+            </div>
+            <button onClick="{{ modeApp }}" style="margin-top:auto;height:56px;border:none;border-radius:10px;background:#3b82f6;color:#fff;font:700 17px Inter,sans-serif;cursor:pointer;box-shadow:0 0 20px rgba(59,130,246,.4)">Go Pro</button>
+            <button onClick="{{ modeApp }}" style="height:52px;border:1px solid #2a3142;border-radius:10px;background:#131820;color:#f5f5f7;font:700 16px Inter,sans-serif;cursor:pointer">Start free</button>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </div>
+  <p style="margin:0;max-width:560px;text-align:center;font:400 13px/1.6 Inter,sans-serif;color:#6b7280">One verdict on a real break before any profile questions and before the paywall. Experience level, era and spend move into the profile, asked in the screens they improve.</p>
+</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1600,&quot;height&quot;:900},&quot;showNextAction&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Behavior&quot;},&quot;planTier&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Free&quot;,&quot;Pro&quot;],&quot;default&quot;:&quot;Free&quot;,&quot;tsType&quot;:&quot;'Free' | 'Pro'&quot;,&quot;section&quot;:&quot;Behavior&quot;},&quot;accentColor&quot;:{&quot;editor&quot;:&quot;color&quot;,&quot;default&quot;:&quot;#3b82f6&quot;,&quot;options&quot;:[&quot;#3b82f6&quot;,&quot;#8b5cf6&quot;,&quot;#22c55e&quot;,&quot;#f59e0b&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Theme&quot;}}">
+class Component extends DCLogic {
+  state = { phase: 'breaks', mode: 'app', step: 1 };
+  renderVals() {
+    const p = this.state.phase, m = this.state.mode, s = this.state.step;
+    const set = (k, v) => () => this.setState({ [k]: v });
+    const accent = this.props.accentColor ?? '#3b82f6';
+    const tier = this.props.planTier ?? 'Free';
+    const railBg = k => p === k ? 'rgba(59,130,246,0.14)' : 'transparent';
+    const railFg = k => p === k ? '#f5f5f7' : '#6b7280';
+    const stepBg = n => s === n ? accent : '#131820';
+    const stepFg = n => s === n ? '#ffffff' : '#a8adb8';
+    return {
+      p_breaks: p === 'breaks', p_research: p === 'research', p_log: p === 'log', p_learn: p === 'learn',
+      rbg_breaks: railBg('breaks'), rbg_research: railBg('research'), rbg_log: railBg('log'), rbg_learn: railBg('learn'),
+      rfg_breaks: railFg('breaks'), rfg_research: railFg('research'), rfg_log: railFg('log'), rfg_learn: railFg('learn'),
+      goBreaks: set('phase', 'breaks'), goResearch: set('phase', 'research'),
+      goLog: set('phase', 'log'), goLearn: set('phase', 'learn'),
+      isApp: m === 'app', isOnb: m === 'onboarding',
+      modeApp: set('mode', 'app'), modeOnb: set('mode', 'onboarding'),
+      mbg_app: m === 'app' ? accent : 'transparent', mfg_app: m === 'app' ? '#fff' : '#a8adb8',
+      mgl_app: m === 'app' ? '0 0 20px rgba(59,130,246,0.35)' : 'none',
+      mbg_onb: m === 'onboarding' ? accent : 'transparent', mfg_onb: m === 'onboarding' ? '#fff' : '#a8adb8',
+      mgl_onb: m === 'onboarding' ? '0 0 20px rgba(59,130,246,0.35)' : 'none',
+      o1: s === 1, o2: s === 2, o3: s === 3, o4: s === 4, o5: s === 5,
+      step1: set('step', 1), step2: set('step', 2), step3: set('step', 3), step4: set('step', 4), step5: set('step', 5),
+      sbg_1: stepBg(1), sbg_2: stepBg(2), sbg_3: stepBg(3), sbg_4: stepBg(4), sbg_5: stepBg(5),
+      sfg_1: stepFg(1), sfg_2: stepFg(2), sfg_3: stepFg(3), sfg_4: stepFg(4), sfg_5: stepFg(5),
+      showNext: this.props.showNextAction ?? true,
+      planLabel: tier.toLowerCase(),
+      planDetail: tier === 'Pro' ? 'Unlimited analyses' : '1 of 3 analyses left',
+      planBar: tier === 'Pro' ? '100%' : '33%',
+    };
+  }
+}
+</script>
+</body>
+</html>
