@@ -93,15 +93,35 @@ export default function ActiveProductsBrowser({
 
   return (
     <div className="space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* Section header — deliberately heavier than a plain h2. This sits below
+          the valuation tool, and in the first cut it read as page filler and got
+          missed entirely. The counts do double duty: they say how much is here
+          and imply the filters below are worth using. */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
+          <div
+            className="font-mono uppercase mb-1.5"
+            style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--ink3)' }}
+          >
+            Browse all products
+          </div>
+          <h2
+            style={{ fontSize: 22, fontWeight: 600, lineHeight: 1.2, letterSpacing: '-0.022em', color: 'var(--ink)' }}
+          >
             Active Products
           </h2>
-          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-            Click any product to see detailed slot pricing and analysis
+          <p className="mt-1" style={{ fontSize: 13, color: 'var(--ink2)' }}>
+            Every product we&rsquo;re pricing right now — pick one to value a spot in it.
           </p>
+        </div>
+        <div className="flex items-baseline gap-2 font-mono" style={{ fontSize: 12, color: 'var(--ink3)' }}>
+          <span style={{ fontSize: 20, fontWeight: 500, color: 'var(--ink)', letterSpacing: '-0.03em' }}>
+            {products.length}
+          </span>
+          <span>
+            {lifecycleCounts.live} live
+            {lifecycleCounts.pre_release > 0 && ` · ${lifecycleCounts.pre_release} pre-release`}
+          </span>
         </div>
       </div>
 

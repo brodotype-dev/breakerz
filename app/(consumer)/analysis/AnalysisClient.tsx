@@ -194,7 +194,10 @@ export default function AnalysisClient() {
   }
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: 'var(--terminal-bg)' }}>
+    // NOT min-h-screen: this renders as the top SECTION of the Research page,
+    // with Active Products below it. Forcing a viewport of height here pushed
+    // that section off-screen and made it undiscoverable.
+    <div style={{ backgroundColor: 'var(--terminal-bg)' }}>
       {/* Hero */}
       <div
         className="relative overflow-hidden border-b"
