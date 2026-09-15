@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Home, Sparkles, ClipboardList, Layers,
-  Search as SearchIcon, Heart, User, Settings, LogOut, Plus,
+  Search as SearchIcon, Heart, User, Settings, LogOut, Plus, Menu, X,
 } from 'lucide-react';
 import { Logo } from '@/components/Logo';
 import { DiscordIcon } from '@/components/icons/DiscordIcon';
@@ -55,7 +55,16 @@ export default function ConsumerNav({
 }) {
   const isActive = useIsActive();
   const [mounted, setMounted] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   useEffect(() => setMounted(true), []);
+
+  // Close the overflow sheet on back/forward so it can't linger over a new page.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = () => setMenuOpen(false);
+    window.addEventListener('popstate', close);
+    return () => window.removeEventListener('popstate', close);
+  }, [menuOpen]);
 
   const isPro = plan && plan !== 'free';
   const planLabel = isPro ? plan.toUpperCase() : 'FREE';
@@ -219,20 +228,133 @@ export default function ConsumerNav({
         <Link href="/" className="flex items-center hover:opacity-80 transition-opacity shrink-0">
           <Logo variant="lockup" height={28} className="h-7 w-auto" priority />
         </Link>
-        <Link
-          href="/my-breaks?view=new"
-          className="flex items-center gap-1.5 px-3 py-2 rounded-md transition-opacity hover:opacity-90"
-          style={{
-            backgroundColor: 'var(--btn-bg)',
-            color: 'var(--btn-fg)',
-            fontSize: 13,
-            fontWeight: 600,
-          }}
-        >
-          <Plus className="w-3.5 h-3.5" strokeWidth={2} />
-          Log
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/my-breaks?view=new"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-md transition-opacity hover:opacity-90"
+            style={{
+              backgroundColor: 'var(--btn-bg)',
+              color: 'var(--btn-fg)',
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+            Log
+          </Link>
+          {/* The four-item tab bar can't carry Tools or the account actions.
+              Without this, mobile users lose Slabs, Chase, Profile, Admin and
+              SIGN OUT entirely — they were in the old slide-out sheet. */}
+          <button
+            type="button"
+            aria-label="More"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen(true)}
+            className="inline-flex items-center justify-center rounded-md transition-colors hover:bg-[var(--subtle)]"
+            style={{ height: 36, width: 36, color: 'var(--ink2)' }}
+          >
+            <Menu className="w-5 h-5" strokeWidth={1.75} />
+          </button>
+        </div>
       </header>
+
+      {/* Mobile overflow sheet — Tools + account */}
+      {menuOpen && (
+        <div className="lg:hidden fixed inset-0 z-[70]" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-black/60" onClick={() => setMenuOpen(false)} />
+          <div
+            className="absolute right-0 top-0 bottom-0 w-64 max-w-[85vw] flex flex-col"
+            style={{
+              backgroundColor: 'var(--panel)',
+              borderLeft: '1px solid var(--rule)',
+              paddingTop: 'env(safe-area-inset-top)',
+              paddingBottom: 'env(safe-area-inset-bottom)',
+            }}
+          >
+            <div
+              className="flex items-center justify-between px-4 py-3"
+              style={{ borderBottom: '1px solid var(--rule)' }}
+            >
+              <span
+                className="font-mono uppercase"
+                style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--ink3)' }}
+              >
+                Tools
+              </span>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => setMenuOpen(false)}
+                className="inline-flex items-center justify-center rounded-md hover:bg-[var(--subtle)]"
+                style={{ height: 36, width: 36, color: 'var(--ink2)' }}
+              >
+                <X className="w-5 h-5" strokeWidth={1.75} />
+              </button>
+            </div>
+
+            <nav className="flex flex-col p-2 gap-0.5">
+              {TOOLS.map(({ href, icon: Icon, label }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-3 px-3 py-3 rounded-md hover:bg-[var(--subtle)]"
+                  style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink2)' }}
+                >
+                  <Icon className="w-[17px] h-[17px]" strokeWidth={1.75} />
+                  {label}
+                </Link>
+              ))}
+
+              <div className="my-2" style={{ borderTop: '1px solid var(--rule)' }} />
+
+              <Link
+                href="/profile"
+                onClick={() => setMenuOpen(false)}
+                className="flex items-center gap-3 px-3 py-3 rounded-md hover:bg-[var(--subtle)]"
+                style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink2)' }}
+              >
+                <User className="w-[17px] h-[17px]" strokeWidth={1.75} />
+                Account
+              </Link>
+              {isAdmin && (
+                <Link
+                  href="/admin"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-3 px-3 py-3 rounded-md hover:bg-[var(--subtle)]"
+                  style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink2)' }}
+                >
+                  <Settings className="w-[17px] h-[17px]" strokeWidth={1.75} />
+                  Admin
+                </Link>
+              )}
+              {isDiscordInviteConfigured() && (
+                <a
+                  href={DISCORD_INVITE_URL}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-3 px-3 py-3 rounded-md hover:bg-[var(--subtle)]"
+                  style={{ fontSize: 14, fontWeight: 600, color: '#5865F2' }}
+                >
+                  <DiscordIcon size={17} />
+                  Discord
+                </a>
+              )}
+              <form action={logout}>
+                <button
+                  type="submit"
+                  className="w-full flex items-center gap-3 px-3 py-3 rounded-md hover:bg-[var(--subtle)]"
+                  style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink3)' }}
+                >
+                  <LogOut className="w-[17px] h-[17px]" strokeWidth={1.75} />
+                  Sign out
+                </button>
+              </form>
+            </nav>
+          </div>
+        </div>
+      )}
 
       {/* ── Mobile bottom tab bar ─────────────────────────────────── */}
       <nav
