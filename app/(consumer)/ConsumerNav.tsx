@@ -2,247 +2,265 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Settings, User, ClipboardList, Menu, X, LogOut, Heart, Home, Sparkles, Search as SearchIcon, Plus } from 'lucide-react';
+import { usePathname } from 'next/navigation';
+import {
+  Home, Sparkles, ClipboardList, Layers,
+  Search as SearchIcon, Heart, User, Settings, LogOut, Plus,
+} from 'lucide-react';
 import { Logo } from '@/components/Logo';
 import { DiscordIcon } from '@/components/icons/DiscordIcon';
 import { DISCORD_INVITE_URL, isDiscordInviteConfigured } from '@/lib/community';
 import { logout } from './actions';
 
-interface ConsumerNavProps {
-  isAdmin: boolean;
+/**
+ * Four-destination nav from the 2026-09-15 UX rethink handoff:
+ * desktop = persistent 196px rail, mobile = four-item bottom tab bar,
+ * with Slabs + Chase demoted to a secondary TOOLS group.
+ *
+ * ONE DELIBERATE DEPARTURE from the handoff's IA. Its fourth destination is
+ * "Learn", which is not built — every figure on it derives from a
+ * returned/pull value the app has never stored (see the build plan). Rather
+ * than ship a dead fourth item, that slot is **Breaks** — the product grid
+ * that used to live at `/` and moved to `/breaks` when `/` became Home.
+ * Result: four real destinations, nothing orphaned, and the handoff's
+ * structure intact.
+ */
+
+const PRIMARY = [
+  { href: '/',            icon: Home,          label: 'Home',     exact: true },
+  { href: '/analysis',    icon: Sparkles,      label: 'Research', exact: false },
+  { href: '/my-breaks',   icon: ClipboardList, label: 'Log',      exact: false },
+  { href: '/breaks',      icon: Layers,        label: 'Breaks',   exact: false },
+] as const;
+
+const TOOLS = [
+  { href: '/card-lookup', icon: SearchIcon, label: 'Slabs' },
+  { href: '/chase',       icon: Heart,      label: 'Chase' },
+] as const;
+
+function useIsActive() {
+  const pathname = usePathname() ?? '/';
+  return (href: string, exact: boolean) =>
+    exact ? pathname === href : pathname === href || pathname.startsWith(href + '/');
 }
 
-// Collapsed nav: logo + primary "+ Log a Break" pill + hamburger.
-// All destinations live inside the slide-out sheet — same at every
-// breakpoint. The previous desktop split (icon-only md, full lg)
-// was overstuffed at desktop widths; one consistent pattern reads
-// cleaner and the sheet already groups items by workflow phase.
+export default function ConsumerNav({
+  isAdmin,
+  plan = 'free',
+  pendingCount = 0,
+}: {
+  isAdmin: boolean;
+  plan?: string;
+  pendingCount?: number;
+}) {
+  const isActive = useIsActive();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
-export default function ConsumerNav({ isAdmin }: ConsumerNavProps) {
-  const [menuOpen, setMenuOpen] = useState(false);
-
-  // Close the sheet when the user navigates via back/forward.
-  useEffect(() => {
-    if (!menuOpen) return;
-    const close = () => setMenuOpen(false);
-    window.addEventListener('popstate', close);
-    return () => window.removeEventListener('popstate', close);
-  }, [menuOpen]);
+  const isPro = plan && plan !== 'free';
+  const planLabel = isPro ? plan.toUpperCase() : 'FREE';
+  const planDetail = isPro ? 'Unlimited valuations' : '5 lifetime analyses';
+  const planFill = isPro ? '100%' : '33%';
 
   return (
     <>
-      <header
-        className="sticky top-0 z-60 border-b flex items-center justify-between gap-3 px-3 sm:px-4 py-2.5"
+      {/* ── Desktop rail ─────────────────────────────────────────── */}
+      <aside
+        className="hidden lg:flex fixed left-0 top-0 bottom-0 z-50 flex-col"
         style={{
-          backgroundColor: 'rgba(10, 14, 26, 0.97)',
-          borderColor: 'var(--terminal-border)',
-          backdropFilter: 'blur(8px)',
-          zIndex: 60,
+          width: 196,
+          padding: '24px 14px',
+          backgroundColor: 'var(--panel)',
+          borderRight: '1px solid var(--rule)',
+        }}
+      >
+        <Link href="/" className="flex items-center mb-6 px-2 hover:opacity-80 transition-opacity">
+          <Logo variant="lockup" height={26} className="h-[26px] w-auto" priority />
+        </Link>
+
+        <nav className="flex flex-col gap-0.5">
+          {PRIMARY.map(({ href, icon: Icon, label, exact }) => {
+            const active = isActive(href, exact);
+            return (
+              <Link
+                key={href}
+                href={href}
+                aria-current={active ? 'page' : undefined}
+                className="flex items-center gap-2.5 px-2.5 py-2 rounded-md transition-colors"
+                style={{
+                  backgroundColor: active ? 'var(--sel)' : 'transparent',
+                  color: active ? 'var(--ink)' : 'var(--ink2)',
+                  fontWeight: 600,
+                  fontSize: 13,
+                }}
+              >
+                <Icon className="w-[15px] h-[15px] shrink-0" strokeWidth={1.75} />
+                <span className="flex-1">{label}</span>
+                {label === 'Log' && pendingCount > 0 && (
+                  <span className="font-mono text-[11px]" style={{ color: 'var(--ink3)' }}>
+                    {pendingCount}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div
+          className="mt-6 mb-1.5 px-2.5 font-mono uppercase"
+          style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--ink3)' }}
+        >
+          Tools
+        </div>
+        <nav className="flex flex-col gap-0.5">
+          {TOOLS.map(({ href, icon: Icon, label }) => {
+            const active = isActive(href, false);
+            return (
+              <Link
+                key={href}
+                href={href}
+                aria-current={active ? 'page' : undefined}
+                className="flex items-center gap-2.5 px-2.5 py-2 rounded-md transition-colors"
+                style={{
+                  backgroundColor: active ? 'var(--sel)' : 'transparent',
+                  color: active ? 'var(--ink)' : 'var(--ink2)',
+                  fontWeight: 600,
+                  fontSize: 13,
+                }}
+              >
+                <Icon className="w-[15px] h-[15px] shrink-0" strokeWidth={1.75} />
+                {label}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* Footer: plan → Discord → account */}
+        <div className="mt-auto pt-4">
+          <div className="px-2.5">
+            <div
+              className="font-mono uppercase"
+              style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--ink3)' }}
+            >
+              {planLabel}
+            </div>
+            <div className="mt-1 mb-2" style={{ fontSize: 12, color: 'var(--ink2)' }}>
+              {planDetail}
+            </div>
+            <div style={{ height: 2, backgroundColor: 'var(--rule)' }}>
+              <div style={{ height: 2, width: planFill, backgroundColor: 'var(--accent-key)' }} />
+            </div>
+            {!isPro && (
+              <Link
+                href="/subscribe"
+                className="inline-block mt-2 hover:opacity-80"
+                style={{ fontSize: 12, color: 'var(--accent-key)' }}
+              >
+                Go Pro →
+              </Link>
+            )}
+          </div>
+
+          {isDiscordInviteConfigured() && (
+            <a
+              href={DISCORD_INVITE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-2.5 px-2.5 py-2 mt-3 rounded-md hover:bg-[var(--subtle)] transition-colors"
+              style={{ fontSize: 12, fontWeight: 600, color: '#5865F2' }}
+            >
+              <DiscordIcon size={15} />
+              Discord
+            </a>
+          )}
+
+          <div className="mt-2 pt-2" style={{ borderTop: '1px solid var(--rule)' }}>
+            <Link
+              href="/profile"
+              className="flex items-center gap-2.5 px-2.5 py-2 rounded-md hover:bg-[var(--subtle)] transition-colors"
+              style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink2)' }}
+            >
+              <User className="w-[15px] h-[15px]" strokeWidth={1.75} />
+              Account
+            </Link>
+            {isAdmin && (
+              <Link
+                href="/admin"
+                className="flex items-center gap-2.5 px-2.5 py-2 rounded-md hover:bg-[var(--subtle)] transition-colors"
+                style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink2)' }}
+              >
+                <Settings className="w-[15px] h-[15px]" strokeWidth={1.75} />
+                Admin
+              </Link>
+            )}
+            <form action={logout}>
+              <button
+                type="submit"
+                className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-md hover:bg-[var(--subtle)] transition-colors"
+                style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink3)' }}
+              >
+                <LogOut className="w-[15px] h-[15px]" strokeWidth={1.75} />
+                Sign out
+              </button>
+            </form>
+          </div>
+        </div>
+      </aside>
+
+      {/* ── Mobile header: brand + the one filled action ──────────── */}
+      <header
+        className="lg:hidden sticky top-0 z-50 flex items-center justify-between gap-3 px-4 py-2.5"
+        style={{
+          backgroundColor: 'var(--panel)',
+          borderBottom: '1px solid var(--rule)',
           paddingTop: 'max(0.625rem, env(safe-area-inset-top))',
         }}
       >
-        {/* Brand */}
         <Link href="/" className="flex items-center hover:opacity-80 transition-opacity shrink-0">
-          <Logo variant="lockup" height={32} className="h-8 sm:h-7 w-auto" priority />
+          <Logo variant="lockup" height={28} className="h-7 w-auto" priority />
         </Link>
-
-        {/* Right side: primary CTA + hamburger.
-            Pill label collapses to "Log" on the smallest screens to
-            preserve thumb-room next to the hamburger. */}
-        <div className="flex items-center gap-2">
-          <Link
-            href="/my-breaks?view=new"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold transition-all hover:opacity-90"
-            style={{
-              background: 'var(--accent-blue)',
-              color: 'white',
-              boxShadow: '0 0 0 1px rgba(59,130,246,0.4), 0 2px 8px rgba(59,130,246,0.25)',
-            }}
-          >
-            <Plus className="w-3 h-3" />
-            <span className="hidden sm:inline">Log a Break</span>
-            <span className="sm:hidden">Log</span>
-          </Link>
-          <button
-            type="button"
-            aria-label="Open menu"
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen(true)}
-            className="inline-flex items-center justify-center h-9 w-9 sm:h-10 sm:w-10 rounded-md transition-colors hover:bg-[var(--terminal-surface)]"
-            style={{ color: 'var(--text-secondary)' }}
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-        </div>
+        <Link
+          href="/my-breaks?view=new"
+          className="flex items-center gap-1.5 px-3 py-2 rounded-md transition-opacity hover:opacity-90"
+          style={{
+            backgroundColor: 'var(--btn-bg)',
+            color: 'var(--btn-fg)',
+            fontSize: 13,
+            fontWeight: 600,
+          }}
+        >
+          <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+          Log
+        </Link>
       </header>
 
-      {/* Slide-out destinations sheet — same at every breakpoint. */}
-      {menuOpen && (
-        <div
-          className="fixed inset-0 z-70"
-          style={{ zIndex: 70 }}
-          role="dialog"
-          aria-modal="true"
-        >
-          {/* Scrim */}
-          <div
-            className="absolute inset-0 bg-black/60"
-            onClick={() => setMenuOpen(false)}
-          />
-          {/* Panel */}
-          <div
-            className="absolute right-0 top-0 bottom-0 w-72 max-w-[85vw] flex flex-col"
-            style={{
-              backgroundColor: 'var(--terminal-bg)',
-              borderLeft: '1px solid var(--terminal-border)',
-              paddingTop: 'env(safe-area-inset-top)',
-              paddingBottom: 'env(safe-area-inset-bottom)',
-            }}
-          >
-            <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--terminal-border)' }}>
-              <Logo variant="lockup" height={28} className="h-7 w-auto" />
-              <button
-                type="button"
-                aria-label="Close menu"
-                onClick={() => setMenuOpen(false)}
-                className="inline-flex items-center justify-center h-9 w-9 rounded-md hover:bg-[var(--terminal-surface)]"
-                style={{ color: 'var(--text-secondary)' }}
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <nav className="flex flex-col p-2 gap-1 flex-1">
-              {/* Primary CTA — also visible in the header bar, but
-                  duplicated at the top of the sheet so logging is
-                  obviously the central act. */}
-              <Link
-                href="/my-breaks?view=new"
-                onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-3 px-3 py-3 rounded-md text-sm font-semibold transition-all mb-1"
-                style={{
-                  background: 'var(--accent-blue)',
-                  color: 'white',
-                  boxShadow: '0 2px 8px rgba(59,130,246,0.25)',
-                }}
-              >
-                <Plus className="w-4 h-4" />
-                Log a Break
-              </Link>
-
-              <div className="text-[10px] uppercase tracking-widest px-3 py-1 mt-2" style={{ color: 'var(--text-tertiary)' }}>
-                Discover
-              </div>
-              <SheetLink href="/" icon={Home} label="Breaks" onClick={() => setMenuOpen(false)} />
-              <SheetLink href="/analysis" icon={Sparkles} label="Research" onClick={() => setMenuOpen(false)} />
-              <SheetLink href="/card-lookup" icon={SearchIcon} label="Slabs" onClick={() => setMenuOpen(false)} />
-
-              <div className="text-[10px] uppercase tracking-widest px-3 py-1 mt-2" style={{ color: 'var(--text-tertiary)' }}>
-                Manage
-              </div>
-              <SheetLink href="/chase" icon={Heart} label="My Chase" onClick={() => setMenuOpen(false)} />
-              <SheetLink href="/my-breaks" icon={ClipboardList} label="My Breaks" onClick={() => setMenuOpen(false)} />
-              <SheetLink href="/profile" icon={User} label="Profile" onClick={() => setMenuOpen(false)} />
-
-              {isDiscordInviteConfigured() && (
-                <>
-                  <div className="text-[10px] uppercase tracking-widest px-3 py-1 mt-2" style={{ color: 'var(--text-tertiary)' }}>
-                    Community
-                  </div>
-                  <a
-                    href={DISCORD_INVITE_URL}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() => setMenuOpen(false)}
-                    className="flex items-center gap-3 px-3 py-3 rounded-md text-sm font-medium transition-colors hover:bg-[var(--terminal-surface)]"
-                    style={{ color: 'var(--text-secondary)' }}
-                  >
-                    <DiscordIcon className="text-[#5865F2]" size={18} />
-                    <span className="flex-1">Join Discord</span>
-                    <span className="text-[10px] uppercase tracking-wide" style={{ color: 'var(--text-tertiary)' }}>
-                      ↗
-                    </span>
-                  </a>
-                </>
-              )}
-
-              {isAdmin && (
-                <Link
-                  href="/admin"
-                  onClick={() => setMenuOpen(false)}
-                  className="flex items-center gap-3 px-3 py-3 rounded-md text-sm font-medium border transition-colors hover:bg-[var(--terminal-surface)] mt-2"
-                  style={{ color: 'var(--accent-blue)', borderColor: 'var(--terminal-border)' }}
-                >
-                  <Settings className="w-4 h-4" />
-                  Admin Portal
-                </Link>
-              )}
-            </nav>
-
-            <div className="p-2 border-t" style={{ borderColor: 'var(--terminal-border)' }}>
-              <SignOutLink onClick={() => setMenuOpen(false)} />
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
-// Sheet-drawer sign-out: same SW-cache-wipe semantics as SignOutButton,
-// but rendered as a full-width row instead of a header chip. Duplicates
-// the cache clear inline because we want the drawer to close before the
-// form submits.
-async function clearServiceWorkerCaches() {
-  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
-  try {
-    const reg = await navigator.serviceWorker.getRegistration();
-    reg?.active?.postMessage({ type: 'BREAKIQ_LOGOUT' });
-    if (typeof caches !== 'undefined') {
-      const names = await caches.keys();
-      await Promise.all(names.map(n => caches.delete(n)));
-    }
-  } catch {
-    // best-effort
-  }
-}
-
-function SheetLink({
-  href,
-  icon: Icon,
-  label,
-  onClick,
-}: {
-  href: string;
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <Link
-      href={href}
-      onClick={onClick}
-      className="flex items-center gap-3 px-3 py-3 rounded-md text-sm font-medium transition-colors hover:bg-[var(--terminal-surface)]"
-      style={{ color: 'var(--text-primary)' }}
-    >
-      <Icon className="w-4 h-4" />
-      {label}
-    </Link>
-  );
-}
-
-function SignOutLink({ onClick }: { onClick: () => void }) {
-  return (
-    <form action={logout}>
-      <button
-        type="submit"
-        onClick={() => { void clearServiceWorkerCaches(); onClick(); }}
-        className="w-full flex items-center gap-3 px-3 py-3 rounded-md text-sm font-medium transition-colors hover:bg-[var(--terminal-surface)]"
-        style={{ color: 'var(--text-secondary)' }}
+      {/* ── Mobile bottom tab bar ─────────────────────────────────── */}
+      <nav
+        className="lg:hidden fixed bottom-0 left-0 right-0 z-50 flex"
+        style={{
+          backgroundColor: 'var(--panel)',
+          borderTop: '1px solid var(--rule)',
+          paddingBottom: 'env(safe-area-inset-bottom)',
+        }}
       >
-        <LogOut className="w-4 h-4" />
-        Sign Out
-      </button>
-    </form>
+        {PRIMARY.map(({ href, icon: Icon, label, exact }) => {
+          // Guard against a hydration mismatch: usePathname is stable, but the
+          // active style is the only thing that differs pre-mount.
+          const active = mounted && isActive(href, exact);
+          return (
+            <Link
+              key={href}
+              href={href}
+              aria-current={active ? 'page' : undefined}
+              className="flex-1 flex flex-col items-center justify-center gap-1 py-2.5"
+              style={{ color: active ? 'var(--ink)' : 'var(--ink3)', minHeight: 56 }}
+            >
+              <Icon className="w-[18px] h-[18px]" strokeWidth={1.75} />
+              <span style={{ fontSize: 11, fontWeight: 600 }}>{label}</span>
+            </Link>
+          );
+        })}
+      </nav>
+    </>
   );
 }

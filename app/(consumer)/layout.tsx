@@ -35,11 +35,33 @@ export default async function ConsumerLayout({ children }: { children: React.Rea
 
   const showNav = !!user || process.env.NODE_ENV === 'development';
 
+  // Rail footer (plan) + the Log count badge. One PK read and one count —
+  // both cheap, and the nav renders on every consumer page anyway.
+  let plan = 'free';
+  let pendingCount = 0;
+  if (user) {
+    const [{ data: planRow }, { count }] = await Promise.all([
+      supabaseAdmin.from('profiles').select('subscription_plan').eq('id', user.id).maybeSingle(),
+      supabaseAdmin
+        .from('user_breaks')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('status', 'pending'),
+    ]);
+    plan = planRow?.subscription_plan ?? 'free';
+    pendingCount = count ?? 0;
+  }
+
   return (
     <>
       {user && <PostHogIdentify userId={user.id} email={user.email ?? null} />}
-      {showNav && <ConsumerNav isAdmin={isAdmin} />}
-      {children}
+      {showNav && <ConsumerNav isAdmin={isAdmin} plan={plan} pendingCount={pendingCount} />}
+      {/* Offsets for the fixed chrome: 196px rail on lg+, bottom tab bar below.
+          Without these the rail overlaps content and the tab bar covers the
+          last rows of every scrollable page. */}
+      <div className={showNav ? 'lg:pl-[196px] pb-[72px] lg:pb-0' : undefined}>
+        {children}
+      </div>
       {showNav && <InstallPrompt />}
     </>
   );

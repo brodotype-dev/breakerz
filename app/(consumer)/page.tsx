@@ -1,385 +1,173 @@
 import Link from 'next/link';
-import { TrendingUp, Zap, Target, Sparkles, ChevronRight, ClipboardList } from 'lucide-react';
+import { ClipboardList, Sparkles, Layers, ChevronRight } from 'lucide-react';
+import { getCurrentUserFromSession } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
-import type { Product, Sport } from '@/lib/types';
-import { Logo } from '@/components/Logo';
-import ActiveProductsBrowser, { type ProductSignal } from './ActiveProductsBrowser';
-import BetaBanner from '@/components/breakiq/BetaBanner';
 
-// ISR — regenerate the home page at most every 60s. The home page is
-// IDENTICAL for every logged-in user (same products, same hype tags,
-// same activity stats); per-user gating happens in middleware via
-// auth-cookie redirect, so caching the rendered HTML is safe.
-//
-// Admin product mutations already invalidate this page via
-// revalidatePath('/') in app/admin/products/actions.ts, so changes still
-// surface immediately on save. The 60s ceiling covers the
-// activity/hype-stat reads which don't need to be fresh-every-nav.
-//
-// Before this: every nav re-executed 5 Supabase queries against the
-// live DB. After: one set of queries per minute, cached HTML served
-// from edge for the next ~60 navigations within that window.
-export const revalidate = 60;
+/**
+ * Home — the routing surface from the 2026-09-15 UX rethink handoff.
+ * Answers "what should I do now" and leads with logging, because logged
+ * breaks are what sharpen every number in the app.
+ *
+ * REDUCED vs. the handoff, deliberately. The designed Home also carries a
+ * "pick up where you left off" block, stale valuation markers, and a
+ * "valuations this month" stat. All three need a history of valuations —
+ * and `/api/analysis` never persists a run (no valuation table exists).
+ * Rather than substitute recent *breaks* for recent *valuations* — different
+ * objects, and the swap would quietly misrepresent them — those are omitted.
+ * See docs/plans/2026-09-15-ux-rethink-build-plan.md.
+ */
 
-const POSITIVE_HYPE_TAGS = new Set(['release_premium', 'underhyped']);
+export const dynamic = 'force-dynamic';
 
-async function getProducts(): Promise<{ products: (Product & { sport: Sport })[]; signals: Record<string, ProductSignal> }> {
-  const sevenDaysAgoIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const nowIso = new Date().toISOString();
-
-  // Three parallel queries: products, recent-break counts, active hype tags.
-  // user_breaks/observations are scoped to active products in JS — cheaper than a join here.
-  const [productsRes, breaksRes, hypeRes] = await Promise.all([
-    supabaseAdmin
-      .from('products')
-      .select('*, sport:sports(*)')
-      .eq('is_active', true)
-      .order('year', { ascending: false }),
-    supabaseAdmin
-      .from('user_breaks')
-      .select('product_id')
-      .gte('created_at', sevenDaysAgoIso)
-      .neq('status', 'abandoned'),
-    supabaseAdmin
-      .from('market_observations')
-      .select('product_id, payload, observed_at')
-      .eq('observation_type', 'hype_tag')
-      .eq('scope_type', 'product')
-      .gt('expires_at', nowIso)
-      .is('superseded_at', null)
-      .order('observed_at', { ascending: false }),
-  ]);
-
-  const products = productsRes.data ?? [];
-
-  // Count breaks per product (last 7 days, non-abandoned)
-  const breakCounts: Record<string, number> = {};
-  for (const row of breaksRes.data ?? []) {
-    const pid = (row as { product_id: string }).product_id;
-    breakCounts[pid] = (breakCounts[pid] ?? 0) + 1;
-  }
-
-  // Most-recent positive product-scope hype tag per product (already ordered desc)
-  const hypeTags: Record<string, { tag: string; observedAt: string }> = {};
-  for (const row of hypeRes.data ?? []) {
-    const r = row as { product_id: string; payload: { tag?: string }; observed_at: string };
-    if (hypeTags[r.product_id]) continue;
-    if (!r.payload?.tag || !POSITIVE_HYPE_TAGS.has(r.payload.tag)) continue;
-    hypeTags[r.product_id] = { tag: r.payload.tag, observedAt: r.observed_at };
-  }
-
-  const signals: Record<string, ProductSignal> = {};
-  for (const p of products) {
-    signals[p.id] = {
-      breakCount7d: breakCounts[p.id] ?? 0,
-      hypeTag: hypeTags[p.id] ?? null,
-    };
-  }
-
-  return { products, signals };
+function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between py-2.5" style={{ borderTop: '1px solid var(--rule-faint)' }}>
+      <span style={{ fontSize: 13, color: 'var(--ink2)' }}>{label}</span>
+      <span
+        className="font-mono"
+        style={{ fontSize: 15, fontWeight: 500, color: accent ? 'var(--accent-key)' : 'var(--ink)' }}
+      >
+        {value}
+      </span>
+    </div>
+  );
 }
 
-function isPreRelease(releaseDate: string | null): boolean {
-  if (!releaseDate) return false;
-  return new Date(releaseDate + 'T00:00:00') > new Date();
+function RouteRow({
+  href, icon: Icon, title, sub, iconColor,
+}: {
+  href: string;
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number; style?: React.CSSProperties }>;
+  title: string;
+  sub: string;
+  iconColor: string;
+}) {
+  return (
+    <Link
+      href={href}
+      className="flex items-center gap-3.5 w-full text-left transition-opacity hover:opacity-80"
+      style={{ padding: '18px 0', borderBottom: '1px solid var(--rule-faint)' }}
+    >
+      <Icon className="w-[17px] h-[17px] shrink-0" strokeWidth={1.75} style={{ color: iconColor }} />
+      <span className="flex-1 min-w-0">
+        <span className="block" style={{ fontSize: 16, fontWeight: 600, color: 'var(--ink)' }}>{title}</span>
+        <span className="block mt-0.5" style={{ fontSize: 13, color: 'var(--ink2)' }}>{sub}</span>
+      </span>
+      <ChevronRight className="w-4 h-4 shrink-0" strokeWidth={1.75} style={{ color: 'var(--ink3)' }} />
+    </Link>
+  );
 }
 
 export default async function HomePage() {
-  const { products, signals } = await getProducts();
-  const liveCount = products.filter(p => !isPreRelease(p.release_date)).length;
-  const preReleaseCount = products.length - liveCount;
+  const user = await getCurrentUserFromSession();
 
-  // Real loop stats for the footer — community contributions surfaced
-  // as social proof. Two parallel queries; both can return 0 in dev or
-  // an empty beta cohort, which the render handles gracefully.
-  const sevenDaysAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
-  const startOfMonth = (() => {
-    const d = new Date();
-    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString();
-  })();
-  const [breaksThisWeekRes, insightsThisMonthRes] = await Promise.all([
-    supabaseAdmin
-      .from('user_breaks')
-      .select('*', { count: 'exact', head: true })
-      .neq('status', 'abandoned')
-      .gte('created_at', sevenDaysAgo),
-    supabaseAdmin
-      .from('pending_insights')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'applied')
-      .gte('resolved_at', startOfMonth),
-  ]);
-  const breaksThisWeek = breaksThisWeekRes.count ?? 0;
-  const insightsThisMonth = insightsThisMonthRes.count ?? 0;
+  let firstName = '';
+  let logged = 0;
+  let pending = 0;
+
+  if (user) {
+    const [{ data: profile }, { count: loggedCount }, { count: pendingCount }] = await Promise.all([
+      supabaseAdmin.from('profiles').select('first_name, full_name').eq('id', user.id).maybeSingle(),
+      supabaseAdmin.from('user_breaks').select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id).eq('is_test', false),
+      supabaseAdmin.from('user_breaks').select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id).eq('is_test', false).eq('status', 'pending'),
+    ]);
+    firstName =
+      profile?.first_name?.trim() ||
+      (profile?.full_name ?? '').trim().split(' ')[0] ||
+      '';
+    logged = loggedCount ?? 0;
+    pending = pendingCount ?? 0;
+  }
+
+  const dateLabel = new Date()
+    .toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' })
+    .replace(',', ' ·')
+    .toUpperCase();
+
+  // Empty state: a brand-new account has nothing logged, so the prompt can't
+  // claim purchases are waiting. Say what the app is for instead.
+  const promptCopy =
+    logged === 0
+      ? 'Bought into a break? Logging it is what sharpens every number you see here.'
+      : pending > 0
+        ? `${pending} ${pending === 1 ? 'purchase is' : 'purchases are'} still waiting on results. Logging is what sharpens every number you see here.`
+        : 'Logging what you bought is what sharpens every number you see here.';
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: 'var(--terminal-bg)' }}>
-
-      {/* Hero Section */}
-      <div
-        className="relative overflow-hidden"
-        style={{
-          background: 'var(--gradient-hero)',
-          borderBottom: '1px solid var(--terminal-border)',
-        }}
-      >
-        {/* Background photo */}
-        <img
-          src="https://images.unsplash.com/photo-1607310073276-9f48dec47340?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxzcG9ydHMlMjBtZW1vcmFiaWxpYSUyMGNhcmRzJTIwZGlzcGxheXxlbnwxfHx8fDE3NzQ1NTc4MzV8MA&ixlib=rb-4.1.0&q=80&w=1080"
-          alt=""
-          aria-hidden="true"
-          fetchPriority="low"
-          className="absolute inset-0 w-full h-full object-cover opacity-20"
-        />
-        {/* Dark overlay — pushes the photo and gradient back so foreground
-            content pops. Layered as a top-down vignette (transparent at top,
-            heavier at bottom) instead of a flat 20% so the eye reads it as
-            depth rather than mud. */}
-        <div className="absolute inset-0 bg-gradient-to-b from-black/20 via-black/35 to-black/55" />
-        {/* Background dot pattern */}
-        <div
-          className="absolute inset-0 opacity-5"
-          style={{
-            backgroundImage: 'radial-gradient(circle at 2px 2px, var(--accent-blue) 1px, transparent 0)',
-            backgroundSize: '40px 40px',
-          }}
-        />
-        {/* Blue glow */}
-        <div
-          className="absolute top-0 right-0 w-96 h-96 blur-3xl opacity-20"
-          style={{ background: 'radial-gradient(circle, var(--accent-blue) 0%, transparent 70%)' }}
-        />
-        {/* Gold glow */}
-        <div
-          className="absolute bottom-0 left-0 w-96 h-96 blur-3xl opacity-20"
-          style={{ background: 'radial-gradient(circle, var(--badge-icon) 0%, transparent 70%)' }}
-        />
-
-        {/* Content */}
-        <div className="relative px-6 py-10 md:py-14 max-w-6xl mx-auto">
-          {/* Beta banner — sets expectations before the user reads the hero */}
-          <div className="mb-6 max-w-3xl mx-auto">
-            <BetaBanner surface="home" />
-          </div>
-
-          <div className="text-center mb-8">
-            {/* Live / pre-release counts */}
-            <div className="flex items-center justify-center gap-4 mb-6">
-              <div className="flex items-center gap-2">
-                <div
-                  className="w-2 h-2 rounded-full animate-pulse"
-                  style={{ backgroundColor: 'var(--signal-buy)', boxShadow: 'var(--glow-green)' }}
-                />
-                <span className="terminal-label font-semibold" style={{ color: 'var(--signal-buy)' }}>
-                  {liveCount} LIVE
-                </span>
-              </div>
-              {preReleaseCount > 0 && (
-                <div className="terminal-label" style={{ color: 'var(--accent-orange)' }}>
-                  {preReleaseCount} PRE-RELEASE
-                </div>
-              )}
-            </div>
-
-            {/* Brand */}
-            <div className="flex items-center justify-center mb-4">
-              <Logo variant="wordmark" height={80} width={400} className="h-14 md:h-20 w-auto" priority />
-            </div>
-
-            <p className="text-xl md:text-2xl font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>
-              Stop buying breaks blind.
-            </p>
-            <p className="text-base md:text-lg max-w-2xl mx-auto" style={{ color: 'var(--text-secondary)' }}>
-              Every break you buy, in one place — research it, log it, learn from it.
-            </p>
-
-            {/* CTA Buttons */}
-            <div className="flex items-center justify-center gap-4 mt-8">
-              <Link href="/analysis">
-                <button
-                  className="px-6 py-3 rounded-lg font-semibold text-base flex items-center gap-2 transition-all hover:scale-105"
-                  style={{ background: 'var(--gradient-blue)', color: 'white', boxShadow: 'var(--glow-blue)' }}
-                >
-                  <Zap className="w-5 h-5" />
-                  Analyze a Break
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-              </Link>
-              <Link href="/card-lookup">
-                <button
-                  className="px-6 py-3 rounded-lg font-semibold text-base flex items-center gap-2 border-2 transition-all hover:scale-105"
-                  style={{
-                    borderColor: 'var(--accent-blue)',
-                    color: 'var(--accent-blue)',
-                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                  }}
-                >
-                  <Logo variant="slab" height={32} width={25} className="h-8 w-auto -my-1" />
-                  Slab Analysis
-                  <ChevronRight className="w-5 h-5" />
-                </button>
-              </Link>
-            </div>
-          </div>
-
-          {/* Feature Pills */}
-          <div className="flex flex-wrap items-center justify-center gap-4">
-            {[
-              { icon: Target,     text: 'Live Market Data', color: 'var(--signal-buy)' },
-              { icon: TrendingUp, text: 'AI Deal Signals',  color: 'var(--accent-blue)' },
-              { icon: Sparkles,   text: 'Social Currency',  color: 'var(--badge-icon)' },
-            ].map(({ icon: Icon, text, color }) => (
-              <div
-                key={text}
-                className="flex items-center gap-2 px-4 py-2 rounded-full border backdrop-blur-sm"
-                style={{ backgroundColor: 'rgba(19, 24, 32, 0.6)', borderColor: 'var(--terminal-border-hover)' }}
-              >
-                <Icon className="w-4 h-4" style={{ color }} />
-                <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>{text}</span>
-              </div>
-            ))}
-          </div>
+    <div className="px-5 sm:px-8 lg:px-[34px] py-7 lg:py-[30px] max-w-[1100px]">
+      {/* Header */}
+      <div style={{ paddingBottom: 20, borderBottom: '1px solid var(--rule)' }}>
+        <div className="font-mono uppercase" style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--ink3)' }}>
+          {dateLabel}
         </div>
-      </div>
-
-      {/* My Breaks Promo */}
-      <div className="px-6 py-8">
-        <Link href="/my-breaks">
-          <div
-            className="relative overflow-hidden rounded-xl border-2 transition-all cursor-pointer group hover:scale-[1.02]"
-            style={{
-              borderColor: 'var(--signal-buy)',
-              background: 'var(--gradient-card)',
-              boxShadow: '0 4px 20px rgba(34, 197, 94, 0.1)',
-            }}
-          >
-            <div className="relative p-6 md:p-8">
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div
-                      className="w-10 h-10 rounded-lg flex items-center justify-center"
-                      style={{ background: 'var(--gradient-green)' }}
-                    >
-                      <ClipboardList className="w-5 h-5 text-white" />
-                    </div>
-                    <div>
-                      <span
-                        className="text-sm font-bold uppercase tracking-wider"
-                        style={{ color: 'var(--signal-buy)' }}
-                      >
-                        MY BREAKS
-                      </span>
-                      <div className="text-xs font-medium" style={{ color: 'var(--text-tertiary)' }}>
-                        Track every break
-                      </div>
-                    </div>
-                  </div>
-
-                  <h2 className="text-2xl font-bold mb-2" style={{ color: 'var(--text-primary)' }}>
-                    Log Your Breaks, See How You Did
-                  </h2>
-                  <p className="text-base mb-4" style={{ color: 'var(--text-secondary)' }}>
-                    Get AI analysis before you buy in, then come back to log your results. Track your wins, busts, and spending patterns over time.
-                  </p>
-
-                  <div className="flex items-center gap-3">
-                    {[
-                      { label: 'Pre-Break Analysis', color: 'var(--accent-blue)' },
-                      { label: 'Track Results', color: 'var(--signal-buy)' },
-                      { label: 'Win / Mediocre / Bust', color: 'var(--signal-watch)' },
-                    ].map(({ label, color }) => (
-                      <div
-                        key={label}
-                        className="px-3 py-1.5 rounded-md text-xs font-bold"
-                        style={{
-                          backgroundColor: `${color}15`,
-                          color,
-                          border: `1px solid ${color}30`,
-                        }}
-                      >
-                        {label}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <ChevronRight
-                  className="w-8 h-8 opacity-50 group-hover:opacity-100 group-hover:translate-x-1 transition-all"
-                  style={{ color: 'var(--signal-buy)' }}
-                />
-              </div>
-            </div>
-          </div>
-        </Link>
-      </div>
-
-      {/* Product Grid */}
-      <div id="products" className="px-6 py-8">
-        {products.length === 0 ? (
-          <>
-            <h2 className="text-2xl font-bold mb-1" style={{ color: 'var(--text-primary)' }}>
-              Active Products
-            </h2>
-            <div
-              className="mt-6 rounded-xl border border-dashed p-12 text-center"
-              style={{ borderColor: 'var(--terminal-border)', color: 'var(--text-secondary)' }}
-            >
-              <p className="font-semibold mb-1">No products yet</p>
-              <p className="text-sm">No breaks are live right now — check back soon.</p>
-            </div>
-          </>
-        ) : (
-          <ActiveProductsBrowser products={products} signals={signals} />
-        )}
-      </div>
-
-      {/* Responsible gambling banner */}
-      <div
-        className="border-t px-6 py-4 text-center"
-        style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
-      >
-        <p className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>
-          Gambling problem? Call or text{' '}
-          <a href="tel:18004262537" className="underline" style={{ color: 'var(--text-primary)' }}>
-            1-800-GAMBLER
-          </a>
+        <h1
+          className="mt-2"
+          style={{ fontSize: 'clamp(22px, 4vw, 27px)', fontWeight: 600, lineHeight: 1.2, letterSpacing: '-0.022em', color: 'var(--ink)' }}
+        >
+          {firstName ? `Start here, ${firstName}` : 'Start here'}
+        </h1>
+        <p className="mt-1.5" style={{ fontSize: 14, lineHeight: 1.55, color: 'var(--ink2)', maxWidth: '62ch' }}>
+          BreakIQ does two jobs: tell you what a spot is worth before you buy, and remember what
+          happened after.
         </p>
+
+        <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-3">
+          <div className="flex items-center gap-2.5">
+            <ClipboardList className="w-[17px] h-[17px]" strokeWidth={1.75} style={{ color: 'var(--ink)' }} />
+            <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)' }}>
+              Log a break you bought into
+            </span>
+          </div>
+          <span className="flex-1 min-w-[220px]" style={{ fontSize: 13, color: 'var(--ink2)' }}>
+            {promptCopy}
+          </span>
+          <Link
+            href="/my-breaks?view=new"
+            className="inline-flex items-center justify-center px-4 rounded-md transition-opacity hover:opacity-90"
+            style={{ height: 38, backgroundColor: 'var(--btn-bg)', color: 'var(--btn-fg)', fontSize: 13, fontWeight: 600 }}
+          >
+            Log now
+          </Link>
+        </div>
       </div>
 
-      {/* Footer Stats — real loop numbers as social proof for the
-          management-tool framing. liveCount is fact; the other two show
-          community velocity. */}
-      <div className="px-6 py-12 border-t" style={{ borderColor: 'var(--terminal-border)' }}>
-        <div className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
-          <div>
-            <div
-              className="text-4xl font-bold mb-2"
-              style={{ background: 'var(--gradient-blue)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
-            >
-              {liveCount}
-            </div>
-            <div className="terminal-label">Products Live</div>
+      {/* Body */}
+      <div className="mt-[26px] flex flex-col lg:flex-row gap-9">
+        <div className="flex-1 min-w-0">
+          <div className="font-mono uppercase mb-1" style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--ink3)' }}>
+            Or
           </div>
-          <div>
-            <div
-              className="text-4xl font-bold mb-2"
-              style={{ background: 'var(--gradient-green)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
-            >
-              {breaksThisWeek}
-            </div>
-            <div className="terminal-label">Breaks Logged · 7d</div>
-          </div>
-          <div>
-            <div
-              className="text-4xl font-bold mb-2"
-              style={{ background: 'var(--gradient-orange)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}
-            >
-              {insightsThisMonth}
-            </div>
-            <div className="terminal-label">Community Insights · MTD</div>
-          </div>
+          <RouteRow
+            href="/analysis"
+            icon={Sparkles}
+            iconColor="var(--accent-key)"
+            title="Value a spot"
+            sub="Know the fair price before you commit to a slot"
+          />
+          <RouteRow
+            href="/breaks"
+            icon={Layers}
+            iconColor="var(--buy)"
+            title="Browse breaks"
+            sub="Every active product, with our model's read on each"
+          />
         </div>
+
+        <aside className="w-full lg:w-[262px] shrink-0">
+          <div className="font-mono uppercase mb-2" style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--ink3)' }}>
+            Why we ask you to log
+          </div>
+          <p style={{ fontSize: 14, lineHeight: 1.6, color: 'var(--ink2)' }}>
+            Every logged break feeds the comp set. Your record is what turns a generic fair value
+            into one that knows how you buy.
+          </p>
+          <div className="mt-5">
+            <Stat label="Breaks logged" value={String(logged)} />
+            <Stat label="Awaiting results" value={String(pending)} accent={pending > 0} />
+          </div>
+        </aside>
       </div>
     </div>
   );
