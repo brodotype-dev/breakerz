@@ -763,7 +763,7 @@ export default async function MarketDeltaPage({
                   href={href}
                   className="text-[11px] px-2.5 py-1 rounded font-semibold transition-colors"
                   style={{
-                    backgroundColor: selected ? 'rgba(59,130,246,0.15)' : 'var(--terminal-surface)',
+                    backgroundColor: selected ? 'rgba(127,168,201,0.15)' : 'var(--terminal-surface)',
                     color: selected ? 'var(--accent-blue)' : 'var(--text-secondary)',
                     border: `1px solid ${selected ? 'var(--accent-blue)' : 'var(--terminal-border)'}`,
                   }}

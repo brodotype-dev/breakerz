@@ -93,8 +93,8 @@ type ProfileResponse = {
 };
 
 const LIFECYCLE_LABELS: Record<Lifecycle, { text: string; bg: string; fg: string }> = {
-  live: { text: 'LIVE', bg: 'rgba(34,197,94,0.14)', fg: '#22c55e' },
-  pre_release: { text: 'PRE-RELEASE', bg: 'rgba(168,85,247,0.14)', fg: '#a855f7' },
+  live: { text: 'LIVE', bg: 'rgba(111,158,125,0.14)', fg: '#22c55e' },
+  pre_release: { text: 'PRE-RELEASE', bg: 'rgba(141,134,184,0.14)', fg: '#a855f7' },
   dormant: { text: 'DORMANT', bg: 'rgba(148,163,184,0.14)', fg: '#94a3b8' },
 };
 
@@ -168,7 +168,7 @@ export default function PlayerProfilePage() {
                     {data.player.name}
                   </h1>
                   {data.player.is_rookie && (
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(59,130,246,0.15)', color: 'var(--accent-blue)' }}>RC</span>
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(127,168,201,0.15)', color: 'var(--accent-blue)' }}>RC</span>
                   )}
                   {data.player.is_icon && <IconPlayerBadge />}
                   {score > 0.1 && <BullishBadge />}
@@ -225,7 +225,7 @@ export default function PlayerProfilePage() {
         >
           <div className="space-y-2.5">
             {data.insights.risk_flags.map((f, i) => (
-              <div key={`f-${i}`} className="rounded-lg border px-3 py-2.5 flex items-start gap-2.5" style={{ borderColor: 'rgba(239,68,68,0.35)', backgroundColor: 'rgba(239,68,68,0.05)' }}>
+              <div key={`f-${i}`} className="rounded-lg border px-3 py-2.5 flex items-start gap-2.5" style={{ borderColor: 'rgba(194,112,95,0.35)', backgroundColor: 'rgba(194,112,95,0.05)' }}>
                 <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: '#ef4444' }} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -274,7 +274,7 @@ export default function PlayerProfilePage() {
             })}
 
             {data.insights.observations.map(o => (
-              <div key={o.id} className="rounded-lg border px-3 py-2.5 flex items-start gap-2.5" style={{ borderColor: 'rgba(168,85,247,0.35)', backgroundColor: 'rgba(168,85,247,0.05)' }}>
+              <div key={o.id} className="rounded-lg border px-3 py-2.5 flex items-start gap-2.5" style={{ borderColor: 'rgba(141,134,184,0.35)', backgroundColor: 'rgba(141,134,184,0.05)' }}>
                 <MessageSquare className="w-4 h-4 shrink-0 mt-0.5" style={{ color: '#a855f7' }} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 text-xs">
@@ -417,7 +417,7 @@ function RecentSalesPanel({ comps }: { comps: Comp[] }) {
                 onClick={() => setTab(opt.key)}
                 className="px-2.5 py-1 transition-colors"
                 style={{
-                  backgroundColor: active ? 'rgba(59,130,246,0.15)' : 'transparent',
+                  backgroundColor: active ? 'rgba(127,168,201,0.15)' : 'transparent',
                   color: active ? 'var(--accent-blue)' : 'var(--text-tertiary)',
                 }}
               >
@@ -448,7 +448,7 @@ function RecentSalesPanel({ comps }: { comps: Comp[] }) {
                     <span
                       className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0"
                       style={{
-                        backgroundColor: psa10 ? 'rgba(34,197,94,0.12)' : psa9 ? 'rgba(59,130,246,0.12)' : 'rgba(148,163,184,0.12)',
+                        backgroundColor: psa10 ? 'rgba(111,158,125,0.12)' : psa9 ? 'rgba(127,168,201,0.12)' : 'rgba(148,163,184,0.12)',
                         color: psa10 ? '#22c55e' : psa9 ? 'var(--accent-blue)' : '#94a3b8',
                       }}
                     >

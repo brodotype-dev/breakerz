@@ -210,7 +210,7 @@ export default function AnalysisPage() {
           <Link
             href="/"
             className="inline-flex items-center gap-2 text-sm font-semibold mb-6 px-3 py-1.5 rounded-lg backdrop-blur-sm hover:opacity-70 transition-opacity"
-            style={{ color: 'var(--text-primary)', backgroundColor: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)' }}
+            style={{ color: 'var(--text-primary)', backgroundColor: 'rgba(127,168,201,0.1)', border: '1px solid rgba(127,168,201,0.3)' }}
           >
             <ArrowLeft className="w-4 h-4" />
             Back to Home
@@ -347,9 +347,9 @@ export default function AnalysisPage() {
                               key={id}
                               className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full text-xs font-semibold border"
                               style={{
-                                backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                                backgroundColor: 'rgba(127,168,201,0.12)',
                                 color: 'var(--text-primary)',
-                                borderColor: 'rgba(59, 130, 246, 0.4)',
+                                borderColor: 'rgba(127,168,201,0.4)',
                               }}
                             >
                               {p.name}
@@ -434,7 +434,7 @@ export default function AnalysisPage() {
             <StepHeader stepNumber={2} title="AI Analysis" className="mb-6" />
             <ElevatedCard>
               {error && (
-                <div className="rounded-lg p-4 text-sm mb-4" style={{ backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid var(--signal-pass)', color: 'var(--signal-pass)' }}>
+                <div className="rounded-lg p-4 text-sm mb-4" style={{ backgroundColor: 'rgba(194,112,95,0.08)', border: '1px solid var(--signal-pass)', color: 'var(--signal-pass)' }}>
                   {error}
                 </div>
               )}

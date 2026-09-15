@@ -23,18 +23,18 @@ const FLAG_TYPES = [
 type FlagType = typeof FLAG_TYPES[number]['value'];
 
 const flagToneStyles: Record<string, { bg: string; text: string }> = {
-  amber: { bg: 'rgba(245, 158, 11, 0.12)', text: '#f59e0b' },
-  red: { bg: 'rgba(239, 68, 68, 0.12)', text: '#ef4444' },
-  blue: { bg: 'rgba(59, 130, 246, 0.12)', text: '#3b82f6' },
+  amber: { bg: 'rgba(168,144,96,0.12)', text: '#f59e0b' },
+  red: { bg: 'rgba(194,112,95,0.12)', text: '#ef4444' },
+  blue: { bg: 'rgba(127,168,201,0.12)', text: '#3b82f6' },
   gray: { bg: 'rgba(148, 163, 184, 0.15)', text: '#94a3b8' },
-  orange: { bg: 'rgba(249, 115, 22, 0.12)', text: '#f97316' },
+  orange: { bg: 'rgba(168,144,96,0.12)', text: '#f97316' },
 };
 const flagLabelMap = new Map<string, string>(FLAG_TYPES.map(f => [f.value, f.label]));
 const flagToneMap = new Map<string, string>(FLAG_TYPES.map(f => [f.value, f.tone]));
 
 const lifecycleStyles: Record<string, { bg: string; text: string; label: string }> = {
-  live: { bg: 'rgba(16, 185, 129, 0.12)', text: '#10b981', label: 'Live' },
-  pre_release: { bg: 'rgba(59, 130, 246, 0.12)', text: '#3b82f6', label: 'Pre-release' },
+  live: { bg: 'rgba(111,158,125,0.12)', text: '#10b981', label: 'Live' },
+  pre_release: { bg: 'rgba(127,168,201,0.12)', text: '#3b82f6', label: 'Pre-release' },
   dormant: { bg: 'rgba(148, 163, 184, 0.15)', text: '#94a3b8', label: 'Dormant' },
 };
 
@@ -328,7 +328,7 @@ export default function GlobalPlayersManager({ initialManaged, sports, products 
                           <span>{p.name}</span>
                           {p.isRookie && (
                             <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide"
-                              style={{ backgroundColor: 'rgba(16, 185, 129, 0.12)', color: '#10b981' }} title="Rookie">RC</span>
+                              style={{ backgroundColor: 'rgba(111,158,125,0.12)', color: '#10b981' }} title="Rookie">RC</span>
                           )}
                         </button>
                       </TableCell>
@@ -365,7 +365,7 @@ export default function GlobalPlayersManager({ initialManaged, sports, products 
                         <button onClick={() => toggleHV(p)}
                           title={p.isHighVolatility ? 'High Volatility on — click to remove' : 'Mark as High Volatility'}
                           className="inline-flex items-center justify-center w-7 h-7 rounded transition-colors"
-                          style={{ backgroundColor: p.isHighVolatility ? 'rgba(245, 158, 11, 0.15)' : 'transparent', color: p.isHighVolatility ? '#f59e0b' : 'var(--text-disabled)' }}>
+                          style={{ backgroundColor: p.isHighVolatility ? 'rgba(168,144,96,0.15)' : 'transparent', color: p.isHighVolatility ? '#f59e0b' : 'var(--text-disabled)' }}>
                           <Zap className="w-4 h-4" fill={p.isHighVolatility ? 'currentColor' : 'none'} />
                         </button>
                       </TableCell>
@@ -373,7 +373,7 @@ export default function GlobalPlayersManager({ initialManaged, sports, products 
                         <button onClick={() => toggleIcon(p)}
                           title={p.isIcon ? 'Icon-tier — click to remove' : 'Mark as icon-tier (skips buzz multiplier)'}
                           className="inline-flex items-center justify-center w-7 h-7 rounded transition-colors"
-                          style={{ backgroundColor: p.isIcon ? 'rgba(168, 85, 247, 0.15)' : 'transparent', color: p.isIcon ? '#a855f7' : 'var(--text-disabled)' }}>
+                          style={{ backgroundColor: p.isIcon ? 'rgba(141,134,184,0.15)' : 'transparent', color: p.isIcon ? '#a855f7' : 'var(--text-disabled)' }}>
                           <Star className="w-4 h-4" fill={p.isIcon ? 'currentColor' : 'none'} />
                         </button>
                       </TableCell>

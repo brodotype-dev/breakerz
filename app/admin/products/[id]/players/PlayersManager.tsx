@@ -110,7 +110,7 @@ export default function PlayersManager({ players }: Props) {
                       {p.isRookie && (
                         <span
                           className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide"
-                          style={{ backgroundColor: 'rgba(16, 185, 129, 0.12)', color: '#10b981' }}
+                          style={{ backgroundColor: 'rgba(111,158,125,0.12)', color: '#10b981' }}
                           title="Rookie card"
                         >
                           RC

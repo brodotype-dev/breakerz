@@ -107,7 +107,7 @@ export default function ChasePage() {
       >
         <div className="absolute inset-0 opacity-5" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, #ef4444 1px, transparent 0)', backgroundSize: '40px 40px' }} />
         <div className="relative px-4 sm:px-6 py-4 sm:py-6 max-w-5xl mx-auto flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #ef4444 0%, #ec4899 100%)', boxShadow: '0 0 24px rgba(239,68,68,0.35)' }}>
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #ef4444 0%, #ec4899 100%)', boxShadow: '0 0 24px rgba(194,112,95,0.35)' }}>
             <Heart className="w-5 h-5 text-white" fill="currentColor" />
           </div>
           <div className="min-w-0">
@@ -175,7 +175,7 @@ export default function ChasePage() {
                           <div className="flex items-center gap-1.5 flex-wrap">
                             <span className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{h.name}</span>
                             {h.is_rookie && (
-                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0" style={{ backgroundColor: 'rgba(59,130,246,0.15)', color: 'var(--accent-blue)' }}>RC</span>
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0" style={{ backgroundColor: 'rgba(127,168,201,0.15)', color: 'var(--accent-blue)' }}>RC</span>
                             )}
                             {h.is_icon && <IconPlayerBadge />}
                           </div>
@@ -259,7 +259,7 @@ function ChaseRow({ entry, onChanged }: { entry: ChaseListEntry; onChanged: () =
               {entry.player_name}
             </span>
             {entry.is_rookie && (
-              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0" style={{ backgroundColor: 'rgba(59,130,246,0.15)', color: 'var(--accent-blue)' }}>RC</span>
+              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0" style={{ backgroundColor: 'rgba(127,168,201,0.15)', color: 'var(--accent-blue)' }}>RC</span>
             )}
             {entry.is_icon && <IconPlayerBadge />}
             {score > 0.1  && <BullishBadge />}

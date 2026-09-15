@@ -74,8 +74,8 @@ export default function LifecycleTransitionButton({
   }
 
   const colors = {
-    positive: { bg: 'rgba(16, 185, 129, 0.12)', text: '#10b981', border: 'rgba(16, 185, 129, 0.3)' },
-    caution: { bg: 'rgba(245, 158, 11, 0.12)', text: '#f59e0b', border: 'rgba(245, 158, 11, 0.3)' },
+    positive: { bg: 'rgba(111,158,125,0.12)', text: '#10b981', border: 'rgba(111,158,125,0.3)' },
+    caution: { bg: 'rgba(168,144,96,0.12)', text: '#f59e0b', border: 'rgba(168,144,96,0.3)' },
     neutral: { bg: 'rgba(148, 163, 184, 0.15)', text: '#cbd5e1', border: 'rgba(148, 163, 184, 0.3)' },
   }[v.tone];
 
@@ -117,7 +117,7 @@ export default function LifecycleTransitionButton({
             {error && (
               <div
                 className="flex items-start gap-2 p-3 rounded-lg mb-4"
-                style={{ backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)' }}
+                style={{ backgroundColor: 'rgba(194,112,95,0.1)', border: '1px solid rgba(194,112,95,0.3)' }}
               >
                 <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" style={{ color: '#ef4444' }} />
                 <p className="text-xs" style={{ color: '#fca5a5' }}>{error}</p>

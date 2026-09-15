@@ -28,7 +28,7 @@ export default function CHAdditionsPanel({ data }: { data: CHAdditionsSummary })
             <PackagePlus className="w-4 h-4" />
             CardHedger Additions
             {trackedSets.length > 0 && (
-              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide" style={{ backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b' }}>
+              <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide" style={{ backgroundColor: 'rgba(168,144,96,0.15)', color: '#f59e0b' }}>
                 ⚡ {trackedSets.length} tracked
               </span>
             )}
@@ -54,7 +54,7 @@ export default function CHAdditionsPanel({ data }: { data: CHAdditionsSummary })
       {trackedSets.length > 0 && (
         <div
           className="px-4 py-2.5 text-xs flex items-start gap-2"
-          style={{ backgroundColor: 'rgba(245, 158, 11, 0.10)', color: '#f59e0b', borderBottom: '1px solid var(--terminal-border)' }}
+          style={{ backgroundColor: 'rgba(168,144,96,0.10)', color: '#f59e0b', borderBottom: '1px solid var(--terminal-border)' }}
         >
           <span className="font-bold">⚡ {trackedCards.toLocaleString()} cards added to {trackedSets.length} set{trackedSets.length === 1 ? '' : 's'} you track</span>
           <span style={{ color: 'var(--text-secondary)' }}>— consider re-running matching: {trackedSets.join(', ')}</span>
@@ -81,7 +81,7 @@ export default function CHAdditionsPanel({ data }: { data: CHAdditionsSummary })
               {shown.map((r, i) => (
                 <tr
                   key={`${r.added_date}-${r.set_name}-${r.subset}-${i}`}
-                  style={{ borderTop: '1px solid var(--terminal-border)', backgroundColor: r.tracked ? 'rgba(245, 158, 11, 0.06)' : undefined }}
+                  style={{ borderTop: '1px solid var(--terminal-border)', backgroundColor: r.tracked ? 'rgba(168,144,96,0.06)' : undefined }}
                 >
                   <td className="px-4 py-1.5 font-mono text-xs whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>{fmtDate(r.added_date)}</td>
                   <td className="px-3 py-1.5 text-xs" style={{ color: 'var(--text-tertiary)' }}>{r.category}</td>
@@ -89,7 +89,7 @@ export default function CHAdditionsPanel({ data }: { data: CHAdditionsSummary })
                     <span className="inline-flex items-center gap-1.5">
                       {r.set_name}
                       {r.tracked && (
-                        <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide" style={{ backgroundColor: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b' }}>tracked</span>
+                        <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide" style={{ backgroundColor: 'rgba(168,144,96,0.15)', color: '#f59e0b' }}>tracked</span>
                       )}
                     </span>
                   </td>

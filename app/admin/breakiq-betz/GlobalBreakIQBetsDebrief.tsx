@@ -105,7 +105,7 @@ export default function GlobalBreakIQBetsDebrief() {
     return (
       <div
         className="rounded-xl border p-5"
-        style={{ backgroundColor: 'rgba(34, 197, 94, 0.05)', borderColor: 'rgba(34, 197, 94, 0.3)' }}
+        style={{ backgroundColor: 'rgba(111,158,125,0.05)', borderColor: 'rgba(111,158,125,0.3)' }}
       >
         <p className="text-sm font-medium mb-3" style={{ color: 'var(--signal-buy)' }}>
           {savedCount} player{savedCount !== 1 ? 's' : ''} updated across all products.
@@ -113,7 +113,7 @@ export default function GlobalBreakIQBetsDebrief() {
         <button
           onClick={() => { setStatus('idle'); setNarrative(''); setRows([]); setSavedCount(0); }}
           className="px-4 py-2 rounded-lg text-sm font-bold transition-all"
-          style={{ backgroundColor: 'rgba(34, 197, 94, 0.1)', color: 'var(--signal-buy)', border: '1px solid rgba(34, 197, 94, 0.3)' }}
+          style={{ backgroundColor: 'rgba(111,158,125,0.1)', color: 'var(--signal-buy)', border: '1px solid rgba(111,158,125,0.3)' }}
         >
           Run another debrief
         </button>
@@ -146,7 +146,7 @@ export default function GlobalBreakIQBetsDebrief() {
             onClick={handleParse}
             disabled={!narrative.trim()}
             className="px-5 py-2.5 rounded-lg text-white text-sm font-bold transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-            style={{ background: 'linear-gradient(135deg, #a855f7 0%, #ec4899 100%)', boxShadow: '0 0 20px rgba(168, 85, 247, 0.3)' }}
+            style={{ background: 'linear-gradient(135deg, #a855f7 0%, #ec4899 100%)', boxShadow: '0 0 20px rgba(141,134,184,0.3)' }}
           >
             Parse with Claude →
           </button>
@@ -195,7 +195,7 @@ export default function GlobalBreakIQBetsDebrief() {
                       <div className="flex items-center gap-1.5">
                         <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{row.player_name}</span>
                         {row.confidence < 0.7 && (
-                          <span className="text-[8px] font-bold px-1 py-0.5 rounded" style={{ backgroundColor: 'rgba(245,158,11,0.15)', color: 'var(--signal-watch)' }}>
+                          <span className="text-[8px] font-bold px-1 py-0.5 rounded" style={{ backgroundColor: 'rgba(168,144,96,0.15)', color: 'var(--signal-watch)' }}>
                             Review
                           </span>
                         )}

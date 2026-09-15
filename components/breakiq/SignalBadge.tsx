@@ -1,6 +1,7 @@
 'use client';
 
 import { cn } from '@/lib/utils';
+import { signalLabel } from '@/lib/engine';
 import type { Signal } from '@/lib/types';
 
 interface Props {
@@ -11,9 +12,9 @@ interface Props {
 }
 
 const STYLES: Record<Signal, { color: string; bg: string; border: string }> = {
-  BUY:   { color: '#22c55e', bg: 'rgba(34,197,94,0.1)',   border: 'rgba(34,197,94,0.3)' },
-  WATCH: { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)',  border: 'rgba(245,158,11,0.3)' },
-  PASS:  { color: '#dc2626', bg: 'rgba(220,38,38,0.1)',   border: 'rgba(220,38,38,0.3)' },
+  BUY:   { color: 'var(--buy)',  bg: 'rgba(111,158,125,0.1)', border: 'rgba(111,158,125,0.3)' },
+  WATCH: { color: 'var(--hold)', bg: 'rgba(168,144,96,0.1)',  border: 'rgba(168,144,96,0.3)' },
+  PASS:  { color: 'var(--pass)', bg: 'rgba(194,112,95,0.1)',  border: 'rgba(194,112,95,0.3)' },
 };
 
 const SIZES = {
@@ -29,7 +30,7 @@ export default function SignalBadge({ signal, size = 'md', valuePct, className }
       className={cn('inline-flex items-center gap-1 font-mono font-semibold rounded border whitespace-nowrap', SIZES[size], className)}
       style={{ color: s.color, backgroundColor: s.bg, borderColor: s.border }}
     >
-      {signal}
+      {signalLabel(signal)}
       {valuePct !== undefined && (
         <span className="opacity-70">{valuePct > 0 ? '+' : ''}{valuePct.toFixed(0)}%</span>
       )}

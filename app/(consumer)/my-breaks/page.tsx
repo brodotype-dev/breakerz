@@ -419,7 +419,7 @@ function BreakList({
           <Link
             href="/analysis"
             className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all hover:opacity-90"
-            style={{ background: 'var(--accent-blue)', color: 'white', boxShadow: '0 2px 8px rgba(59,130,246,0.25)' }}
+            style={{ background: 'var(--accent-blue)', color: 'white', boxShadow: '0 2px 8px rgba(127,168,201,0.25)' }}
           >
             <Sparkles className="w-4 h-4" />
             Research a break
@@ -525,7 +525,7 @@ function BreakList({
           value={platformFilter}
           onChange={e => setPlatformFilter(e.target.value as Platform | '')}
           className="rounded-lg border px-3 py-1.5 text-xs font-medium focus:outline-none"
-          style={{ borderColor: 'var(--terminal-border)', backgroundColor: platformFilter ? 'rgba(59,130,246,0.1)' : 'transparent', color: platformFilter ? 'var(--accent-blue)' : 'var(--text-tertiary)' }}
+          style={{ borderColor: 'var(--terminal-border)', backgroundColor: platformFilter ? 'rgba(127,168,201,0.1)' : 'transparent', color: platformFilter ? 'var(--accent-blue)' : 'var(--text-tertiary)' }}
         >
           <option value="">All Platforms</option>
           {PLATFORMS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
@@ -536,7 +536,7 @@ function BreakList({
           value={outcomeFilter}
           onChange={e => setOutcomeFilter(e.target.value as BreakOutcome | '')}
           className="rounded-lg border px-3 py-1.5 text-xs font-medium focus:outline-none"
-          style={{ borderColor: 'var(--terminal-border)', backgroundColor: outcomeFilter ? 'rgba(59,130,246,0.1)' : 'transparent', color: outcomeFilter ? 'var(--accent-blue)' : 'var(--text-tertiary)' }}
+          style={{ borderColor: 'var(--terminal-border)', backgroundColor: outcomeFilter ? 'rgba(127,168,201,0.1)' : 'transparent', color: outcomeFilter ? 'var(--accent-blue)' : 'var(--text-tertiary)' }}
         >
           <option value="">All Outcomes</option>
           <option value="win">Win</option>
@@ -936,7 +936,7 @@ function PendingBreakCard({ brk, onComplete }: { brk: BreakRecord; onComplete: (
             {brk.is_test && (
               <span
                 className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide shrink-0"
-                style={{ backgroundColor: 'rgba(234,179,8,0.15)', color: 'var(--signal-watch)' }}
+                style={{ backgroundColor: 'rgba(168,144,96,0.15)', color: 'var(--signal-watch)' }}
                 title="Test break — excluded from analytics"
               >
                 Test
@@ -953,7 +953,7 @@ function PendingBreakCard({ brk, onComplete }: { brk: BreakRecord; onComplete: (
               {brk.snapshot_signal}
             </span>
           )}
-          <span className="text-xs font-semibold px-2 py-1 rounded hidden sm:inline" style={{ backgroundColor: 'rgba(234,179,8,0.15)', color: 'var(--signal-watch)' }}>
+          <span className="text-xs font-semibold px-2 py-1 rounded hidden sm:inline" style={{ backgroundColor: 'rgba(168,144,96,0.15)', color: 'var(--signal-watch)' }}>
             Pending
           </span>
           <CardActions brk={brk} onEdit={() => { setEditing(true); setExpanded(false); }} onRefresh={onComplete} />
@@ -1029,7 +1029,7 @@ function PendingBreakCard({ brk, onComplete }: { brk: BreakRecord; onComplete: (
                       onClick={() => setAnalysisFeedback(selected ? null : o.value)}
                       className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all"
                       style={{
-                        backgroundColor: selected ? 'rgba(59,130,246,0.15)' : 'var(--terminal-bg)',
+                        backgroundColor: selected ? 'rgba(127,168,201,0.15)' : 'var(--terminal-bg)',
                         border: `1px solid ${selected ? 'var(--accent-blue)' : 'var(--terminal-border)'}`,
                         color: selected ? 'var(--accent-blue)' : 'var(--text-tertiary)',
                       }}
@@ -1092,7 +1092,7 @@ function CompletedBreakCard({ brk, onRefresh }: { brk: BreakRecord; onRefresh: (
               {brk.is_test && (
                 <span
                   className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide shrink-0"
-                  style={{ backgroundColor: 'rgba(234,179,8,0.15)', color: 'var(--signal-watch)' }}
+                  style={{ backgroundColor: 'rgba(168,144,96,0.15)', color: 'var(--signal-watch)' }}
                   title="Test break — excluded from analytics"
                 >
                   Test
@@ -1565,9 +1565,9 @@ function BreakForm({
                         key={id}
                         className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full text-xs font-semibold border"
                         style={{
-                          backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                          backgroundColor: 'rgba(127,168,201,0.12)',
                           color: 'var(--text-primary)',
-                          borderColor: 'rgba(59, 130, 246, 0.4)',
+                          borderColor: 'rgba(127,168,201,0.4)',
                         }}
                       >
                         {p.name}

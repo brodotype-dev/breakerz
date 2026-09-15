@@ -221,7 +221,7 @@ export default function NewProductForm({ sports }: Props) {
         {/* Confirmation */}
         <div
           className="flex items-center gap-3 p-4 rounded-xl"
-          style={{ backgroundColor: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)' }}
+          style={{ backgroundColor: 'rgba(111,158,125,0.08)', border: '1px solid rgba(111,158,125,0.25)' }}
         >
           <CheckCircle className="w-5 h-5 shrink-0" style={{ color: 'var(--signal-buy)' }} />
           <div>
@@ -422,7 +422,7 @@ export default function NewProductForm({ sports }: Props) {
         {chSetName && (
           <div
             className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg"
-            style={{ backgroundColor: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.3)' }}
+            style={{ backgroundColor: 'rgba(111,158,125,0.08)', border: '1px solid rgba(111,158,125,0.3)' }}
           >
             <CheckCircle className="w-3.5 h-3.5 shrink-0" style={{ color: 'var(--signal-buy)' }} />
             <span className="text-sm font-mono flex-1" style={{ color: 'var(--text-primary)' }}>{chSetName}</span>
@@ -485,7 +485,7 @@ export default function NewProductForm({ sports }: Props) {
                     className="w-full flex items-center justify-between px-3 py-2.5 text-left transition-colors hover:bg-[var(--terminal-surface-hover)] border-b last:border-0"
                     style={{
                       borderColor: 'var(--terminal-border)',
-                      backgroundColor: isTop ? 'rgba(59,130,246,0.08)' : undefined,
+                      backgroundColor: isTop ? 'rgba(127,168,201,0.08)' : undefined,
                     }}
                   >
                     <div className="flex items-center gap-2 min-w-0">

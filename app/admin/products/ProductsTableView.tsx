@@ -26,8 +26,8 @@ type StatusFilter = 'all' | 'active' | 'draft';
 type LifecycleFilter = 'all' | 'pre_release' | 'live' | 'dormant';
 
 const lifecycleStyles: Record<'pre_release' | 'live' | 'dormant', { bg: string; text: string; label: string }> = {
-  pre_release: { bg: 'rgba(168, 85, 247, 0.12)', text: '#a855f7', label: 'Pre-release' },
-  live: { bg: 'rgba(16, 185, 129, 0.12)', text: '#10b981', label: 'Live' },
+  pre_release: { bg: 'rgba(141,134,184,0.12)', text: '#a855f7', label: 'Pre-release' },
+  live: { bg: 'rgba(111,158,125,0.12)', text: '#10b981', label: 'Live' },
   dormant: { bg: 'rgba(148, 163, 184, 0.15)', text: '#94a3b8', label: 'Dormant' },
 };
 
@@ -270,7 +270,7 @@ export default function ProductsTableView({
                 {s}
                 <span
                   className="text-[10px] font-mono px-1 py-0 rounded"
-                  style={{ backgroundColor: 'rgba(59,130,246,0.1)', color: 'var(--accent-blue)' }}
+                  style={{ backgroundColor: 'rgba(127,168,201,0.1)', color: 'var(--accent-blue)' }}
                 >
                   {counts[s]}
                 </span>

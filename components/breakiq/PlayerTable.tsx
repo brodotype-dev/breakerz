@@ -192,7 +192,7 @@ export default function PlayerTable({
                       {row.player.is_rookie && (
                         <span
                           className="text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0"
-                          style={{ backgroundColor: 'rgba(59,130,246,0.15)', color: 'var(--accent-blue)' }}
+                          style={{ backgroundColor: 'rgba(127,168,201,0.15)', color: 'var(--accent-blue)' }}
                         >
                           RC
                         </span>
@@ -264,9 +264,9 @@ export default function PlayerTable({
                               className="text-[9px] font-medium px-1 py-0.5 rounded border whitespace-nowrap"
                               title={`Estimated via ${row.pricingSource}`}
                               style={{
-                                backgroundColor: 'rgba(245,158,11,0.1)',
+                                backgroundColor: 'rgba(168,144,96,0.1)',
                                 color: 'var(--accent-orange)',
-                                borderColor: 'rgba(245,158,11,0.3)',
+                                borderColor: 'rgba(168,144,96,0.3)',
                               }}
                             >
                               est
@@ -321,10 +321,10 @@ export default function PlayerTable({
                         const p0pct = pyp.pZeroHits * 100;
                         const isLottery = p0pct >= 25;
                         const chipColor = p0pct >= 50
-                          ? { bg: 'rgba(239,68,68,0.12)', fg: 'var(--signal-pass)',  border: 'rgba(239,68,68,0.35)' }
+                          ? { bg: 'rgba(194,112,95,0.12)', fg: 'var(--signal-pass)',  border: 'rgba(194,112,95,0.35)' }
                           : p0pct >= 25
-                          ? { bg: 'rgba(245,158,11,0.12)', fg: 'var(--accent-orange)', border: 'rgba(245,158,11,0.35)' }
-                          : { bg: 'rgba(34,197,94,0.10)',  fg: 'var(--signal-buy)',   border: 'rgba(34,197,94,0.30)' };
+                          ? { bg: 'rgba(168,144,96,0.12)', fg: 'var(--accent-orange)', border: 'rgba(168,144,96,0.35)' }
+                          : { bg: 'rgba(111,158,125,0.10)',  fg: 'var(--signal-buy)',   border: 'rgba(111,158,125,0.30)' };
                         return (
                           <td className="px-2 sm:px-4 py-2.5 text-right">
                             <div className="flex flex-col items-end leading-tight gap-0.5">

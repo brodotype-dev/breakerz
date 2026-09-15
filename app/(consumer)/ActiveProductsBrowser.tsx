@@ -151,7 +151,7 @@ export default function ActiveProductsBrowser({
                 {label}
                 <span
                   className="text-[10px] font-mono px-1 py-0 rounded"
-                  style={{ backgroundColor: 'rgba(59,130,246,0.1)', color: 'var(--accent-blue)' }}
+                  style={{ backgroundColor: 'rgba(127,168,201,0.1)', color: 'var(--accent-blue)' }}
                 >
                   {lifecycleCounts[s]}
                 </span>

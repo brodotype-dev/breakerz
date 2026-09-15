@@ -126,9 +126,9 @@ export default function ProductCard({
                 <span
                   className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold"
                   style={{
-                    backgroundColor: 'rgba(34,197,94,0.10)',
+                    backgroundColor: 'rgba(111,158,125,0.10)',
                     color: 'var(--signal-buy)',
-                    border: '1px solid rgba(34,197,94,0.25)',
+                    border: '1px solid rgba(111,158,125,0.25)',
                   }}
                   title={`${breakCount} break${breakCount === 1 ? '' : 's'} logged in the last 7 days`}
                 >
@@ -140,9 +140,9 @@ export default function ProductCard({
                 <span
                   className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold"
                   style={{
-                    backgroundColor: 'rgba(234,179,8,0.10)',
+                    backgroundColor: 'rgba(168,144,96,0.10)',
                     color: '#eab308',
-                    border: '1px solid rgba(234,179,8,0.25)',
+                    border: '1px solid rgba(168,144,96,0.25)',
                   }}
                   title={`Community signal: ${HYPE_LABELS[hype.tag] ?? hype.tag}`}
                 >

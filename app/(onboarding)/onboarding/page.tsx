@@ -210,7 +210,7 @@ export default function OnboardingPage() {
                 </div>
 
                 {isOver18 === false && (
-                  <div className="rounded-lg p-4 text-center" style={{ backgroundColor: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)' }}>
+                  <div className="rounded-lg p-4 text-center" style={{ backgroundColor: 'rgba(194,112,95,0.1)', border: '1px solid rgba(194,112,95,0.3)' }}>
                     <XCircle className="w-6 h-6 mx-auto mb-2" style={{ color: 'var(--signal-pass)' }} />
                     <p className="text-sm font-semibold" style={{ color: 'var(--signal-pass)' }}>
                       BreakIQ is only available to users 18 and older.
@@ -305,7 +305,7 @@ export default function OnboardingPage() {
                         onClick={() => setExperience(o.value)}
                         className="w-full text-left px-4 py-3 rounded-lg transition-all"
                         style={{
-                          backgroundColor: experience === o.value ? 'rgba(59,130,246,0.12)' : 'var(--terminal-bg)',
+                          backgroundColor: experience === o.value ? 'rgba(127,168,201,0.12)' : 'var(--terminal-bg)',
                           border: `2px solid ${experience === o.value ? 'var(--accent-blue)' : 'var(--terminal-border)'}`,
                         }}
                       >
@@ -460,7 +460,7 @@ function Chip({ label, selected, onClick }: { label: string; selected: boolean; 
       onClick={onClick}
       className="px-3 py-1.5 rounded-lg text-sm font-medium transition-all"
       style={{
-        backgroundColor: selected ? 'rgba(59,130,246,0.15)' : 'var(--terminal-bg)',
+        backgroundColor: selected ? 'rgba(127,168,201,0.15)' : 'var(--terminal-bg)',
         border: `1.5px solid ${selected ? 'var(--accent-blue)' : 'var(--terminal-border)'}`,
         color: selected ? 'var(--accent-blue)' : 'var(--text-secondary)',
       }}

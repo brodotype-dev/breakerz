@@ -121,8 +121,8 @@ export default function OddsUpload({ productId }: { productId: string }) {
             <div
               className="rounded border p-3 space-y-1"
               style={{
-                borderColor: 'rgba(245, 158, 11, 0.3)',
-                backgroundColor: 'rgba(245, 158, 11, 0.08)',
+                borderColor: 'rgba(168,144,96,0.3)',
+                backgroundColor: 'rgba(168,144,96,0.08)',
               }}
             >
               <p className="text-xs font-medium" style={{ color: '#f59e0b' }}>

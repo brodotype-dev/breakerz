@@ -62,14 +62,14 @@ export default function BetaBanner({ surface }: BetaBannerProps) {
     <div
       className="relative w-full rounded-lg border px-10 py-2.5 flex items-center justify-center flex-wrap gap-x-3 gap-y-1"
       style={{
-        backgroundColor: 'rgba(59,130,246,0.08)',
-        borderColor: 'rgba(59,130,246,0.3)',
+        backgroundColor: 'rgba(127,168,201,0.08)',
+        borderColor: 'rgba(127,168,201,0.3)',
       }}
       role="status"
     >
       <span
         className="text-[10px] font-bold uppercase tracking-widest shrink-0 px-1.5 py-0.5 rounded"
-        style={{ backgroundColor: 'rgba(59,130,246,0.2)', color: 'var(--accent-blue)' }}
+        style={{ backgroundColor: 'rgba(127,168,201,0.2)', color: 'var(--accent-blue)' }}
       >
         Private Beta
       </span>

@@ -30,7 +30,7 @@ function AuthBounceBanner() {
     <div
       role="alert"
       className="rounded-lg p-3 text-sm"
-      style={{ border: '1px solid rgba(234,179,8,0.4)', backgroundColor: 'rgba(234,179,8,0.08)' }}
+      style={{ border: '1px solid rgba(168,144,96,0.4)', backgroundColor: 'rgba(168,144,96,0.08)' }}
     >
       <p className="font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>We couldn&apos;t let you in yet</p>
       <p style={{ color: 'var(--text-secondary)' }}>{message}</p>
@@ -92,7 +92,7 @@ export default function WaitlistPage() {
         <div className="w-full max-w-sm text-center space-y-4">
           <div
             className="inline-flex items-center justify-center w-14 h-14 rounded-full mb-2"
-            style={{ backgroundColor: 'rgba(59,130,246,0.15)', border: '1px solid rgba(59,130,246,0.3)' }}
+            style={{ backgroundColor: 'rgba(127,168,201,0.15)', border: '1px solid rgba(127,168,201,0.3)' }}
           >
             <span className="text-2xl">{state === 'already' ? '👋' : '✓'}</span>
           </div>
@@ -158,7 +158,7 @@ export default function WaitlistPage() {
                 <Logo variant="lockup" height={40} width={200} className="h-10 w-auto" priority />
                 <span
                   className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full"
-                  style={{ backgroundColor: 'rgba(59,130,246,0.15)', color: 'var(--accent-blue)', border: '1px solid rgba(59,130,246,0.3)' }}
+                  style={{ backgroundColor: 'rgba(127,168,201,0.15)', color: 'var(--accent-blue)', border: '1px solid rgba(127,168,201,0.3)' }}
                 >
                   Private Beta
                 </span>
@@ -371,7 +371,7 @@ export default function WaitlistPage() {
               style={{
                 borderColor: 'var(--accent-blue)',
                 backgroundColor: 'var(--terminal-surface)',
-                boxShadow: '0 0 0 1px var(--accent-blue), 0 8px 32px -8px rgba(59,130,246,0.3)',
+                boxShadow: '0 0 0 1px var(--accent-blue), 0 8px 32px -8px rgba(127,168,201,0.3)',
               }}
             >
               <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-widest"

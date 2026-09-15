@@ -22,7 +22,7 @@ export default function TopMoversWidget({ players }: Props) {
       className="rounded-lg border px-4 py-3 flex items-center gap-3 flex-wrap"
       style={{
         borderColor: 'var(--terminal-border)',
-        backgroundColor: 'rgba(34,197,94,0.06)',
+        backgroundColor: 'rgba(111,158,125,0.06)',
       }}
     >
       {/* Label */}
@@ -50,7 +50,7 @@ export default function TopMoversWidget({ players }: Props) {
               </span>
               <span
                 className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded"
-                style={{ backgroundColor: 'rgba(34,197,94,0.15)', color: '#22c55e' }}
+                style={{ backgroundColor: 'rgba(111,158,125,0.15)', color: '#22c55e' }}
               >
                 +{pct}%
               </span>

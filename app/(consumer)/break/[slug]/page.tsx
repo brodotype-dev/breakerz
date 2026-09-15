@@ -64,7 +64,7 @@ export default async function BreakPage({ params }: PageProps) {
           The data-driven banners (estimated count, EV-only) live inside
           BreakPageClient since they need the streamed-in pricing data. */}
       {isPreRelease && (
-        <div className="border-b px-4 sm:px-6 py-3" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'rgba(168,85,247,0.08)' }}>
+        <div className="border-b px-4 sm:px-6 py-3" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'rgba(141,134,184,0.08)' }}>
           <p className="text-xs font-semibold" style={{ color: '#c4b5fd' }}>
             Pre-release · {product.release_date ? `${product.name} launches ${formatReleaseDate(product.release_date)}` : `${product.name} hasn't launched yet`}
           </p>
@@ -141,7 +141,7 @@ function BreakHero({ product }: { product: ProductWithSport }) {
             </div>
             <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-white mb-2 sm:mb-3 break-words">{product.name}</h1>
             {!product.has_odds && (
-              <div className="flex items-center gap-1.5 px-2.5 py-1 sm:px-3 rounded-md sm:rounded-lg backdrop-blur-sm w-fit" style={{ backgroundColor: 'rgba(245,158,11,0.3)' }}>
+              <div className="flex items-center gap-1.5 px-2.5 py-1 sm:px-3 rounded-md sm:rounded-lg backdrop-blur-sm w-fit" style={{ backgroundColor: 'rgba(168,144,96,0.3)' }}>
                 <span className="text-[11px] sm:text-xs font-medium" style={{ color: '#fef3c7' }}>No odds · EV-only</span>
                 <OddsTooltip />
               </div>

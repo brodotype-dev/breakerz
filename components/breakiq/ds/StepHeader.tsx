@@ -16,7 +16,7 @@ export function StepHeader({ stepNumber, title, subtitle, className = '' }: Step
         className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
         style={{
           background: 'var(--gradient-blue)',
-          boxShadow: '0 0 20px rgba(59, 130, 246, 0.3)',
+          boxShadow: '0 0 20px rgba(127,168,201,0.3)',
         }}
       >
         <span className="text-white font-bold text-base">{stepNumber}</span>

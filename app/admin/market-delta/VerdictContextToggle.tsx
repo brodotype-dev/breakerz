@@ -46,8 +46,8 @@ export default function VerdictContextToggle({ initialEnabled }: Props) {
     <div
       className="rounded-xl border p-4 flex items-center justify-between gap-4"
       style={{
-        backgroundColor: 'rgba(168, 85, 247, 0.06)',
-        borderColor: 'rgba(168, 85, 247, 0.3)',
+        backgroundColor: 'rgba(141,134,184,0.06)',
+        borderColor: 'rgba(141,134,184,0.3)',
       }}
     >
       <div className="flex items-start gap-3 min-w-0">

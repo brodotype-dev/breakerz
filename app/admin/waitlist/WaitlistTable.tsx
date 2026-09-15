@@ -202,9 +202,9 @@ export default function WaitlistTable({ entries }: { entries: WaitlistEntry[] })
                               disabled={approving === entry.id || rejecting === entry.id || deleting === entry.id}
                               className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
                               style={{
-                                backgroundColor: 'rgba(59,130,246,0.15)',
+                                backgroundColor: 'rgba(127,168,201,0.15)',
                                 color: 'var(--accent-blue)',
-                                border: '1px solid rgba(59,130,246,0.3)',
+                                border: '1px solid rgba(127,168,201,0.3)',
                               }}
                             >
                               {approving === entry.id ? 'Sending…' : 'Approve + Invite →'}
@@ -228,9 +228,9 @@ export default function WaitlistTable({ entries }: { entries: WaitlistEntry[] })
                             disabled={resending === entry.id || deleting === entry.id}
                             className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
                             style={{
-                              backgroundColor: 'rgba(59,130,246,0.15)',
+                              backgroundColor: 'rgba(127,168,201,0.15)',
                               color: 'var(--accent-blue)',
-                              border: '1px solid rgba(59,130,246,0.3)',
+                              border: '1px solid rgba(127,168,201,0.3)',
                             }}
                             title="Resend the invite email (reuses the existing invite code)"
                           >
@@ -243,9 +243,9 @@ export default function WaitlistTable({ entries }: { entries: WaitlistEntry[] })
                             disabled={approving === entry.id || rejecting === entry.id || deleting === entry.id}
                             className="text-xs font-bold px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
                             style={{
-                              backgroundColor: 'rgba(239,68,68,0.10)',
+                              backgroundColor: 'rgba(194,112,95,0.10)',
                               color: '#fca5a5',
-                              border: '1px solid rgba(239,68,68,0.35)',
+                              border: '1px solid rgba(194,112,95,0.35)',
                             }}
                             title="Permanently delete this row"
                           >
@@ -261,8 +261,8 @@ export default function WaitlistTable({ entries }: { entries: WaitlistEntry[] })
                         <div
                           className="rounded-lg px-3 py-2 text-xs"
                           style={{
-                            backgroundColor: 'rgba(239,68,68,0.10)',
-                            border: '1px solid rgba(239,68,68,0.35)',
+                            backgroundColor: 'rgba(194,112,95,0.10)',
+                            border: '1px solid rgba(194,112,95,0.35)',
                             color: '#fecaca',
                           }}
                         >

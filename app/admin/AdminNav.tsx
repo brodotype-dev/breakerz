@@ -23,7 +23,7 @@ function NavLink({ icon: Icon, label, href, exact, secondary, external }: NavLin
       className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all cursor-pointer relative overflow-hidden"
       style={{
         color: active ? 'var(--text-primary)' : secondary ? 'var(--text-tertiary)' : 'var(--text-secondary)',
-        backgroundColor: active ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
+        backgroundColor: active ? 'rgba(127,168,201,0.15)' : 'transparent',
       }}
       onMouseEnter={(e) => {
         if (!active) {

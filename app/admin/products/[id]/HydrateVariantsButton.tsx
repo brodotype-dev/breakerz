@@ -127,7 +127,7 @@ export default function HydrateVariantsButton({ productId }: { productId: string
         {status.kind === 'ok' && status.productScopeSize > 0 && (
           <span
             className="text-[10px] uppercase tracking-wider rounded px-1.5 py-0.5 font-bold"
-            style={{ backgroundColor: 'rgba(34,197,94,0.12)', color: '#22c55e' }}
+            style={{ backgroundColor: 'rgba(111,158,125,0.12)', color: '#22c55e' }}
             title={
               `Sibling-set leakage safety net active. The fallback predicate for unscoped pps is bounded ` +
               `by the union of checklist_card_numbers across this product's scoped pps (${status.productScopeSize.toLocaleString()} numbers).`
