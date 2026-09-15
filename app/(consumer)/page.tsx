@@ -21,16 +21,28 @@ import QuickValue from './QuickValue';
 
 export const dynamic = 'force-dynamic';
 
-function Stat({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+const EYEBROW: React.CSSProperties = { fontSize: 10, letterSpacing: '0.14em', color: 'var(--ink3)' };
+
+/** Raised surface. Home used to put every section straight on the page ground,
+ *  separated only by identical hairlines — which is why it all blended. */
+function Panel({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className="flex items-baseline justify-between py-2.5" style={{ borderTop: '1px solid var(--rule-faint)' }}>
-      <span style={{ fontSize: 13, color: 'var(--ink2)' }}>{label}</span>
-      <span
-        className="font-mono"
-        style={{ fontSize: 15, fontWeight: 500, color: accent ? 'var(--accent-key)' : 'var(--ink)' }}
-      >
+    <section
+      className={`rounded-xl ${className}`}
+      style={{ backgroundColor: 'var(--panel)', border: '1px solid var(--rule)' }}
+    >
+      {children}
+    </section>
+  );
+}
+
+function Figure({ label, value, tone }: { label: string; value: number; tone?: string }) {
+  return (
+    <div className="flex-1 min-w-0">
+      <div className="font-mono" style={{ fontSize: 34, lineHeight: 1, fontWeight: 500, letterSpacing: '-0.02em', color: tone ?? 'var(--ink)' }}>
         {value}
-      </span>
+      </div>
+      <div className="mt-2" style={{ fontSize: 12, color: 'var(--ink2)' }}>{label}</div>
     </div>
   );
 }
@@ -47,12 +59,12 @@ function RouteRow({
   return (
     <Link
       href={href}
-      className="flex items-center gap-3.5 w-full text-left transition-opacity hover:opacity-80"
-      style={{ padding: '18px 0', borderBottom: '1px solid var(--rule-faint)' }}
+      className="flex items-center gap-3.5 w-full text-left transition-colors hover:bg-[var(--subtle)]"
+      style={{ padding: '16px 20px' }}
     >
       <Icon className="w-[17px] h-[17px] shrink-0" strokeWidth={1.75} style={{ color: iconColor }} />
       <span className="flex-1 min-w-0">
-        <span className="block" style={{ fontSize: 16, fontWeight: 600, color: 'var(--ink)' }}>{title}</span>
+        <span className="block" style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)' }}>{title}</span>
         <span className="block mt-0.5" style={{ fontSize: 13, color: 'var(--ink2)' }}>{sub}</span>
       </span>
       <ChevronRight className="w-4 h-4 shrink-0" strokeWidth={1.75} style={{ color: 'var(--ink3)' }} />
@@ -102,86 +114,115 @@ export default async function HomePage() {
         : 'Logging what you bought is what sharpens every number you see here.';
 
   return (
-    <div className="px-5 sm:px-8 lg:px-[34px] py-7 lg:py-[30px] max-w-[1100px]">
-      {/* Header */}
-      <div style={{ paddingBottom: 20, borderBottom: '1px solid var(--rule)' }}>
-        <div className="font-mono uppercase" style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--ink3)' }}>
-          {dateLabel}
-        </div>
+    <div className="px-5 sm:px-8 lg:px-[34px] py-7 lg:py-[34px] max-w-[1100px]">
+      {/* Header — sits on the ground; everything actionable below is raised. */}
+      <header>
+        <div className="font-mono uppercase" style={EYEBROW}>{dateLabel}</div>
         <h1
           className="mt-2"
-          style={{ fontSize: 'clamp(22px, 4vw, 27px)', fontWeight: 600, lineHeight: 1.2, letterSpacing: '-0.022em', color: 'var(--ink)' }}
+          style={{ fontSize: 'clamp(24px, 4vw, 30px)', fontWeight: 600, lineHeight: 1.15, letterSpacing: '-0.025em', color: 'var(--ink)' }}
         >
           {firstName ? `Start here, ${firstName}` : 'Start here'}
         </h1>
-        <p className="mt-1.5" style={{ fontSize: 14, lineHeight: 1.55, color: 'var(--ink2)', maxWidth: '62ch' }}>
+        <p className="mt-2" style={{ fontSize: 14, lineHeight: 1.55, color: 'var(--ink2)', maxWidth: '62ch' }}>
           BreakIQ does two jobs: tell you what a spot is worth before you buy, and remember what
           happened after.
         </p>
+      </header>
 
-        <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-3">
-          <div className="flex items-center gap-2.5">
-            <ClipboardList className="w-[17px] h-[17px]" strokeWidth={1.75} style={{ color: 'var(--ink)' }} />
-            <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)' }}>
-              Log a break you bought into
-            </span>
-          </div>
-          <span className="flex-1 min-w-[220px]" style={{ fontSize: 13, color: 'var(--ink2)' }}>
-            {promptCopy}
-          </span>
-          <Link
-            href="/my-breaks?view=new"
-            className="inline-flex items-center justify-center px-4 rounded-md transition-opacity hover:opacity-90"
-            style={{ height: 38, backgroundColor: 'var(--btn-bg)', color: 'var(--btn-fg)', fontSize: 13, fontWeight: 600 }}
-          >
-            Log now
-          </Link>
+      <div className="mt-7 grid gap-4 lg:gap-5 lg:grid-cols-[minmax(0,1fr)_300px] items-stretch">
+        <div className="flex flex-col gap-4 lg:gap-5 min-w-0">
+          {/* Primary job. The only filled button on the page lives here, and
+              the panel gets a left key-line so the eye lands on it first. */}
+          <Panel className="relative overflow-hidden">
+            <span aria-hidden className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ backgroundColor: 'var(--ink)' }} />
+            <div className="p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
+              <span
+                className="hidden sm:flex w-11 h-11 shrink-0 items-center justify-center rounded-lg"
+                style={{ backgroundColor: 'var(--sel)', border: '1px solid var(--rule-strong)' }}
+              >
+                <ClipboardList className="w-5 h-5" strokeWidth={1.75} style={{ color: 'var(--ink)' }} />
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="font-mono uppercase" style={EYEBROW}>Do this first</div>
+                <h2 className="mt-1.5" style={{ fontSize: 19, fontWeight: 600, letterSpacing: '-0.015em', color: 'var(--ink)' }}>
+                  Log a break you bought into
+                </h2>
+                <p className="mt-1" style={{ fontSize: 13, lineHeight: 1.5, color: 'var(--ink2)' }}>
+                  {promptCopy}
+                </p>
+              </div>
+              <Link
+                href="/my-breaks?view=new"
+                className="inline-flex items-center justify-center px-5 rounded-md transition-opacity hover:opacity-90 shrink-0"
+                style={{ height: 40, backgroundColor: 'var(--btn-bg)', color: 'var(--btn-fg)', fontSize: 13, fontWeight: 600 }}
+              >
+                Log now
+              </Link>
+            </div>
+          </Panel>
+
+          {/* Desktop only: the rail already routes to Research and Breaks, so a Home
+              that only routes duplicates it. Give it a job the rail can't do:
+              start a valuation. */}
+          <Panel className="hidden lg:block p-6">
+            <QuickValue products={pickerProducts} />
+          </Panel>
+
+          {/* Mobile keeps the stacked launcher — the tab bar is terse icons, so
+              these rows earn their place on small screens. */}
+          <Panel className="lg:hidden overflow-hidden">
+            <RouteRow
+              href="/analysis"
+              icon={Sparkles}
+              iconColor="var(--accent-key)"
+              title="Value a spot"
+              sub="Know the fair price before you commit to a slot"
+            />
+            <div style={{ borderTop: '1px solid var(--rule-faint)' }} />
+            <RouteRow
+              href="/my-breaks"
+              icon={ClipboardList}
+              iconColor="var(--buy)"
+              title="Your break record"
+              sub="Every break you've analyzed and bought, in one place"
+            />
+          </Panel>
         </div>
-      </div>
 
-      {/* Desktop only: the rail already routes to Research and Breaks, so a Home
-          that only routes duplicates it — which is why desktop Home read as
-          empty. Give it a job the rail can't do: start a valuation. Mobile keeps
-          the stacked launcher, which works because the tab bar is terse icons. */}
-      <div className="hidden lg:block mt-[26px]">
-        <QuickValue products={pickerProducts} />
-      </div>
-
-      {/* Body */}
-      <div className="mt-[26px] flex flex-col lg:flex-row gap-9">
-        <div className="flex-1 min-w-0">
-          <div className="font-mono uppercase mb-1" style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--ink3)' }}>
-            Or
+        {/* Record — figures, not rows, so the numbers read at a glance. */}
+        <Panel className="p-5 sm:p-6">
+          <div className="flex items-center justify-between">
+            <span className="font-mono uppercase" style={EYEBROW}>Your record</span>
+            <Link
+              href="/my-breaks"
+              className="inline-flex items-center gap-0.5 transition-opacity hover:opacity-80"
+              style={{ fontSize: 12, color: 'var(--ink2)' }}
+            >
+              Breaks <ChevronRight className="w-3.5 h-3.5" strokeWidth={1.75} />
+            </Link>
           </div>
-          <RouteRow
-            href="/analysis"
-            icon={Sparkles}
-            iconColor="var(--accent-key)"
-            title="Value a spot"
-            sub="Know the fair price before you commit to a slot"
-          />
-          <RouteRow
-            href="/my-breaks"
-            icon={ClipboardList}
-            iconColor="var(--buy)"
-            title="Your break record"
-            sub="Every break you've analyzed and bought, in one place"
-          />
-        </div>
-
-        <aside className="w-full lg:w-[262px] shrink-0">
-          <div className="font-mono uppercase mb-2" style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--ink3)' }}>
-            Why we ask you to log
+          {/* Most beta accounts have nothing logged, and a big "0 / 0" reads as a
+              broken dashboard — so figures only appear once there's a record. */}
+          {logged > 0 ? (
+            <div className="mt-5 flex gap-4">
+              <Figure label="Breaks logged" value={logged} />
+              <div style={{ width: 1, backgroundColor: 'var(--rule)' }} />
+              <Figure label="Awaiting results" value={pending} tone={pending > 0 ? 'var(--hold)' : undefined} />
+            </div>
+          ) : (
+            <p className="mt-4" style={{ fontSize: 15, lineHeight: 1.5, fontWeight: 500, color: 'var(--ink)' }}>
+              Nothing logged yet. Your first break starts the record.
+            </p>
+          )}
+          <div className="mt-6 pt-5" style={{ borderTop: '1px solid var(--rule-faint)' }}>
+            <div className="font-mono uppercase mb-2" style={EYEBROW}>Why we ask you to log</div>
+            <p style={{ fontSize: 13, lineHeight: 1.6, color: 'var(--ink2)' }}>
+              Every logged break feeds the comp set. Your record is what turns a generic fair value
+              into one that knows how you buy.
+            </p>
           </div>
-          <p style={{ fontSize: 14, lineHeight: 1.6, color: 'var(--ink2)' }}>
-            Every logged break feeds the comp set. Your record is what turns a generic fair value
-            into one that knows how you buy.
-          </p>
-          <div className="mt-5">
-            <Stat label="Breaks logged" value={String(logged)} />
-            <Stat label="Awaiting results" value={String(pending)} accent={pending > 0} />
-          </div>
-        </aside>
+        </Panel>
       </div>
     </div>
   );
