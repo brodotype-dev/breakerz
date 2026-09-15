@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ClipboardList, Sparkles, Layers, ChevronRight } from 'lucide-react';
+import { ClipboardList, Sparkles, ChevronRight } from 'lucide-react';
 import { getCurrentUserFromSession } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
 
@@ -147,11 +147,11 @@ export default async function HomePage() {
             sub="Know the fair price before you commit to a slot"
           />
           <RouteRow
-            href="/breaks"
-            icon={Layers}
+            href="/my-breaks"
+            icon={ClipboardList}
             iconColor="var(--buy)"
-            title="Browse breaks"
-            sub="Every active product, with our model's read on each"
+            title="Your break record"
+            sub="Every break you've analyzed and bought, in one place"
           />
         </div>
 

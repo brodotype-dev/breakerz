@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  Home, Sparkles, ClipboardList, Layers,
+  Home, Sparkles, ClipboardList,
   Search as SearchIcon, Heart, User, Settings, LogOut, Plus, Menu, X,
 } from 'lucide-react';
 import { Logo } from '@/components/Logo';
@@ -17,20 +17,22 @@ import { logout } from './actions';
  * desktop = persistent 196px rail, mobile = four-item bottom tab bar,
  * with Slabs + Chase demoted to a secondary TOOLS group.
  *
- * ONE DELIBERATE DEPARTURE from the handoff's IA. Its fourth destination is
- * "Learn", which is not built — every figure on it derives from a
- * returned/pull value the app has never stored (see the build plan). Rather
- * than ship a dead fourth item, that slot is **Breaks** — the product grid
- * that used to live at `/` and moved to `/breaks` when `/` became Home.
- * Result: four real destinations, nothing orphaned, and the handoff's
- * structure intact.
+ * THREE destinations, not the handoff's four. Two departures, both decided
+ * with Brody:
+ *   - "Learn" is not built — every figure on it derives from a returned/pull
+ *     value the app has never stored (see the build plan).
+ *   - "Log" and "Breaks" turned out to be the same idea: the record of every
+ *     break you analyzed and bought. They were merged (2026-09-15) into one
+ *     destination labelled **Breaks** at `/my-breaks`, keeping the log's
+ *     functionality. The separate product grid that briefly lived at
+ *     `/breaks` is gone; its Active Products section moved to Research,
+ *     next to the tool that values a spot.
  */
 
 const PRIMARY = [
-  { href: '/',            icon: Home,          label: 'Home',     exact: true },
-  { href: '/analysis',    icon: Sparkles,      label: 'Research', exact: false },
-  { href: '/my-breaks',   icon: ClipboardList, label: 'Log',      exact: false },
-  { href: '/breaks',      icon: Layers,        label: 'Breaks',   exact: false },
+  { href: '/',          icon: Home,          label: 'Home',     exact: true },
+  { href: '/analysis',  icon: Sparkles,      label: 'Research', exact: false },
+  { href: '/my-breaks', icon: ClipboardList, label: 'Breaks',   exact: false },
 ] as const;
 
 const TOOLS = [
@@ -105,7 +107,7 @@ export default function ConsumerNav({
               >
                 <Icon className="w-[15px] h-[15px] shrink-0" strokeWidth={1.75} />
                 <span className="flex-1">{label}</span>
-                {label === 'Log' && pendingCount > 0 && (
+                {label === 'Breaks' && pendingCount > 0 && (
                   <span className="font-mono text-[11px]" style={{ color: 'var(--ink3)' }}>
                     {pendingCount}
                   </span>
