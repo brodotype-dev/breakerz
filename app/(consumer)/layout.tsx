@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { getCurrentUserFromSession, getUserRoles } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import ConsumerNav from './ConsumerNav';
+import ResponsibleGamblingBanner from '@/components/breakiq/ResponsibleGamblingBanner';
 import InstallPrompt from './InstallPrompt';
 import PostHogIdentify from './PostHogIdentify';
 
@@ -61,6 +62,9 @@ export default async function ConsumerLayout({ children }: { children: React.Rea
           last rows of every scrollable page. */}
       <div className={showNav ? 'consumer-shell lg:pl-[196px] pb-[72px] lg:pb-0' : undefined}>
         {children}
+        {/* Was only on the old /breaks page; that page is gone, so it lives
+            here now and renders on every consumer surface. */}
+        {showNav && <ResponsibleGamblingBanner />}
       </div>
       {showNav && <InstallPrompt />}
     </>

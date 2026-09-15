@@ -212,7 +212,7 @@ export default function ChasePage() {
                 Search above to find any player in our database, or tap the heart on any player from a break page.
               </p>
               <Link
-                href="/breaks"
+                href="/analysis"
                 className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors hover:bg-[var(--terminal-surface-hover)]"
                 style={{ backgroundColor: 'var(--terminal-surface)', color: 'var(--text-primary)', border: '1px solid var(--terminal-border)' }}
               >
