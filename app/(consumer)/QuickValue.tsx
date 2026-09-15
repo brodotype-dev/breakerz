@@ -40,13 +40,16 @@ export default function QuickValue({
   }
 
   return (
-    <div style={{ borderTop: '1px solid var(--rule)', paddingTop: 22 }}>
-      <div
-        className="font-mono uppercase mb-3"
-        style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--ink3)' }}
-      >
-        Value a spot
+    <div>
+      <div className="flex items-center gap-2 mb-1.5">
+        <Sparkles className="w-4 h-4" strokeWidth={1.75} style={{ color: 'var(--accent-key)' }} />
+        <h2 style={{ fontSize: 17, fontWeight: 600, letterSpacing: '-0.01em', color: 'var(--ink)' }}>
+          Value a spot
+        </h2>
       </div>
+      <p className="mb-4" style={{ fontSize: 13, color: 'var(--ink2)' }}>
+        Know the fair price before you commit. Picks up in Research with these filled in — you just add teams and cases.
+      </p>
 
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex-1 min-w-[260px]">
@@ -96,16 +99,13 @@ export default function QuickValue({
           onClick={go}
           disabled={!productId}
           className="inline-flex items-center gap-2 px-4 rounded-md transition-opacity hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
-          style={{ height: 40, backgroundColor: 'var(--btn-bg)', color: 'var(--btn-fg)', fontSize: 13, fontWeight: 600 }}
+          style={{ height: 40, backgroundColor: 'var(--sel)', border: '1px solid var(--rule-strong)', color: 'var(--ink)', fontSize: 13, fontWeight: 600 }}
         >
           <Sparkles className="w-4 h-4" strokeWidth={1.75} />
           Value it
         </button>
       </div>
 
-      <p className="mt-2" style={{ fontSize: 12, color: 'var(--ink3)' }}>
-        Picks up in Research with these filled in — you just add teams and cases.
-      </p>
     </div>
   );
 }

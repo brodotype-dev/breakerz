@@ -60,8 +60,10 @@ export default async function ConsumerLayout({ children }: { children: React.Rea
       {/* Offsets for the fixed chrome: 196px rail on lg+, bottom tab bar below.
           Without these the rail overlaps content and the tab bar covers the
           last rows of every scrollable page. */}
-      <div className={showNav ? 'consumer-shell lg:pl-[196px] pb-[72px] lg:pb-0' : undefined}>
-        {children}
+      <div className={showNav ? 'consumer-shell flex flex-col min-h-[calc(100dvh-72px)] lg:min-h-dvh lg:pl-[196px] pb-[72px] lg:pb-0' : undefined}>
+        {/* flex-1 pins the banner to the bottom of short pages instead of
+            leaving it floating mid-screen under the content. */}
+        <div className="flex-1 min-w-0">{children}</div>
         {/* Was only on the old /breaks page; that page is gone, so it lives
             here now and renders on every consumer surface. */}
         {showNav && <ResponsibleGamblingBanner />}
