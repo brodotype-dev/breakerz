@@ -1,179 +1,173 @@
 # UX rethink — phased build plan
 
-**Status:** 📋 Plan only, nothing built. Written 2026-09-15 off the design handoff in
-[docs/design/2026-09-15-ux-rethink-handoff/](../design/2026-09-15-ux-rethink-handoff/README.md).
-**Six decisions are needed before Phase 2 starts** — see [Decisions](#decisions-needed-before-building).
+**Status:** 📋 Plan only, nothing built.
+**Revised 2026-09-15** after Brody scoped this to **UI/UX only — where the design conflicts with
+current code, current code wins.** That constraint removes roughly half the designed surfaces;
+this revision says exactly which, and why.
 
-## What this is
-
-The handoff restructures the consumer app around its two real jobs: *value a spot before you buy*,
-and *log what you bought and what it returned*. It is not a visual refresh — it changes the
-information architecture, adds a new surface, rewrites onboarding, and replaces the visual system.
-
-This plan sequences that work against what the repo actually has today, and surfaces the
-two blockers the handoff assumes away.
+Design source: [docs/design/2026-09-15-ux-rethink-handoff/](../design/2026-09-15-ux-rethink-handoff/README.md).
 
 ---
 
-## The two blockers
+## The constraint, and what it costs
 
-### 1. The app does not capture what a break returned
+**Rule:** no schema changes, no new stored data, no engine changes. Re-skin and re-arrange what
+exists.
 
-The Log table's **Returned** column and **every number on Learn** are derived from a figure
-we have never stored.
+The handoff describes the app as doing two jobs — *value a spot*, and *log what it returned*.
+Under this constraint the **value** half re-skins almost completely. The **log-what-it-returned**
+half largely cannot be built, because the data behind it was never stored.
 
-| Design needs | Repo reality |
+### Three data dependencies gate the blocked half
+
+| # | Missing | Verified how | What it blocks |
+| --- | --- | --- | --- |
+| 1 | **Returned / pull value per break** | `user_breaks` has `ask_price` but no returned-value column; `outcome` is categorical `win\|mediocre\|bust` | Log's **Returned** + **Net** columns; every dollar figure on Learn |
+| 2 | **Valuation history** | `/api/analysis` only reads `products` — it **never inserts**. No valuation/analysis table exists in `information_schema` or in any migration | Research's entire **Recent valuations** tab; Home's **pick up where you left off**; Home's *"valuations this month"*; every **stale** marker |
+| 3 | **Per-input method weights** | Engine emits a pipeline decomposition, not weighted inputs | Research's *"44% / 26% / 18% / 12%"* weight bars |
+
+Dependency **2** is the expensive one. The handoff treats "recent valuations" as a core
+destination, and nothing in the app remembers that a valuation happened.
+
+A fourth, softer gap: the design's *"$3,400 saved by passing on spots above value"* counts spots
+the user **walked away from**. We only ever record purchases — a decision to pass leaves no trace.
+That metric isn't blocked on a column; it's blocked on a behaviour we don't capture.
+
+### Survives / blocked
+
+| Designed surface | Under UI-only |
 | --- | --- |
-| `Returned $330`, `Net +$265` | `user_breaks` has `ask_price` (what they paid) but **no returned/pull value column at all** — grep for `pull_value\|returned_value` across `app/`, `lib/`, `supabase/migrations/` returns nothing |
-| "Call held / even" outcome | `outcome` is categorical `'win' \| 'mediocre' \| 'bust'` — not a dollar figure, so it cannot produce "$3,105 returned" |
-| Learn: saved, return-by-format, spend-vs-returned chart | All require per-break returned value |
-
-This is the same gap CLAUDE.md's north-star section already names: *"Pull data isn't captured yet
-(My Breaks Phase 2 unblocks this)."* The north-star metric — `pull_value / ask_price ≥ 0.5` —
-is blocked on exactly this column.
-
-**That makes Phase 1 the highest-value phase in this plan, and it is not a design phase.**
-
-### 2. There is not enough logged data for Learn to say anything
-
-Production `user_breaks` (excluding test rows):
-
-| Metric | Count |
-| --- | --- |
-| Total breaks | 4 |
-| Completed | 3 |
-| With an outcome | 3 |
-
-Learn's copy asserts "11 of 14 calls held", "$3,400 saved in 30 days", "return by format" across
-three format groups. With three completed breaks, every figure on that surface would be noise or
-a placeholder. The handoff flags this itself ("the metrics assume the log is populated enough to
-be meaningful") but does not gate on it.
-
-**Learn ships last, behind a data-volume gate — not on a date.**
+| Visual system — fonts, tokens, light theme, no glows | ✅ **Full** |
+| Nav + 4-item IA, `TOOLS` group, mobile tab bar | ✅ **Full** (routing only) |
+| Research → *Value a spot* (verdict band, actions, other-spots) | ✅ **Full** — re-skin of `/analysis` |
+| Research → method table | ⚠️ **Adapted** — see Phase 3 |
+| Log surface | ⚠️ **Adapted** — loses Returned + Net |
+| Home | ⚠️ **Reduced** — header + route rows only |
+| Onboarding | ⚠️ **Resequenced** — same questions |
+| Research → *Recent valuations* tab | ❌ **Blocked** (dep 2) |
+| Home → pick up where you left off | ❌ **Blocked** (dep 2) |
+| Stale markers anywhere | ❌ **Blocked** (dep 2) |
+| Learn — as designed | ❌ **Blocked** (dep 1) |
 
 ---
 
-## Gap analysis
+## What *is* derivable today
 
-| Design requirement | Repo today | Verdict |
-| --- | --- | --- |
-| 4-item IA: Home / Research / Log / Learn | `/` (product grid), `/analysis`, `/my-breaks`, `/chase`, `/card-lookup`, `/player/[id]`, `/break/[slug]`, `/profile`, `/subscribe` | **Restructure.** No Home-as-router surface, no Learn. `/break/[slug]` + `/player/[id]` aren't in the new IA at all — see Decision 5 |
-| Research = one destination, two tabs | `/analysis` is the deal checker; "recent valuations" doesn't exist as a list | New tab + new list view |
-| Dark **and** light theme | Dark only. 172 CSS custom properties, no `prefers-color-scheme`, no `data-theme`, no `darkMode` config | **New capability**, not a re-skin |
-| Public Sans + Roboto Mono | Inter + JetBrains Mono (`app/layout.tsx`) | Swap; mechanical |
-| Design token set (`ink`, `rule`, `accent`, `buy/hold/pass`…) | `--terminal-*`, `--text-*`, `--signal-*`, `--accent-blue` | **93 files** reference `var(--…)`; **74** reference `terminal-*`. Large mechanical surface |
-| Verdict words BUY / **HOLD** / PASS | `Signal = 'BUY' \| 'WATCH' \| 'PASS'` — and `WATCH` is **persisted** in `user_breaks.snapshot_signal` | **Naming collision.** See Decision 1 |
-| Desaturated signal colors (`#6f9e7d`) | Saturated (`--signal-buy: #22c55e`) — explicitly on the handoff's "reads cheap" list | Token change |
-| No glows | `--glow-green` etc. in use | Remove |
-| Method table: 4 weighted inputs w/ percentages | Engine has the inputs (comps, prospect rank, sentiment, odds) but **does not emit per-input weights** | New engine output — see Decision 4 |
-| Stale valuation marker (~3d) | No valuation-age concept on the consumer side | New; threshold is a guess (Decision 3) |
-| Onboarding: 5 steps, valuation before paywall | 3-step wizard, gated + enforced as of #228/#232 | **Replaces** the wizard. Enforcement logic carries; screens don't |
+Worth stating plainly, because it's more than zero and it shapes the adapted surfaces. From
+`user_breaks` with no schema change:
+
+| Figure | Source |
+| --- | --- |
+| Breaks logged · awaiting results | `count(*)`, `status='pending'` |
+| **Paid** per break | `ask_price` |
+| **What it was worth** at purchase | `snapshot_fair_value` |
+| **% over/under value paid** | `(ask_price − snapshot_fair_value) / snapshot_fair_value` — the same math already behind `/admin/market-delta` |
+| **Did the call hold** | `snapshot_signal` vs `outcome` |
+| Spend over time | `ask_price` + `created_at` |
+
+Not derivable: anything about what a break *returned*, and anything about a spot the user didn't buy.
 
 ---
 
 ## Phases
 
-Ordered by *strategic clarity per engineering day* — the repo's own framing from
-[execution-roadmap.md](../strategy/execution-roadmap.md) — not by visual impact.
+### Phase 1 — Design foundation
 
-### Phase 1 — Capture what a break returned  ⬅ start here
-
-Unblocks the north-star metric, the Log table, and all of Learn. **Independent of the redesign** —
-it ships value even if the rest of this plan is deferred, and it starts accumulating the data
-Learn needs while later phases are built.
-
-- Migration: `user_breaks.returned_value numeric` (nullable — historical rows stay null).
-  Follow gotcha #12 (grant pattern) — consumer-facing RLS-gated write.
-- Extend the existing complete-a-break flow (`PUT /api/my-breaks/[id]`) to accept it.
-- "Add results" entry point on pending breaks (the design already draws this button).
-- Keep `outcome` — categorical sentiment is still useful next to a number.
-- Backfill: **none.** Don't invent figures for the 3 completed breaks.
-
-**Done when:** a user can log a purchase, come back, and record what it returned.
-
-### Phase 2 — Design foundation
-
-Highest-risk mechanical change; everything visual depends on it. Do it in one pass, not per-screen.
+Pure UI, unblocks everything else, and delivers most of the perceived change on its own.
 
 - Fonts: Inter → Public Sans, JetBrains Mono → Roboto Mono.
-- Token layer: map the handoff's two palettes onto CSS custom properties. Prefer
-  **adding** semantic tokens and re-pointing existing `--terminal-*` / `--signal-*` names at
-  them over a 93-file find-and-replace — smaller diff, reversible, no dead ends.
-- Light theme: `prefers-color-scheme` + a `data-theme` override (Decision 2).
-- Delete glow shadows and gradient fills.
+- Tokens: add the handoff's semantic names and **re-point the existing `--terminal-*` / `--signal-*`
+  variables at them** rather than find-and-replacing 93 files. Smaller diff, reversible.
+- Light theme: `prefers-color-scheme` + a `data-theme` override.
+- Remove glow shadows, gradient fills, saturated verdict colors, pill chips.
+- Map `WATCH` → "hold" **at the display layer only**. `Signal` stays `'WATCH'` in code and in the
+  persisted `user_breaks.snapshot_signal` — renaming stored values for a copy change is exactly
+  the kind of conflict this scope says to avoid.
 
-**Risk:** this touches every consumer surface at once. Ship behind a branch with a preview build
-and eyeball each route before merge. **Do not** start Phase 3 until this is merged — building new
-screens on old tokens means rewriting them.
+### Phase 2 — Nav + IA
 
-### Phase 3 — IA + Home
+- Desktop 196px rail, mobile 4-item tab bar, `TOOLS` group for Slabs + Chase.
+- Research becomes one destination. **Ship it with a single view, not two tabs** — the second tab
+  has no data source, and an empty tab is worse than no tab.
+- Decide where `/break/[slug]` and `/player/[id]` live (Decision 1) — unchanged from the first
+  draft, and now more urgent: with Recent-valuations gone, `/break/[slug]` is still the main
+  place a user actually sees slot pricing.
 
-- Nav restructure: 4 destinations + a `TOOLS` group (Slabs, Chase). Desktop rail 196px,
-  mobile 4-item tab bar.
-- New `/` Home surface: header prompt (the one filled element), two route rows, pick-up-where-you-
-  left-off, right-column stats.
-- **Home's empty state must be designed before this ships** (Decision 6) — a new account has no
-  stats and nothing to pick up, which is most of the surface.
+### Phase 3 — Research (*Value a spot*)
 
-### Phase 4 — Research
+The strongest phase under this constraint — the existing `/analysis` already produces everything
+the designed screen shows.
 
-- Merge into one destination, two tabs (`Value a spot` / `Recent valuations`).
-- Verdict band, method table with weight bars, "other spots, same product", "from your log".
-- Method weights need the engine to emit them (Decision 4). If that's deferred, ship the tab
-  structure and the verdict band, and hold the method table.
+- Verdict band: VERDICT · FAIR VALUE · PREMIUM OVER VALUE, in the new type and desaturated colors.
+- **Method table, adapted.** The engine doesn't emit per-input weights, but
+  [WhyThisPriceCard](../../components/breakiq/WhyThisPriceCard.tsx) already decomposes a price into
+  five honest layers — *Baseline EV · EV after lifecycle · Effective score · Weighted by EV × (1 +
+  score) · Model slot cost*. Re-skin **that** into the design's ruled-row treatment instead of
+  inventing weights. Same intent (show the work), real numbers, no engine change.
+- Actions row, and the right-hand "other spots, same product".
+- Drop "from your log" (needs valuation history to say "you bought this twice and paid above value").
 
-### Phase 5 — Log
+### Phase 4 — Log
 
-Now that Phase 1 has been capturing `returned_value`, the full table renders honestly.
+- Stat band and ruled table in the new system.
+- **Column swap:** the design's `Paid / Returned / Call / Outcome` becomes
+  **`Paid / Value / Call / Outcome`** — substituting `snapshot_fair_value` for the returned figure.
+  Row shape and rhythm survive; the honest question shifts from *"what did it return?"* to
+  *"what was it worth when you bought it?"*
+- Keep the existing outcome capture (win/mediocre/bust) exactly as-is.
 
-- Stat band (purchases / spent / returned / net / pending).
-- Ruled table with the paid / returned / call / outcome columns.
-- "Call held" logic: verdict matched outcome — including a PASS that would have lost money.
+### Phase 5 — Home (reduced)
 
-### Phase 6 — Learn  🔒 gated on data volume
+- Header: date label, greeting, subhead, and the single filled "Log now" prompt.
+- Two route rows → Research and Log.
+- Right-column stats limited to **Breaks logged** and **Awaiting results**. Drop "valuations this month".
+- **Cut the pick-up block entirely** — it has no data source. Do not substitute recent *breaks*
+  for recent *valuations*; they're different objects and the swap would quietly misrepresent them.
+- Empty state still needs designing (Decision 2), and matters more now that the surface is thinner.
 
-**Gate:** do not build until the log has enough completed breaks *with* returned values to make
-the metrics non-trivial. Suggested floor: **~25 completed breaks with returned value across at
-least two format groups.** Below that the surface lies.
+### Phase 6 — Onboarding (resequenced)
 
-Until the gate clears, Learn is either absent from the nav or a single honest "keep logging"
-state. Shipping fabricated numbers on the one surface that scores our own accuracy would
-undermine the thing the product sells.
+- Adopt the 5-step shape and the *valuation-before-paywall* sequencing — that's the valuable idea
+  and it's pure UX.
+- **Keep collecting the current fields.** The handoff moves experience/era/spend/referral into the
+  profile, which changes `/api/onboarding`'s payload. Under this scope, keep the payload.
+- Carry forward the #228/#232 enforcement: server-side 18+ rejection, the `(onboarding)` route
+  group, the consumer-layout completion gate, legal-acceptance capture. Screens change;
+  guarantees must not.
 
-- Stat band, return-by-format bars, spend-vs-returned chart (Decision 7 — charting approach).
+### Not scheduled — Learn
 
-### Phase 7 — Onboarding
+Every figure on it needs data dependency 1. **Don't build it, and don't put it in the nav.**
+A four-item IA with a dead fourth item is worse than a three-item IA.
 
-Replaces the 3-step wizard with the 5-step flow. **Carry forward the enforcement work from
-#228/#232** — server-side 18+ rejection, the `(onboarding)` route group, the completion gate in
-the consumer layout, and legal-acceptance capture. The screens change; the guarantees must not
-regress.
-
-Note the handoff collapses age + legal into step 1 and moves experience/era/spend/referral into
-the profile. That means `/api/onboarding`'s payload shrinks — keep writing the fields it still
-collects, and make sure the profile page can still edit the ones that moved.
-
----
-
-## Decisions needed before building
-
-| # | Decision | Why it matters | Recommendation |
-| --- | --- | --- | --- |
-| 1 | **WATCH or HOLD?** | `Signal` is `'WATCH'` in code and **persisted** in `user_breaks.snapshot_signal`. The design says HOLD everywhere | Keep `WATCH` in the data model; map to "hold" at the display layer. A rename means migrating stored rows for a copy change |
-| 2 | **Theme default** | Design ships both; we have neither toggle nor light theme | System preference + user override, stored on `profiles` |
-| 3 | **Stale threshold** | Drives Home's pickup block and the Research callout; 3d is the designer's guess | Pick from real valuation-age distribution once Research logs it |
-| 4 | **Method weights** | The 4-input table is the most credible thing on Research, and the engine doesn't emit per-input weights today | Worth doing — it's the visible form of the moat. But it is *engine* work, not UI |
-| 5 | **What happens to `/break/[slug]` and `/player/[id]`?** | Neither appears in the 4-item IA, but `/break/[slug]` is the current main consumer surface with slot tables and the inline analysis block | Not answered by the handoff. Needs a call before Phase 3 |
-| 6 | **Home empty state** | Undesigned; it is what every new beta user sees first | Design before Phase 3 ships |
-| 7 | **Learn chart** | Placeholder in the prototype; no charting library established | Defer with Phase 6 |
+The handoff's IA is Home / Research / Log / Learn. Without Learn that's three destinations plus
+the TOOLS group — which is a coherent structure, not a broken one.
 
 ---
 
-## What I would not do
+## If you want the blocked half, here's the smallest unlock
 
-- **Don't port the `.dc.html`.** The handoff is explicit; the `sc-if` constructs and inline styles
-  are prototyping artifacts.
-- **Don't build Learn on placeholder numbers** to make the nav look complete.
-- **Don't do the token migration as a blind find-and-replace** across 93 files.
-- **Don't rewrite onboarding first** because it's self-contained — it's the least valuable phase
-  (the flow works today) and it would collide with Phase 2's tokens.
+Not scheduled, recorded so the tradeoff is explicit. Each is small on its own; both are schema work.
+
+| Unlock | Roughly | Returns |
+| --- | --- | --- |
+| `user_breaks.returned_value numeric` + "add results" input | one nullable column, one API field, one form control | Log's Returned/Net columns · Learn becomes possible · **the north-star metric `pull_value / ask_price` starts accumulating** |
+| Persist each analysis run | one table + one insert in `/api/analysis` | Recent valuations tab · Home pickup · stale markers |
+
+Neither changes the pricing engine or any existing behaviour — both are additive. Worth revisiting
+once the re-skin has landed and the shape of the new app is real.
+
+---
+
+## Decisions still needed
+
+| # | Decision | Note |
+| --- | --- | --- |
+| 1 | **Where do `/break/[slug]` and `/player/[id]` go?** | Absent from the new IA; `/break/[slug]` is the current main consumer surface. Blocking for Phase 2 |
+| 2 | **Home empty state** | Undesigned, and the reduced Home is mostly empty state for a new user |
+| 3 | **Theme default** | System preference + user override recommended |
+| 4 | **Three destinations or four?** | Recommend three (drop Learn) over a placeholder fourth |
+
+Resolved by the constraint, no longer open: WATCH vs HOLD (display mapping), method weights
+(re-skin the existing decomposition), stale threshold (moot — no valuation history), Learn's chart
+(not building Learn).
