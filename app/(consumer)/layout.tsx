@@ -59,7 +59,7 @@ export default async function ConsumerLayout({ children }: { children: React.Rea
       {/* Offsets for the fixed chrome: 196px rail on lg+, bottom tab bar below.
           Without these the rail overlaps content and the tab bar covers the
           last rows of every scrollable page. */}
-      <div className={showNav ? 'lg:pl-[196px] pb-[72px] lg:pb-0' : undefined}>
+      <div className={showNav ? 'consumer-shell lg:pl-[196px] pb-[72px] lg:pb-0' : undefined}>
         {children}
       </div>
       {showNav && <InstallPrompt />}
