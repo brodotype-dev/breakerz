@@ -112,20 +112,10 @@ export default async function ResearchPage() {
     <>
       <AnalysisClient />
 
-      {/* Active products — below the two boxes, per the 2026-09-15 IA change. */}
+      {/* Active products — below the two boxes, per the 2026-09-15 IA change.
+          The browser renders its own section header; don't add a second one. */}
       <div className="px-6 pb-12">
-        <div className="max-w-7xl mx-auto">
-          <div className="mb-5" style={{ borderTop: '1px solid var(--rule)', paddingTop: 26 }}>
-            <div
-              className="font-mono uppercase mb-1"
-              style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--ink3)' }}
-            >
-              Active products
-            </div>
-            <p style={{ fontSize: 13, color: 'var(--ink2)' }}>
-              Every product we&rsquo;re pricing right now. Pick one to value a spot in it.
-            </p>
-          </div>
+        <div className="max-w-7xl mx-auto" style={{ borderTop: '1px solid var(--rule)', paddingTop: 28 }}>
           <ActiveProductsBrowser products={products} signals={signals} />
         </div>
       </div>
