@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 import { ClipboardList, Plus, Clock, ArrowLeft, Sparkles, Trophy, Meh, ThumbsDown, ChevronDown, Download, Upload, X, Search, Check, Pencil, Trash2 } from 'lucide-react';
-import { formatCurrency } from '@/lib/engine';
+import { formatCurrency, signalLabel } from '@/lib/engine';
 import type { Signal, Platform, BreakOutcome, BreakStatus, BreakFormat } from '@/lib/types';
 import type { AnalysisResult } from '@/lib/analysis';
 import TeamChip from '@/components/breakiq/TeamChip';
@@ -950,7 +950,7 @@ function PendingBreakCard({ brk, onComplete }: { brk: BreakRecord; onComplete: (
         <div className="flex items-center gap-2 sm:gap-3">
           {brk.snapshot_signal && (
             <span className="text-xs font-bold px-2 py-1 rounded" style={{ color: signalColors[brk.snapshot_signal], backgroundColor: `${signalColors[brk.snapshot_signal]}15` }}>
-              {brk.snapshot_signal}
+              {brk.snapshot_signal && signalLabel(brk.snapshot_signal)}
             </span>
           )}
           <span className="text-xs font-semibold px-2 py-1 rounded hidden sm:inline" style={{ backgroundColor: 'rgba(168,144,96,0.15)', color: 'var(--signal-watch)' }}>
@@ -1106,7 +1106,7 @@ function CompletedBreakCard({ brk, onRefresh }: { brk: BreakRecord; onRefresh: (
           <div className="flex items-center gap-2">
             {brk.snapshot_signal && (
               <span className="text-xs font-mono" style={{ color: signalColors[brk.snapshot_signal] }}>
-                {brk.snapshot_signal}
+                {brk.snapshot_signal && signalLabel(brk.snapshot_signal)}
               </span>
             )}
             {outcomeOpt && (
