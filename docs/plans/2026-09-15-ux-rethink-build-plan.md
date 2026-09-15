@@ -1,7 +1,14 @@
 # UX rethink — phased build plan
 
-**Status:** ✅ **Phases 1–5 shipped 2026-09-15** (PRs #237–#242). Phase 6 (onboarding) not built —
-see [What shipped](#what-shipped). Learn remains unscheduled and out of the nav, as planned.
+**Status:** ✅ **Shipped 2026-09-15** (PRs #237–#244). Onboarding not built — see
+[What shipped](#what-shipped). Learn remains unscheduled and out of the nav, as planned.
+
+> **IA superseded 2026-09-15 (PR #243).** On review, Brody flagged that **Log and Breaks are the
+> same idea** — the record of every break you analyzed and bought. They were merged into one
+> destination labelled **Breaks** at `/my-breaks`, keeping the log's functionality. The separate
+> `/breaks` product grid is deleted and its **Active Products** section moved to **Research**,
+> below the two boxes. **Primary nav is now three destinations: Home / Research / Breaks** — the
+> "fill Learn's dead slot with Breaks" resolution below no longer applies.
 **Scoped UI/UX only — where the design conflicts with current code, current code wins.**
 That constraint removed roughly half the designed surfaces; this plan says exactly which, and why.
 
@@ -15,6 +22,7 @@ That constraint removed roughly half the designed surfaces; this plan says exact
 | 4 · Verdict consistency | #240 | ✅ Finished the HOLD mapping on the three surfaces P3 missed |
 | 5 · Mobile reachability | #241 | ✅ Regression fix — the 4-item bar had orphaned Slabs/Chase/Profile/Admin/**sign-out** on mobile |
 | 6 · Shell height + docs | #242 | ✅ Mobile dead-scroll fix; this status |
+| 7 · IA merge | #243 | ✅ Log + Breaks merged to one **Breaks** destination (3-item nav); `/breaks` deleted and **Active Products moved to Research**; the two Research boxes equalised; `/analysis` became a server wrapper. **Preserved the `1-800-GAMBLER` notice**, which existed only on the deleted page, by moving it into the consumer layout |
 
 ### Not built, and why
 
