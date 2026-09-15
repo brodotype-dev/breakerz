@@ -202,7 +202,7 @@ export default function BreakPageClient({ product, dataPromise, compressionGamma
                   className="px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
                   style={
                     activeTab === tab
-                      ? { backgroundColor: 'rgba(59,130,246,0.15)', color: 'var(--accent-blue)' }
+                      ? { backgroundColor: 'rgba(127,168,201,0.15)', color: 'var(--accent-blue)' }
                       : { color: 'var(--text-t-secondary)', border: '1px solid var(--terminal-border)' }
                   }
                 >
@@ -246,7 +246,7 @@ export default function BreakPageClient({ product, dataPromise, compressionGamma
           stay server-rendered. Live/dormant content depends on pricing
           data (estimated count, has-pricing) so these live in the client. */}
       {estimatedCount > 0 && (
-        <div className="px-3 sm:px-4 py-2 flex items-center gap-2 rounded" style={{ backgroundColor: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)' }}>
+        <div className="px-3 sm:px-4 py-2 flex items-center gap-2 rounded" style={{ backgroundColor: 'rgba(168,144,96,0.06)', border: '1px solid rgba(168,144,96,0.2)' }}>
           <span className="text-[10px]" style={{ color: '#f59e0b' }}>▲</span>
           <p className="text-xs" style={{ color: 'var(--text-t-secondary)' }}>
             {estimatedCount} player{estimatedCount !== 1 ? 's' : ''} using estimated pricing — approximations based on historical comps.
@@ -487,9 +487,9 @@ export default function BreakPageClient({ product, dataPromise, compressionGamma
                         key={id}
                         className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full text-xs font-semibold border"
                         style={{
-                          backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                          backgroundColor: 'rgba(127,168,201,0.12)',
                           color: 'var(--text-primary)',
-                          borderColor: 'rgba(59, 130, 246, 0.4)',
+                          borderColor: 'rgba(127,168,201,0.4)',
                         }}
                       >
                         {p.player.name}
@@ -565,7 +565,7 @@ export default function BreakPageClient({ product, dataPromise, compressionGamma
 
             {/* Inline result */}
             {analysisError && (
-              <div className="rounded-lg p-4 text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.08)', border: '1px solid var(--signal-pass)', color: 'var(--signal-pass)' }}>
+              <div className="rounded-lg p-4 text-sm" style={{ backgroundColor: 'rgba(194,112,95,0.08)', border: '1px solid var(--signal-pass)', color: 'var(--signal-pass)' }}>
                 {analysisError}
               </div>
             )}

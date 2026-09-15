@@ -107,7 +107,7 @@ export default function SigninForm({ initialError = null }: { initialError?: str
         <div
           role="alert"
           className="rounded-lg p-3 text-sm"
-          style={{ border: '1px solid rgba(234,179,8,0.4)', backgroundColor: 'rgba(234,179,8,0.08)' }}
+          style={{ border: '1px solid rgba(168,144,96,0.4)', backgroundColor: 'rgba(168,144,96,0.08)' }}
         >
           <p className="font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>
             Sign-in didn&apos;t complete
@@ -119,7 +119,7 @@ export default function SigninForm({ initialError = null }: { initialError?: str
       {emailSent ? (
         <div
           className="rounded-lg p-4 text-center"
-          style={{ backgroundColor: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)' }}
+          style={{ backgroundColor: 'rgba(111,158,125,0.1)', border: '1px solid rgba(111,158,125,0.3)' }}
         >
           <p className="text-sm font-semibold" style={{ color: 'var(--signal-buy)' }}>
             Check your email

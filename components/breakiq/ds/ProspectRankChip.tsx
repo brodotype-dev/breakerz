@@ -11,8 +11,8 @@ import React from 'react';
 // color maps to the size of the under-the-hood score bump. Renders nothing for
 // unranked players or ranks past 100.
 export function prospectTierStyle(rank: number): { bg: string; color: string } {
-  if (rank <= 10) return { bg: 'rgba(245, 158, 11, 0.18)', color: 'rgb(245, 158, 11)' }; // gold — top-10
-  if (rank <= 30) return { bg: 'rgba(59, 130, 246, 0.15)', color: 'var(--accent-blue)' }; // blue — #11–30
+  if (rank <= 10) return { bg: 'rgba(168,144,96,0.18)', color: 'rgb(245, 158, 11)' }; // gold — top-10
+  if (rank <= 30) return { bg: 'rgba(127,168,201,0.15)', color: 'var(--accent-blue)' }; // blue — #11–30
   return { bg: 'rgba(148, 163, 184, 0.18)', color: 'var(--text-secondary)' };             // neutral — #31–100
 }
 

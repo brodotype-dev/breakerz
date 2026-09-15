@@ -34,7 +34,7 @@ function GradeBadge({ grade }: { grade: string }) {
   const isPsa10 = grade === 'PSA 10' || grade === '10';
   const isPsa9 = grade === 'PSA 9' || grade === '9';
   const color = isPsa10 ? '#22c55e' : isPsa9 ? 'var(--accent-blue)' : 'var(--text-secondary)';
-  const bg = isPsa10 ? 'rgba(34,197,94,0.12)' : isPsa9 ? 'rgba(59,130,246,0.12)' : 'var(--terminal-surface-hover)';
+  const bg = isPsa10 ? 'rgba(111,158,125,0.12)' : isPsa9 ? 'rgba(127,168,201,0.12)' : 'var(--terminal-surface-hover)';
   return (
     <span
       className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded"
@@ -137,7 +137,7 @@ export default function PlayerDetailDrawer({ playerProductId, onClose, topOffset
                     {data.player_name}
                   </h2>
                   {data.is_rookie && (
-                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(59,130,246,0.15)', color: 'var(--accent-blue)' }}>
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded" style={{ backgroundColor: 'rgba(127,168,201,0.15)', color: 'var(--accent-blue)' }}>
                       RC
                     </span>
                   )}

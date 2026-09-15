@@ -31,7 +31,7 @@ function TypeBadge({ type }: { type: ChaseCardType }) {
     return (
       <span
         className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded"
-        style={{ backgroundColor: 'rgba(168,85,247,0.15)', color: '#a855f7' }}
+        style={{ backgroundColor: 'rgba(141,134,184,0.15)', color: '#a855f7' }}
       >
         Chase Card
       </span>
@@ -40,7 +40,7 @@ function TypeBadge({ type }: { type: ChaseCardType }) {
   return (
     <span
       className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded"
-      style={{ backgroundColor: 'rgba(59,130,246,0.15)', color: 'var(--accent-blue)' }}
+      style={{ backgroundColor: 'rgba(127,168,201,0.15)', color: 'var(--accent-blue)' }}
     >
       Chase Player
     </span>
@@ -51,7 +51,7 @@ function HitBadge() {
   return (
     <span
       className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded"
-      style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: '#ef4444' }}
+      style={{ backgroundColor: 'rgba(194,112,95,0.15)', color: '#ef4444' }}
     >
       HIT
     </span>
@@ -197,7 +197,7 @@ export default function ChaseCardsManager({ productId }: Props) {
                 className="flex items-center gap-3 px-3 py-2.5 rounded-lg"
                 style={{
                   border: '1px solid var(--terminal-border)',
-                  backgroundColor: card.is_hit ? 'rgba(239,68,68,0.06)' : 'var(--terminal-surface-hover)',
+                  backgroundColor: card.is_hit ? 'rgba(194,112,95,0.06)' : 'var(--terminal-surface-hover)',
                 }}
               >
                 <div className="flex-1 min-w-0">
@@ -227,7 +227,7 @@ export default function ChaseCardsManager({ productId }: Props) {
                     style={{
                       border: '1px solid var(--terminal-border)',
                       color: card.is_hit ? '#ef4444' : 'var(--text-secondary)',
-                      backgroundColor: card.is_hit ? 'rgba(239,68,68,0.1)' : 'transparent',
+                      backgroundColor: card.is_hit ? 'rgba(194,112,95,0.1)' : 'transparent',
                     }}
                   >
                     {isSaving ? '…' : card.is_hit ? 'Unmark Hit' : 'Mark Hit'}
@@ -268,7 +268,7 @@ export default function ChaseCardsManager({ productId }: Props) {
                   {!productHasOdds && (
                     <span
                       className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded"
-                      style={{ backgroundColor: 'rgba(234,179,8,0.15)', color: '#eab308' }}
+                      style={{ backgroundColor: 'rgba(168,144,96,0.15)', color: '#eab308' }}
                       title="No hobby odds on this product — rankings derived from print run"
                     >
                       Ranked by print run

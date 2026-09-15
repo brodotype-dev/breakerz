@@ -99,7 +99,7 @@ export default function SignupForm({
       {emailSent ? (
         <div
           className="rounded-lg p-4 text-center"
-          style={{ backgroundColor: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)' }}
+          style={{ backgroundColor: 'rgba(111,158,125,0.1)', border: '1px solid rgba(111,158,125,0.3)' }}
         >
           <p className="text-sm font-semibold" style={{ color: 'var(--signal-buy)' }}>
             Check your email

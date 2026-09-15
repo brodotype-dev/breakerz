@@ -375,7 +375,7 @@ export default function RosterSentimentEditor({ productId, players }: Props) {
               return (
                 <TableRow
                   key={p.playerProductId}
-                  style={changed ? { backgroundColor: 'rgba(59,130,246,0.06)' } : undefined}
+                  style={changed ? { backgroundColor: 'rgba(127,168,201,0.06)' } : undefined}
                 >
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-2">
@@ -383,7 +383,7 @@ export default function RosterSentimentEditor({ productId, players }: Props) {
                       {p.isRookie && (
                         <span
                           className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide"
-                          style={{ backgroundColor: 'rgba(16, 185, 129, 0.12)', color: '#10b981' }}
+                          style={{ backgroundColor: 'rgba(111,158,125,0.12)', color: '#10b981' }}
                           title="Rookie card"
                         >
                           RC
@@ -421,7 +421,7 @@ export default function RosterSentimentEditor({ productId, players }: Props) {
                       className="flex items-center gap-1 rounded-md px-2 h-8"
                       style={{
                         border: '1px solid var(--terminal-border)',
-                        backgroundColor: e.evOverride != null ? 'rgba(59,130,246,0.08)' : 'transparent',
+                        backgroundColor: e.evOverride != null ? 'rgba(127,168,201,0.08)' : 'transparent',
                       }}
                     >
                       <span className="text-xs text-muted-foreground">$</span>

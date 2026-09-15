@@ -211,7 +211,7 @@ export default async function BreaksPage() {
                   style={{
                     borderColor: 'var(--accent-blue)',
                     color: 'var(--accent-blue)',
-                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    backgroundColor: 'rgba(127,168,201,0.1)',
                   }}
                 >
                   <Logo variant="slab" height={32} width={25} className="h-8 w-auto -my-1" />
@@ -250,7 +250,7 @@ export default async function BreaksPage() {
             style={{
               borderColor: 'var(--signal-buy)',
               background: 'var(--gradient-card)',
-              boxShadow: '0 4px 20px rgba(34, 197, 94, 0.1)',
+              boxShadow: '0 4px 20px rgba(111,158,125,0.1)',
             }}
           >
             <div className="relative p-6 md:p-8">

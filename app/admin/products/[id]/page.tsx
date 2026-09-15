@@ -166,7 +166,7 @@ function WorkflowCard({
   children: React.ReactNode;
 }) {
   const borderColor = tone === 'recommended' ? 'var(--accent-blue)' : 'var(--terminal-border)';
-  const labelBg = tone === 'recommended' ? 'rgba(59,130,246,0.15)' : 'var(--terminal-surface-hover)';
+  const labelBg = tone === 'recommended' ? 'rgba(127,168,201,0.15)' : 'var(--terminal-surface-hover)';
   const labelColor = tone === 'recommended' ? 'var(--accent-blue)' : 'var(--text-tertiary)';
   return (
     <div
@@ -338,7 +338,7 @@ export default async function ProductDashboardPage({ params }: PageProps) {
             <div className="flex items-center gap-2 mb-1">
               <span
                 className="text-xs font-bold uppercase px-2 py-1 rounded"
-                style={{ backgroundColor: 'rgba(59,130,246,0.15)', color: 'var(--accent-blue)' }}
+                style={{ backgroundColor: 'rgba(127,168,201,0.15)', color: 'var(--accent-blue)' }}
               >
                 {product.sport?.name}
               </span>
@@ -357,8 +357,8 @@ export default async function ProductDashboardPage({ params }: PageProps) {
               {(() => {
                 const ls = product.lifecycle_status ?? 'live';
                 const styles: Record<string, { bg: string; text: string; label: string }> = {
-                  pre_release: { bg: 'rgba(168,85,247,0.15)', text: '#a855f7', label: 'Pre-release' },
-                  live: { bg: 'rgba(16,185,129,0.15)', text: '#10b981', label: 'Live' },
+                  pre_release: { bg: 'rgba(141,134,184,0.15)', text: '#a855f7', label: 'Pre-release' },
+                  live: { bg: 'rgba(111,158,125,0.15)', text: '#10b981', label: 'Live' },
                   dormant: { bg: 'rgba(148,163,184,0.18)', text: '#94a3b8', label: 'Dormant' },
                 };
                 const s = styles[ls];
@@ -382,7 +382,7 @@ export default async function ProductDashboardPage({ params }: PageProps) {
           <Link
             href={product.slug ? `/break/${product.slug}` : '#'}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all"
-            style={{ backgroundColor: 'rgba(59,130,246,0.1)', borderLeft: '3px solid var(--accent-blue)', color: 'var(--accent-blue)' }}
+            style={{ backgroundColor: 'rgba(127,168,201,0.1)', borderLeft: '3px solid var(--accent-blue)', color: 'var(--accent-blue)' }}
           >
             View Break →
           </Link>
@@ -405,7 +405,7 @@ export default async function ProductDashboardPage({ params }: PageProps) {
         {product.lifecycle_status === 'pre_release' && (
           <div
             className="rounded-xl border p-4"
-            style={{ borderColor: 'rgba(168,85,247,0.3)', backgroundColor: 'rgba(168,85,247,0.08)' }}
+            style={{ borderColor: 'rgba(141,134,184,0.3)', backgroundColor: 'rgba(141,134,184,0.08)' }}
           >
             <div className="flex items-start justify-between gap-4">
               <div className="flex-1">

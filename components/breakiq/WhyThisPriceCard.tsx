@@ -269,9 +269,9 @@ export default function WhyThisPriceCard({
             className="text-[10px] font-medium px-2 py-1 rounded border"
             title={`Pricing source: ${row.pricingSource}`}
             style={{
-              backgroundColor: 'rgba(245,158,11,0.1)',
+              backgroundColor: 'rgba(168,144,96,0.1)',
               color: 'var(--accent-orange)',
-              borderColor: 'rgba(245,158,11,0.3)',
+              borderColor: 'rgba(168,144,96,0.3)',
             }}
           >
             estimated · {row.pricingSource}
@@ -289,7 +289,7 @@ export default function WhyThisPriceCard({
         {row.player?.is_icon && (
           <span
             className="text-[10px] font-medium px-2 py-1 rounded border"
-            style={{ backgroundColor: 'rgba(168,85,247,0.1)', color: '#a855f7', borderColor: 'rgba(168,85,247,0.3)' }}
+            style={{ backgroundColor: 'rgba(141,134,184,0.1)', color: '#a855f7', borderColor: 'rgba(141,134,184,0.3)' }}
           >
             icon player
           </span>
@@ -297,7 +297,7 @@ export default function WhyThisPriceCard({
         {row.is_high_volatility && (
           <span
             className="text-[10px] font-medium px-2 py-1 rounded border"
-            style={{ backgroundColor: 'rgba(234,179,8,0.1)', color: '#eab308', borderColor: 'rgba(234,179,8,0.3)' }}
+            style={{ backgroundColor: 'rgba(168,144,96,0.1)', color: '#eab308', borderColor: 'rgba(168,144,96,0.3)' }}
           >
             high volatility
           </span>

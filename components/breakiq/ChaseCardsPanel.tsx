@@ -17,22 +17,22 @@ function ChaseCardTile({ card }: { card: ChaseCard }) {
       className="relative flex flex-col gap-1.5 p-3 rounded-xl transition-all"
       style={{
         border: card.is_hit
-          ? '1px solid rgba(239,68,68,0.5)'
+          ? '1px solid rgba(194,112,95,0.5)'
           : isChaseCard
-          ? '1px solid rgba(168,85,247,0.35)'
-          : '1px solid rgba(59,130,246,0.35)',
+          ? '1px solid rgba(141,134,184,0.35)'
+          : '1px solid rgba(127,168,201,0.35)',
         backgroundColor: card.is_hit
-          ? 'rgba(239,68,68,0.07)'
+          ? 'rgba(194,112,95,0.07)'
           : isChaseCard
-          ? 'rgba(168,85,247,0.06)'
-          : 'rgba(59,130,246,0.06)',
+          ? 'rgba(141,134,184,0.06)'
+          : 'rgba(127,168,201,0.06)',
       }}
     >
       {/* HIT overlay banner */}
       {card.is_hit && (
         <div
           className="absolute inset-x-0 top-0 flex items-center justify-center py-0.5 rounded-t-xl text-[9px] font-black uppercase tracking-widest"
-          style={{ backgroundColor: 'rgba(239,68,68,0.85)', color: 'white' }}
+          style={{ backgroundColor: 'rgba(194,112,95,0.85)', color: 'white' }}
         >
           HIT — Self-Reported
         </div>
@@ -45,8 +45,8 @@ function ChaseCardTile({ card }: { card: ChaseCard }) {
             className="text-[8px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded"
             style={
               isChaseCard
-                ? { backgroundColor: 'rgba(168,85,247,0.15)', color: '#a855f7' }
-                : { backgroundColor: 'rgba(59,130,246,0.15)', color: 'var(--accent-blue)' }
+                ? { backgroundColor: 'rgba(141,134,184,0.15)', color: '#a855f7' }
+                : { backgroundColor: 'rgba(127,168,201,0.15)', color: 'var(--accent-blue)' }
             }
           >
             {isChaseCard ? 'Chase Card' : 'Chase Player'}
@@ -54,7 +54,7 @@ function ChaseCardTile({ card }: { card: ChaseCard }) {
           {isRookie && (
             <span
               className="text-[8px] font-bold px-1.5 py-0.5 rounded"
-              style={{ backgroundColor: 'rgba(59,130,246,0.15)', color: 'var(--accent-blue)' }}
+              style={{ backgroundColor: 'rgba(127,168,201,0.15)', color: 'var(--accent-blue)' }}
             >
               RC
             </span>
@@ -107,7 +107,7 @@ export default function ChaseCardsPanel({ chaseCards }: Props) {
         style={{
           border: '1px solid var(--terminal-border)',
           backgroundColor: 'var(--terminal-surface)',
-          borderLeft: '3px solid rgba(168,85,247,0.5)',
+          borderLeft: '3px solid rgba(141,134,184,0.5)',
         }}
       >
         <span className="text-xs font-bold uppercase tracking-widest" style={{ color: '#a855f7' }}>
@@ -151,7 +151,7 @@ export default function ChaseCardsPanel({ chaseCards }: Props) {
           {hitCount > 0 && (
             <span
               className="text-[9px] font-bold uppercase px-2 py-0.5 rounded"
-              style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: '#ef4444' }}
+              style={{ backgroundColor: 'rgba(194,112,95,0.15)', color: '#ef4444' }}
             >
               {hitCount} HIT
             </span>

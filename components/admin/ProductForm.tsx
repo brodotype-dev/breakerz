@@ -397,7 +397,7 @@ export default function ProductForm({ sports, product, onSaved, productOptions =
 
         {/* Locked-in set name */}
         {chSetName && (
-          <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.3)' }}>
+          <div className="flex items-center gap-2 mb-3 px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(111,158,125,0.08)', border: '1px solid rgba(111,158,125,0.3)' }}>
             <span style={{ color: 'rgb(34,197,94)', fontSize: '0.75rem' }}>✓</span>
             <span className="text-sm font-mono flex-1" style={{ color: 'var(--text-primary)' }}>{chSetName}</span>
             {chSetStatus === 'saving' && (
@@ -462,7 +462,7 @@ export default function ProductForm({ sports, product, onSaved, productOptions =
                     className="w-full flex items-center justify-between px-3 py-2.5 text-left transition-colors hover:bg-[var(--terminal-surface-hover)] border-b last:border-0"
                     style={{
                       borderColor: 'var(--terminal-border)',
-                      backgroundColor: isTop ? 'rgba(59,130,246,0.08)' : undefined,
+                      backgroundColor: isTop ? 'rgba(127,168,201,0.08)' : undefined,
                     }}
                   >
                     <div className="flex items-center gap-2 min-w-0">

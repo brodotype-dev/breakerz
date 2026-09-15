@@ -225,7 +225,7 @@ export default function ProfilePage() {
                 <span
                   className="text-xs font-medium px-2.5 py-1 rounded-full"
                   style={{
-                    backgroundColor: profile.is_over_18 ? 'var(--signal-buy-bg)' : 'rgba(239,68,68,0.1)',
+                    backgroundColor: profile.is_over_18 ? 'var(--signal-buy-bg)' : 'rgba(194,112,95,0.1)',
                     color: profile.is_over_18 ? 'var(--signal-buy)' : 'var(--signal-pass)',
                   }}
                 >
@@ -236,7 +236,7 @@ export default function ProfilePage() {
                 <span
                   className="text-xs font-medium px-2.5 py-1 rounded-full"
                   style={{
-                    backgroundColor: computeIsOver18(dob) ? 'var(--signal-buy-bg)' : 'rgba(239,68,68,0.1)',
+                    backgroundColor: computeIsOver18(dob) ? 'var(--signal-buy-bg)' : 'rgba(194,112,95,0.1)',
                     color: computeIsOver18(dob) ? 'var(--signal-buy)' : 'var(--signal-pass)',
                   }}
                 >
@@ -466,7 +466,7 @@ function LegalAcceptanceRow({
           {accepted && !upToDate && (
             <span
               className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded inline-flex items-center gap-1"
-              style={{ backgroundColor: 'rgba(234,179,8,0.12)', color: 'var(--signal-watch)' }}
+              style={{ backgroundColor: 'rgba(168,144,96,0.12)', color: 'var(--signal-watch)' }}
             >
               <AlertTriangle className="w-3 h-3" />
               Update available
@@ -475,7 +475,7 @@ function LegalAcceptanceRow({
           {!accepted && (
             <span
               className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded"
-              style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: 'var(--signal-pass)' }}
+              style={{ backgroundColor: 'rgba(194,112,95,0.1)', color: 'var(--signal-pass)' }}
             >
               Not accepted
             </span>

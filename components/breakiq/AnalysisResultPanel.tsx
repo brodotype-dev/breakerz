@@ -1,15 +1,19 @@
 'use client';
 
 import Link from 'next/link';
-import { formatCurrency } from '@/lib/engine';
+import { signalLabel, formatCurrency } from '@/lib/engine';
 import PricingFeedback from '@/components/breakiq/PricingFeedback';
 import type { AnalysisResult } from '@/lib/analysis';
 import type { Signal } from '@/lib/types';
 
-const signalConfig: Record<Signal, { borderColor: string; bgColor: string; textColor: string; label: string }> = {
-  BUY:   { borderColor: 'var(--signal-buy)',   bgColor: 'rgba(34,197,94,0.08)',  textColor: 'var(--signal-buy)',   label: 'BUY' },
-  WATCH: { borderColor: 'var(--signal-watch)', bgColor: 'rgba(234,179,8,0.08)',  textColor: 'var(--signal-watch)', label: 'WATCH' },
-  PASS:  { borderColor: 'var(--signal-pass)',  bgColor: 'rgba(239,68,68,0.08)',  textColor: 'var(--signal-pass)',  label: 'PASS' },
+// The handoff labels the middle verdict HOLD; the engine's Signal union is
+// 'WATCH' and that value is PERSISTED in user_breaks.snapshot_signal. This is a
+// DISPLAY-LAYER mapping only — renaming stored rows for a copy change is the
+// kind of conflict the UI-only scope says to avoid.
+const signalConfig: Record<Signal, { borderColor: string; bgColor: string; textColor: string }> = {
+  BUY:   { borderColor: 'var(--buy)',  bgColor: 'var(--signal-buy-bg)',   textColor: 'var(--buy)'  },
+  WATCH: { borderColor: 'var(--hold)', bgColor: 'var(--signal-watch-bg)', textColor: 'var(--hold)' },
+  PASS:  { borderColor: 'var(--pass)', bgColor: 'var(--signal-pass-bg)',  textColor: 'var(--pass)' },
 };
 
 const FLAG_LABELS: Record<string, string> = {
@@ -57,53 +61,76 @@ export default function AnalysisResultPanel({ result, productId, productSlug }: 
 
   return (
     <div className="space-y-4">
-      <div className="rounded-lg p-6 border-2" style={{ backgroundColor: cfg.bgColor, borderColor: cfg.borderColor }}>
-        <p className="text-[10px] font-bold uppercase tracking-widest mb-1" style={{ color: 'var(--text-tertiary)' }}>
-          Our take
-        </p>
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-3xl font-black" style={{ color: cfg.textColor }}>{cfg.label}</span>
-          <div className="flex items-center gap-3">
-            <div className="text-right">
-              <p className="text-sm font-semibold font-mono" style={{ color: cfg.textColor }}>
-                {Math.abs(result.valuePct).toFixed(1)}% {aboveBelow}
-              </p>
-            </div>
-            <PricingFeedback
-              surface="break_analysis"
-              entityType="analysis"
-              entityId={productId}
-              productId={productId}
-              size="md"
-            />
-          </div>
+      <div>
+        <div className="flex items-center justify-between mb-3">
+          <p className="font-mono uppercase" style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--ink3)' }}>
+            Our take
+          </p>
+          <PricingFeedback
+            surface="break_analysis"
+            entityType="analysis"
+            entityId={productId}
+            productId={productId}
+            size="md"
+          />
         </div>
 
-        <p className="text-[11px] mb-3 leading-relaxed" style={{ color: 'var(--text-tertiary)' }}>
-          Based on CardHedger comps + our lifecycle-aware pricing model. Flag us if it&rsquo;s off — we tune from every report.
-        </p>
-
-        <div className="mb-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
-          {compositionLabel} · {formatLine || '0 cases'}
-        </div>
-
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div>
-            <p className="terminal-label mb-1">Market Ask Range</p>
-            <p className="font-mono text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{formatCurrency(result.marketFairValue)}</p>
-            <p className="font-mono text-[11px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
-              {formatCurrency(result.marketFairLow)}–{formatCurrency(result.marketFairHigh)} · model {formatCurrency(result.fairValue)}
+        {/* Verdict band — three fields between rules, split by vertical hairlines. */}
+        <div
+          className="flex flex-col sm:flex-row"
+          style={{ borderTop: '1px solid var(--rule)', borderBottom: '1px solid var(--rule)' }}
+        >
+          <div className="py-[22px] sm:pr-[34px]">
+            <p className="font-mono uppercase mb-1.5" style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--ink3)' }}>
+              Verdict
+            </p>
+            <p style={{ fontSize: 25, fontWeight: 700, lineHeight: 1, letterSpacing: '0.02em', color: cfg.textColor }}>
+              {signalLabel(result.signal)}
             </p>
           </div>
-          <div>
-            <p className="terminal-label mb-1">Total Cost</p>
-            <p className="font-mono text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{formatCurrency(result.askPrice)}</p>
+
+          <div
+            className="py-[22px] sm:px-[34px] sm:border-l"
+            style={{ borderColor: 'var(--rule)' }}
+          >
+            <p className="font-mono uppercase mb-1.5" style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--ink3)' }}>
+              Fair value
+            </p>
+            <p className="font-mono" style={{ fontSize: 29, fontWeight: 500, lineHeight: 1, letterSpacing: '-0.03em', color: 'var(--ink)' }}>
+              {formatCurrency(result.marketFairValue)}
+            </p>
+            <p className="font-mono mt-1" style={{ fontSize: 12, color: 'var(--ink3)' }}>
+              {formatCurrency(result.marketFairLow)}–{formatCurrency(result.marketFairHigh)}
+            </p>
+          </div>
+
+          <div
+            className="py-[22px] sm:px-[34px] sm:border-l"
+            style={{ borderColor: 'var(--rule)' }}
+          >
+            <p className="font-mono uppercase mb-1.5" style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--ink3)' }}>
+              Ask vs value
+            </p>
+            <p className="font-mono" style={{ fontSize: 29, fontWeight: 500, lineHeight: 1, letterSpacing: '-0.03em', color: cfg.textColor }}>
+              {result.valuePct >= 0 ? '+' : '−'}{Math.abs(result.valuePct).toFixed(0)}%
+            </p>
+            <p className="font-mono mt-1" style={{ fontSize: 12, color: 'var(--ink3)' }}>
+              {formatCurrency(result.askPrice)} ask
+            </p>
           </div>
         </div>
 
-        <div className="pl-4 border-l-2 py-1" style={{ borderColor: 'var(--accent-blue)' }}>
-          <p className="text-sm leading-relaxed italic" style={{ color: 'var(--text-secondary)' }}>{result.analysis}</p>
-        </div>
+        <p className="mt-3" style={{ fontSize: 12, color: 'var(--ink3)' }}>
+          {compositionLabel} · {formatLine || '0 cases'} · {aboveBelow} our value
+        </p>
+
+        <p className="mt-3" style={{ fontSize: 14, lineHeight: 1.6, color: 'var(--ink2)' }}>
+          {result.analysis}
+        </p>
+
+        <p className="mt-2" style={{ fontSize: 11, lineHeight: 1.5, color: 'var(--ink3)' }}>
+          CardHedger comps + our lifecycle-aware model. Flag it if it&rsquo;s off — we tune from every report.
+        </p>
       </div>
 
       {(result.teams.length > 0 || result.extraPlayerNames.length > 0) && (
@@ -118,9 +145,9 @@ export default function AnalysisResultPanel({ result, productId, productSlug }: 
                 key={n}
                 className="text-[10px] font-bold px-2 py-1 rounded-full border"
                 style={{
-                  backgroundColor: 'rgba(59, 130, 246, 0.12)',
+                  backgroundColor: 'rgba(127,168,201,0.12)',
                   color: 'var(--text-primary)',
-                  borderColor: 'rgba(59, 130, 246, 0.4)',
+                  borderColor: 'rgba(127,168,201,0.4)',
                 }}
               >
                 {n}
@@ -153,7 +180,7 @@ export default function AnalysisResultPanel({ result, productId, productSlug }: 
       )}
 
       {result.hvPlayers?.length > 0 && (
-        <div className="rounded-lg p-4 border flex items-start gap-3" style={{ backgroundColor: 'rgba(234,179,8,0.08)', borderColor: 'var(--signal-watch)' }}>
+        <div className="rounded-lg p-4 border flex items-start gap-3" style={{ backgroundColor: 'rgba(168,144,96,0.08)', borderColor: 'var(--signal-watch)' }}>
           <span className="text-lg">⚡</span>
           <div>
             <p className="text-sm font-semibold mb-1" style={{ color: 'var(--signal-watch)' }}>High Volatility Advisory</p>
@@ -167,7 +194,7 @@ export default function AnalysisResultPanel({ result, productId, productSlug }: 
       {result.riskFlags?.length > 0 && (
         <div className="space-y-2">
           {result.riskFlags.map((flag, i) => (
-            <div key={i} className="rounded-lg p-4 border flex items-start gap-3" style={{ backgroundColor: 'rgba(239,68,68,0.05)', borderColor: 'var(--signal-pass)' }}>
+            <div key={i} className="rounded-lg p-4 border flex items-start gap-3" style={{ backgroundColor: 'rgba(194,112,95,0.05)', borderColor: 'var(--signal-pass)' }}>
               <span className="text-sm font-bold opacity-60" style={{ color: 'var(--signal-pass)' }}>⚑</span>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">

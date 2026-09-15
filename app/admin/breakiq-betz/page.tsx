@@ -101,7 +101,7 @@ export default async function BreakIQBetsPage() {
           <div className="flex items-start gap-4 mb-5">
             <div
               className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-              style={{ background: 'var(--gradient-purple)', boxShadow: '0 0 20px rgba(168, 85, 247, 0.3)' }}
+              style={{ background: 'var(--gradient-purple)', boxShadow: '0 0 20px rgba(141,134,184,0.3)' }}
             >
               <Sparkles className="w-5 h-5 text-white" />
             </div>
@@ -154,7 +154,7 @@ export default async function BreakIQBetsPage() {
                 const score = bet.breakerz_score ?? 0;
                 const isPositive = score > 0;
                 const scoreColor = isPositive ? 'var(--signal-buy)' : 'var(--signal-pass)';
-                const scoreBg = isPositive ? 'rgba(34,197,94,0.1)' : 'rgba(220,38,38,0.1)';
+                const scoreBg = isPositive ? 'rgba(111,158,125,0.1)' : 'rgba(194,112,95,0.1)';
 
                 return (
                   <div

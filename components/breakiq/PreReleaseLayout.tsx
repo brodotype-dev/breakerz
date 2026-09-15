@@ -55,10 +55,10 @@ const HYPE_TAG_META: Record<
   HypeObsRow['payload']['tag'],
   { label: string; symbol: string; color: string; bg: string }
 > = {
-  release_premium: { label: 'Release premium', symbol: '▲', color: '#f97316', bg: 'rgba(249,115,22,0.14)' },
+  release_premium: { label: 'Release premium', symbol: '▲', color: '#f97316', bg: 'rgba(168,144,96,0.14)' },
   cooled:          { label: 'Cooled',          symbol: '▼', color: '#94a3b8', bg: 'rgba(148,163,184,0.14)' },
-  overhyped:       { label: 'Overhyped',       symbol: '⚠', color: '#eab308', bg: 'rgba(234,179,8,0.14)' },
-  underhyped:      { label: 'Underhyped',      symbol: '★', color: '#10b981', bg: 'rgba(16,185,129,0.14)' },
+  overhyped:       { label: 'Overhyped',       symbol: '⚠', color: '#eab308', bg: 'rgba(168,144,96,0.14)' },
+  underhyped:      { label: 'Underhyped',      symbol: '★', color: '#10b981', bg: 'rgba(111,158,125,0.14)' },
 };
 
 const PULSING_RISK_TYPES = new Set(['injury', 'suspension']);
@@ -338,9 +338,9 @@ export default function PreReleaseLayout({
             <span
               className="ml-auto font-mono text-xs px-2 py-0.5 rounded"
               style={{
-                backgroundColor: 'rgba(168,85,247,0.14)',
+                backgroundColor: 'rgba(141,134,184,0.14)',
                 color: '#c4b5fd',
-                border: '1px solid rgba(168,85,247,0.35)',
+                border: '1px solid rgba(141,134,184,0.35)',
               }}
               title={productAsk[0].source_narrative ?? ''}
             >
@@ -377,7 +377,7 @@ export default function PreReleaseLayout({
                 <div className="flex items-center gap-2">
                   <span
                     className="text-[10px] font-mono font-bold w-5 h-5 rounded inline-flex items-center justify-center"
-                    style={{ backgroundColor: 'rgba(168,85,247,0.15)', color: '#a855f7' }}
+                    style={{ backgroundColor: 'rgba(141,134,184,0.15)', color: '#a855f7' }}
                   >
                     ▲{i + 1}
                   </span>
@@ -451,7 +451,7 @@ export default function PreReleaseLayout({
                     onClick={() => setFilter(opt.value)}
                     className="text-[11px] font-medium px-2.5 py-1 rounded-full border transition-colors"
                     style={{
-                      backgroundColor: active ? 'rgba(59,130,246,0.15)' : 'transparent',
+                      backgroundColor: active ? 'rgba(127,168,201,0.15)' : 'transparent',
                       borderColor: active ? 'var(--accent-blue)' : 'var(--terminal-border)',
                       color: active ? 'var(--accent-blue)' : 'var(--text-secondary)',
                     }}
@@ -475,7 +475,7 @@ export default function PreReleaseLayout({
                       onClick={() => setSort(opt.value)}
                       className="text-[11px] font-medium px-2.5 py-1 transition-colors"
                       style={{
-                        backgroundColor: active ? 'rgba(59,130,246,0.15)' : 'transparent',
+                        backgroundColor: active ? 'rgba(127,168,201,0.15)' : 'transparent',
                         color: active ? 'var(--accent-blue)' : 'var(--text-secondary)',
                       }}
                     >
@@ -640,7 +640,7 @@ function PlayerRow({
         {rank && (
           <span
             className="text-[10px] font-mono font-bold w-5 h-5 rounded inline-flex items-center justify-center shrink-0"
-            style={{ backgroundColor: 'rgba(168,85,247,0.15)', color: '#a855f7' }}
+            style={{ backgroundColor: 'rgba(141,134,184,0.15)', color: '#a855f7' }}
           >
             ▲{rank}
           </span>
@@ -651,7 +651,7 @@ function PlayerRow({
         {isRookie && (
           <span
             className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide shrink-0"
-            style={{ backgroundColor: 'rgba(16, 185, 129, 0.12)', color: '#10b981' }}
+            style={{ backgroundColor: 'rgba(111,158,125,0.12)', color: '#10b981' }}
           >
             RC
           </span>
@@ -664,9 +664,9 @@ function PlayerRow({
               title={f.note}
               className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide shrink-0 ${pulse ? 'animate-pulse' : ''}`}
               style={{
-                backgroundColor: 'rgba(239, 68, 68, 0.18)',
+                backgroundColor: 'rgba(194,112,95,0.18)',
                 color: '#fecaca',
-                border: '1px solid rgba(239,68,68,0.45)',
+                border: '1px solid rgba(194,112,95,0.45)',
               }}
             >
               {f.flagType}

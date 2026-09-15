@@ -257,7 +257,7 @@ export default function UpperDeckImporter({ productId }: { productId: string }) 
       {error && (
         <div
           className="rounded border p-2 text-xs"
-          style={{ borderColor: 'rgba(239, 68, 68, 0.4)', backgroundColor: 'rgba(239, 68, 68, 0.08)', color: '#fca5a5' }}
+          style={{ borderColor: 'rgba(194,112,95,0.4)', backgroundColor: 'rgba(194,112,95,0.08)', color: '#fca5a5' }}
         >
           {error}
         </div>

@@ -162,7 +162,7 @@ export default function ChaseHeartButton({ playerId, size = 'sm', className, onT
           style={{
             backgroundColor: 'var(--terminal-surface)',
             color: 'var(--text-primary)',
-            border: '1px solid rgba(59,130,246,0.4)',
+            border: '1px solid rgba(127,168,201,0.4)',
             boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
           }}
           onClick={e => e.stopPropagation()}

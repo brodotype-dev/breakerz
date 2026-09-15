@@ -189,3 +189,18 @@ export function computeTeamSlotPricing(
     };
   }).sort((a, b) => a.team.localeCompare(b.team));
 }
+
+
+/**
+ * Display label for a Signal.
+ *
+ * The 2026-09-15 UX rethink labels the middle verdict HOLD, but the engine's
+ * Signal union is 'WATCH' and that exact string is PERSISTED in
+ * user_breaks.snapshot_signal. Mapping at the display layer keeps stored rows
+ * untouched — renaming them for a copy change is the kind of conflict the
+ * UI-only scope explicitly avoids. Every surface that shows a verdict word
+ * should call this rather than rendering the raw union member.
+ */
+export function signalLabel(signal: Signal): string {
+  return signal === 'WATCH' ? 'HOLD' : signal;
+}

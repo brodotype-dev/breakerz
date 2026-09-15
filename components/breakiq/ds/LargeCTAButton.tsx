@@ -38,7 +38,7 @@ export function LargeCTAButton({
     switch (variant) {
       case 'primary':   return { backgroundColor: 'var(--accent-blue)',  color: 'white', boxShadow: 'var(--glow-blue)' };
       case 'success':   return { backgroundColor: 'var(--signal-buy)',   color: 'white', boxShadow: 'var(--glow-green)' };
-      case 'danger':    return { backgroundColor: 'var(--signal-pass)',  color: 'white', boxShadow: '0 0 20px rgba(220,38,38,0.4)' };
+      case 'danger':    return { backgroundColor: 'var(--signal-pass)',  color: 'white', boxShadow: '0 0 20px rgba(194,112,95,0.4)' };
       case 'secondary': return { backgroundColor: 'var(--terminal-surface)', color: 'var(--text-primary)', border: '2px solid var(--terminal-border-hover)' };
     }
   };

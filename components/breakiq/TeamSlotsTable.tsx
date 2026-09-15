@@ -256,7 +256,7 @@ export default function TeamSlotsTable({
                   {/* RC count */}
                   <div className="flex items-center">
                     {row.rookieCount > 0 && (
-                      <span className="text-[10px] font-bold px-1 py-0.5 rounded" style={{ backgroundColor: 'rgba(59,130,246,0.15)', color: 'var(--accent-blue)' }}>
+                      <span className="text-[10px] font-bold px-1 py-0.5 rounded" style={{ backgroundColor: 'rgba(127,168,201,0.15)', color: 'var(--accent-blue)' }}>
                         {row.rookieCount}
                       </span>
                     )}
@@ -396,7 +396,7 @@ export default function TeamSlotsTable({
                       <div className="flex items-center gap-1.5 pl-5 min-w-0">
                         <span className="text-xs truncate" style={{ color: 'var(--text-t-secondary)' }}>{p.player.name}</span>
                         {p.player.is_rookie && (
-                          <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ backgroundColor: 'rgba(59,130,246,0.15)', color: 'var(--accent-blue)' }}>RC</span>
+                          <span className="text-[9px] font-bold px-1 py-0.5 rounded" style={{ backgroundColor: 'rgba(127,168,201,0.15)', color: 'var(--accent-blue)' }}>RC</span>
                         )}
                         <ProspectRankChip
                           rank={p.player.prospect_rank}

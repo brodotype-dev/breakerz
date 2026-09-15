@@ -77,7 +77,7 @@ export default function SubscribePage() {
         </div>
 
         {error && (
-          <div className="rounded-lg p-3 mb-6 text-center text-sm" style={{ backgroundColor: 'rgba(239,68,68,0.1)', color: 'var(--signal-pass)', border: '1px solid rgba(239,68,68,0.3)' }}>
+          <div className="rounded-lg p-3 mb-6 text-center text-sm" style={{ backgroundColor: 'rgba(194,112,95,0.1)', color: 'var(--signal-pass)', border: '1px solid rgba(194,112,95,0.3)' }}>
             {error}
           </div>
         )}
@@ -129,7 +129,7 @@ export default function SubscribePage() {
           {/* Pro */}
           <div
             className="rounded-xl p-6 flex flex-col relative"
-            style={{ border: '2px solid var(--accent-blue)', backgroundColor: 'var(--terminal-surface)', boxShadow: '0 0 30px rgba(59,130,246,0.1)' }}
+            style={{ border: '2px solid var(--accent-blue)', backgroundColor: 'var(--terminal-surface)', boxShadow: '0 0 30px rgba(127,168,201,0.1)' }}
           >
             <div
               className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider"

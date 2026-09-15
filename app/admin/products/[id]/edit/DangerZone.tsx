@@ -69,8 +69,8 @@ export default function DangerZone({
     <section
       className="rounded-xl overflow-hidden"
       style={{
-        border: '1px solid rgba(239, 68, 68, 0.35)',
-        backgroundColor: 'rgba(239, 68, 68, 0.04)',
+        border: '1px solid rgba(194,112,95,0.35)',
+        backgroundColor: 'rgba(194,112,95,0.04)',
       }}
     >
       <div className="h-1" style={{ background: 'linear-gradient(135deg, #ef4444 0%, #f59e0b 100%)' }} />
@@ -78,7 +78,7 @@ export default function DangerZone({
         <div className="flex items-start gap-3">
           <div
             className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
-            style={{ backgroundColor: 'rgba(239, 68, 68, 0.15)' }}
+            style={{ backgroundColor: 'rgba(194,112,95,0.15)' }}
           >
             <AlertTriangle className="w-4 h-4" style={{ color: '#fca5a5' }} />
           </div>
@@ -129,8 +129,8 @@ export default function DangerZone({
               <div
                 className="rounded-lg border p-3 text-xs"
                 style={{
-                  borderColor: 'rgba(239, 68, 68, 0.45)',
-                  backgroundColor: 'rgba(239, 68, 68, 0.10)',
+                  borderColor: 'rgba(194,112,95,0.45)',
+                  backgroundColor: 'rgba(194,112,95,0.10)',
                   color: '#fecaca',
                 }}
               >
@@ -156,7 +156,7 @@ export default function DangerZone({
                     className="w-full rounded-md border px-3 py-2 text-sm font-mono"
                     style={{
                       borderColor: nameMatches
-                        ? 'rgba(34, 197, 94, 0.4)'
+                        ? 'rgba(111,158,125,0.4)'
                         : 'var(--terminal-border)',
                       backgroundColor: 'var(--terminal-bg)',
                       color: 'var(--text-primary)',
@@ -170,8 +170,8 @@ export default function DangerZone({
                   disabled={!canDelete}
                   className="w-full h-10 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                   style={{
-                    backgroundColor: 'rgba(239, 68, 68, 0.18)',
-                    border: '1px solid rgba(239, 68, 68, 0.5)',
+                    backgroundColor: 'rgba(194,112,95,0.18)',
+                    border: '1px solid rgba(194,112,95,0.5)',
                     color: '#fecaca',
                   }}
                 >
