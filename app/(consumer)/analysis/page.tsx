@@ -1,4 +1,6 @@
+import { unstable_cache } from 'next/cache';
 import { supabaseAdmin } from '@/lib/supabase';
+import { ACTIVE_PRODUCTS_TAG } from '@/lib/cache-tags';
 import type { Product, Sport } from '@/lib/types';
 import ActiveProductsBrowser, { type ProductSignal } from '../ActiveProductsBrowser';
 import AnalysisClient from './AnalysisClient';
@@ -16,17 +18,28 @@ import AnalysisClient from './AnalysisClient';
  * tags). The valuation tool itself stays client-side in AnalysisClient.
  */
 
-// ISR — the grid is identical for every logged-in user, so cache the render.
-// NOTE: there is no revalidatePath() for this route. The old /breaks page
-// claimed admin mutations invalidated it via revalidatePath('/'), but no such
-// call exists anywhere in app/admin — the comment was stale. So 60s is a real
-// ceiling on how long an admin product change takes to appear here, not a
-// backstop behind an explicit invalidation.
-export const revalidate = 60;
+// NO `export const revalidate` here, deliberately.
+//
+// The old /breaks page carried `revalidate = 60` plus a comment claiming the
+// render was cached and that admin mutations busted it via revalidatePath('/').
+// Both were false, verified 2026-09-15 against the build's prerender manifest:
+// this route is absent from it, i.e. DYNAMIC. The consumer layout calls
+// getCurrentUserFromSession() -> cookies(), which opts the whole segment into
+// dynamic rendering and makes any `revalidate` on the page inert. And no
+// revalidatePath('/') exists anywhere in app/admin.
+//
+// So the page render was never cached — meaning every navigation re-ran the
+// three Supabase queries below. That's the cost worth fixing (prod is
+// IO-constrained), not a staleness problem: edits already appeared instantly.
+//
+// Fix: cache the DATA rather than the render, and tag it so admin product
+// mutations bust it immediately. Same pattern as lib/pricing-read.ts.
+// (The tag lives in lib/cache-tags.ts — page modules may only export a known
+// set of names, so declaring it here is a type error.)
 
 const POSITIVE_HYPE_TAGS = new Set(['release_premium', 'underhyped']);
 
-async function getProducts(): Promise<{
+async function getProductsUncached(): Promise<{
   products: (Product & { sport: Sport })[];
   signals: Record<string, ProductSignal>;
 }> {
@@ -80,6 +93,17 @@ async function getProducts(): Promise<{
 
   return { products, signals };
 }
+
+// Safe to cache: getProductsUncached touches only supabaseAdmin (service role)
+// — no cookies, no headers, nothing per-user. The grid is identical for every
+// logged-in user, so one set of queries per 60s serves every navigation in that
+// window, and revalidateTag(ACTIVE_PRODUCTS_TAG) in the admin product actions
+// drops it the moment a product changes.
+const getProducts = unstable_cache(
+  getProductsUncached,
+  ['research-active-products'],
+  { revalidate: 60, tags: [ACTIVE_PRODUCTS_TAG] },
+);
 
 export default async function ResearchPage() {
   const { products, signals } = await getProducts();

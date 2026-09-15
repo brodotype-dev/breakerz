@@ -2,7 +2,8 @@
 
 import { supabaseAdmin } from '@/lib/supabase';
 import { requireRole } from '@/lib/auth';
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, updateTag } from 'next/cache';
+import { ACTIVE_PRODUCTS_TAG } from '@/lib/cache-tags';
 import type { ProductLifecycle } from '@/lib/types';
 import {
   computePreReleaseBaselines,
@@ -51,6 +52,9 @@ export async function createProduct(formData: {
   if (error) return { error: error.message };
   revalidatePath('/admin');
   revalidatePath('/admin/products');
+  // Consumer-facing: drop the cached active-product grid on Research so this
+  // change appears on the next navigation instead of up to 60s later.
+  updateTag(ACTIVE_PRODUCTS_TAG);
   return { id: data.id };
 }
 
@@ -90,6 +94,9 @@ export async function updateProduct(
   revalidatePath('/admin');
   revalidatePath('/admin/products');
   revalidatePath(`/admin/products/${productId}`);
+  // Consumer-facing: drop the cached active-product grid on Research so this
+  // change appears on the next navigation instead of up to 60s later.
+  updateTag(ACTIVE_PRODUCTS_TAG);
   return {};
 }
 
@@ -139,6 +146,9 @@ export async function setProductLifecycle(
   revalidatePath('/admin');
   revalidatePath('/admin/products');
   revalidatePath(`/admin/products/${productId}`);
+  // Consumer-facing: drop the cached active-product grid on Research so this
+  // change appears on the next navigation instead of up to 60s later.
+  updateTag(ACTIVE_PRODUCTS_TAG);
   return {};
 }
 
@@ -366,6 +376,9 @@ export async function deleteProduct(
 
   revalidatePath('/admin');
   revalidatePath('/admin/products');
+  // Consumer-facing: drop the cached active-product grid on Research so this
+  // change appears on the next navigation instead of up to 60s later.
+  updateTag(ACTIVE_PRODUCTS_TAG);
   return {};
 }
 
