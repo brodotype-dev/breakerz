@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { createClient } from '@supabase/supabase-js';
 import { TrendingUp, Sparkles, Zap, ArrowLeft, X, Plus, Search } from 'lucide-react';
 import posthog from 'posthog-js';
@@ -68,11 +69,14 @@ export default function AnalysisClient() {
   const [products, setProducts] = useState<Product[]>([]);
   const [allPlayers, setAllPlayers] = useState<PlayerOption[]>([]);
 
-  const [productId, setProductId] = useState('');
+  // Prefill from Home's quick-value handoff (?productId=&ask=). Same
+  // URL-param pattern my-breaks already uses for ?view=/?productId=.
+  const searchParams = useSearchParams();
+  const [productId, setProductId] = useState(() => searchParams.get('productId') ?? '');
   const [selectedTeams, setSelectedTeams] = useState<string[]>([]);
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([]);
   const [cases, setCases] = useState<{ hobby: number; bd: number; jumbo: number }>({ hobby: 1, bd: 0, jumbo: 0 });
-  const [askPrice, setAskPrice] = useState('');
+  const [askPrice, setAskPrice] = useState(() => searchParams.get('ask') ?? '');
   const [playerSearch, setPlayerSearch] = useState('');
 
   const [running, setRunning] = useState(false);
