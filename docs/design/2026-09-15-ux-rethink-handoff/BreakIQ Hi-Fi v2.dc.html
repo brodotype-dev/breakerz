@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet"><style>
+body{margin:0;background:#101215;font-family:'Public Sans',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#7fa8c9;text-decoration:none}a:hover{color:#a3c4dd}
+button{font-family:'Public Sans',system-ui,sans-serif}
+::-webkit-scrollbar{width:7px;height:7px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#3a4048;border-radius:99px}
+</style></helmet>
+
+<div style="min-height:100vh;padding:26px 22px 52px;display:flex;flex-direction:column;align-items:center;gap:20px;background: {{ t.bg }};color: {{ t.ink }}">
+
+<div style="width:100%;max-width:1580px;display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap">
+  <div style="display:flex;flex-direction:column;gap:3px">
+    <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">BreakIQ · hi-fi v2 · tone c</span>
+    <span style="font:400 14px/1.5 'Public Sans',sans-serif;color: {{ t.ink2 }}">No glow, no gradients, muted signal ink, rules instead of stacked cards.</span>
+  </div>
+  <div style="display:flex;gap:18px;align-items:center">
+    <div style="display:flex;gap:2px;padding:3px;border-radius:7px;border:1px solid {{ t.rule }}">
+      <button onClick="{{ setDark }}" style="font:600 12px 'Public Sans';padding:7px 13px;border:none;border-radius:5px;cursor:pointer;background: {{ t.darkBg }};color: {{ t.darkFg }}">Dark</button>
+      <button onClick="{{ setLight }}" style="font:600 12px 'Public Sans';padding:7px 13px;border:none;border-radius:5px;cursor:pointer;background: {{ t.lightBg }};color: {{ t.lightFg }}">Light</button>
+    </div>
+    <div style="display:flex;gap:2px;padding:3px;border-radius:7px;border:1px solid {{ t.rule }}">
+      <button onClick="{{ modeApp }}" style="font:600 12px 'Public Sans';padding:7px 13px;border:none;border-radius:5px;cursor:pointer;background: {{ t.appBg }};color: {{ t.appFg }}">App</button>
+      <button onClick="{{ modeOnb }}" style="font:600 12px 'Public Sans';padding:7px 13px;border:none;border-radius:5px;cursor:pointer;background: {{ t.onbBg }};color: {{ t.onbFg }}">Onboarding</button>
+    </div>
+  </div>
+</div>
+
+<sc-if value="{{ isApp }}" hint-placeholder-val="{{ true }}">
+<div style="width:100%;max-width:1580px;display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap">
+
+  <div style="flex:1;min-width:660px;height:780px;border-radius:12px;overflow:hidden;display:flex;border:1px solid {{ t.rule }};background: {{ t.panel }}">
+
+    <div style="width:196px;flex:none;padding:24px 14px;display:flex;flex-direction:column;gap:1px;border-right:1px solid {{ t.rule }}">
+      <span style="display:inline-flex;align-items:center;gap:8px;padding:0 9px 24px">
+        <img src="public/brand/icon-gradient.svg" alt="" width="24" height="24" style="width:24px;height:24px;border-radius:6px">
+        <img src="public/brand/wordmark.svg" alt="BreakIQ" style="height:13px;width:auto;filter: {{ t.markFilter }}">
+      </span>
+
+      <button onClick="{{ goHome }}" style="display:flex;align-items:center;gap:10px;text-align:left;padding:10px 9px;border:none;border-radius:6px;cursor:pointer;font:600 13px 'Public Sans';background: {{ n.homeBg }};color: {{ n.homeFg }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><path d="M9 22V12h6v10"></path></svg>Home</button>
+      <button onClick="{{ goResearch }}" style="display:flex;align-items:center;gap:10px;text-align:left;padding:10px 9px;border:none;border-radius:6px;cursor:pointer;font:600 13px 'Public Sans';background: {{ n.researchBg }};color: {{ n.researchFg }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9Z"></path><path d="M19 15l.7 1.8L21.5 18l-1.8.7L19 20.5l-.7-1.8L16.5 18l1.8-.7Z"></path></svg>Research</button>
+      <button onClick="{{ goLog }}" style="display:flex;justify-content:space-between;align-items:center;text-align:left;padding:10px 9px;border:none;border-radius:6px;cursor:pointer;font:600 13px 'Public Sans';background: {{ n.logBg }};color: {{ n.logFg }}"><span style="display:flex;align-items:center;gap:10px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1"></rect><path d="M8 11h8M8 15h5"></path></svg>Log</span><span style="font:400 11px 'Roboto Mono',monospace;color: {{ t.ink3 }}">2</span></button>
+      <button onClick="{{ goLearn }}" style="display:flex;align-items:center;gap:10px;text-align:left;padding:10px 9px;border:none;border-radius:6px;cursor:pointer;font:600 13px 'Public Sans';background: {{ n.learnBg }};color: {{ n.learnFg }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="m22 7-8.5 8.5-5-5L2 17"></path><path d="M16 7h6v6"></path></svg>Learn</button>
+
+      <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }};padding:22px 9px 8px">tools</span>
+      <button style="display:flex;align-items:center;gap:10px;text-align:left;padding:9px;border:none;border-radius:6px;cursor:pointer;font:500 13px 'Public Sans';background:transparent;color: {{ t.ink2 }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>Slabs</button>
+      <button style="display:flex;align-items:center;gap:10px;text-align:left;padding:9px;border:none;border-radius:6px;cursor:pointer;font:500 13px 'Public Sans';background:transparent;color: {{ t.ink2 }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></svg>Chase</button>
+
+      <div style="margin-top:auto;padding:0 9px;display:flex;flex-direction:column;gap:7px">
+        <span style="display:flex;align-items:center;gap:7px;font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color: {{ t.ink3 }}">{{ planLabel }}</span>
+        <span style="font:400 12px/1.4 'Public Sans';color: {{ t.ink2 }}">{{ planDetail }}</span>
+        <div style="height:2px;background: {{ t.rule }}"><div style="height:100%;background: {{ t.accent }};width: {{ planBar }}"></div></div>
+        <a href="#" style="display:flex;align-items:center;gap:9px;padding-top:14px;margin-top:6px;border-top:1px solid {{ t.rule }};font:500 12px 'Public Sans';color:#5865F2"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style="flex:none"><path d="M20.3 4.4A19.8 19.8 0 0 0 15.4 3l-.2.4a13.5 13.5 0 0 1 4 1.3 13.8 13.8 0 0 0-11.5 0 13.6 13.6 0 0 1 4-1.3L11.6 3a19.9 19.9 0 0 0-5 1.4C3.4 9 2.6 13.4 3 17.8a19.9 19.9 0 0 0 6 3l1.2-1.7a12.9 12.9 0 0 1-2-1l.5-.4a14.2 14.2 0 0 0 12.1 0l.5.4a13 13 0 0 1-2 1l1.2 1.7a19.8 19.8 0 0 0 6-3c.5-5.1-.8-9.5-3.2-13.4ZM9.3 15.3c-1.2 0-2.2-1.1-2.2-2.4S8 10.4 9.3 10.4s2.2 1.1 2.2 2.5-1 2.4-2.2 2.4Zm5.4 0c-1.2 0-2.2-1.1-2.2-2.4s1-2.5 2.2-2.5 2.2 1.1 2.2 2.5-1 2.4-2.2 2.4Z"></path></svg>Join Discord</a>
+        <div style="display:flex;align-items:center;gap:8px;padding-top:11px">
+          <span style="width:20px;height:20px;border-radius:50%;background: {{ t.rule }}"></span>
+          <span style="font:500 12px 'Public Sans';color: {{ t.ink2 }}">Kyle</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="flex:1;min-width:0;overflow-y:auto;padding:30px 34px 36px">
+
+      <sc-if value="{{ p_home }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:26px">
+          <div style="display:flex;flex-direction:column;gap:18px;padding-bottom:20px;border-bottom:1px solid {{ t.rule }}">
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">sunday · 14 september</span>
+              <h1 style="margin:0;font:600 27px/1.2 'Public Sans';letter-spacing:-.022em">Start here, Kyle</h1>
+              <p style="margin:0;font:400 14px/1.55 'Public Sans';color: {{ t.ink2 }}">BreakIQ does two jobs: tell you what a spot is worth before you buy, and remember what happened after.</p>
+            </div>
+            <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+              <span style="display:flex;align-items:center;gap:10px;color: {{ t.ink }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1"></rect><path d="M8 11h8M8 15h5"></path></svg><span style="font:600 15px/1.4 'Public Sans'">Log a break you bought into</span></span>
+              <span style="flex:1;min-width:220px;font:400 13px/1.5 'Public Sans';color: {{ t.ink2 }}">2 purchases are still waiting on results. Logging is what sharpens every number you see here.</span>
+              <button onClick="{{ goLog }}" style="height:38px;padding:0 16px;border-radius:6px;border:none;background: {{ t.btnBg }};color: {{ t.btnFg }};cursor:pointer;font:600 13px 'Public Sans'">Log now</button>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:36px;align-items:flex-start;flex-wrap:wrap">
+            <div style="flex:1;min-width:400px;display:flex;flex-direction:column">
+              <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }};padding:0 0 4px">or</span>
+              <button onClick="{{ goResearch }}" style="display:flex;align-items:center;gap:16px;width:100%;text-align:left;padding:18px 2px;background:none;border:none;border-bottom:1px solid {{ t.ruleFaint }};cursor:pointer;color: {{ t.ink }}">
+                <span style="color: {{ t.accent }}"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9Z"></path><path d="M19 15l.7 1.8L21.5 18l-1.8.7L19 20.5l-.7-1.8L16.5 18l1.8-.7Z"></path></svg></span>
+                <span style="flex:1;display:flex;flex-direction:column;gap:3px">
+                  <span style="font:600 16px/1.35 'Public Sans'">Value a spot</span>
+                  <span style="font:400 13px/1.5 'Public Sans';color: {{ t.ink2 }}">Know the fair price before you commit to a slot</span>
+                </span>
+                <span style="color: {{ t.ink3 }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="m9 18 6-6-6-6"></path></svg></span>
+              </button>
+              <button onClick="{{ goLearn }}" style="display:flex;align-items:center;gap:16px;width:100%;text-align:left;padding:18px 2px;background:none;border:none;border-bottom:1px solid {{ t.ruleFaint }};cursor:pointer;color: {{ t.ink }}">
+                <span style="color: {{ t.buy }}"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="m22 7-8.5 8.5-5-5L2 17"></path><path d="M16 7h6v6"></path></svg></span>
+                <span style="flex:1;display:flex;flex-direction:column;gap:3px">
+                  <span style="font:600 16px/1.35 'Public Sans'">See your patterns</span>
+                  <span style="font:400 13px/1.5 'Public Sans';color: {{ t.ink2 }}">$3,400 saved in 30 days · 11 of 14 calls held</span>
+                </span>
+                <span style="color: {{ t.ink3 }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="m9 18 6-6-6-6"></path></svg></span>
+              </button>
+
+              <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }};padding:26px 0 12px">pick up where you left off</span>
+              <div style="display:flex;align-items:center;gap:14px;padding:13px 0;border-top:1px solid {{ t.rule }}">
+                <span style="flex:1;display:flex;flex-direction:column;gap:3px">
+                  <span style="font:500 14px 'Public Sans'">Bowman Chrome · Orioles</span>
+                  <span style="font:400 11px 'Roboto Mono',monospace;color: {{ t.accent }}">valued 3d ago · comps moved $18</span>
+                </span>
+                <button onClick="{{ goResearch }}" style="height:32px;padding:0 12px;border-radius:5px;cursor:pointer;font:600 12px 'Public Sans';background:transparent;border:1px solid {{ t.ruleStrong }};color: {{ t.ink }}">Re-value</button>
+              </div>
+              <div style="display:flex;align-items:center;gap:14px;padding:13px 0;border-top:1px solid {{ t.ruleFaint }}">
+                <span style="flex:1;display:flex;flex-direction:column;gap:3px">
+                  <span style="font:500 14px 'Public Sans'">Topps Chrome · Dodgers</span>
+                  <span style="font:400 11px 'Roboto Mono',monospace;color: {{ t.ink3 }}">valued 2h ago · $400 ask vs $385</span>
+                </span>
+                <span style="font:500 12px 'Roboto Mono',monospace;color: {{ t.hold }}">hold</span>
+              </div>
+              <button onClick="{{ goRecent }}" style="align-self:flex-start;margin-top:14px;padding:0;background:none;border:none;cursor:pointer;font:600 13px 'Public Sans';color: {{ t.accent }}">All valuations →</button>
+            </div>
+
+            <div style="width:262px;flex:none;display:flex;flex-direction:column;gap:22px">
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">why we ask you to log</span>
+                <span style="font:400 14px/1.6 'Public Sans';color: {{ t.ink2 }}">Every logged break feeds the comp set. Your record is what turns a generic fair value into one that knows how you buy.</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:14px;padding-top:18px;border-top:1px solid {{ t.rule }}">
+                <div style="display:flex;justify-content:space-between;align-items:baseline">
+                  <span style="font:400 13px 'Public Sans';color: {{ t.ink2 }}">Breaks logged</span>
+                  <span style="font:500 15px 'Roboto Mono',monospace">14</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline">
+                  <span style="font:400 13px 'Public Sans';color: {{ t.ink2 }}">Awaiting results</span>
+                  <span style="font:500 15px 'Roboto Mono',monospace;color: {{ t.accent }}">2</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline">
+                  <span style="font:400 13px 'Public Sans';color: {{ t.ink2 }}">Valuations this month</span>
+                  <span style="font:500 15px 'Roboto Mono',monospace">9</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ r_recent }}">
+        <div style="display:flex;flex-direction:column;gap:26px">
+          <div style="display:flex;gap:22px;border-bottom:1px solid {{ t.rule }};margin-bottom:-8px">
+            <button onClick="{{ goResearch }}" style="padding:0 0 11px;background:none;border:none;border-bottom:2px solid {{ rt.valueLine }};cursor:pointer;font:600 13px 'Public Sans';color: {{ rt.valueInk }}">Value a spot</button>
+            <button onClick="{{ goRecent }}" style="padding:0 0 11px;background:none;border:none;border-bottom:2px solid {{ rt.recentLine }};cursor:pointer;font:600 13px 'Public Sans';color: {{ rt.recentInk }}">Recent valuations</button>
+          </div>
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap">
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">research</span>
+              <h1 style="margin:0;font:600 27px/1.2 'Public Sans';letter-spacing:-.022em">Recent valuations</h1>
+              <p style="margin:0;font:400 14px/1.55 'Public Sans';color: {{ t.ink2 }}">Every spot you've valued. Numbers age as comps move, so re-run before you buy.</p>
+            </div>
+            <button onClick="{{ goResearch }}" style="height:40px;padding:0 18px;border:none;border-radius:6px;cursor:pointer;font:600 13px 'Public Sans';background: {{ t.btnBg }};color: {{ t.btnFg }}"><span style="display:flex;align-items:center;gap:7px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="M5 12h14M12 5v14"></path></svg>Value a spot</span></button>
+          </div>
+
+          <sc-if value="{{ showNext }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;padding:16px 18px;border-radius:8px;border:1px solid {{ t.rule }};background: {{ t.subtle }}">
+              <div style="flex:1;min-width:300px;display:flex;flex-direction:column;gap:4px">
+                <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.accent }}">stale</span>
+                <span style="font:600 16px/1.4 'Public Sans'">Bowman Chrome PYT — fair value on the Orioles spot moved $18 since you ran it</span>
+                <span style="font:400 13px/1.5 'Public Sans';color: {{ t.ink2 }}">You've bought into this product twice and paid above value both times.</span>
+              </div>
+              <button onClick="{{ goResearch }}" style="height:38px;padding:0 16px;border-radius:6px;cursor:pointer;font:600 13px 'Public Sans';background:transparent;color: {{ t.ink }};border:1px solid {{ t.ruleStrong }}">Re-value</button>
+            </div>
+          </sc-if>
+
+          <div style="display:flex;gap:36px;align-items:flex-start;flex-wrap:wrap">
+            <div style="flex:1;min-width:380px;display:flex;flex-direction:column">
+              <div style="display:flex;padding-bottom:11px;border-bottom:1px solid {{ t.rule }}">
+                <span style="flex:1;font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">product · spot</span>
+                <span style="width:78px;text-align:right;font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">ask</span>
+                <span style="width:78px;text-align:right;font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">value</span>
+                <span style="width:74px;text-align:right;font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">call</span>
+              </div>
+
+              <div style="display:flex;align-items:center;padding:15px 0;border-bottom:1px solid {{ t.ruleFaint }}">
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+                  <span style="display:flex;align-items:center;gap:8px;font:500 14px/1.35 'Public Sans'"><span style="width:7px;height:7px;border-radius:50%;flex:none;background:#3b82f6"></span>2025 Bowman Chrome · Orioles</span>
+                  <span style="font:400 11px 'Roboto Mono',monospace;color: {{ t.ink3 }}">12-box pyt · 4 spots priced · 3d ago</span>
+                </div>
+                <span style="width:78px;text-align:right;font:400 13px 'Roboto Mono',monospace;color: {{ t.ink2 }}">$340</span>
+                <span style="width:78px;text-align:right;font:500 13px 'Roboto Mono',monospace">$215</span>
+                <span style="width:74px;text-align:right;font:500 12px 'Roboto Mono',monospace;color: {{ t.pass }}">pass</span>
+              </div>
+
+              <div style="display:flex;align-items:center;padding:15px 0;border-bottom:1px solid {{ t.ruleFaint }}">
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+                  <span style="display:flex;align-items:center;gap:8px;font:500 14px/1.35 'Public Sans'"><span style="width:7px;height:7px;border-radius:50%;flex:none;background:#3b82f6"></span>2025 Bowman Chrome · Braves</span>
+                  <span style="font:400 11px 'Roboto Mono',monospace;color: {{ t.ink3 }}">12-box pyt · 3d ago</span>
+                </div>
+                <span style="width:78px;text-align:right;font:400 13px 'Roboto Mono',monospace;color: {{ t.ink2 }}">$210</span>
+                <span style="width:78px;text-align:right;font:500 13px 'Roboto Mono',monospace">$265</span>
+                <span style="width:74px;text-align:right;font:500 12px 'Roboto Mono',monospace;color: {{ t.buy }}">buy</span>
+              </div>
+
+              <div style="display:flex;align-items:center;padding:15px 0;border-bottom:1px solid {{ t.ruleFaint }}">
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+                  <span style="display:flex;align-items:center;gap:8px;font:500 14px/1.35 'Public Sans'"><span style="width:7px;height:7px;border-radius:50%;flex:none;background:#3b82f6"></span>2025 Topps Chrome · Dodgers</span>
+                  <span style="font:400 11px 'Roboto Mono',monospace;color: {{ t.ink3 }}">8-box team · 6 spots priced · 2h ago</span>
+                </div>
+                <span style="width:78px;text-align:right;font:400 13px 'Roboto Mono',monospace;color: {{ t.ink2 }}">$400</span>
+                <span style="width:78px;text-align:right;font:500 13px 'Roboto Mono',monospace">$385</span>
+                <span style="width:74px;text-align:right;font:500 12px 'Roboto Mono',monospace;color: {{ t.hold }}">hold</span>
+              </div>
+
+              <div style="display:flex;align-items:center;padding:15px 0;border-bottom:1px solid {{ t.ruleFaint }}">
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+                  <span style="display:flex;align-items:center;gap:8px;font:500 14px/1.35 'Public Sans'"><span style="width:7px;height:7px;border-radius:50%;flex:none;background:#f97316"></span>2025 Panini Prizm · Bulls</span>
+                  <span style="font:400 11px 'Roboto Mono',monospace;color: {{ t.ink3 }}">6-box random · yesterday</span>
+                </div>
+                <span style="width:78px;text-align:right;font:400 13px 'Roboto Mono',monospace;color: {{ t.ink2 }}">$180</span>
+                <span style="width:78px;text-align:right;font:500 13px 'Roboto Mono',monospace">$120</span>
+                <span style="width:74px;text-align:right;font:500 12px 'Roboto Mono',monospace;color: {{ t.pass }}">pass</span>
+              </div>
+
+              <div style="display:flex;align-items:center;padding:15px 0;border-bottom:1px solid {{ t.ruleFaint }}">
+                <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+                  <span style="display:flex;align-items:center;gap:8px;font:500 14px/1.35 'Public Sans';color: {{ t.ink2 }}"><span style="width:7px;height:7px;border-radius:50%;flex:none;background:#3b82f6"></span>2025 Topps Chrome Update · Yankees</span>
+                  <span style="font:400 11px 'Roboto Mono',monospace;color: {{ t.ink3 }}">pre-release · baseline estimate, comps thin</span>
+                </div>
+                <span style="width:78px;text-align:right;font:400 13px 'Roboto Mono',monospace;color: {{ t.ink2 }}">$275</span>
+                <span style="width:78px;text-align:right;font:500 13px 'Roboto Mono',monospace;color: {{ t.ink2 }}">~$240</span>
+                <span style="width:74px;text-align:right;font:500 12px 'Roboto Mono',monospace;color: {{ t.ink3 }}">est</span>
+              </div>
+            </div>
+
+            <div style="width:262px;flex:none;display:flex;flex-direction:column;gap:22px">
+              <div style="display:flex;flex-direction:column">
+                <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }};padding-bottom:12px;border-bottom:1px solid {{ t.rule }}">awaiting results · 2</span>
+                <div style="padding:13px 0;border-bottom:1px solid {{ t.ruleFaint }};display:flex;flex-direction:column;gap:7px">
+                  <span style="font:500 14px 'Public Sans'">Orioles · Bowman Chrome</span>
+                  <span style="font:400 11px 'Roboto Mono',monospace;color: {{ t.ink3 }}">paid $340 · pending · logged 12 sep</span>
+                  <button onClick="{{ goLog }}" style="align-self:flex-start;height:32px;padding:0 12px;border-radius:5px;cursor:pointer;font:600 12px 'Public Sans';background:transparent;border:1px solid {{ t.ruleStrong }};color: {{ t.ink }}">Add results</button>
+                </div>
+                <div style="padding:13px 0;border-bottom:1px solid {{ t.ruleFaint }};display:flex;flex-direction:column;gap:4px">
+                  <span style="font:500 14px 'Public Sans';color: {{ t.ink2 }}">Braves · Topps Chrome</span>
+                  <span style="font:400 11px 'Roboto Mono',monospace;color: {{ t.ink3 }}">paid $210 · pending · logged 13 sep</span>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:6px">
+                <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">this month</span>
+                <span style="font:500 26px/1 'Roboto Mono',monospace;letter-spacing:-.03em;color: {{ t.buy }}">+$410</span>
+                <span style="font:400 13px/1.5 'Public Sans';color: {{ t.ink2 }}">saved by passing on spots above value</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ r_value }}">
+        <div style="display:flex;flex-direction:column;gap:26px">
+          <div style="display:flex;gap:22px;border-bottom:1px solid {{ t.rule }};margin-bottom:-8px">
+            <button onClick="{{ goResearch }}" style="padding:0 0 11px;background:none;border:none;border-bottom:2px solid {{ rt.valueLine }};cursor:pointer;font:600 13px 'Public Sans';color: {{ rt.valueInk }}">Value a spot</button>
+            <button onClick="{{ goRecent }}" style="padding:0 0 11px;background:none;border:none;border-bottom:2px solid {{ rt.recentLine }};cursor:pointer;font:600 13px 'Public Sans';color: {{ rt.recentInk }}">Recent valuations</button>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">slot valuation</span>
+            <h1 style="margin:0;font:600 27px/1.2 'Public Sans';letter-spacing:-.022em">Baltimore Orioles · 2025 Bowman Chrome</h1>
+            <span style="font:400 14px/1.55 'Public Sans';color: {{ t.ink2 }}">12-box hobby, pick-your-team · asking $340</span>
+          </div>
+
+          <div style="display:flex;align-items:stretch;gap:34px;padding:22px 0;border-top:1px solid {{ t.rule }};border-bottom:1px solid {{ t.rule }}">
+            <div style="display:flex;flex-direction:column;gap:9px;padding-right:34px;border-right:1px solid {{ t.rule }}">
+              <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">verdict</span>
+              <span style="font:700 25px/1 'Public Sans';letter-spacing:.02em;color: {{ t.pass }}">PASS</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:9px;padding-right:34px;border-right:1px solid {{ t.rule }}">
+              <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">fair value</span>
+              <div style="display:flex;align-items:baseline;gap:9px">
+                <span style="font:500 29px/1 'Roboto Mono',monospace;letter-spacing:-.03em">$215</span>
+                <span style="font:400 12px 'Roboto Mono',monospace;color: {{ t.ink3 }}">±$31</span>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:9px">
+              <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">premium over value</span>
+              <div style="display:flex;align-items:baseline;gap:9px">
+                <span style="font:500 29px/1 'Roboto Mono',monospace;letter-spacing:-.03em;color: {{ t.pass }}">+58%</span>
+                <span style="font:400 12px 'Roboto Mono',monospace;color: {{ t.ink3 }}">$125</span>
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:36px;align-items:flex-start;flex-wrap:wrap">
+            <div style="flex:1;min-width:400px;display:flex;flex-direction:column">
+              <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }};padding-bottom:15px">method · four weighted inputs</span>
+
+              <div style="display:flex;gap:16px;align-items:baseline;padding:14px 0;border-top:1px solid {{ t.ruleFaint }}">
+                <span style="width:104px;flex:none;font:600 12px/1.5 'Public Sans';color: {{ t.ink2 }}">Sold comps</span>
+                <span style="flex:1;font:400 14px/1.55 'Public Sans'">18 Orioles spots in 30 days, median $206</span>
+                <span style="width:72px;display:flex;align-items:center;gap:8px;justify-content:flex-end">
+                  <span style="width:32px;height:2px;background: {{ t.rule }}"><span style="display:block;height:100%;width:100%;background: {{ t.accent }}"></span></span>
+                  <span style="font:400 12px 'Roboto Mono',monospace;color: {{ t.ink2 }}">44%</span>
+                </span>
+              </div>
+              <div style="display:flex;gap:16px;align-items:baseline;padding:14px 0;border-top:1px solid {{ t.ruleFaint }}">
+                <span style="width:104px;flex:none;font:600 12px/1.5 'Public Sans';color: {{ t.ink2 }}">Prospects</span>
+                <span style="flex:1;font:400 14px/1.55 'Public Sans'">Basallo #14 overall, one more top-100 arm</span>
+                <span style="width:72px;display:flex;align-items:center;gap:8px;justify-content:flex-end">
+                  <span style="width:32px;height:2px;background: {{ t.rule }}"><span style="display:block;height:100%;width:59%;background: {{ t.accent }}"></span></span>
+                  <span style="font:400 12px 'Roboto Mono',monospace;color: {{ t.ink2 }}">26%</span>
+                </span>
+              </div>
+              <div style="display:flex;gap:16px;align-items:baseline;padding:14px 0;border-top:1px solid {{ t.ruleFaint }}">
+                <span style="width:104px;flex:none;font:600 12px/1.5 'Public Sans';color: {{ t.ink2 }}">Hit rate</span>
+                <span style="flex:1;font:400 14px/1.55 'Public Sans'">12-box config returns 1.4 numbered Orioles</span>
+                <span style="width:72px;display:flex;align-items:center;gap:8px;justify-content:flex-end">
+                  <span style="width:32px;height:2px;background: {{ t.rule }}"><span style="display:block;height:100%;width:41%;background: {{ t.accent }}"></span></span>
+                  <span style="font:400 12px 'Roboto Mono',monospace;color: {{ t.ink2 }}">18%</span>
+                </span>
+              </div>
+              <div style="display:flex;gap:16px;align-items:baseline;padding:14px 0;border-top:1px solid {{ t.ruleFaint }};border-bottom:1px solid {{ t.ruleFaint }}">
+                <span style="width:104px;flex:none;font:600 12px/1.5 'Public Sans';color: {{ t.ink2 }}">Analyst note</span>
+                <span style="flex:1;font:400 14px/1.55 'Public Sans'">“Orioles spots run hot on Whatnot — wait for the second pass.” <span style="color: {{ t.ink3 }}">Kyle · 2d</span></span>
+                <span style="width:72px;display:flex;align-items:center;gap:8px;justify-content:flex-end">
+                  <span style="width:32px;height:2px;background: {{ t.rule }}"><span style="display:block;height:100%;width:27%;background: {{ t.accent }}"></span></span>
+                  <span style="font:400 12px 'Roboto Mono',monospace;color: {{ t.ink2 }}">12%</span>
+                </span>
+              </div>
+
+              <div style="display:flex;gap:9px;padding-top:22px;flex-wrap:wrap">
+                <button style="height:38px;padding:0 16px;border:none;border-radius:6px;cursor:pointer;font:600 13px 'Public Sans';background: {{ t.btnBg }};color: {{ t.btnFg }}"><span style="display:flex;align-items:center;gap:7px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9Z"></path><path d="M19 15l.7 1.8L21.5 18l-1.8.7L19 20.5l-.7-1.8L16.5 18l1.8-.7Z"></path></svg>Value another spot</span></button>
+                <button style="height:38px;padding:0 16px;border-radius:6px;cursor:pointer;font:500 13px 'Public Sans';background:transparent;border:1px solid {{ t.ruleStrong }};color: {{ t.ink }}"><span style="display:flex;align-items:center;gap:7px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"></path></svg>Save to chase list</span></button>
+                <button onClick="{{ goLog }}" style="height:38px;padding:0 16px;border-radius:6px;cursor:pointer;font:500 13px 'Public Sans';background:transparent;border:1px solid {{ t.ruleStrong }};color: {{ t.ink }}"><span style="display:flex;align-items:center;gap:7px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1"></rect><path d="M8 11h8M8 15h5"></path></svg>Log a purchase</span></button>
+              </div>
+            </div>
+
+            <div style="width:272px;flex:none;display:flex;flex-direction:column;gap:22px">
+              <div>
+                <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">other spots, same product</span>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 0;margin-top:11px;border-top:1px solid {{ t.rule }}">
+                  <span style="font:500 14px 'Public Sans'">Atlanta Braves</span>
+                  <span style="font:400 13px 'Roboto Mono',monospace;color: {{ t.ink2 }}">$210 <span style="color: {{ t.buy }}">buy</span></span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 0;border-top:1px solid {{ t.ruleFaint }}">
+                  <span style="font:500 14px 'Public Sans'">LA Dodgers</span>
+                  <span style="font:400 13px 'Roboto Mono',monospace;color: {{ t.ink2 }}">$400 <span style="color: {{ t.hold }}">hold</span></span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;padding:12px 0;border-top:1px solid {{ t.ruleFaint }};border-bottom:1px solid {{ t.ruleFaint }}">
+                  <span style="font:500 14px 'Public Sans'">NY Yankees</span>
+                  <span style="font:400 13px 'Roboto Mono',monospace;color: {{ t.ink2 }}">$365 <span style="color: {{ t.pass }}">pass</span></span>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">from your log</span>
+                <span style="font:400 15px/1.5 'Public Sans';color: {{ t.ink2 }}">You have bought into this product twice and paid above value both times.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ p_log }}">
+        <div style="display:flex;flex-direction:column;gap:26px">
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap">
+            <div style="display:flex;flex-direction:column;gap:7px">
+              <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">purchases</span>
+              <h1 style="margin:0;font:600 27px/1.2 'Public Sans';letter-spacing:-.022em">Log</h1>
+              <p style="margin:0;font:400 14px/1.55 'Public Sans';color: {{ t.ink2 }}">What you paid, what came out, and whether the call held up.</p>
+            </div>
+            <button style="height:40px;padding:0 18px;border:none;border-radius:6px;cursor:pointer;font:600 13px 'Public Sans';background: {{ t.btnBg }};color: {{ t.btnFg }}"><span style="display:flex;align-items:center;gap:7px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1"></rect><path d="M8 11h8M8 15h5"></path></svg>Log a purchase</span></button>
+          </div>
+
+          <div style="display:flex;gap:44px;flex-wrap:wrap;padding:20px 0;border-top:1px solid {{ t.rule }};border-bottom:1px solid {{ t.rule }}">
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">purchases</span>
+              <span style="font:500 24px/1 'Roboto Mono',monospace;letter-spacing:-.03em">14</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">spent</span>
+              <span style="font:500 24px/1 'Roboto Mono',monospace;letter-spacing:-.03em">$2,840</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">returned</span>
+              <span style="font:500 24px/1 'Roboto Mono',monospace;letter-spacing:-.03em">$3,105</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">net</span>
+              <span style="font:500 24px/1 'Roboto Mono',monospace;letter-spacing:-.03em;color: {{ t.buy }}">+$265</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">pending</span>
+              <span style="font:500 24px/1 'Roboto Mono',monospace;letter-spacing:-.03em;color: {{ t.accent }}">2</span>
+            </div>
+          </div>
+
+          <div style="display:flex;flex-direction:column">
+            <div style="display:flex;padding-bottom:11px;border-bottom:1px solid {{ t.rule }}">
+              <span style="flex:1;font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">purchase</span>
+              <span style="width:84px;text-align:right;font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">paid</span>
+              <span style="width:84px;text-align:right;font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">returned</span>
+              <span style="width:84px;text-align:right;font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">our call</span>
+              <span style="width:84px;text-align:right;font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">outcome</span>
+            </div>
+            <div style="display:flex;align-items:center;padding:15px 0;border-bottom:1px solid {{ t.ruleFaint }}">
+              <div style="flex:1;display:flex;flex-direction:column;gap:3px"><span style="font:500 14px 'Public Sans'">Topps Chrome · Braves</span><span style="font:400 11px 'Roboto Mono',monospace;color: {{ t.ink3 }}">completed · 04 sep</span></div>
+              <span style="width:84px;text-align:right;font:400 13px 'Roboto Mono',monospace;color: {{ t.ink2 }}">$210</span>
+              <span style="width:84px;text-align:right;font:500 13px 'Roboto Mono',monospace">$330</span>
+              <span style="width:84px;text-align:right;font:500 12px 'Roboto Mono',monospace;color: {{ t.buy }}">buy</span>
+              <span style="width:84px;display:flex;align-items:center;justify-content:flex-end;gap:6px;font:400 12px 'Roboto Mono',monospace;color: {{ t.ink2 }}"><span style="color: {{ t.buy }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path><path d="M4 22h16"></path><path d="M10 14.7V17c0 .6-.5 1-1 1.2C7.9 18.8 7 20.2 7 22"></path><path d="M14 14.7V17c0 .6.5 1 1 1.2 1.2.6 2 2 2 3.8"></path><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path></svg></span>held</span>
+            </div>
+            <div style="display:flex;align-items:center;padding:15px 0;border-bottom:1px solid {{ t.ruleFaint }}">
+              <div style="flex:1;display:flex;flex-direction:column;gap:3px"><span style="font:500 14px 'Public Sans'">Panini Prizm · Bulls</span><span style="font:400 11px 'Roboto Mono',monospace;color: {{ t.ink3 }}">completed · 29 aug</span></div>
+              <span style="width:84px;text-align:right;font:400 13px 'Roboto Mono',monospace;color: {{ t.ink2 }}">$180</span>
+              <span style="width:84px;text-align:right;font:500 13px 'Roboto Mono',monospace">$95</span>
+              <span style="width:84px;text-align:right;font:500 12px 'Roboto Mono',monospace;color: {{ t.pass }}">pass</span>
+              <span style="width:84px;display:flex;align-items:center;justify-content:flex-end;gap:6px;font:400 12px 'Roboto Mono',monospace;color: {{ t.ink2 }}"><span style="color: {{ t.buy }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path><path d="M4 22h16"></path><path d="M10 14.7V17c0 .6-.5 1-1 1.2C7.9 18.8 7 20.2 7 22"></path><path d="M14 14.7V17c0 .6.5 1 1 1.2 1.2.6 2 2 2 3.8"></path><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path></svg></span>held</span>
+            </div>
+            <div style="display:flex;align-items:center;padding:15px 0;border-bottom:1px solid {{ t.ruleFaint }}">
+              <div style="flex:1;display:flex;flex-direction:column;gap:3px"><span style="font:500 14px 'Public Sans'">Topps Series 2 · Dodgers</span><span style="font:400 11px 'Roboto Mono',monospace;color: {{ t.ink3 }}">completed · 21 aug</span></div>
+              <span style="width:84px;text-align:right;font:400 13px 'Roboto Mono',monospace;color: {{ t.ink2 }}">$400</span>
+              <span style="width:84px;text-align:right;font:500 13px 'Roboto Mono',monospace">$385</span>
+              <span style="width:84px;text-align:right;font:500 12px 'Roboto Mono',monospace;color: {{ t.hold }}">hold</span>
+              <span style="width:84px;display:flex;align-items:center;justify-content:flex-end;gap:6px;font:400 12px 'Roboto Mono',monospace;color: {{ t.ink2 }}"><span style="color: {{ t.hold }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><circle cx="12" cy="12" r="10"></circle><path d="M8 15h8M9 9h.01M15 9h.01"></path></svg></span>even</span>
+            </div>
+            <div style="display:flex;align-items:center;padding:15px 0;border-bottom:1px solid {{ t.ruleFaint }}">
+              <div style="flex:1;display:flex;flex-direction:column;gap:3px"><span style="font:500 14px 'Public Sans'">Bowman Chrome · Orioles</span><span style="font:400 11px 'Roboto Mono',monospace;color: {{ t.ink3 }}">pending · 12 sep</span></div>
+              <span style="width:84px;text-align:right;font:400 13px 'Roboto Mono',monospace;color: {{ t.ink2 }}">$340</span>
+              <span style="width:84px;text-align:right;font:400 13px 'Roboto Mono',monospace;color: {{ t.ink3 }}">—</span>
+              <span style="width:84px;text-align:right;font:500 12px 'Roboto Mono',monospace;color: {{ t.pass }}">pass</span>
+              <span style="width:84px;text-align:right;display:flex;justify-content:flex-end"><button style="height:28px;padding:0 11px;border-radius:5px;cursor:pointer;font:600 11px 'Public Sans';background:transparent;border:1px solid {{ t.ruleStrong }};color: {{ t.ink }}">Add</button></span>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ p_learn }}">
+        <div style="display:flex;flex-direction:column;gap:26px">
+          <div style="display:flex;flex-direction:column;gap:7px">
+            <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">performance</span>
+            <h1 style="margin:0;font:600 27px/1.2 'Public Sans';letter-spacing:-.022em">Learn</h1>
+            <p style="margin:0;font:400 14px/1.55 'Public Sans';color: {{ t.ink2 }}">Where your edge actually came from, read off your own log.</p>
+          </div>
+
+          <div style="display:flex;gap:44px;flex-wrap:wrap;padding:22px 0;border-top:1px solid {{ t.rule }};border-bottom:1px solid {{ t.rule }}">
+            <div style="display:flex;flex-direction:column;gap:7px;min-width:180px">
+              <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">saved · 30 days</span>
+              <span style="font:500 30px/1 'Roboto Mono',monospace;letter-spacing:-.03em;color: {{ t.buy }}">$3,400</span>
+              <span style="font:400 13px/1.5 'Public Sans';color: {{ t.ink2 }}">by passing on spots above value</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:7px;min-width:180px">
+              <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">calls that held</span>
+              <span style="font:500 30px/1 'Roboto Mono',monospace;letter-spacing:-.03em">11<span style="color: {{ t.ink3 }};font-size:19px"> / 14</span></span>
+              <span style="font:400 13px/1.5 'Public Sans';color: {{ t.ink2 }}">matched what the spot returned</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:7px;min-width:180px">
+              <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">overpay avoided</span>
+              <span style="font:500 30px/1 'Roboto Mono',monospace;letter-spacing:-.03em">31%</span>
+              <span style="font:400 13px/1.5 'Public Sans';color: {{ t.ink2 }}">average on spots you walked from</span>
+            </div>
+          </div>
+
+          <div style="display:flex;gap:36px;flex-wrap:wrap;align-items:flex-start">
+            <div style="flex:1;min-width:360px;display:flex;flex-direction:column;gap:16px">
+              <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">return by format</span>
+              <div style="display:flex;flex-direction:column;gap:11px">
+                <div style="display:flex;justify-content:space-between;font:400 13px 'Public Sans'"><span>Baseball · pick-your-team</span><span style="font-family:'Roboto Mono',monospace;color: {{ t.buy }}">+18%</span></div>
+                <div style="height:3px;background: {{ t.rule }}"><div style="height:100%;width:72%;background: {{ t.buy }}"></div></div>
+                <div style="display:flex;justify-content:space-between;font:400 13px 'Public Sans'"><span>Baseball · team</span><span style="font-family:'Roboto Mono',monospace;color: {{ t.buy }}">+6%</span></div>
+                <div style="height:3px;background: {{ t.rule }}"><div style="height:100%;width:40%;background: {{ t.buy }}"></div></div>
+                <div style="display:flex;justify-content:space-between;font:400 13px 'Public Sans'"><span>Basketball · random</span><span style="font-family:'Roboto Mono',monospace;color: {{ t.pass }}">−24%</span></div>
+                <div style="height:3px;background: {{ t.rule }}"><div style="height:100%;width:55%;background: {{ t.pass }}"></div></div>
+              </div>
+              <div style="height:150px;border:1px dashed {{ t.ruleStrong }};border-radius:8px;display:flex;align-items:center;justify-content:center;text-align:center;padding:14px;font:400 11px/1.5 'Roboto Mono',monospace;color: {{ t.ink3 }}">chart placeholder<br>spend vs. returned value by month</div>
+            </div>
+            <div style="width:290px;flex:none;display:flex;flex-direction:column;gap:12px">
+              <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">read of your log</span>
+              <span style="font:400 18px/1.45 'Public Sans'">You beat value on baseball pick-your-team and overpay on basketball randoms.</span>
+              <span style="font:400 14px/1.6 'Public Sans';color: {{ t.ink2 }}">Your wins cluster on Bowman Chrome PYT spots under $230. Above that, the record says walk.</span>
+              <button onClick="{{ goResearch }}" style="align-self:flex-start;height:36px;padding:0 15px;border-radius:6px;cursor:pointer;font:600 12px 'Public Sans';background:transparent;border:1px solid {{ t.ruleStrong }};color: {{ t.ink }};margin-top:4px">Value a spot</button>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+
+  <div style="width:382px;flex:none;display:flex;flex-direction:column;gap:11px">
+    <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">same four, mobile</span>
+    <div style="height:780px;border-radius:30px;padding:7px;border:1px solid {{ t.ruleStrong }};background: {{ t.panel }}">
+      <div style="height:100%;border-radius:24px;overflow:hidden;display:flex;flex-direction:column;background: {{ t.bg }}">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 20px 6px;flex:none">
+          <span style="font:500 12px 'Roboto Mono',monospace">9:41</span>
+          <span style="width:15px;height:8px;border:1px solid {{ t.ink3 }};border-radius:2px"></span>
+        </div>
+
+        <div style="flex:1;min-height:0;overflow-y:auto;padding:10px 18px 18px;display:flex;flex-direction:column;gap:16px">
+          <sc-if value="{{ p_home }}" hint-placeholder-val="{{ true }}">
+            <div style="display:flex;flex-direction:column;gap:16px">
+              <div style="display:flex;flex-direction:column;gap:13px;padding-bottom:16px;border-bottom:1px solid {{ t.rule }}">
+                <div style="display:flex;flex-direction:column;gap:5px">
+                  <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">sunday · 14 september</span>
+                  <h2 style="margin:0;font:600 22px/1.2 'Public Sans';letter-spacing:-.022em">Start here</h2>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:7px">
+                  <span style="display:flex;align-items:center;gap:9px;color: {{ t.ink }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1"></rect><path d="M8 11h8M8 15h5"></path></svg><span style="font:600 14px/1.4 'Public Sans'">Log a break you bought into</span></span>
+                  <span style="font:400 12.5px/1.5 'Public Sans';color: {{ t.ink2 }}">2 purchases still need results. Logging sharpens every number here.</span>
+                  <button onClick="{{ goLog }}" style="align-self:flex-start;height:36px;padding:0 14px;margin-top:2px;border-radius:6px;border:none;background: {{ t.btnBg }};color: {{ t.btnFg }};cursor:pointer;font:600 12px 'Public Sans'">Log now</button>
+                </div>
+              </div>
+              <button onClick="{{ goResearch }}" style="display:flex;align-items:center;gap:13px;width:100%;text-align:left;padding:15px 2px;background:none;border:none;border-bottom:1px solid {{ t.ruleFaint }};cursor:pointer;color: {{ t.ink }}">
+                <span style="color: {{ t.accent }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9Z"></path><path d="M19 15l.7 1.8L21.5 18l-1.8.7L19 20.5l-.7-1.8L16.5 18l1.8-.7Z"></path></svg></span>
+                <span style="flex:1;display:flex;flex-direction:column;gap:2px">
+                  <span style="font:600 15px/1.35 'Public Sans'">Value a spot</span>
+                  <span style="font:400 12.5px/1.45 'Public Sans';color: {{ t.ink2 }}">Know the fair price before you commit</span>
+                </span>
+                <span style="color: {{ t.ink3 }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="m9 18 6-6-6-6"></path></svg></span>
+              </button>
+              <button onClick="{{ goLearn }}" style="display:flex;align-items:center;gap:13px;width:100%;text-align:left;padding:15px 2px;background:none;border:none;border-bottom:1px solid {{ t.ruleFaint }};cursor:pointer;color: {{ t.ink }}">
+                <span style="color: {{ t.buy }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="m22 7-8.5 8.5-5-5L2 17"></path><path d="M16 7h6v6"></path></svg></span>
+                <span style="flex:1;display:flex;flex-direction:column;gap:2px">
+                  <span style="font:600 15px/1.35 'Public Sans'">See your patterns</span>
+                  <span style="font:400 12.5px/1.45 'Public Sans';color: {{ t.ink2 }}">$3,400 saved in 30 days · 11 of 14 held</span>
+                </span>
+                <span style="color: {{ t.ink3 }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="m9 18 6-6-6-6"></path></svg></span>
+              </button>
+
+              <div style="display:flex;flex-direction:column;gap:6px;padding:14px 0;border-top:1px solid {{ t.rule }};border-bottom:1px solid {{ t.rule }}">
+                <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.accent }}">pick up · stale 3 days</span>
+                <span style="font:500 15px/1.4 'Public Sans'">Bowman Chrome PYT — Orioles value moved $18</span>
+                <button onClick="{{ goResearch }}" style="align-self:flex-start;height:32px;padding:0 12px;margin-top:4px;border-radius:5px;cursor:pointer;font:600 12px 'Public Sans';background:transparent;border:1px solid {{ t.ruleStrong }};color: {{ t.ink }}">Re-value</button>
+              </div>
+
+              <div style="display:flex;flex-direction:column">
+                <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid {{ t.ruleFaint }}">
+                  <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+                    <span style="font:500 14px/1.3 'Public Sans'">Bowman Chrome · Orioles</span>
+                    <span style="font:400 11px 'Roboto Mono',monospace;color: {{ t.ink3 }}">$340 ask · $215 value</span>
+                  </div>
+                  <span style="font:500 12px 'Roboto Mono',monospace;color: {{ t.pass }}">pass</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid {{ t.ruleFaint }}">
+                  <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+                    <span style="font:500 14px/1.3 'Public Sans'">Bowman Chrome · Braves</span>
+                    <span style="font:400 11px 'Roboto Mono',monospace;color: {{ t.ink3 }}">$210 ask · $265 value</span>
+                  </div>
+                  <span style="font:500 12px 'Roboto Mono',monospace;color: {{ t.buy }}">buy</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid {{ t.ruleFaint }}">
+                  <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+                    <span style="font:500 14px/1.3 'Public Sans'">Topps Chrome · Dodgers</span>
+                    <span style="font:400 11px 'Roboto Mono',monospace;color: {{ t.ink3 }}">$400 ask · $385 value</span>
+                  </div>
+                  <span style="font:500 12px 'Roboto Mono',monospace;color: {{ t.hold }}">hold</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid {{ t.ruleFaint }}">
+                  <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px">
+                    <span style="font:500 14px/1.3 'Public Sans';color: {{ t.ink2 }}">Topps Update · Yankees</span>
+                    <span style="font:400 11px 'Roboto Mono',monospace;color: {{ t.ink3 }}">pre-release · estimate only</span>
+                  </div>
+                  <span style="font:500 12px 'Roboto Mono',monospace;color: {{ t.ink3 }}">est</span>
+                </div>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:7px">
+                <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">awaiting results · 2</span>
+                <span style="font:500 14px 'Public Sans'">Orioles · Bowman · paid $340</span>
+                <button onClick="{{ goLog }}" style="align-self:flex-start;height:34px;padding:0 13px;border-radius:5px;cursor:pointer;font:600 12px 'Public Sans';background:transparent;border:1px solid {{ t.ruleStrong }};color: {{ t.ink }}">Add results</button>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ p_research }}">
+            <div style="display:flex;flex-direction:column;gap:16px">
+              <div style="display:flex;flex-direction:column;gap:5px">
+                <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">slot valuation</span>
+                <h2 style="margin:0;font:600 20px/1.25 'Public Sans';letter-spacing:-.022em">Orioles · Bowman Chrome</h2>
+                <span style="font:400 13px/1.5 'Public Sans';color: {{ t.ink2 }}">12-box pyt · asking $340</span>
+              </div>
+              <div style="display:flex;gap:26px;padding:16px 0;border-top:1px solid {{ t.rule }};border-bottom:1px solid {{ t.rule }}">
+                <div style="display:flex;flex-direction:column;gap:7px">
+                  <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">verdict</span>
+                  <span style="font:700 21px/1 'Public Sans';letter-spacing:.02em;color: {{ t.pass }}">PASS</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:7px">
+                  <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">fair value</span>
+                  <span style="font:500 24px/1 'Roboto Mono',monospace;letter-spacing:-.03em">$215</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:7px">
+                  <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">premium</span>
+                  <span style="font:500 24px/1 'Roboto Mono',monospace;letter-spacing:-.03em;color: {{ t.pass }}">+58%</span>
+                </div>
+              </div>
+              <div style="display:flex;flex-direction:column">
+                <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }};padding-bottom:12px">method</span>
+                <div style="display:flex;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid {{ t.ruleFaint }}"><span style="font:400 13px 'Public Sans'">Sold comps · median $206</span><span style="font:400 12px 'Roboto Mono',monospace;color: {{ t.ink2 }}">44%</span></div>
+                <div style="display:flex;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid {{ t.ruleFaint }}"><span style="font:400 13px 'Public Sans'">Prospects · Basallo #14</span><span style="font:400 12px 'Roboto Mono',monospace;color: {{ t.ink2 }}">26%</span></div>
+                <div style="display:flex;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid {{ t.ruleFaint }}"><span style="font:400 13px 'Public Sans'">Hit rate · 1.4 numbered</span><span style="font:400 12px 'Roboto Mono',monospace;color: {{ t.ink2 }}">18%</span></div>
+                <div style="display:flex;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid {{ t.ruleFaint }};border-bottom:1px solid {{ t.ruleFaint }}"><span style="font:400 13px 'Public Sans'">Analyst · Kyle, 2d</span><span style="font:400 12px 'Roboto Mono',monospace;color: {{ t.ink2 }}">12%</span></div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">cheaper spot, same product</span>
+                <div style="display:flex;justify-content:space-between;align-items:baseline;padding:11px 0;border-top:1px solid {{ t.ruleFaint }}">
+                  <span style="font:500 14px 'Public Sans'">Atlanta Braves</span>
+                  <span style="font:400 13px 'Roboto Mono',monospace;color: {{ t.ink2 }}">$210 <span style="color: {{ t.buy }}">buy</span></span>
+                </div>
+              </div>
+              <button style="height:46px;border:none;border-radius:7px;cursor:pointer;font:600 14px 'Public Sans';background: {{ t.btnBg }};color: {{ t.btnFg }}"><span style="display:flex;align-items:center;gap:7px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9Z"></path><path d="M19 15l.7 1.8L21.5 18l-1.8.7L19 20.5l-.7-1.8L16.5 18l1.8-.7Z"></path></svg>Value another spot</span></button>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ p_log }}">
+            <div style="display:flex;flex-direction:column;gap:16px">
+              <h2 style="margin:0;font:600 22px/1.2 'Public Sans';letter-spacing:-.022em">Log</h2>
+              <div style="display:flex;flex-direction:column;gap:6px;padding:14px 0;border-top:1px solid {{ t.rule }};border-bottom:1px solid {{ t.rule }}">
+                <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.accent }}">pending · 2</span>
+                <span style="font:500 15px/1.4 'Public Sans'">Bowman Chrome · Orioles · $340</span>
+                <button style="align-self:flex-start;height:34px;padding:0 13px;margin-top:4px;border-radius:5px;cursor:pointer;font:600 12px 'Public Sans';background:transparent;border:1px solid {{ t.ruleStrong }};color: {{ t.ink }}">Add results</button>
+              </div>
+              <div style="display:flex;gap:30px">
+                <div style="display:flex;flex-direction:column;gap:5px"><span style="font:400 10px 'Roboto Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color: {{ t.ink3 }}">spent</span><span style="font:500 19px 'Roboto Mono',monospace">$2,840</span></div>
+                <div style="display:flex;flex-direction:column;gap:5px"><span style="font:400 10px 'Roboto Mono',monospace;letter-spacing:.12em;text-transform:uppercase;color: {{ t.ink3 }}">net</span><span style="font:500 19px 'Roboto Mono',monospace;color: {{ t.buy }}">+$265</span></div>
+              </div>
+              <div style="display:flex;flex-direction:column">
+                <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }};padding-bottom:11px">history</span>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-top:1px solid {{ t.ruleFaint }}">
+                  <div style="display:flex;flex-direction:column;gap:2px"><span style="font:500 14px 'Public Sans'">Topps · Braves</span><span style="font:400 11px 'Roboto Mono',monospace;color: {{ t.ink3 }}">$210 → $330</span></div>
+                  <span style="font:500 14px 'Roboto Mono',monospace;color: {{ t.buy }}">+$120</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-top:1px solid {{ t.ruleFaint }};border-bottom:1px solid {{ t.ruleFaint }}">
+                  <div style="display:flex;flex-direction:column;gap:2px"><span style="font:500 14px 'Public Sans'">Prizm · Bulls</span><span style="font:400 11px 'Roboto Mono',monospace;color: {{ t.ink3 }}">$180 → $95</span></div>
+                  <span style="font:500 14px 'Roboto Mono',monospace;color: {{ t.pass }}">−$85</span>
+                </div>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ p_learn }}">
+            <div style="display:flex;flex-direction:column;gap:16px">
+              <h2 style="margin:0;font:600 22px/1.2 'Public Sans';letter-spacing:-.022em">Learn</h2>
+              <div style="display:flex;flex-direction:column;gap:6px;padding:16px 0;border-top:1px solid {{ t.rule }};border-bottom:1px solid {{ t.rule }}">
+                <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">saved · 30 days</span>
+                <span style="font:500 28px/1 'Roboto Mono',monospace;letter-spacing:-.03em;color: {{ t.buy }}">$3,400</span>
+                <span style="font:400 13px/1.5 'Public Sans';color: {{ t.ink2 }}">by passing on spots above value</span>
+              </div>
+              <span style="font:400 17px/1.45 'Public Sans'">You beat value on baseball pick-your-team and overpay on basketball randoms.</span>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <div style="display:flex;justify-content:space-between;font:400 13px 'Public Sans'"><span>Baseball · pyt</span><span style="font-family:'Roboto Mono',monospace;color: {{ t.buy }}">+18%</span></div>
+                <div style="height:3px;background: {{ t.rule }}"><div style="height:100%;width:72%;background: {{ t.buy }}"></div></div>
+                <div style="display:flex;justify-content:space-between;font:400 13px 'Public Sans'"><span>Basketball · random</span><span style="font-family:'Roboto Mono',monospace;color: {{ t.pass }}">−24%</span></div>
+                <div style="height:3px;background: {{ t.rule }}"><div style="height:100%;width:55%;background: {{ t.pass }}"></div></div>
+              </div>
+              <div style="height:120px;border:1px dashed {{ t.ruleStrong }};border-radius:8px;display:flex;align-items:center;justify-content:center;text-align:center;padding:12px;font:400 10px/1.5 'Roboto Mono',monospace;color: {{ t.ink3 }}">chart placeholder<br>spend vs. returned value</div>
+            </div>
+          </sc-if>
+        </div>
+
+        <div style="flex:none;display:flex;padding:8px 6px 12px;border-top:1px solid {{ t.rule }}">
+          <button onClick="{{ goHome }}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;background:none;border:none;cursor:pointer;padding:6px 0;font:600 11px 'Public Sans';color: {{ n.homeFg }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><path d="M9 22V12h6v10"></path></svg>Home</button>
+          <button onClick="{{ goResearch }}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;background:none;border:none;cursor:pointer;padding:6px 0;font:600 11px 'Public Sans';color: {{ n.researchFg }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9Z"></path><path d="M19 15l.7 1.8L21.5 18l-1.8.7L19 20.5l-.7-1.8L16.5 18l1.8-.7Z"></path></svg>Research</button>
+          <button onClick="{{ goLog }}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;background:none;border:none;cursor:pointer;padding:6px 0;font:600 11px 'Public Sans';color: {{ n.logFg }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1"></rect><path d="M8 11h8M8 15h5"></path></svg>Log</button>
+          <button onClick="{{ goLearn }}" style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;background:none;border:none;cursor:pointer;padding:6px 0;font:600 11px 'Public Sans';color: {{ n.learnFg }}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="m22 7-8.5 8.5-5-5L2 17"></path><path d="M16 7h6v6"></path></svg>Learn</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isOnb }}">
+<div style="width:100%;max-width:1580px;display:flex;flex-direction:column;align-items:center;gap:16px">
+  <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center">
+    <button onClick="{{ step1 }}" style="font:600 12px 'Public Sans';padding:8px 13px;border-radius:6px;cursor:pointer;border:1px solid {{ t.rule }};background: {{ s.b1 }};color: {{ s.f1 }}">1 · Gate</button>
+    <button onClick="{{ step2 }}" style="font:600 12px 'Public Sans';padding:8px 13px;border-radius:6px;cursor:pointer;border:1px solid {{ t.rule }};background: {{ s.b2 }};color: {{ s.f2 }}">2 · One question</button>
+    <button onClick="{{ step3 }}" style="font:600 12px 'Public Sans';padding:8px 13px;border-radius:6px;cursor:pointer;border:1px solid {{ t.rule }};background: {{ s.b3 }};color: {{ s.f3 }}">3 · Try it</button>
+    <button onClick="{{ step4 }}" style="font:600 12px 'Public Sans';padding:8px 13px;border-radius:6px;cursor:pointer;border:1px solid {{ t.rule }};background: {{ s.b4 }};color: {{ s.f4 }}">4 · Payoff</button>
+    <button onClick="{{ step5 }}" style="font:600 12px 'Public Sans';padding:8px 13px;border-radius:6px;cursor:pointer;border:1px solid {{ t.rule }};background: {{ s.b5 }};color: {{ s.f5 }}">5 · Plan</button>
+  </div>
+
+  <div style="width:382px;height:780px;border-radius:30px;padding:7px;border:1px solid {{ t.ruleStrong }};background: {{ t.panel }}">
+    <div style="height:100%;border-radius:24px;overflow:hidden;display:flex;flex-direction:column;background: {{ t.bg }}">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:13px 20px 6px;flex:none">
+        <span style="font:500 12px 'Roboto Mono',monospace">9:41</span>
+        <span style="width:15px;height:8px;border:1px solid {{ t.ink3 }};border-radius:2px"></span>
+      </div>
+      <div style="flex:1;min-height:0;overflow-y:auto;padding:18px 22px 26px;display:flex;flex-direction:column">
+
+        <sc-if value="{{ o1 }}" hint-placeholder-val="{{ true }}">
+          <div style="display:flex;flex-direction:column;gap:14px;flex:1">
+            <span style="display:inline-flex;align-items:center;gap:9px;margin-top:24px">
+              <img src="public/brand/icon-gradient.svg" alt="" width="28" height="28" style="width:28px;height:28px;border-radius:7px">
+              <img src="public/brand/wordmark.svg" alt="BreakIQ" style="height:15px;width:auto;filter: {{ t.markFilter }}">
+            </span>
+            <h1 style="margin:26px 0 0;font:600 30px/1.2 'Public Sans';letter-spacing:-.025em;text-wrap:pretty">Know what a spot is worth before you buy it.</h1>
+            <p style="margin:0;font:400 15px/1.6 'Public Sans';color: {{ t.ink2 }}">Fair market value for any break slot, from sold comps and historical returns.</p>
+            <div style="display:flex;gap:11px;align-items:flex-start;padding:14px 0;border-top:1px solid {{ t.rule }};margin-top:10px">
+              <span style="width:17px;height:17px;border-radius:4px;flex:none;background: {{ t.btnBg }};color: {{ t.btnFg }};font:700 11px 'Public Sans';display:flex;align-items:center;justify-content:center">✓</span>
+              <span style="font:400 14px/1.45 'Public Sans'">I'm 18 or older</span>
+            </div>
+            <div style="display:flex;gap:11px;align-items:flex-start;padding:14px 0;border-top:1px solid {{ t.ruleFaint }};border-bottom:1px solid {{ t.rule }}">
+              <span style="width:17px;height:17px;border-radius:4px;flex:none;border:1px solid {{ t.ruleStrong }}"></span>
+              <span style="font:400 14px/1.45 'Public Sans';color: {{ t.ink2 }}">I agree to the <a href="#">terms</a> and <a href="#">privacy policy</a></span>
+            </div>
+            <button onClick="{{ step2 }}" style="margin-top:auto;height:50px;border:none;border-radius:7px;cursor:pointer;font:600 16px 'Public Sans';background: {{ t.btnBg }};color: {{ t.btnFg }}">Start</button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ o2 }}">
+          <div style="display:flex;flex-direction:column;gap:16px;flex:1">
+            <div style="display:flex;gap:4px"><div style="height:2px;flex:1;background: {{ t.accent }}"></div><div style="height:2px;flex:1;background: {{ t.rule }}"></div></div>
+            <h1 style="margin:12px 0 0;font:600 25px/1.25 'Public Sans';letter-spacing:-.022em">What do you buy into?</h1>
+            <p style="margin:0;font:400 14px/1.55 'Public Sans';color: {{ t.ink2 }}">Two answers, and only because they change what you see next.</p>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:6px">
+              <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">sports</span>
+              <div style="display:flex;flex-wrap:wrap;gap:7px">
+                <span style="font:600 13px 'Public Sans';padding:9px 13px;border-radius:6px;background: {{ t.btnBg }};color: {{ t.btnFg }}">Baseball</span>
+                <span style="font:500 13px 'Public Sans';padding:9px 13px;border-radius:6px;border:1px solid {{ t.ruleStrong }};color: {{ t.ink2 }}">Basketball</span>
+                <span style="font:500 13px 'Public Sans';padding:9px 13px;border-radius:6px;border:1px solid {{ t.ruleStrong }};color: {{ t.ink2 }}">Football</span>
+                <span style="font:500 13px 'Public Sans';padding:9px 13px;border-radius:6px;border:1px solid {{ t.ruleStrong }};color: {{ t.ink2 }}">Hockey</span>
+                <span style="font:500 13px 'Public Sans';padding:9px 13px;border-radius:6px;border:1px solid {{ t.ruleStrong }};color: {{ t.ink2 }}">Pokémon</span>
+              </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
+              <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">formats you take</span>
+              <div style="display:flex;flex-wrap:wrap;gap:7px">
+                <span style="font:600 13px 'Public Sans';padding:9px 13px;border-radius:6px;background: {{ t.btnBg }};color: {{ t.btnFg }}">Pick-your-team</span>
+                <span style="font:500 13px 'Public Sans';padding:9px 13px;border-radius:6px;border:1px solid {{ t.ruleStrong }};color: {{ t.ink2 }}">Pick-your-player</span>
+                <span style="font:500 13px 'Public Sans';padding:9px 13px;border-radius:6px;border:1px solid {{ t.ruleStrong }};color: {{ t.ink2 }}">Team random</span>
+              </div>
+            </div>
+            <button onClick="{{ step3 }}" style="margin-top:auto;height:50px;border:none;border-radius:7px;cursor:pointer;font:600 16px 'Public Sans';background: {{ t.btnBg }};color: {{ t.btnFg }}">Next</button>
+            <button onClick="{{ step3 }}" style="height:34px;border:none;background:none;cursor:pointer;font:500 13px 'Public Sans';color: {{ t.ink3 }}">Skip — set this later</button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ o3 }}">
+          <div style="display:flex;flex-direction:column;gap:15px;flex:1">
+            <div style="display:flex;gap:4px"><div style="height:2px;flex:1;background: {{ t.accent }}"></div><div style="height:2px;flex:1;background: {{ t.accent }}"></div></div>
+            <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }};margin-top:10px">try it on a real product</span>
+            <h1 style="margin:0;font:600 23px/1.3 'Public Sans';letter-spacing:-.022em;text-wrap:pretty">2025 Bowman Chrome, 12-box pick-your-team. Which spot would you take?</h1>
+            <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:2px">
+              <span style="font:500 13px 'Public Sans';padding:9px 13px;border-radius:6px;border:1px solid {{ t.ruleStrong }};color: {{ t.ink2 }}">Orioles</span>
+              <span style="font:600 13px 'Public Sans';padding:9px 13px;border-radius:6px;background: {{ t.btnBg }};color: {{ t.btnFg }}">Braves</span>
+              <span style="font:500 13px 'Public Sans';padding:9px 13px;border-radius:6px;border:1px solid {{ t.ruleStrong }};color: {{ t.ink2 }}">Dodgers</span>
+              <span style="font:500 13px 'Public Sans';padding:9px 13px;border-radius:6px;border:1px solid {{ t.ruleStrong }};color: {{ t.ink2 }}">Yankees</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:baseline;padding:15px 0;margin-top:6px;border-top:1px solid {{ t.rule }};border-bottom:1px solid {{ t.rule }}">
+              <span style="font:400 14px 'Public Sans';color: {{ t.ink2 }}">Typical ask for that spot</span>
+              <span style="font:500 21px 'Roboto Mono',monospace;letter-spacing:-.03em">$210</span>
+            </div>
+            <p style="margin:0;font:400 13px/1.55 'Public Sans';color: {{ t.ink3 }}">No account yet. Real product, real sold comps behind the number.</p>
+            <button onClick="{{ step4 }}" style="margin-top:auto;height:50px;border:none;border-radius:7px;cursor:pointer;font:600 16px 'Public Sans';background: {{ t.btnBg }};color: {{ t.btnFg }}">Show me the value</button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ o4 }}">
+          <div style="display:flex;flex-direction:column;gap:15px;flex:1">
+            <div style="display:flex;gap:26px;padding:18px 0;border-top:1px solid {{ t.rule }};border-bottom:1px solid {{ t.rule }}">
+              <div style="display:flex;flex-direction:column;gap:7px">
+                <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">verdict</span>
+                <span style="font:700 21px/1 'Public Sans';letter-spacing:.02em;color: {{ t.buy }}">BUY</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:7px">
+                <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">fair value</span>
+                <span style="font:500 24px/1 'Roboto Mono',monospace;letter-spacing:-.03em">$265</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:7px">
+                <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }}">under ask</span>
+                <span style="font:500 24px/1 'Roboto Mono',monospace;letter-spacing:-.03em;color: {{ t.buy }}">$55</span>
+              </div>
+            </div>
+            <p style="margin:0;font:400 15px/1.6 'Public Sans'">At a $210 ask the Braves spot sits $55 below value. That's the gap most people never see before they bid.</p>
+            <div style="display:flex;flex-direction:column;margin-top:4px">
+              <span style="font:400 10px/1 'Roboto Mono',monospace;letter-spacing:.14em;text-transform:uppercase;color: {{ t.ink3 }};padding-bottom:12px">how we got there</span>
+              <div style="display:flex;justify-content:space-between;padding:11px 0;border-top:1px solid {{ t.ruleFaint }}"><span style="font:400 13px 'Public Sans'">18 Braves spots sold, 30d</span><span style="font:400 12px 'Roboto Mono',monospace;color: {{ t.ink3 }}">44%</span></div>
+              <div style="display:flex;justify-content:space-between;padding:11px 0;border-top:1px solid {{ t.ruleFaint }}"><span style="font:400 13px 'Public Sans'">Two top-50 bats on the checklist</span><span style="font:400 12px 'Roboto Mono',monospace;color: {{ t.ink3 }}">26%</span></div>
+              <div style="display:flex;justify-content:space-between;padding:11px 0;border-top:1px solid {{ t.ruleFaint }}"><span style="font:400 13px 'Public Sans'">12-box returns 1.6 numbered</span><span style="font:400 12px 'Roboto Mono',monospace;color: {{ t.ink3 }}">18%</span></div>
+              <div style="display:flex;justify-content:space-between;padding:11px 0;border-top:1px solid {{ t.ruleFaint }};border-bottom:1px solid {{ t.ruleFaint }}"><span style="font:400 13px 'Public Sans'">Analyst note · Kyle, 2d</span><span style="font:400 12px 'Roboto Mono',monospace;color: {{ t.ink3 }}">12%</span></div>
+            </div>
+            <button onClick="{{ step5 }}" style="margin-top:auto;height:50px;border:none;border-radius:7px;cursor:pointer;font:600 16px 'Public Sans';background: {{ t.btnBg }};color: {{ t.btnFg }}">Keep going</button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ o5 }}">
+          <div style="display:flex;flex-direction:column;gap:14px;flex:1">
+            <h1 style="margin:16px 0 0;font:600 25px/1.25 'Public Sans';letter-spacing:-.022em;text-wrap:pretty">You just found $55 of edge in 20 seconds.</h1>
+            <p style="margin:0;font:400 14px/1.55 'Public Sans';color: {{ t.ink2 }}">Both options land you on your recent analyses.</p>
+            <div style="display:flex;flex-direction:column;gap:7px;padding:16px 0;margin-top:6px;border-top:1px solid {{ t.rule }}">
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <span style="font:600 14px 'Public Sans'">Free</span>
+                <span style="font:500 15px 'Roboto Mono',monospace;color: {{ t.ink2 }}">$0</span>
+              </div>
+              <span style="font:400 13.5px/1.55 'Public Sans';color: {{ t.ink2 }}">3 valuations a month. Logging and history stay open.</span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:7px;padding:16px 0;border-top:1px solid {{ t.rule }};border-bottom:1px solid {{ t.rule }}">
+              <div style="display:flex;justify-content:space-between;align-items:baseline">
+                <span style="display:flex;align-items:center;gap:7px;font:600 14px 'Public Sans';color: {{ t.crown }}"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style="flex:none"><path d="M11.6 3.3a.5.5 0 0 1 .88 0L15.4 8.9a1 1 0 0 0 1.5.3l4.3-3.7a.5.5 0 0 1 .8.5l-2.8 10.2a1 1 0 0 1-.96.8H5.8a1 1 0 0 1-.96-.8L2 6a.5.5 0 0 1 .8-.5l4.3 3.7a1 1 0 0 0 1.5-.3z"></path><path d="M5 21h14"></path></svg>Pro</span>
+                <span style="font:500 18px 'Roboto Mono',monospace;letter-spacing:-.03em">$24.99<span style="font-size:12px;color: {{ t.ink3 }}">/mo</span></span>
+              </div>
+              <span style="font:400 13.5px/1.55 'Public Sans'">Unlimited valuations, the full source trail, chase list and slab lookup.</span>
+            </div>
+            <button onClick="{{ modeApp }}" style="margin-top:auto;height:50px;border:none;border-radius:7px;cursor:pointer;font:600 16px 'Public Sans';background: {{ t.btnBg }};color: {{ t.btnFg }}">Go Pro</button>
+            <button onClick="{{ modeApp }}" style="height:46px;border-radius:7px;cursor:pointer;font:600 15px 'Public Sans';background:transparent;border:1px solid {{ t.ruleStrong }};color: {{ t.ink }}">Start free</button>
+          </div>
+        </sc-if>
+      </div>
+    </div>
+  </div>
+</div>
+</sc-if>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1620,&quot;height&quot;:900},&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Dark&quot;,&quot;Light&quot;],&quot;default&quot;:&quot;Dark&quot;,&quot;tsType&quot;:&quot;'Dark' | 'Light'&quot;,&quot;section&quot;:&quot;Theme&quot;},&quot;planTier&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Free&quot;,&quot;Pro&quot;],&quot;default&quot;:&quot;Free&quot;,&quot;tsType&quot;:&quot;'Free' | 'Pro'&quot;,&quot;section&quot;:&quot;Behavior&quot;},&quot;showNextAction&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Behavior&quot;}}">
+class Component extends DCLogic {
+  state = { phase: 'home', rtab: 'value', mode: 'app', step: 1, theme: null };
+  renderVals() {
+    const dark = {
+      bg: '#101215', panel: '#14171b', subtle: '#171b20',
+      rule: '#22262c', ruleFaint: '#1a1e23', ruleStrong: '#2e343c',
+      ink: '#e6e8ea', ink2: '#8b9099', ink3: '#5f656d',
+      accent: '#7fa8c9', buy: '#6f9e7d', hold: '#a89060', pass: '#c2705f',
+      btnBg: '#e6e8ea', btnFg: '#101215', sel: '#1c2126', crown: '#c9a227', markFilter: 'invert(1)',
+    };
+    const light = {
+      bg: '#fbfaf8', panel: '#ffffff', subtle: '#f5f4f1',
+      rule: '#e3e1dc', ruleFaint: '#ededea', ruleStrong: '#cfccc5',
+      ink: '#16181c', ink2: '#5f656d', ink3: '#8b9099',
+      accent: '#33628c', buy: '#2f6b43', hold: '#8a6a1f', pass: '#9c2f22',
+      btnBg: '#16181c', btnFg: '#fbfaf8', sel: '#f0eeea', crown: '#8a6a1f', markFilter: 'none',
+    };
+    const themeName = this.state.theme ?? this.props.theme ?? 'Dark';
+    const isDark = themeName !== 'Light';
+    const base = isDark ? dark : light;
+    const p = this.state.phase, m = this.state.mode, st = this.state.step, rt = this.state.rtab;
+    const set = (k, v) => () => this.setState({ [k]: v });
+    const tier = this.props.planTier ?? 'Free';
+
+    const t = Object.assign({}, base, {
+      darkBg: isDark ? base.btnBg : 'transparent', darkFg: isDark ? base.btnFg : base.ink2,
+      lightBg: isDark ? 'transparent' : base.btnBg, lightFg: isDark ? base.ink2 : base.btnFg,
+      appBg: m === 'app' ? base.btnBg : 'transparent', appFg: m === 'app' ? base.btnFg : base.ink2,
+      onbBg: m === 'app' ? 'transparent' : base.btnBg, onbFg: m === 'app' ? base.ink2 : base.btnFg,
+    });
+
+    const nav = {};
+    for (const k of ['home', 'research', 'log', 'learn']) {
+      nav[k + 'Bg'] = p === k ? base.sel : 'transparent';
+      nav[k + 'Fg'] = p === k ? base.ink : base.ink2;
+    }
+
+    const s = {};
+    for (let i = 1; i <= 5; i++) {
+      s['b' + i] = st === i ? base.btnBg : 'transparent';
+      s['f' + i] = st === i ? base.btnFg : base.ink2;
+    }
+
+    return {
+      t, n: nav, s,
+      p_home: p === 'home', p_research: p === 'research', p_log: p === 'log', p_learn: p === 'learn',
+      r_value: p === 'research' && rt === 'value', r_recent: p === 'research' && rt === 'recent',
+      rt: {
+        valueLine: rt === 'value' ? base.ink : 'transparent', valueInk: rt === 'value' ? base.ink : base.ink2,
+        recentLine: rt === 'recent' ? base.ink : 'transparent', recentInk: rt === 'recent' ? base.ink : base.ink2,
+      },
+      goHome: set('phase', 'home'),
+      goResearch: () => this.setState({ phase: 'research', rtab: 'value' }),
+      goRecent: () => this.setState({ phase: 'research', rtab: 'recent' }),
+      goLog: set('phase', 'log'), goLearn: set('phase', 'learn'),
+      isApp: m === 'app', isOnb: m === 'onboarding',
+      modeApp: set('mode', 'app'), modeOnb: set('mode', 'onboarding'),
+      setDark: set('theme', 'Dark'), setLight: set('theme', 'Light'),
+      o1: st === 1, o2: st === 2, o3: st === 3, o4: st === 4, o5: st === 5,
+      step1: set('step', 1), step2: set('step', 2), step3: set('step', 3),
+      step4: set('step', 4), step5: set('step', 5),
+      showNext: this.props.showNextAction ?? true,
+      planLabel: tier === 'Pro' ? 'pro plan' : 'free plan',
+      planDetail: tier === 'Pro' ? 'Unlimited valuations' : '1 of 3 valuations left',
+      planBar: tier === 'Pro' ? '100%' : '33%',
+    };
+  }
+}
+</script>
+</body>
+</html>
