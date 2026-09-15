@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { ClipboardList, Sparkles, ChevronRight } from 'lucide-react';
 import { getCurrentUserFromSession } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
+import { getActiveProducts } from '@/lib/active-products';
+import QuickValue from './QuickValue';
 
 /**
  * Home — the routing surface from the 2026-09-15 UX rethink handoff.
@@ -81,6 +83,10 @@ export default async function HomePage() {
     pending = pendingCount ?? 0;
   }
 
+  // Shared cache entry with Research — no extra DB hit.
+  const { products } = await getActiveProducts();
+  const pickerProducts = products.map(p => ({ id: p.id, name: p.name, year: p.year ?? null }));
+
   const dateLabel = new Date()
     .toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long' })
     .replace(',', ' ·')
@@ -131,6 +137,14 @@ export default async function HomePage() {
             Log now
           </Link>
         </div>
+      </div>
+
+      {/* Desktop only: the rail already routes to Research and Breaks, so a Home
+          that only routes duplicates it — which is why desktop Home read as
+          empty. Give it a job the rail can't do: start a valuation. Mobile keeps
+          the stacked launcher, which works because the tab bar is terse icons. */}
+      <div className="hidden lg:block mt-[26px]">
+        <QuickValue products={pickerProducts} />
       </div>
 
       {/* Body */}
