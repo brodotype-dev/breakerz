@@ -1,9 +1,43 @@
 # UX rethink — phased build plan
 
-**Status:** 📋 Plan only, nothing built.
-**Revised 2026-09-15** after Brody scoped this to **UI/UX only — where the design conflicts with
-current code, current code wins.** That constraint removes roughly half the designed surfaces;
-this revision says exactly which, and why.
+**Status:** ✅ **Phases 1–5 shipped 2026-09-15** (PRs #237–#242). Phase 6 (onboarding) not built —
+see [What shipped](#what-shipped). Learn remains unscheduled and out of the nav, as planned.
+**Scoped UI/UX only — where the design conflicts with current code, current code wins.**
+That constraint removed roughly half the designed surfaces; this plan says exactly which, and why.
+
+## What shipped
+
+| Phase | PR | Outcome |
+| --- | --- | --- |
+| 1 · Design foundation | #237 | ✅ Public Sans + Roboto Mono; handoff palette added and the existing `--terminal-*`/`--text-*`/`--signal-*` names **re-pointed** at it (~93 files inherit untouched); gradients flattened, glows → `none`; light palette defined |
+| 2 · Nav + IA + Home | #238 | ✅ Desktop 196px rail + mobile tab bar; `/` → Home; product grid → `/breaks`; **Learn's dead slot filled with Breaks** |
+| 3 · Research | #239 | ✅ Verdict band (ruled three-field, not a filled card); `signalLabel()` WATCH→HOLD; **262 hardcoded saturated `rgba()` swept across 52 files** |
+| 4 · Verdict consistency | #240 | ✅ Finished the HOLD mapping on the three surfaces P3 missed |
+| 5 · Mobile reachability | #241 | ✅ Regression fix — the 4-item bar had orphaned Slabs/Chase/Profile/Admin/**sign-out** on mobile |
+| 6 · Shell height + docs | #242 | ✅ Mobile dead-scroll fix; this status |
+
+### Not built, and why
+
+- **Log's table restyle.** Its key column (*Returned*) derives from data that doesn't exist, and
+  `my-breaks/page.tsx` is 1,756 lines that can't be visually verified from here (auth-gated). A
+  blind restyle there is the likeliest place to break something. Only the verdict-label fix landed.
+- **Phase 6 onboarding as designed.** The valuable idea — *one real valuation before the paywall* —
+  requires running a live valuation inside onboarding. That's new behaviour, not a re-skin, so it
+  falls outside the scope. Restyling alone was already delivered by Phase 1's tokens.
+- **Learn, Recent valuations, Home's pickup block, stale markers.** Blocked on the three data
+  dependencies below. Unchanged.
+
+### Follow-ups this work created
+
+1. **The light theme has no switch.** The palette works via `[data-theme="light"]` but nothing sets
+   it. A toggle (or system-preference wiring) is a small, separate decision — see Decision 3.
+2. **Hex literals were deliberately left saturated.** The `rgba()` sweep was safe; a hex sweep was
+   not, because the sport keys (`#3b82f6`/`#f97316`/`#22c55e`) are intentionally saturated identity
+   colors that share values with the old signal colors. Any remaining off-palette hex needs
+   case-by-case review.
+3. **Nothing auth-gated was visually verified.** Preview deployments sit behind Vercel SSO and
+   consumer routes need a session, so Home, the rail, Research and Log were verified by build +
+   type-check + routing behaviour only. **Worth a human pass.**
 
 Design source: [docs/design/2026-09-15-ux-rethink-handoff/](../design/2026-09-15-ux-rethink-handoff/README.md).
 

@@ -375,3 +375,20 @@ html {
   );
   background-size: 1000px 100%;
 }
+
+
+/* ── Consumer shell height correction ────────────────────────────
+   The consumer layout pads its content by the height of the fixed mobile
+   tab bar so the bar can't cover the end of a page. Eight consumer pages
+   set `min-h-screen` on their own root, though, and 100vh + 72px of
+   padding leaves every short page with ~72px of dead scroll.
+
+   Correcting it here — one scoped rule — rather than editing those eight
+   pages, which the UI-only scope would rather leave alone. Desktop is
+   unaffected: the rail is a left offset, not a vertical one. */
+@media (max-width: 1023px) {
+  .consumer-shell .min-h-screen {
+    min-height: calc(100vh - 72px);
+    min-height: calc(100dvh - 72px);
+  }
+}
