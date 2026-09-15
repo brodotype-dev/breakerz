@@ -115,7 +115,7 @@ function BreakHero({ product }: { product: ProductWithSport }) {
 
       <div className="relative px-4 sm:px-6 py-4 sm:py-6">
         {/* Back nav */}
-        <Link href="/">
+        <Link href="/breaks">
           <button
             className="flex items-center gap-2 text-xs font-semibold mb-3 sm:mb-5 px-3 py-1.5 rounded-lg transition-opacity hover:opacity-70"
             style={{ color: 'white', backgroundColor: 'rgba(255,255,255,0.15)' }}
