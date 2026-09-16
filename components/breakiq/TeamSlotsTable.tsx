@@ -2,15 +2,12 @@
 
 import { useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import posthog from 'posthog-js';
-import { formatCurrency, computeSignal, formatPct, computeEffectiveScore } from '@/lib/engine';
-import SignalBadge from '@/components/breakiq/SignalBadge';
+import { formatCurrency, computeEffectiveScore } from '@/lib/engine';
 import { IconPlayerBadge, BullishBadge, BearishBadge, HighVolatilityBadge, RiskFlagBadge } from '@/components/breakiq/SocialBadges';
 import PricingFeedback from '@/components/breakiq/PricingFeedback';
 import { ProspectRankChip, ProspectRankKey } from '@/components/breakiq/ds';
 import { compositionSimilarity, recencyWeight, renderComposition } from '@/lib/observation-ranking';
 import { compressionMarkups } from '@/lib/market-markup';
-import { PH_EVENTS } from '@/lib/posthog-events';
 import type { AskingPriceObsRow, BreakFormat, SlotComposition, TeamSlot } from '@/lib/types';
 
 type RiskFlagEntry = { flagType: string; note: string };
@@ -20,17 +17,16 @@ interface Props {
   viewFormat: BreakFormat;
   riskFlagMap?: Map<string, RiskFlagEntry[]>;
   productId?: string | null;
-  // Plan B: lifecycle-aware market markup applied to slot cost at display.
-  // 1 = no markup. computeSignal is run against the market-adjusted number.
+  // Plan B: lifecycle-aware market markup. Model value × markup = the
+  // market price a breaker should be charging. 1 = no markup.
   marketMarkup?: number;
   // Compression exponent (flag-gated). When set, the flat markup is
   // reallocated across teams (floor small, dampen big), conserving the total.
   // undefined = off. See docs/plans/2026-08-14-market-compression-markup.md.
   compressionGamma?: number;
-  // Step #3 — side-by-side comparison. Map keyed by team name to the raw
-  // asking-price observations for this product. Each row gets ranked
-  // against `targetComposition` and renders a sub-line under the team row
-  // when ≥1 ranked observation survives the composition/recency filter.
+  // Map keyed by team name to the raw asking-price observations for this
+  // product. Each row is ranked against `targetComposition` and renders a
+  // read-only sub-line under the team row — market context, not a deal check.
   askObservations?: Map<string, AskingPriceObsRow[]>;
   // Active break-config composition used to rank observations. Pass the
   // result of `configToComposition({hobby, bd, jumbo})` from the page.
@@ -91,7 +87,7 @@ function rankObservations(
 // fixed columns + gaps exceed the viewport (was happening on iPhone 16 Pro,
 // leaving only the chevron visible). The outer overflow-x-auto wrapper then
 // scrolls the full grid horizontally instead.
-const COL = 'grid-cols-[36px_minmax(140px,1fr)_160px_72px_56px_104px_88px_88px_64px]';
+const COL = 'grid-cols-[36px_minmax(140px,1fr)_72px_56px_104px_104px_88px_88px_64px]';
 
 function pickSlot(t: TeamSlot, fmt: BreakFormat) {
   return fmt === 'hobby' ? { slot: t.hobbySlotCost, perCase: t.hobbyPerCase }
@@ -110,8 +106,6 @@ export default function TeamSlotsTable({
   targetComposition,
 }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
-  const [askPrices, setAskPrices] = useState<Record<string, string>>({});
-  const showMarketMarkup = marketMarkup !== 1;
   // Per-team compression markup (flag-gated). null = off → every row uses the
   // flat marketMarkup. Shares are over the current viewFormat's model slots;
   // the total is conserved so the break's overall ask is unchanged.
@@ -150,7 +144,7 @@ export default function TeamSlotsTable({
           className={`grid ${COL} gap-3 px-4 py-2.5 border-b`}
           style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
         >
-          {['#', 'Team', 'Break Price / Signal', 'Players', 'RC', 'Slot Cost', '/Case', 'Max Pay', ''].map((h, hi) => (
+          {['#', 'Team', 'Players', 'RC', 'Model Value', 'Market Price', '/Case', 'Max Pay', ''].map((h, hi) => (
             <div key={hi} className="terminal-label">{h}</div>
           ))}
         </div>
@@ -160,17 +154,12 @@ export default function TeamSlotsTable({
           {teams.map((row, i) => {
             const isOpen = expanded.has(row.team);
             const { slot: modelSlotCost, perCase: modelPerCase } = pickSlot(row, viewFormat);
-            // Plan B: market-adjusted slot drives display + signal; model EV
-            // is shown beneath as a sub-line for transparency. rowMarkup is the
-            // per-team compressed markup when the flag is on, else the flat one.
+            // Plan B: model value is the pure engine EV; market price is that
+            // number with the breaker markup applied. rowMarkup is the per-team
+            // compressed markup when the flag is on, else the flat one.
             const rowMarkup = teamMarkups ? teamMarkups[i] : marketMarkup;
             const slotCost = modelSlotCost * rowMarkup;
             const perCase  = modelPerCase  * rowMarkup;
-            const askRaw = askPrices[row.team] ?? '';
-            const askNum = parseFloat(askRaw);
-            const dealCheck = askRaw && !isNaN(askNum) && slotCost > 0
-              ? computeSignal(slotCost, askNum)
-              : null;
 
             const teamScores = row.players.map(p =>
               computeEffectiveScore(p.buzz_score, p.breakerz_score, p.player?.is_icon ?? false)
@@ -183,15 +172,12 @@ export default function TeamSlotsTable({
             const hasHV      = row.players.some(p => p.is_high_volatility);
             const teamFlags  = row.players.flatMap(p => riskFlagMap.get(p.id) ?? []);
 
-            // Step #3 — rank observed asks for this team against the
-            // active break-config composition. Null when there are no
-            // observations or none survive the composition/recency filter.
+            // Rank observed asks for this team against the active break-config
+            // composition. Null when there are no observations or none survive
+            // the composition/recency filter.
             const teamObs = askObservations?.get(row.team) ?? [];
             const ranked = (askObservations && targetComposition && teamObs.length > 0)
               ? rankObservations(teamObs, targetComposition)
-              : null;
-            const herdDelta = (ranked && askRaw && !isNaN(askNum) && ranked.prefillPrice > 0)
-              ? ((askNum - ranked.prefillPrice) / ranked.prefillPrice) * 100
               : null;
 
             return (
@@ -225,29 +211,6 @@ export default function TeamSlotsTable({
                     </div>
                   </div>
 
-                  {/* Price input + signal */}
-                  <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
-                    <div className="relative flex-1">
-                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs font-mono" style={{ color: 'var(--text-t-tertiary)' }}>$</span>
-                      <input
-                        type="number"
-                        min="0"
-                        placeholder="0"
-                        value={askRaw}
-                        onChange={e => setAskPrices(prev => ({ ...prev, [row.team]: e.target.value }))}
-                        className="w-full pl-5 pr-2 py-1 text-xs font-mono rounded border focus:outline-none"
-                        style={{
-                          backgroundColor: 'var(--terminal-bg)',
-                          borderColor: 'var(--terminal-border-hover)',
-                          color: 'var(--text-t-primary)',
-                        }}
-                        onFocus={e => (e.target.style.borderColor = 'var(--accent-blue)')}
-                        onBlur={e => (e.target.style.borderColor = 'var(--terminal-border-hover)')}
-                      />
-                    </div>
-                    {dealCheck && <SignalBadge signal={dealCheck.signal} size="sm" valuePct={dealCheck.valuePct} />}
-                  </div>
-
                   {/* Players */}
                   <div className="flex items-center">
                     <span className="font-mono text-sm" style={{ color: 'var(--text-t-primary)' }}>{row.playerCount}</span>
@@ -262,16 +225,18 @@ export default function TeamSlotsTable({
                     )}
                   </div>
 
-                  {/* Slot cost (market-adjusted; model EV below) */}
-                  <div className="flex flex-col justify-center leading-tight">
+                  {/* Model value — pure engine EV, before breaker markup */}
+                  <div className="flex items-center">
+                    <span className="font-mono text-sm" style={{ color: 'var(--text-t-secondary)' }}>
+                      {formatCurrency(modelSlotCost)}
+                    </span>
+                  </div>
+
+                  {/* Market price — what a breaker should be charging */}
+                  <div className="flex items-center">
                     <span className="font-mono text-sm font-semibold" style={{ color: 'var(--text-t-primary)' }}>
                       {formatCurrency(slotCost)}
                     </span>
-                    {showMarketMarkup && modelSlotCost > 0 && (
-                      <span className="font-mono text-[10px]" style={{ color: 'var(--text-t-tertiary)' }}>
-                        model {formatCurrency(modelSlotCost)}
-                      </span>
-                    )}
                   </div>
 
                   {/* /Case */}
@@ -338,47 +303,6 @@ export default function TeamSlotsTable({
                         <span style={{ color: 'var(--text-t-tertiary)' }}>{ranked.compLabels.join(' / ')}</span>
                       </>
                     )}
-                    {/* "Use $X" pre-fill pill — fires PostHog + sets the
-                        team's ask input to the top-ranked observation's
-                        median price. */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAskPrices(prev => ({ ...prev, [row.team]: String(ranked.prefillPrice) }));
-                        try {
-                          posthog.capture(PH_EVENTS.observed_ask_prefilled, {
-                            product_id: productId,
-                            team: row.team,
-                            prefilled_price: ranked.prefillPrice,
-                            observation_count: ranked.count,
-                            source_type: ranked.topSourceType,
-                          });
-                        } catch { /* posthog optional */ }
-                      }}
-                      className="ml-auto px-2 py-0.5 rounded border text-[11px] font-mono transition-colors"
-                      style={{
-                        borderColor: 'var(--terminal-border-hover)',
-                        backgroundColor: 'var(--terminal-surface)',
-                        color: 'var(--accent-blue)',
-                      }}
-                      onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'var(--terminal-surface-hover)')}
-                      onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'var(--terminal-surface)')}
-                    >
-                      Use {formatCurrency(ranked.prefillPrice)}
-                    </button>
-                    {herdDelta !== null && (
-                      <span
-                        className="px-1.5 py-0.5 rounded"
-                        style={{
-                          color: Math.abs(herdDelta) < 5 ? 'var(--text-t-tertiary)'
-                            : herdDelta > 0 ? '#ef4444' : '#22c55e',
-                          backgroundColor: 'var(--terminal-surface)',
-                        }}
-                        title="Your typed ask vs. herd median"
-                      >
-                        vs herd: {formatPct(herdDelta)}
-                      </span>
-                    )}
                   </div>
                 )}
 
@@ -413,13 +337,18 @@ export default function TeamSlotsTable({
                       </div>
                       <div />
                       <div />
-                      <div />
-                      {/* Slot cost for this player (market-adjusted) */}
+                      {/* Model value / market price for this player */}
                       <div className="flex items-center">
                         <span className="font-mono text-xs" style={{ color: 'var(--text-t-tertiary)' }}>
+                          {formatCurrency(viewFormat === 'hobby' ? p.hobbySlotCost : viewFormat === 'bd' ? p.bdSlotCost : p.jumboSlotCost)}
+                        </span>
+                      </div>
+                      <div className="flex items-center">
+                        <span className="font-mono text-xs" style={{ color: 'var(--text-t-secondary)' }}>
                           {formatCurrency((viewFormat === 'hobby' ? p.hobbySlotCost : viewFormat === 'bd' ? p.bdSlotCost : p.jumboSlotCost) * rowMarkup)}
                         </span>
                       </div>
+                      {/* /Case, Max Pay, feedback — team-level only */}
                       <div />
                       <div />
                       <div />
