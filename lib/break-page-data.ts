@@ -76,6 +76,10 @@ export interface BreakPageData {
    * on the other side).
    */
   variantsByPlayerProductId: Record<string, Array<{ hobby_odds: number | null }>>;
+  /** Per-team percent change in summed card value over TREND_DAYS, from the
+   *  daily EV snapshots. Empty until the nightly refresh has written enough
+   *  history; a team missing from the map renders "—", not "0%". */
+  trendByTeam: Record<string, number>;
 }
 
 /**
@@ -90,6 +94,40 @@ export async function loadProductBySlug(slug: string): Promise<ProductWithSport 
     .eq('slug', slug)
     .maybeSingle();
   return (data as ProductWithSport | null) ?? null;
+}
+
+/** Trend window for the team-slot arrow, in days. */
+const TREND_DAYS = 7;
+
+/**
+ * Per-team percent change in summed card value, now vs TREND_DAYS ago.
+ *
+ * An RPC rather than a table read: a product can carry thousands of
+ * player_products, which would blow past PostgREST's 1000-row cap and need
+ * .in() chunking under Kong's 200-UUID limit (gotcha #11). The function
+ * aggregates server-side and returns one row per team.
+ *
+ * Never throws. Before the nightly refresh has written a week of snapshots
+ * this returns {} and every team renders "—".
+ */
+async function loadTrendByTeam(productId: string): Promise<Record<string, number>> {
+  const { data, error } = await supabaseAdmin.rpc('team_ev_trend', {
+    p_product_id: productId,
+    p_days: TREND_DAYS,
+  });
+  if (error) {
+    console.warn(`[break-page-data] team_ev_trend failed (non-fatal): ${error.message}`);
+    return {};
+  }
+  const out: Record<string, number> = {};
+  // numeric comes back as a string over PostgREST — coerce both sides.
+  for (const row of (data ?? []) as Array<{ team: string; ev_now: number | string; ev_then: number | string }>) {
+    const now = Number(row.ev_now);
+    const then = Number(row.ev_then);
+    if (!Number.isFinite(now) || !Number.isFinite(then) || then <= 0) continue;
+    out[row.team] = ((now - then) / then) * 100;
+  }
+  return out;
 }
 
 async function loadBreakPageDataRaw(product: ProductWithSport): Promise<BreakPageData> {
@@ -125,6 +163,7 @@ async function loadBreakPageDataRaw(product: ProductWithSport): Promise<BreakPag
       hypeObsRows: [],
       askingPriceObsRows: [],
       variantsByPlayerProductId: {},
+      trendByTeam: {},
     };
   }
 
@@ -132,6 +171,10 @@ async function loadBreakPageDataRaw(product: ProductWithSport): Promise<BreakPag
   // project back onto each player_product so the client keeps its ppId-keyed
   // riskFlagRecord/riskAdjMap.
   const playerIds = [...new Set(players.map(p => p.player_id))];
+
+  // Started here, awaited just before the return, so it overlaps Phase 2
+  // instead of adding a serial round trip to every break-page render.
+  const trendPromise = loadTrendByTeam(productId);
 
   // Phase 2 — 6 parallel observation/variant fetches. Same five queries that
   // the page's useEffect was firing client-side, plus the variants fetch for
@@ -279,6 +322,7 @@ async function loadBreakPageDataRaw(product: ProductWithSport): Promise<BreakPag
     hypeObsRows,
     askingPriceObsRows: (askRes.data ?? []) as AskingPriceObsRow[],
     variantsByPlayerProductId,
+    trendByTeam: await trendPromise,
   };
 }
 

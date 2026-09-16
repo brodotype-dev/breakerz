@@ -514,6 +514,31 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
         );
       }
       cacheRowsWritten += sub.length;
+
+      // Daily EV snapshot — the ONLY historical record of EV we keep.
+      // pricing_cache is keyed UNIQUE on player_product_id and overwritten
+      // every run, so without this there is nothing to compare "now" against
+      // (powers the per-team trend on /break/[slug]). One row per pp per UTC
+      // day; repeat cron firings the same day overwrite rather than duplicate.
+      // Best-effort by design: a snapshot failure must never fail a refresh.
+      const capturedOn = new Date().toISOString().slice(0, 10);
+      const snapRows = sub
+        .filter(r => Number.isFinite(r.ev_mid))
+        .map(r => ({
+          player_product_id: r.player_product_id,
+          captured_on: capturedOn,
+          ev_mid: r.ev_mid,
+        }));
+      if (snapRows.length > 0) {
+        const { error: snapErr } = await supabaseAdmin
+          .from('player_product_ev_snapshots')
+          .upsert(snapRows, { onConflict: 'player_product_id,captured_on' });
+        if (snapErr) {
+          console.warn(
+            `[pricing-refresh] ev snapshot upsert failed (non-fatal): ${snapErr.message}`,
+          );
+        }
+      }
     }
   }
   async function maybeFlush(): Promise<void> {
