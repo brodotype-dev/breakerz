@@ -1,8 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
-import { formatCurrency, computeEffectiveScore } from '@/lib/engine';
+import { ChevronDown, ChevronRight, TrendingDown, TrendingUp } from 'lucide-react';
+import { formatCurrency, formatPct, computeEffectiveScore } from '@/lib/engine';
 import { IconPlayerBadge, BullishBadge, BearishBadge, HighVolatilityBadge, RiskFlagBadge } from '@/components/breakiq/SocialBadges';
 import PricingFeedback from '@/components/breakiq/PricingFeedback';
 import { ProspectRankChip, ProspectRankKey } from '@/components/breakiq/ds';
@@ -31,6 +31,13 @@ interface Props {
   // Active break-config composition used to rank observations. Pass the
   // result of `configToComposition({hobby, bd, jumbo})` from the page.
   targetComposition?: SlotComposition;
+  // Per-team percent change in summed card value over the trend window,
+  // from the daily EV snapshots. Teams absent from the map render "—":
+  // either the product has no snapshot history yet (the table only starts
+  // filling on the first nightly refresh after deploy) or the team's
+  // players weren't priced back then. See team_ev_trend in the migration.
+  trendByTeam?: Record<string, number>;
+  trendDays?: number;
 }
 
 // Top-N ranked observations to fold into the displayed range. Beyond 5,
@@ -87,7 +94,7 @@ function rankObservations(
 // fixed columns + gaps exceed the viewport (was happening on iPhone 16 Pro,
 // leaving only the chevron visible). The outer overflow-x-auto wrapper then
 // scrolls the full grid horizontally instead.
-const COL = 'grid-cols-[36px_minmax(140px,1fr)_72px_56px_104px_104px_88px_88px_64px]';
+const COL = 'grid-cols-[36px_minmax(140px,1fr)_72px_56px_104px_104px_76px_88px_88px_64px]';
 
 function pickSlot(t: TeamSlot, fmt: BreakFormat) {
   return fmt === 'hobby' ? { slot: t.hobbySlotCost, perCase: t.hobbyPerCase }
@@ -104,6 +111,8 @@ export default function TeamSlotsTable({
   compressionGamma,
   askObservations,
   targetComposition,
+  trendByTeam,
+  trendDays = 7,
 }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   // Per-team compression markup (flag-gated). null = off → every row uses the
@@ -144,7 +153,7 @@ export default function TeamSlotsTable({
           className={`grid ${COL} gap-3 px-4 py-2.5 border-b`}
           style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}
         >
-          {['#', 'Team', 'Players', 'RC', 'Model Value', 'Market Price', '/Case', 'Max Pay', ''].map((h, hi) => (
+          {['#', 'Team', 'Players', 'RC', 'Model Value', 'Market Price', `${trendDays}d`, '/Case', 'Max Pay', ''].map((h, hi) => (
             <div key={hi} className="terminal-label">{h}</div>
           ))}
         </div>
@@ -175,6 +184,8 @@ export default function TeamSlotsTable({
             // Rank observed asks for this team against the active break-config
             // composition. Null when there are no observations or none survive
             // the composition/recency filter.
+            const trend = trendByTeam?.[row.team] ?? null;
+
             const teamObs = askObservations?.get(row.team) ?? [];
             const ranked = (askObservations && targetComposition && teamObs.length > 0)
               ? rankObservations(teamObs, targetComposition)
@@ -237,6 +248,22 @@ export default function TeamSlotsTable({
                     <span className="font-mono text-sm font-semibold" style={{ color: 'var(--text-t-primary)' }}>
                       {formatCurrency(slotCost)}
                     </span>
+                  </div>
+
+                  {/* Trend — card value now vs the snapshot N days back */}
+                  <div className="flex items-center">
+                    {trend == null ? (
+                      <span className="font-mono text-xs" style={{ color: 'var(--text-t-tertiary)' }}>—</span>
+                    ) : (
+                      <span
+                        className="font-mono text-xs inline-flex items-center gap-0.5"
+                        style={{ color: Math.abs(trend) < 1 ? 'var(--text-t-tertiary)' : trend > 0 ? 'var(--buy)' : 'var(--pass)' }}
+                        title={`Summed card value for this team vs ${trendDays} days ago`}
+                      >
+                        {Math.abs(trend) < 1 ? '–' : trend > 0 ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
+                        {formatPct(trend)}
+                      </span>
+                    )}
                   </div>
 
                   {/* /Case */}
@@ -348,7 +375,8 @@ export default function TeamSlotsTable({
                           {formatCurrency((viewFormat === 'hobby' ? p.hobbySlotCost : viewFormat === 'bd' ? p.bdSlotCost : p.jumboSlotCost) * rowMarkup)}
                         </span>
                       </div>
-                      {/* /Case, Max Pay, feedback — team-level only */}
+                      {/* Trend, /Case, Max Pay, feedback — team-level only */}
+                      <div />
                       <div />
                       <div />
                       <div />

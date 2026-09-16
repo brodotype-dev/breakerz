@@ -373,7 +373,8 @@ app/api/admin/feature-flags/route.ts — admin-only GET/PUT for feature_flags ta
 
 ```
 sports, products, players, player_products, player_product_variants
-pricing_cache         — 24h TTL, ev_low/mid/high per player_product
+pricing_cache         — 24h TTL, ev_low/mid/high per player_product (UNIQUE on player_product_id — overwritten every refresh, keeps NO history)
+player_product_ev_snapshots — daily ev_mid per player_product (PK player_product_id + captured_on). The only EV history in the schema; written by lib/pricing-refresh.ts alongside the pricing_cache upsert. Read via the team_ev_trend(product_id, days) RPC for the team-slot trend column
 player_risk_flags     — soft-delete (cleared_at); injury/suspension/legal/trade/retirement
 user_breaks           — consumer break log: analysis snapshot, platform, outcome, feedback, status lifecycle
 products              — ch_set_name TEXT: exact CardHedger canonical set name for set-catalog matching

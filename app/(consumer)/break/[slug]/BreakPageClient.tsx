@@ -42,7 +42,7 @@ export default function BreakPageClient({ product, dataPromise, compressionGamma
   // when settled. The cached server function in lib/break-page-data.ts
   // means second visits in the same 60s window are near-instant.
   const data = use(dataPromise);
-  const { rawPlayers, chaseCards, riskFlagRecord, hypeObsRows, askingPriceObsRows, variantsByPlayerProductId } = data;
+  const { rawPlayers, chaseCards, riskFlagRecord, hypeObsRows, askingPriceObsRows, variantsByPlayerProductId, trendByTeam } = data;
 
   // riskFlagMap as an actual Map (children expect Map; record is for
   // JSON serialization across the server/client boundary)
@@ -220,6 +220,7 @@ export default function BreakPageClient({ product, dataPromise, compressionGamma
                 compressionGamma={compressionGamma}
                 askObservations={askObservationsByTeam}
                 targetComposition={targetComposition}
+                trendByTeam={trendByTeam}
               />
             ) : (
               <PlayerTable
@@ -624,6 +625,7 @@ export default function BreakPageClient({ product, dataPromise, compressionGamma
             compressionGamma={compressionGamma}
             askObservations={askObservationsByTeam}
             targetComposition={targetComposition}
+            trendByTeam={trendByTeam}
           />
         )}
         {activeTab === 'players' && (
