@@ -204,8 +204,6 @@ export default function AnalysisClient() {
         style={{ background: 'var(--gradient-hero)', borderColor: 'var(--terminal-border)' }}
       >
         <div className="absolute inset-0 opacity-5" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, var(--accent-blue) 1px, transparent 0)', backgroundSize: '40px 40px' }} />
-        <div className="absolute top-0 right-0 w-96 h-96 blur-3xl opacity-20" style={{ background: 'radial-gradient(circle, var(--accent-blue) 0%, transparent 70%)' }} />
-        <div className="absolute bottom-0 left-0 w-96 h-96 blur-3xl opacity-20" style={{ background: 'radial-gradient(circle, var(--badge-icon) 0%, transparent 70%)' }} />
         <div className="relative px-6 py-8 max-w-7xl mx-auto">
           <div className="mb-5">
             <BetaBanner surface="analysis" />
@@ -240,7 +238,7 @@ export default function AnalysisClient() {
               { icon: <TrendingUp className="w-4 h-4" style={{ color: 'var(--accent-blue)' }} />, label: 'Multi-Team' },
               { icon: <Sparkles className="w-4 h-4" style={{ color: 'var(--badge-icon)' }} />, label: 'Player Slots' },
             ].map(pill => (
-              <div key={pill.label} className="flex items-center gap-2 px-3 py-1.5 rounded-full border backdrop-blur-sm" style={{ backgroundColor: 'rgba(19, 24, 32, 0.6)', borderColor: 'var(--terminal-border-hover)' }}>
+              <div key={pill.label} className="flex items-center gap-2 px-3 py-1.5 rounded-full border backdrop-blur-sm" style={{ backgroundColor: 'var(--panel)', borderColor: 'var(--rule)' }}>
                 {pill.icon}
                 <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>{pill.label}</span>
               </div>

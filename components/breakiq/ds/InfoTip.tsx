@@ -41,7 +41,7 @@ export function InfoTip({ text, placement = 'bottom' }: InfoTipProps) {
           backgroundColor: 'var(--terminal-bg)',
           color: 'var(--text-secondary)',
           border: '1px solid var(--terminal-border-hover)',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+          boxShadow: 'var(--shadow-pop)',
         }}
       >
         {text}

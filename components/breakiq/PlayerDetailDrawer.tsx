@@ -113,7 +113,7 @@ export default function PlayerDetailDrawer({ playerProductId, onClose, topOffset
           transform: isOpen ? 'translateX(0)' : 'translateX(100%)',
           backgroundColor: 'var(--terminal-bg)',
           borderLeft: '1px solid var(--terminal-border)',
-          boxShadow: '-8px 0 32px rgba(0,0,0,0.4)',
+          boxShadow: 'var(--shadow-drawer)',
         }}
         role="dialog"
         aria-modal="true"

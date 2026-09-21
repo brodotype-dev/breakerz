@@ -15,7 +15,7 @@ export default function LegalLayout({ children }: { children: React.ReactNode })
         className="border-b sticky top-0 z-20"
         style={{
           borderColor: 'var(--terminal-border)',
-          backgroundColor: 'rgba(19, 24, 32, 0.97)',
+          backgroundColor: 'color-mix(in srgb, var(--panel) 97%, transparent)',
           backdropFilter: 'blur(8px)',
           paddingTop: 'env(safe-area-inset-top)',
         }}
