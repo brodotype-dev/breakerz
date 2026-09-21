@@ -262,17 +262,14 @@ export default function CardLookupPage() {
             backgroundSize: '40px 40px',
           }}
         />
-        <div
-          className="absolute top-0 right-0 w-96 h-96 blur-3xl opacity-20 pointer-events-none"
-          style={{ background: 'radial-gradient(circle, var(--accent-blue) 0%, transparent 70%)' }}
-        />
         <div className="relative flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div
               className="w-12 h-12 rounded-xl flex items-center justify-center"
               style={{ background: 'var(--gradient-blue)', boxShadow: 'var(--glow-blue)' }}
             >
-              <Logo variant="slab" height={28} width={22} className="h-7 w-auto" />
+              {/* White asset: the tile is filled blue in both themes */}
+              <Logo variant="slab" theme="dark" height={28} width={22} className="h-7 w-auto" />
             </div>
             <div>
               <h1 className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>

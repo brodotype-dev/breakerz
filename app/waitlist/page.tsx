@@ -136,10 +136,6 @@ export default function WaitlistPage() {
       style={{ backgroundColor: 'var(--terminal-bg)', background: 'var(--gradient-hero)' }}
     >
       {/* Background effects */}
-      <div className="absolute top-0 right-0 w-[600px] h-[600px] blur-3xl opacity-10 pointer-events-none"
-        style={{ background: 'radial-gradient(circle, var(--accent-blue) 0%, transparent 70%)' }} />
-      <div className="absolute bottom-0 left-0 w-[500px] h-[500px] blur-3xl opacity-10 pointer-events-none"
-        style={{ background: 'radial-gradient(circle, var(--badge-icon) 0%, transparent 70%)' }} />
       <div className="absolute inset-0 opacity-[0.03] pointer-events-none"
         style={{
           backgroundImage: 'radial-gradient(circle at 2px 2px, var(--accent-blue) 1px, transparent 0)',
@@ -200,7 +196,7 @@ export default function WaitlistPage() {
                     style={{ background: gradient }}
                   >
                     {icon === 'slab' ? (
-                      <Logo variant="slab" height={28} width={22} className="h-7 w-auto -my-2" />
+                      <Logo variant="slab" theme="dark" height={28} width={22} className="h-7 w-auto -my-2" />
                     ) : (
                       (() => {
                         const Icon = icon;

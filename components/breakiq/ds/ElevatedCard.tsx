@@ -6,7 +6,7 @@ interface ElevatedCardProps {
 }
 
 /**
- * High-contrast card with thick borders and deep shadow.
+ * High-contrast card with thick borders and a theme-aware shadow.
  * Use for forms, configuration panels, and important content sections.
  */
 export function ElevatedCard({ children, className = '' }: ElevatedCardProps) {
@@ -16,7 +16,7 @@ export function ElevatedCard({ children, className = '' }: ElevatedCardProps) {
       style={{
         backgroundColor: 'var(--terminal-surface)',
         borderColor: 'var(--terminal-border-hover)',
-        boxShadow: '0 4px 24px rgba(0, 0, 0, 0.4)',
+        boxShadow: 'var(--shadow-elevated)',
       }}
     >
       {children}
