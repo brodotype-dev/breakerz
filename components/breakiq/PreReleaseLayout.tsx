@@ -339,7 +339,7 @@ export default function PreReleaseLayout({
               className="ml-auto font-mono text-xs px-2 py-0.5 rounded"
               style={{
                 backgroundColor: 'rgba(141,134,184,0.14)',
-                color: '#c4b5fd',
+                color: 'var(--purple)',
                 border: '1px solid rgba(141,134,184,0.35)',
               }}
               title={productAsk[0].source_narrative ?? ''}
@@ -665,7 +665,7 @@ function PlayerRow({
               className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide shrink-0 ${pulse ? 'animate-pulse' : ''}`}
               style={{
                 backgroundColor: 'rgba(194,112,95,0.18)',
-                color: '#fecaca',
+                color: 'var(--pass)',
                 border: '1px solid rgba(194,112,95,0.45)',
               }}
             >

@@ -64,7 +64,7 @@ function ChaseCardTile({ card }: { card: ChaseCard }) {
         {/* Player name */}
         <p
           className="text-sm font-bold leading-tight"
-          style={{ color: card.is_hit ? '#fca5a5' : 'var(--text-primary)' }}
+          style={{ color: card.is_hit ? 'var(--pass)' : 'var(--text-primary)' }}
         >
           {playerName}
         </p>

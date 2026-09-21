@@ -30,6 +30,23 @@ function slabSrc(theme: Theme) {
   return theme === "light" ? "/brand/slab-icon-light.svg" : "/brand/slab-icon.svg";
 }
 
+/**
+ * Which asset(s) to render. An explicit theme renders one image. "auto"
+ * renders BOTH and lets CSS show the one matching the nearest theme scope
+ * (.logo-on-light / .logo-on-dark in globals.css) — an <img> can't be
+ * recolored by CSS variables, and admin stays dark inside a light app.
+ *
+ * Naming: the "light" asset is the one FOR light backgrounds (near-black
+ * ink, e.g. wordmark-light.svg is #231f20); the default asset is white.
+ */
+function themesFor(theme: Theme): { asset: Theme; cls?: string }[] {
+  if (theme !== "auto") return [{ asset: theme }];
+  return [
+    { asset: "light", cls: "logo-on-light" },
+    { asset: "dark", cls: "logo-on-dark" },
+  ];
+}
+
 const DEFAULTS = {
   mark: { width: 32, height: 32 },
   wordmark: { width: 140, height: 28 },
@@ -63,14 +80,18 @@ export function Logo({
           aria-hidden
           style={{ height: h, width: h }}
         />
-        <Image
-          src={wordmarkSrc(theme)}
-          alt="BreakIQ"
-          width={Math.round(h * 4.92)}
-          height={h}
-          priority={priority}
-          style={{ height: h * 0.62, width: "auto" }}
-        />
+        {themesFor(theme).map(({ asset, cls }) => (
+          <Image
+            key={asset}
+            src={wordmarkSrc(asset)}
+            alt="BreakIQ"
+            width={Math.round(h * 4.92)}
+            height={h}
+            priority={priority}
+            className={cls}
+            style={{ height: h * 0.62, width: "auto" }}
+          />
+        ))}
       </span>
     );
   }
@@ -90,20 +111,25 @@ export function Logo({
   }
 
   const dims = DEFAULTS[variant];
-  const src =
+  const srcFor = (t: Theme) =>
     variant === "mark"
-      ? markSrc(theme)
+      ? markSrc(t)
       : variant === "slab"
-        ? slabSrc(theme)
-        : wordmarkSrc(theme);
+        ? slabSrc(t)
+        : wordmarkSrc(t);
   return (
-    <Image
-      src={src}
-      alt="BreakIQ"
-      width={width ?? dims.width}
-      height={height ?? dims.height}
-      className={className}
-      priority={priority}
-    />
+    <>
+      {themesFor(theme).map(({ asset, cls }) => (
+        <Image
+          key={asset}
+          src={srcFor(asset)}
+          alt="BreakIQ"
+          width={width ?? dims.width}
+          height={height ?? dims.height}
+          className={[className, cls].filter(Boolean).join(" ")}
+          priority={priority}
+        />
+      ))}
+    </>
   );
 }
