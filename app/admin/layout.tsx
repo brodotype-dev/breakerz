@@ -4,7 +4,9 @@ import { Logo } from '@/components/Logo';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen flex" style={{ backgroundColor: 'var(--terminal-bg)' }}>
+    // Admin stays dark: its 131 hardcoded hex colors were tuned for dark
+    // surfaces. data-theme scopes the dark palette to this subtree only.
+    <div data-theme="dark" className="min-h-screen flex" style={{ backgroundColor: 'var(--terminal-bg)', color: 'var(--text-primary)' }}>
       {/* Sidebar */}
       <aside
         className="w-64 flex-shrink-0 flex flex-col relative overflow-hidden"

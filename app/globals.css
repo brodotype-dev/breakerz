@@ -45,7 +45,8 @@
 }
 
 /* ── shadcn semantic tokens — mapped to terminal design system ── */
-:root {
+:root,
+[data-theme] {
   --font-size: 16px;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
@@ -55,21 +56,21 @@
   --background: var(--bg);
   --foreground: var(--ink);
   --card: var(--panel);
-  --card-foreground: #f5f5f7;
-  --popover: #131820;
-  --popover-foreground: #f5f5f7;
+  --card-foreground: var(--ink);
+  --popover: var(--panel);
+  --popover-foreground: var(--ink);
 
   /* Primary — accent-blue so buttons are visible */
   --primary: #3b82f6;
   --primary-foreground: #ffffff;
 
   /* Secondary / muted */
-  --secondary: #1e2533;
-  --secondary-foreground: #f5f5f7;
-  --muted: #1e2533;
-  --muted-foreground: #a8adb8;
-  --accent: #1e2533;
-  --accent-foreground: #f5f5f7;
+  --secondary: var(--subtle);
+  --secondary-foreground: var(--ink);
+  --muted: var(--subtle);
+  --muted-foreground: var(--ink2);
+  --accent: var(--sel);
+  --accent-foreground: var(--ink);
 
   /* Destructive */
   --destructive: #dc2626;
@@ -77,18 +78,18 @@
 
   /* Borders / inputs */
   --border: var(--rule);
-  --input: #131820;
-  --input-background: #131820;
+  --input: var(--rule-strong);
+  --input-background: var(--panel);
   --ring: #3b82f6;
 
   /* Sidebar */
-  --sidebar: #0d1117;
-  --sidebar-foreground: #f5f5f7;
+  --sidebar: var(--panel);
+  --sidebar-foreground: var(--ink);
   --sidebar-primary: #3b82f6;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #1e2533;
-  --sidebar-accent-foreground: #f5f5f7;
-  --sidebar-border: #1e2533;
+  --sidebar-accent: var(--sel);
+  --sidebar-accent-foreground: var(--ink);
+  --sidebar-border: var(--rule);
   --sidebar-ring: #3b82f6;
 }
 
@@ -128,13 +129,45 @@
    new look — deliberately chosen over a mass find-and-replace, per
    docs/plans/2026-09-15-ux-rethink-build-plan.md.
 
-   THEME: dark is the default and stays the default. The light palette is
-   defined and works via [data-theme="light"], but is NOT wired to
-   prefers-color-scheme — auto-switching on OS preference would hand every
-   light-mode user a different app, which is a behavior change, not a UI
-   one. Flip it later by adding the media query.
+   THEME: light is the default (Brody, 2026-09-21). Dark is opt-in via
+   data-theme="dark" on any element — admin uses it to stay dark. Not
+   wired to prefers-color-scheme: the product commits to one look.
+
+   The alias + shadcn blocks below are declared on `:root, [data-theme]`,
+   not just `:root`, ON PURPOSE: a custom property that references another
+   (`--terminal-bg: var(--bg)`) is resolved where it's declared and then
+   inherited as a finished value. Declared only on :root, a nested
+   data-theme="dark" subtree would inherit light values.
    ═══════════════════════════════════════════════════════════════ */
-:root {
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --bg: #fbfaf8;
+  --panel: #ffffff;
+  --subtle: #f5f4f1;
+  --rule: #e3e1dc;
+  --rule-faint: #ededea;
+  --rule-strong: #cfccc5;
+  --ink: #16181c;
+  --ink2: #5f656d;
+  --ink3: #8b9099;
+  --accent-key: #33628c;
+  --buy: #2f6b43;
+  --hold: #8a6a1f;
+  --pass: #9c2f22;
+  --btn-bg: #16181c;
+  --btn-fg: #fbfaf8;
+  --sel: #f0eeea;
+  --crown: #8a6a1f;
+  --btn-legacy-bg: #33628c;
+  /* Pre-release / chase accent text and disabled text — were hardcoded
+     pale literals tuned for dark surfaces, invisible on white. */
+  --purple: #5b4f9a;
+  --text-disabled: #b3b7bd;
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
   --bg: #101215;
   --panel: #14171b;
   --subtle: #171b20;
@@ -157,30 +190,12 @@
      --btn-bg would render their white text invisible. Later phases replace
      those buttons; this keeps them legible and un-gradiented meanwhile. */
   --btn-legacy-bg: #3f6d94;
+  --purple: #c4b5fd;
+  --text-disabled: #474c53;
 }
 
-[data-theme="light"] {
-  --bg: #fbfaf8;
-  --panel: #ffffff;
-  --subtle: #f5f4f1;
-  --rule: #e3e1dc;
-  --rule-faint: #ededea;
-  --rule-strong: #cfccc5;
-  --ink: #16181c;
-  --ink2: #5f656d;
-  --ink3: #8b9099;
-  --accent-key: #33628c;
-  --buy: #2f6b43;
-  --hold: #8a6a1f;
-  --pass: #9c2f22;
-  --btn-bg: #16181c;
-  --btn-fg: #fbfaf8;
-  --sel: #f0eeea;
-  --crown: #8a6a1f;
-  --btn-legacy-bg: #33628c;
-}
-
-:root {
+:root,
+[data-theme] {
   /* Background layers — re-pointed */
   --terminal-bg: var(--bg);
   --terminal-surface: var(--panel);
@@ -231,7 +246,7 @@
   --text-primary: var(--ink);
   --text-secondary: var(--ink2);
   --text-tertiary: var(--ink3);
-  --text-disabled: #474c53;
+  /* --text-disabled is defined per theme above */
   /* Aliased (used by adapted components) */
   --text-t-primary: var(--ink);
   --text-t-secondary: var(--ink2);
@@ -392,3 +407,9 @@ html {
     min-height: calc(100dvh - 72px);
   }
 }
+
+/* Logo theme="auto" renders a light-surface and a dark-surface image; show
+   the one that matches the nearest theme scope. See components/Logo.tsx. */
+.logo-on-dark { display: none !important; }
+[data-theme="dark"] .logo-on-dark { display: inline-block !important; }
+[data-theme="dark"] .logo-on-light { display: none !important; }

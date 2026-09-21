@@ -65,7 +65,7 @@ export default async function BreakPage({ params }: PageProps) {
           BreakPageClient since they need the streamed-in pricing data. */}
       {isPreRelease && (
         <div className="border-b px-4 sm:px-6 py-3" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'rgba(141,134,184,0.08)' }}>
-          <p className="text-xs font-semibold" style={{ color: '#c4b5fd' }}>
+          <p className="text-xs font-semibold" style={{ color: 'var(--purple)' }}>
             Pre-release · {product.release_date ? `${product.name} launches ${formatReleaseDate(product.release_date)}` : `${product.name} hasn't launched yet`}
           </p>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-t-secondary)' }}>
@@ -75,7 +75,7 @@ export default async function BreakPage({ params }: PageProps) {
       )}
       {isDormant && (
         <div className="border-b px-4 sm:px-6 py-3" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'rgba(148,163,184,0.08)' }}>
-          <p className="text-xs font-semibold" style={{ color: '#cbd5e1' }}>
+          <p className="text-xs font-semibold" style={{ color: 'var(--ink2)' }}>
             Dormant · {product.name} is no longer actively tracked
           </p>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-t-secondary)' }}>
