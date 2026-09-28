@@ -18,7 +18,7 @@ export type SportKey = 'baseball' | 'basketball' | 'football' | 'default';
 
 export const SPORT_COLORS: Record<SportKey, { primary: string; secondary: string }> = {
   football:   { primary: '#004c54', secondary: '#00343a' }, // Eagles Midnight Green
-  baseball:   { primary: '#1d3557', secondary: '#142944' }, // deep navy
+  baseball:   { primary: '#7b1e2b', secondary: '#5a1520' }, // Phillies dark red
   basketball: { primary: '#9e4a24', secondary: '#7a3519' }, // burnt clay
   default:    { primary: '#33506b', secondary: '#24394d' }, // slate blue (hockey + anything new)
 };
