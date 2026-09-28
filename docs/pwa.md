@@ -5,7 +5,7 @@ BreakIQ's consumer surface is a Progressive Web App. Admin (`/admin/*`, `/api/ad
 ## What ships
 
 - **Manifest** — [`app/manifest.ts`](../app/manifest.ts), served at `/manifest.webmanifest`. `display: standalone`, `start_url: /`, `scope: /`, theme + background `#0a0e1a` (matches `--background`).
-- **Icons** — [`public/icons/`](../public/icons): `icon-192.png`, `icon-512.png`, `icon-512-maskable.png`, `apple-touch-icon.png` (180×180). Generated from `public/brand/icon-gradient.svg` via [`scripts/generate-pwa-icons.mjs`](../scripts/generate-pwa-icons.mjs). Re-run the script if the brand mark changes.
+- **Icons** — [`public/icons/`](../public/icons): `icon-192.png`, `icon-512.png`, `icon-512-maskable.png`, `apple-touch-icon.png` (180×180). Generated from `public/brand/icon-brand.svg` via [`scripts/generate-pwa-icons.mjs`](../scripts/generate-pwa-icons.mjs). Re-run the script if the brand mark changes.
 - **Service worker** — [`app/sw.ts`](../app/sw.ts), built by `@serwist/next` to `public/sw.js`. Registered automatically by Serwist's runtime; SW is **disabled in development** (`disable: process.env.NODE_ENV === 'development'`).
 - **Offline fallback** — [`app/offline/page.tsx`](../app/offline/page.tsx). Returned by the SW for navigation requests when both network and cache miss.
 - **Install prompt** — [`app/(consumer)/InstallPrompt.tsx`](../app/(consumer)/InstallPrompt.tsx). Captures `beforeinstallprompt` (Android Chrome / desktop Chrome / Edge) and renders a dismissible chip. iOS Safari gets a one-time "Tap Share → Add to Home Screen" hint instead.

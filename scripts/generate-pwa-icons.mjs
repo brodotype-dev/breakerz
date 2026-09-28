@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Generates PWA icons from public/brand/icon-gradient.svg.
+// Generates PWA icons from public/brand/icon-brand.svg.
 // Run once: `node scripts/generate-pwa-icons.mjs`. Outputs are committed.
 
 import sharp from 'sharp';
@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
-const src = readFileSync(resolve(root, 'public/brand/icon-gradient.svg'));
+const src = readFileSync(resolve(root, 'public/brand/icon-brand.svg'));
 
 // Maskable icons need ~20% safe-zone padding (per W3C maskable spec).
 // We render the SVG smaller and pad the rest with the brand background.
@@ -19,7 +19,7 @@ async function maskable(size) {
       width: size,
       height: size,
       channels: 4,
-      background: { r: 10, g: 14, b: 26, alpha: 1 }, // matches --background #0a0e1a
+      background: { r: 65, g: 74, b: 84, alpha: 1 }, // #414a54 — matches the icon tile, so the safe-zone padding disappears into it
     },
   })
     .composite([{ input: await sharp(src).resize(inner, inner).png().toBuffer(), top: pad, left: pad }])
