@@ -105,7 +105,7 @@ export default function GlobalBreakIQBetsDebrief() {
     return (
       <div
         className="rounded-xl border p-5"
-        style={{ backgroundColor: 'rgba(111,158,125,0.05)', borderColor: 'rgba(111,158,125,0.3)' }}
+        style={{ backgroundColor: 'rgba(26, 128, 67, 0.05)', borderColor: 'rgba(26, 128, 67, 0.3)' }}
       >
         <p className="text-sm font-medium mb-3" style={{ color: 'var(--signal-buy)' }}>
           {savedCount} player{savedCount !== 1 ? 's' : ''} updated across all products.
@@ -113,7 +113,7 @@ export default function GlobalBreakIQBetsDebrief() {
         <button
           onClick={() => { setStatus('idle'); setNarrative(''); setRows([]); setSavedCount(0); }}
           className="px-4 py-2 rounded-lg text-sm font-bold transition-all"
-          style={{ backgroundColor: 'rgba(111,158,125,0.1)', color: 'var(--signal-buy)', border: '1px solid rgba(111,158,125,0.3)' }}
+          style={{ backgroundColor: 'rgba(26, 128, 67, 0.1)', color: 'var(--signal-buy)', border: '1px solid rgba(26, 128, 67, 0.3)' }}
         >
           Run another debrief
         </button>

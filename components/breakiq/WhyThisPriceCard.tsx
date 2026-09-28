@@ -45,7 +45,7 @@ function signed(n: number, digits = 2): string {
 }
 
 function colorForAdj(n: number): string {
-  if (n > 0.05) return '#22c55e';
+  if (n > 0.05) return 'var(--buy)';
   if (n < -0.05) return '#ef4444';
   return 'var(--text-secondary)';
 }

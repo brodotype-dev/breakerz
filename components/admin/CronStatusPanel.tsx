@@ -127,7 +127,7 @@ export default async function CronStatusPanel() {
                     className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded"
                     style={{
                       backgroundColor:
-                        tone === 'healthy' ? 'rgba(111,158,125,0.12)' :
+                        tone === 'healthy' ? 'rgba(26, 128, 67, 0.12)' :
                         tone === 'stale' || tone === 'last attempt failed' ? 'rgba(168,144,96,0.12)' :
                         'rgba(194,112,95,0.12)',
                       color:

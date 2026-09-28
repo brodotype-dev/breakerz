@@ -184,7 +184,7 @@ function Row({ r }: { r: CHCoverageRow }) {
 function LifecyclePill({ ls }: { ls: CHCoverageRow['lifecycleStatus'] }) {
   const styles: Record<typeof ls, { bg: string; text: string; label: string }> = {
     pre_release: { bg: 'rgba(141,134,184,0.15)', text: '#a855f7', label: 'Pre' },
-    live: { bg: 'rgba(111,158,125,0.15)', text: '#10b981', label: 'Live' },
+    live: { bg: 'rgba(26, 128, 67, 0.15)', text: '#10b981', label: 'Live' },
     dormant: { bg: 'rgba(148,163,184,0.18)', text: '#94a3b8', label: 'Dormant' },
   };
   const s = styles[ls];

@@ -156,7 +156,7 @@ export default function DangerZone({
                     className="w-full rounded-md border px-3 py-2 text-sm font-mono"
                     style={{
                       borderColor: nameMatches
-                        ? 'rgba(111,158,125,0.4)'
+                        ? 'rgba(26, 128, 67, 0.4)'
                         : 'var(--terminal-border)',
                       backgroundColor: 'var(--terminal-bg)',
                       color: 'var(--text-primary)',

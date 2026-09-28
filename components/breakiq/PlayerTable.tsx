@@ -324,7 +324,7 @@ export default function PlayerTable({
                           ? { bg: 'rgba(194,112,95,0.12)', fg: 'var(--signal-pass)',  border: 'rgba(194,112,95,0.35)' }
                           : p0pct >= 25
                           ? { bg: 'rgba(168,144,96,0.12)', fg: 'var(--accent-orange)', border: 'rgba(168,144,96,0.35)' }
-                          : { bg: 'rgba(111,158,125,0.10)',  fg: 'var(--signal-buy)',   border: 'rgba(111,158,125,0.30)' };
+                          : { bg: 'rgba(26, 128, 67, 0.10)',  fg: 'var(--signal-buy)',   border: 'rgba(26, 128, 67, 0.30)' };
                         return (
                           <td className="px-2 sm:px-4 py-2.5 text-right">
                             <div className="flex flex-col items-end leading-tight gap-0.5">

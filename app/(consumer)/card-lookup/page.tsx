@@ -570,12 +570,12 @@ function ResultsPanel({
           {result.source === 'cert' && result.psaVerified && result.psaCert && (
             <div
               className="rounded-lg overflow-hidden"
-              style={{ border: '1px solid rgba(111,158,125,0.3)', backgroundColor: 'rgba(111,158,125,0.05)' }}
+              style={{ border: '1px solid rgba(26, 128, 67, 0.3)', backgroundColor: 'rgba(26, 128, 67, 0.05)' }}
             >
               {/* Header */}
               <div
                 className="px-4 py-2.5 flex items-center gap-2"
-                style={{ backgroundColor: 'rgba(111,158,125,0.12)', borderBottom: '1px solid rgba(111,158,125,0.2)' }}
+                style={{ backgroundColor: 'rgba(26, 128, 67, 0.12)', borderBottom: '1px solid rgba(26, 128, 67, 0.2)' }}
               >
                 <ShieldCheck className="size-4" style={{ color: 'rgb(34,197,94)' }} />
                 <span className="text-sm font-bold" style={{ color: 'rgb(34,197,94)' }}>PSA Verified</span>
@@ -584,7 +584,7 @@ function ResultsPanel({
                 </span>
               </div>
               {/* Data grid */}
-              <div className="grid grid-cols-2 gap-px" style={{ backgroundColor: 'rgba(111,158,125,0.1)' }}>
+              <div className="grid grid-cols-2 gap-px" style={{ backgroundColor: 'rgba(26, 128, 67, 0.1)' }}>
                 <PSAField label="Cert #" value={result.certInfo.cert} mono />
                 <PSAField label="Label Type" value={result.psaCert.LabelType || '—'} />
                 <PSAField label="Pop at This Grade" value={result.psaCert.TotalPopulation > 0 ? String(result.psaCert.TotalPopulation) : '—'} mono />
@@ -762,7 +762,7 @@ function PSAField({ label, value, mono, highlight, className = '' }: {
 }) {
   return (
     <div className={`px-4 py-2.5 ${className}`} style={{ backgroundColor: 'rgba(0,0,0,0.2)' }}>
-      <p className="text-[10px] font-bold uppercase tracking-wider mb-0.5" style={{ color: 'rgba(111,158,125,0.6)' }}>{label}</p>
+      <p className="text-[10px] font-bold uppercase tracking-wider mb-0.5" style={{ color: 'rgba(26, 128, 67, 0.6)' }}>{label}</p>
       <p
         className={`text-sm font-semibold ${mono ? 'font-mono' : ''}`}
         style={{ color: highlight === 'amber' ? 'rgb(251,191,36)' : 'var(--text-primary)' }}

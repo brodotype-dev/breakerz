@@ -275,7 +275,7 @@ export default function TeamSlotsTable({
 
                   {/* Max pay */}
                   <div className="flex items-center">
-                    <span className="font-mono text-sm" style={{ color: '#22c55e' }}>
+                    <span className="font-mono text-sm" style={{ color: 'var(--buy)' }}>
                       {formatCurrency(row.maxPay)}
                     </span>
                   </div>
