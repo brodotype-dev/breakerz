@@ -225,13 +225,18 @@
   --accent-purple: #8d86b8;
   --accent-purple-dim: #6f6899;
 
-  /* Sport colors */
-  --sport-baseball-primary: #3b82f6;
-  --sport-baseball-secondary: #60a5fa;
-  --sport-basketball-primary: #f97316;
-  --sport-basketball-secondary: #fb923c;
-  --sport-football-primary: #22c55e;
-  --sport-football-secondary: #4ade80;
+  /* Sport colors — MIRROR of lib/sport-style.ts (the source of truth; TS
+     callers need literal hex to append alpha suffixes). Keep in sync.
+     Muted 2026-09-27: anchored on Eagles Midnight Green, every sibling
+     pulled to the same depth so the light theme stays calm. */
+  --sport-baseball-primary: #1d3557;
+  --sport-baseball-secondary: #142944;
+  --sport-basketball-primary: #9e4a24;
+  --sport-basketball-secondary: #7a3519;
+  --sport-football-primary: #004c54;
+  --sport-football-secondary: #00343a;
+  --sport-default-primary: #33506b;
+  --sport-default-secondary: #24394d;
 
   /* Gradients */
   /* Flattened — the handoff removes gradient fills entirely. Names kept so

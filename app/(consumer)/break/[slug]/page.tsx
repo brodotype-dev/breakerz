@@ -23,6 +23,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import BetaBanner from '@/components/breakiq/BetaBanner';
 import { loadBreakPageData, loadProductBySlug, type ProductWithSport } from '@/lib/break-page-data';
+import { getSportStyle } from '@/lib/sport-style';
 import BreakPageClient from './BreakPageClient';
 import BreakPageSkeleton from './BreakPageSkeleton';
 import { isFeatureFlagEnabled, COMPRESSION_MARKUP_FLAG } from '@/lib/feature-flags';
@@ -178,9 +179,3 @@ function formatReleaseDate(d: string) {
   });
 }
 
-function getSportStyle(sportName: string) {
-  const s = (sportName ?? '').toLowerCase();
-  if (s === 'basketball') return { primary: '#f97316', gradient: 'linear-gradient(135deg, #f97316 0%, #ef4444 100%)' };
-  if (s === 'football')   return { primary: '#22c55e', gradient: 'linear-gradient(135deg, #22c55e 0%, #10b981 100%)' };
-  return { primary: '#3b82f6', gradient: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)' };
-}
