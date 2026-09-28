@@ -3,32 +3,13 @@
 import Link from 'next/link';
 import { ChevronRight, Activity, Flame } from 'lucide-react';
 import type { Product, Sport } from '@/lib/types';
+import { getSportStyle } from '@/lib/sport-style';
 
 export interface ProductSignal {
   breakCount7d: number;
   hypeTag: { tag: string; observedAt: string } | null;
 }
 
-type SportKey = 'baseball' | 'basketball' | 'football';
-
-const sportGradients: Record<SportKey, string> = {
-  baseball: 'var(--gradient-blue)',
-  basketball: 'var(--gradient-orange)',
-  football: 'var(--gradient-green)',
-};
-
-const sportColors: Record<SportKey, { primary: string }> = {
-  baseball: { primary: 'var(--sport-baseball-primary)' },
-  basketball: { primary: 'var(--sport-basketball-primary)' },
-  football: { primary: 'var(--sport-football-primary)' },
-};
-
-function getSportKey(sportName: string): SportKey {
-  const s = sportName.toLowerCase();
-  if (s === 'basketball') return 'basketball';
-  if (s === 'football') return 'football';
-  return 'baseball';
-}
 
 function isPreRelease(releaseDate: string | null): boolean {
   if (!releaseDate) return false;
@@ -47,9 +28,9 @@ export default function ProductCard({
   product: Product & { sport: Sport };
   signal?: ProductSignal;
 }) {
-  const sportKey = getSportKey(product.sport?.name ?? '');
-  const gradient = sportGradients[sportKey];
-  const { primary } = sportColors[sportKey];
+  // Literal hex, not var(): the chip + wash below append alpha suffixes
+  // (`${primary}20`), which a var() reference can't take.
+  const { primary, gradient } = getSportStyle(product.sport?.name);
   const preRelease = isPreRelease(product.release_date);
 
   const breakCount = signal?.breakCount7d ?? 0;

@@ -13,6 +13,7 @@ import TeamChip from '@/components/breakiq/TeamChip';
 import AnalysisResultPanel from '@/components/breakiq/AnalysisResultPanel';
 import { SegmentedControl, CounterInput, LargeCTAButton, InfoTip } from '@/components/breakiq/ds';
 import { computeSlotPricing, computeTeamSlotPricing, formatCurrency } from '@/lib/engine';
+import { getSportStyle } from '@/lib/sport-style';
 import { computePlayerPyp } from '@/lib/player-pyp-pricing';
 import { getMarketMarkup } from '@/lib/market-markup';
 import { PH_EVENTS } from '@/lib/posthog-events';
@@ -662,9 +663,3 @@ export default function BreakPageClient({ product, dataPromise, compressionGamma
   );
 }
 
-function getSportStyle(sportName: string) {
-  const s = (sportName ?? '').toLowerCase();
-  if (s === 'basketball') return { primary: '#f97316', gradient: 'linear-gradient(135deg, #f97316 0%, #ef4444 100%)' };
-  if (s === 'football')   return { primary: '#22c55e', gradient: 'linear-gradient(135deg, #22c55e 0%, #10b981 100%)' };
-  return { primary: '#3b82f6', gradient: 'linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)' };
-}
