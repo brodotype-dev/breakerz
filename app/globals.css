@@ -152,7 +152,7 @@
   --ink2: #5f656d;
   --ink3: #8b9099;
   --accent-key: #33628c;
-  --buy: #2f6b43;
+  --buy: #1a8043;
   --hold: #8a6a1f;
   --pass: #9c2f22;
   --btn-bg: #16181c;
@@ -183,7 +183,7 @@
   --ink2: #8b9099;
   --ink3: #5f656d;
   --accent-key: #7fa8c9;
-  --buy: #6f9e7d;
+  --buy: #4fae72;
   --hold: #a89060;
   --pass: #c2705f;
   --btn-bg: #e6e8ea;
@@ -274,8 +274,8 @@
 
   /* Signal colors */
   --signal-buy: var(--buy);
-  --signal-buy-bg: rgba(111, 158, 125, 0.12);
-  --signal-buy-border: rgba(111, 158, 125, 0.32);
+  --signal-buy-bg: rgba(26, 128, 67, 0.12);
+  --signal-buy-border: rgba(26, 128, 67, 0.32);
   --signal-watch: var(--hold);
   --signal-watch-bg: rgba(168, 144, 96, 0.12);
   --signal-watch-border: rgba(168, 144, 96, 0.32);

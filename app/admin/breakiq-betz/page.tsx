@@ -154,7 +154,7 @@ export default async function BreakIQBetsPage() {
                 const score = bet.breakerz_score ?? 0;
                 const isPositive = score > 0;
                 const scoreColor = isPositive ? 'var(--signal-buy)' : 'var(--signal-pass)';
-                const scoreBg = isPositive ? 'rgba(111,158,125,0.1)' : 'rgba(194,112,95,0.1)';
+                const scoreBg = isPositive ? 'rgba(26, 128, 67, 0.1)' : 'rgba(194,112,95,0.1)';
 
                 return (
                   <div

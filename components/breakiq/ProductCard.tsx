@@ -107,9 +107,9 @@ export default function ProductCard({
                 <span
                   className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold"
                   style={{
-                    backgroundColor: 'rgba(111,158,125,0.10)',
+                    backgroundColor: 'rgba(26, 128, 67, 0.10)',
                     color: 'var(--signal-buy)',
-                    border: '1px solid rgba(111,158,125,0.25)',
+                    border: '1px solid rgba(26, 128, 67, 0.25)',
                   }}
                   title={`${breakCount} break${breakCount === 1 ? '' : 's'} logged in the last 7 days`}
                 >

@@ -33,7 +33,7 @@ const flagLabelMap = new Map<string, string>(FLAG_TYPES.map(f => [f.value, f.lab
 const flagToneMap = new Map<string, string>(FLAG_TYPES.map(f => [f.value, f.tone]));
 
 const lifecycleStyles: Record<string, { bg: string; text: string; label: string }> = {
-  live: { bg: 'rgba(111,158,125,0.12)', text: '#10b981', label: 'Live' },
+  live: { bg: 'rgba(26, 128, 67, 0.12)', text: '#10b981', label: 'Live' },
   pre_release: { bg: 'rgba(127,168,201,0.12)', text: '#3b82f6', label: 'Pre-release' },
   dormant: { bg: 'rgba(148, 163, 184, 0.15)', text: '#94a3b8', label: 'Dormant' },
 };
@@ -328,7 +328,7 @@ export default function GlobalPlayersManager({ initialManaged, sports, products 
                           <span>{p.name}</span>
                           {p.isRookie && (
                             <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide"
-                              style={{ backgroundColor: 'rgba(111,158,125,0.12)', color: '#10b981' }} title="Rookie">RC</span>
+                              style={{ backgroundColor: 'rgba(26, 128, 67, 0.12)', color: '#10b981' }} title="Rookie">RC</span>
                           )}
                         </button>
                       </TableCell>

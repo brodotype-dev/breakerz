@@ -22,13 +22,13 @@ export default function TopMoversWidget({ players }: Props) {
       className="rounded-lg border px-4 py-3 flex items-center gap-3 flex-wrap"
       style={{
         borderColor: 'var(--terminal-border)',
-        backgroundColor: 'rgba(111,158,125,0.06)',
+        backgroundColor: 'rgba(26, 128, 67, 0.06)',
       }}
     >
       {/* Label */}
       <div className="flex items-center gap-1.5 shrink-0">
-        <span className="text-xs" style={{ color: '#22c55e' }}>▲</span>
-        <span className="text-xs font-semibold uppercase" style={{ color: '#22c55e', letterSpacing: '0.06em' }}>
+        <span className="text-xs" style={{ color: 'var(--buy)' }}>▲</span>
+        <span className="text-xs font-semibold uppercase" style={{ color: 'var(--buy)', letterSpacing: '0.06em' }}>
           Trending
         </span>
       </div>
@@ -50,7 +50,7 @@ export default function TopMoversWidget({ players }: Props) {
               </span>
               <span
                 className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded"
-                style={{ backgroundColor: 'rgba(111,158,125,0.15)', color: '#22c55e' }}
+                style={{ backgroundColor: 'var(--signal-buy-bg)', color: 'var(--buy)' }}
               >
                 +{pct}%
               </span>

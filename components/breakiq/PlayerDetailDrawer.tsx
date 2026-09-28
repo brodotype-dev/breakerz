@@ -33,8 +33,8 @@ interface Props {
 function GradeBadge({ grade }: { grade: string }) {
   const isPsa10 = grade === 'PSA 10' || grade === '10';
   const isPsa9 = grade === 'PSA 9' || grade === '9';
-  const color = isPsa10 ? '#22c55e' : isPsa9 ? 'var(--accent-blue)' : 'var(--text-secondary)';
-  const bg = isPsa10 ? 'rgba(111,158,125,0.12)' : isPsa9 ? 'rgba(127,168,201,0.12)' : 'var(--terminal-surface-hover)';
+  const color = isPsa10 ? 'var(--buy)' : isPsa9 ? 'var(--accent-blue)' : 'var(--text-secondary)';
+  const bg = isPsa10 ? 'rgba(26, 128, 67, 0.12)' : isPsa9 ? 'rgba(127,168,201,0.12)' : 'var(--terminal-surface-hover)';
   return (
     <span
       className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded"
@@ -228,7 +228,7 @@ export default function PlayerDetailDrawer({ playerProductId, onClose, topOffset
                         <th className="text-right px-2 sm:px-3 py-2 font-bold uppercase tracking-wider" style={{ color: 'var(--accent-blue)' }}>
                           PSA 9
                         </th>
-                        <th className="text-right px-2 sm:px-3 py-2 font-bold uppercase tracking-wider" style={{ color: '#22c55e' }}>
+                        <th className="text-right px-2 sm:px-3 py-2 font-bold uppercase tracking-wider" style={{ color: 'var(--buy)' }}>
                           PSA 10
                         </th>
                       </tr>
@@ -323,7 +323,7 @@ export default function PlayerDetailDrawer({ playerProductId, onClose, topOffset
                             </td>
                             <td
                               className="px-2 sm:px-3 py-2 text-right font-mono font-bold"
-                              style={cellStyle(cells.psa10.estimate, '#22c55e')}
+                              style={cellStyle(cells.psa10.estimate, 'var(--buy)')}
                               title={cells.psa10.tooltip || undefined}
                             >
                               {cells.psa10.text}

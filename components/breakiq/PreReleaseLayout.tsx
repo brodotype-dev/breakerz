@@ -58,7 +58,7 @@ const HYPE_TAG_META: Record<
   release_premium: { label: 'Release premium', symbol: '▲', color: '#f97316', bg: 'rgba(168,144,96,0.14)' },
   cooled:          { label: 'Cooled',          symbol: '▼', color: '#94a3b8', bg: 'rgba(148,163,184,0.14)' },
   overhyped:       { label: 'Overhyped',       symbol: '⚠', color: '#eab308', bg: 'rgba(168,144,96,0.14)' },
-  underhyped:      { label: 'Underhyped',      symbol: '★', color: '#10b981', bg: 'rgba(111,158,125,0.14)' },
+  underhyped:      { label: 'Underhyped',      symbol: '★', color: 'var(--buy)', bg: 'var(--signal-buy-bg)' },
 };
 
 const PULSING_RISK_TYPES = new Set(['injury', 'suspension']);
@@ -651,7 +651,7 @@ function PlayerRow({
         {isRookie && (
           <span
             className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded tracking-wide shrink-0"
-            style={{ backgroundColor: 'rgba(111,158,125,0.12)', color: '#10b981' }}
+            style={{ backgroundColor: 'var(--signal-buy-bg)', color: 'var(--buy)' }}
           >
             RC
           </span>

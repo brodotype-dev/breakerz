@@ -93,7 +93,7 @@ type ProfileResponse = {
 };
 
 const LIFECYCLE_LABELS: Record<Lifecycle, { text: string; bg: string; fg: string }> = {
-  live: { text: 'LIVE', bg: 'rgba(111,158,125,0.14)', fg: '#22c55e' },
+  live: { text: 'LIVE', bg: 'var(--signal-buy-bg)', fg: 'var(--buy)' },
   pre_release: { text: 'PRE-RELEASE', bg: 'rgba(141,134,184,0.14)', fg: '#a855f7' },
   dormant: { text: 'DORMANT', bg: 'rgba(148,163,184,0.14)', fg: '#94a3b8' },
 };
@@ -247,7 +247,7 @@ export default function PlayerProfilePage() {
               return (
                 <div key={s.id} className="rounded-lg border px-3 py-2.5 flex items-start gap-2.5" style={{ borderColor: 'var(--terminal-border)', backgroundColor: 'var(--terminal-surface)' }}>
                   {delta >= 0
-                    ? <TrendingUp className="w-4 h-4 shrink-0 mt-0.5" style={{ color: '#22c55e' }} />
+                    ? <TrendingUp className="w-4 h-4 shrink-0 mt-0.5" style={{ color: 'var(--buy)' }} />
                     : <TrendingDown className="w-4 h-4 shrink-0 mt-0.5" style={{ color: '#ef4444' }} />
                   }
                   <div className="min-w-0 flex-1">
@@ -448,8 +448,8 @@ function RecentSalesPanel({ comps }: { comps: Comp[] }) {
                     <span
                       className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0"
                       style={{
-                        backgroundColor: psa10 ? 'rgba(111,158,125,0.12)' : psa9 ? 'rgba(127,168,201,0.12)' : 'rgba(148,163,184,0.12)',
-                        color: psa10 ? '#22c55e' : psa9 ? 'var(--accent-blue)' : '#94a3b8',
+                        backgroundColor: psa10 ? 'rgba(26, 128, 67, 0.12)' : psa9 ? 'rgba(127,168,201,0.12)' : 'rgba(148,163,184,0.12)',
+                        color: psa10 ? 'var(--buy)' : psa9 ? 'var(--accent-blue)' : 'var(--text-tertiary)',
                       }}
                     >
                       {isRawGrade(c.grade) ? 'Raw' : c.grade}

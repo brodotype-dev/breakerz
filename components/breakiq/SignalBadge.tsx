@@ -12,7 +12,7 @@ interface Props {
 }
 
 const STYLES: Record<Signal, { color: string; bg: string; border: string }> = {
-  BUY:   { color: 'var(--buy)',  bg: 'rgba(111,158,125,0.1)', border: 'rgba(111,158,125,0.3)' },
+  BUY:   { color: 'var(--buy)',  bg: 'var(--signal-buy-bg)',  border: 'var(--signal-buy-border)' },
   WATCH: { color: 'var(--hold)', bg: 'rgba(168,144,96,0.1)',  border: 'rgba(168,144,96,0.3)' },
   PASS:  { color: 'var(--pass)', bg: 'rgba(194,112,95,0.1)',  border: 'rgba(194,112,95,0.3)' },
 };
