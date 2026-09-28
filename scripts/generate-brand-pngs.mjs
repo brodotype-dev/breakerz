@@ -16,8 +16,8 @@ async function rasterize(svgPath, outPath, size) {
 
 await mkdir(BRAND, { recursive: true });
 
-await rasterize(join(BRAND, "icon-gradient.svg"), join(APP, "icon.png"), 512);
-await rasterize(join(BRAND, "icon-gradient.svg"), join(APP, "apple-icon.png"), 180);
+await rasterize(join(BRAND, "icon-brand.svg"), join(APP, "icon.png"), 512);
+await rasterize(join(BRAND, "icon-brand.svg"), join(APP, "apple-icon.png"), 180);
 await rasterize(join(BRAND, "og-card.svg"), join(APP, "opengraph-image.png"), { width: 1200, height: 630 });
 await rasterize(join(BRAND, "og-card.svg"), join(APP, "twitter-image.png"), { width: 1200, height: 630 });
 await rasterize(join(BRAND, "wordmark.svg"), join(BRAND, "wordmark-email.png"), { width: 480, height: 98 });

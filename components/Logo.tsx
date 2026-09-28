@@ -2,7 +2,7 @@ import Image from "next/image";
 
 type Variant = "mark" | "wordmark" | "lockup" | "icon" | "slab";
 type Theme = "auto" | "dark" | "light";
-type IconTheme = "gradient" | "dark" | "green" | "light";
+type IconTheme = "brand" | "dark" | "green" | "light";
 
 type LogoProps = {
   variant?: Variant;
@@ -58,7 +58,7 @@ const DEFAULTS = {
 export function Logo({
   variant = "wordmark",
   theme = "auto",
-  iconTheme = "gradient",
+  iconTheme = "brand",
   width,
   height,
   className,
