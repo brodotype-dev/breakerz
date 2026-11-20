@@ -373,7 +373,7 @@ app/api/admin/feature-flags/route.ts — admin-only GET/PUT for feature_flags ta
 
 ```
 sports, products, players, player_products, player_product_variants
-pricing_cache         — 24h TTL, ev_low/mid/high per player_product (UNIQUE on player_product_id — overwritten every refresh, keeps NO history)
+pricing_cache         — 24h TTL, ev_low/mid/high per player_product (UNIQUE on player_product_id — overwritten every refresh, keeps NO history). variants_priced / variants_total record the coverage each EV was averaged over; the coverage guard in lib/pricing-refresh.ts refuses to overwrite a cached EV when coverage AND price both collapse (2026-11-20 — prices were dropping ~75% for a day, one day in six, with the cron reporting errors=0)
 player_product_ev_snapshots — daily ev_mid per player_product (PK player_product_id + captured_on). The only EV history in the schema; written by lib/pricing-refresh.ts alongside the pricing_cache upsert. Read via the team_ev_trend(product_id, days) RPC for the team-slot trend column
 player_risk_flags     — soft-delete (cleared_at); injury/suspension/legal/trade/retirement
 user_breaks           — consumer break log: analysis snapshot, platform, outcome, feedback, status lifecycle
