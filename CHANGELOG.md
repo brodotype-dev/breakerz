@@ -5,6 +5,25 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-11-20 — Root cause of the price collapses: a 24h cache TTL under a 24h cron
+
+Follow-up to the coverage guard below, which stopped the bad writes without explaining them. Brody asked the right question — *"do you think CardHedger has a bug? why would it drop so frequently and on a consistent basis?"* **They don't. We do.**
+
+`cron_run_log.details->'summary'` had the answer the whole time (the earlier investigation missed it by reading `details->>'partial'` instead of the nested path, and concluded `details` was empty). On every collapse night the worker reports `partial: true`, a duration of **282–292s against a 295s hard deadline**, a third to a half of its chunks completed — and **`chunksAllGradesFailed: 0`**. CardHedger answered every request it was given.
+
+**Why the budget ran out.** `CH_PRICE_CACHE_TTL_HOURS` was 24, deliberately matched to `CACHE_TTL_HOURS` "so the per-card cache and pricing_cache age out together". But the cron is *also* 24h, so each card expired at the exact moment the next run needed it, and whether the cache hit depended on which 20-minute cron slot a product landed in. The two nights either side of the investigation show the coin flip on the same 33,924 cards:
+
+| Night | From cache | Fetched live | Duration |
+|---|---|---|---|
+| Nov 19 | **33,924** | 0 | **48s** |
+| Nov 20 | 0 | **33,924** | 152s |
+
+On a miss night the three biggest products burn half the budget fetching, any added latency pushes past 295s, the AbortController fires, and the per-pp phase averages each EV over the third of variants that returned. That explains everything the symptom data showed: collapses concentrated in the largest products (Chrome Football 237, Chrome Basketball 82, Bowman Baseball 46 — 96% of all of them), scaling *faster* than product size (a deadline cliff, not linear per-request failure), and recurring every few days rather than randomly (a cache-hit coin flip, not a third-party outage). Oct 29 also pushed **60 Chrome Football players onto the $8/$15 default rung**.
+
+**Fix:** `CH_PRICE_CACHE_TTL_HOURS` 24 → **36**, clear of the 24h cron. The cache then hits every night, the biggest product runs in ~48s instead of 152s, and the deadline stops being reachable at all. Served prices stay under ~1.5 days old — we already serve yesterday's numbers. New gotcha #15 in CLAUDE.md so the next person doesn't "tidy" the two TTLs back into agreement. The coverage guard stays as the seatbelt: it catches a thin-coverage write whatever the cause, and would have caught this one.
+
+**Watch:** `variantsFromCache` should be non-zero for every product on every run from tomorrow. If it reads 0 again, the resonance is back.
+
 ## 2026-11-20 — Consumer prices were collapsing one day in six, and the cron called it a success
 
 **The EV history paid for itself the first time anyone looked at it.** Returning to the project after seven weeks idle, the first question was what the 65 days of `player_product_ev_snapshots` enabled for trend features. The answer: nothing yet, because the data exposed a live correctness bug first.
