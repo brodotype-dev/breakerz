@@ -5,6 +5,16 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-11-20 — Thinking effort pinned to `low`, and a prompt index
+
+Follow-up to the Sonnet 5.5 move, which shipped with `effort` unset. That silently bought a thinking budget we never had: 5.5 defaults to **high** with adaptive thinking where Sonnet 4.6 ran thinking-off, on a pipeline whose tightest path (`parseBreakPrice`: one 220s attempt inside a 300s cap) has no room for it. Brody's call — *"the things that we're doing are not super complex… I definitely don't want to risk any timeouts… I would probably start with low."*
+
+New `EFFORT` map in [lib/models.ts](lib/models.ts) mirroring `MODELS`, all five keys at **`low`**, passed as `output_config: { effort }` at all **9** call sites. It is not a top-level param — `output_config` was verified accepted by the API (and both model IDs smoke-tested) before shipping, because a wrong shape would 400 every Claude call in production. The two to re-check if quality dips are `verdict` (the only user-facing prose) and `configurator` (proposes regex from English); the rest extract fields against tight `max_tokens` where low effort is the right default.
+
+**New [docs/prompts.md](docs/prompts.md).** Brody asked whether a prompt library existed. It did not — nine call sites across eight files, inline template literals, and the only signpost was one CLAUDE.md line about the parser. The index covers what each prompt does, its `file:line`, its model/effort/token budget, and the rule blocks inside the two big parser prompts (`TWO-TIER ROSTER`, `CRITICAL` nickname table, `PRICE SHEET RULES`). Deliberately an index and not a copy: these are interpolated template literals, so a pasted duplicate would be stale within a week. It also records plainly that **no eval suite exists**, and notes that `pending_insights` already holds every capture with its parse and the human's apply/refine/discard verdict — a labelled dataset for whenever that gets built.
+
+---
+
 ## 2026-11-20 — Models: Sonnet 4.6 → Sonnet 5.5 across the registry
 
 Brody asked what we run on extraction and synthesis, which surfaced that the lineup had moved twice since the June standardization. [lib/models.ts](lib/models.ts) carried a "current lineup" comment dated 2026-06-05 naming Haiku 4.5 / Sonnet 4.6 / Opus 4.8; verified against platform.claude.com, the live lineup is **Haiku 5.5 · Sonnet 5.5 · Opus 5.5 · Fable 5.2**, and Sonnet 5 (the obvious upgrade target) is already superseded by 5.5.

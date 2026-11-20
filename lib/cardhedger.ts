@@ -1,6 +1,6 @@
 // CardHedger API client — server-side only, never expose the key to the browser
 
-import { MODELS } from '@/lib/models';
+import { MODELS, EFFORT } from '@/lib/models';
 
 const BASE_URL = 'https://api.cardhedger.com';
 const API_KEY = process.env.CARDHEDGER_API_KEY!;
@@ -811,6 +811,7 @@ Respond with JSON only — no explanation:
 
   const message = await client.messages.create({
     model: MODELS.cardMatch,
+    output_config: { effort: EFFORT.cardMatch },
     max_tokens: 128,
     messages: [{ role: 'user', content: prompt }],
   }, { timeout: 10_000 });
