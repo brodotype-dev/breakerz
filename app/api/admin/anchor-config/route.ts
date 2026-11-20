@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { MODELS } from '@/lib/models';
+import { MODELS, EFFORT } from '@/lib/models';
 import { checkRole } from '@/lib/auth';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getManufacturerDescriptor } from '@/lib/card-knowledge';
@@ -408,6 +408,7 @@ async function proposeAnchorConfig(body: ProposeBody) {
 
   const message = await client.messages.create({
     model: MODELS.configurator,
+    output_config: { effort: EFFORT.configurator },
     max_tokens: 1536,
     system: systemPrompt,
     messages: claudeMessages.map(m => ({ role: m.role, content: m.content })),

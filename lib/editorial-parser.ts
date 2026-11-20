@@ -17,7 +17,7 @@
 // than invented.
 
 import { supabaseAdmin } from './supabase';
-import { MODELS } from '@/lib/models';
+import { MODELS, EFFORT } from '@/lib/models';
 import type { ParsedUpdate } from './insights-parser';
 
 // The four kinds editorial is allowed to produce.
@@ -149,6 +149,7 @@ CRITICAL RULES:
   const message = await client.messages.create(
     {
       model: MODELS.extract,
+      output_config: { effort: EFFORT.extract },
       max_tokens: 2048,
       messages: [{ role: 'user', content: prompt }],
     },

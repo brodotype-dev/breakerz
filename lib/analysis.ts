@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase';
-import { MODELS } from '@/lib/models';
+import { MODELS, EFFORT } from '@/lib/models';
 import { computeLiveEV, get90DayPrices } from '@/lib/cardhedger';
 import { computeSlotPricing, computeTeamSlotPricing, computeSignal, formatCurrency } from '@/lib/engine';
 import { computeRiskAdjustment, computeHypeAdjustment, type HypeObservation, type HypeTag } from '@/lib/score-modulation';
@@ -548,6 +548,7 @@ Write a 2–3 sentence analysis explaining whether this bundle is worth buying a
 
   const message = await client.messages.create({
     model: MODELS.verdict,
+    output_config: { effort: EFFORT.verdict },
     max_tokens: 350,
     messages: [{ role: 'user', content: prompt }],
   }, { timeout: 15_000 });

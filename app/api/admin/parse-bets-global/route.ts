@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { MODELS } from '@/lib/models';
+import { MODELS, EFFORT } from '@/lib/models';
 import { supabaseAdmin } from '@/lib/supabase';
 import { checkRole } from '@/lib/auth';
 
@@ -60,6 +60,7 @@ IMPORTANT: Only include players explicitly mentioned. If no players are clearly 
 
     const message = await client.messages.create({
       model: MODELS.extract,
+      output_config: { effort: EFFORT.extract },
       max_tokens: 1024,
       messages: [{ role: 'user', content: prompt }],
     }, { timeout: 25_000 });

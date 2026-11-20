@@ -25,14 +25,23 @@
 // Haiku under correct conditions. Worth a side-by-side before switching;
 // don't flip it blind.
 //
-// EFFORT is deliberately unset. These models take an `effort` parameter
-// ('low' | 'medium' | 'high' | 'max', typed in our SDK) and Sonnet 5.5
-// defaults to 'high' with adaptive thinking, where Sonnet 4.6 ran with
-// thinking off. That makes the heavy vision parse in parseBreakPrice the
-// thing to watch: one 220s attempt inside a 300s function cap. Left at
-// defaults on purpose so a regression has exactly one cause; tune effort as
-// a follow-up with evidence, starting with cardMatch (thousands of 128-token
-// calls per re-match) if cost or latency moves.
+// EFFORT is pinned per task (2026-11-20). Sonnet 5.5 defaults to 'high'
+// with adaptive thinking, where Sonnet 4.6 ran thinking-off — so adopting
+// 5.5 at its default silently bought us a thinking budget we never had, on
+// a pipeline whose tightest path (parseBreakPrice: one 220s attempt inside
+// a 300s function cap) has no room for it. Brody's call: start at 'low'
+// everywhere, because none of this work is reasoning-heavy — it is
+// extraction, classification and a short verdict, all against tight
+// max_tokens.
+//
+// Passed as `output_config: { effort }` on every call (verified accepted by
+// the API before shipping; it is NOT a top-level param).
+//
+// The two to watch, because they produce prose rather than extract fields:
+//   verdict      — the only user-facing output; if takes get terse or
+//                  shallow, this is the first dial to move back to 'medium'
+//   configurator — proposes regex from a plain-English description
+// No evals exist yet, so these are judgement calls, not measurements.
 
 export const MODELS = {
   /** Discord /insight + /break-price player/entity matching + extraction. */
@@ -45,4 +54,16 @@ export const MODELS = {
   extract: 'claude-sonnet-5-5',
   /** Conversational anchor configurator. */
   configurator: 'claude-sonnet-5-5',
+} as const;
+
+/**
+ * Thinking effort per task. Mirrors MODELS so a task's model and its budget
+ * are read and changed in one place.
+ */
+export const EFFORT = {
+  matcher: 'low',
+  cardMatch: 'low',
+  verdict: 'low',
+  extract: 'low',
+  configurator: 'low',
 } as const;

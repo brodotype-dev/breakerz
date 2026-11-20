@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { MODELS } from '@/lib/models';
+import { MODELS, EFFORT } from '@/lib/models';
 import Anthropic from '@anthropic-ai/sdk';
 import { pricesByCert, searchCards, getAllPrices, getComps } from '@/lib/cardhedger';
 import { getCertByNumber } from '@/lib/psa';
@@ -37,6 +37,7 @@ export async function POST(req: Request) {
 
       const message = await client.messages.create({
         model: MODELS.extract,
+        output_config: { effort: EFFORT.extract },
         max_tokens: 300,
         messages: [{
           role: 'user',

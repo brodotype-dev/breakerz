@@ -12,7 +12,7 @@
  */
 
 import { supabaseAdmin } from '@/lib/supabase';
-import { MODELS } from '@/lib/models';
+import { MODELS, EFFORT } from '@/lib/models';
 import { isCardSubsetCode } from '@/lib/checklist-aggregates';
 import type { SlotComposition, AskingPriceSource, BreakFormat } from '@/lib/types';
 
@@ -636,6 +636,7 @@ CRITICAL:
   const isHeavy = hadImage || webSource;
   const createParams = {
     model: MODELS.matcher,
+    output_config: { effort: EFFORT.matcher },
     max_tokens: isHeavy ? 16000 : 2048,
     messages: [{ role: 'user' as const, content: userContent }],
   };
@@ -1555,6 +1556,7 @@ RULES:
     .stream(
       {
         model: MODELS.matcher,
+        output_config: { effort: EFFORT.matcher },
         max_tokens: 16000,
         messages: [{ role: 'user', content: userContent }],
       },
