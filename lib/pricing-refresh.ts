@@ -41,6 +41,23 @@ const CH_PRICE_CACHE_TTL_HOURS = 24;
 const BATCH_DEADLINE_MS = 280_000; // stop enqueueing new chunks after 4:40
 const HARD_DEADLINE_MS = 295_000;  // last moment to bail from per-pp phase
 
+/**
+ * Coverage guard thresholds.
+ *
+ * A player's EV is a sets-weighted average over the variants that priced on
+ * THIS run. When a CH chunk fails mid-run the surviving subset can be small
+ * and skewed cheap, so the average collapses — and because the result is
+ * still > 0 it used to be written over a good price as if authoritative.
+ * Six nights in the 35 days to 2026-11-20 did exactly this (Oct 29: 139
+ * players, avg -79%), each recovering the next day, with the cron reporting
+ * `errors 0` throughout.
+ *
+ * Both conditions must hold to skip a write: coverage collapsed AND the price
+ * collapsed. A real market drop with intact coverage still writes.
+ */
+const COVERAGE_FLOOR = 0.6; // priced this run vs last run
+const PRICE_FLOOR = 0.6;    // new EV vs cached EV
+
 export interface RefreshSummary {
   productId: string;
   productName: string | null;
@@ -68,6 +85,9 @@ export interface RefreshSummary {
   anchorFellBackCount: number;
   /** Average matched-variant count across hydrated player_products. Useful sanity check for curated configs. */
   anchorMatchedVariantsAvg: number;
+  /** Writes skipped by the coverage guard: thin-coverage collapses that would have
+   *  overwritten a good cached EV. Non-zero means CH coverage wobbled this run. */
+  coverageGuardSkipped: number;
   /** Plan C: lifecycle state used for the math-layer multiplier. */
   lifecycleStatus: ProductLifecycle;
   /** Plan C: actual multiplier applied to ev_low/mid/high before pricing_cache upsert. 1.0 = no change. */
@@ -142,6 +162,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
       productName: product?.name ?? null,
       totalPlayers: 0,
       livePriced: 0, crossPriced: 0, searchPriced: 0, defaultPriced: 0,
+      coverageGuardSkipped: 0,
       variantsFetched: 0, variantsTotal: 0,
       variantsFromCache: 0, variantsNewlyFetched: 0, variantsSkippedAllNull: 0,
       chunksWithCacheWrite: 0, chunksAllGradesFailed: 0,
@@ -486,6 +507,12 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     ev_mid: number;
     ev_high: number;
     confidence: number | null;
+    /** Variants that actually priced for this row (null = not variant-aggregated:
+     *  the sibling / search / default fallback rungs). Persisted so the next run
+     *  can tell a thin-coverage number from a well-covered one. */
+    variants_priced: number | null;
+    /** Aggregatable variants that existed, priced or not. */
+    variants_total: number | null;
     raw_comps: Record<string, unknown>;
     fetched_at: string;
     expires_at: string;
@@ -528,6 +555,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
           player_product_id: r.player_product_id,
           captured_on: capturedOn,
           ev_mid: r.ev_mid,
+          variants_priced: r.variants_priced,
         }));
       if (snapRows.length > 0) {
         const { error: snapErr } = await supabaseAdmin
@@ -594,6 +622,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
   }
 
   let livePriced = 0, crossPriced = 0, searchPriced = 0, defaultPriced = 0;
+  let coverageGuardSkipped = 0;
   let hardDeadlineHit = false;
   let anchorFellBackCount = 0;
   let anchorMatchedSum = 0;
@@ -607,6 +636,35 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     cardhedger_card_id: string | null;
     player: { id: string; name: string; is_rookie: boolean; prospect_rank: number | null } | null;
   };
+
+  // Prior cached EV + the coverage it was computed from. The guard below needs
+  // both: a price that halves while coverage holds is a real market move and
+  // must be written; a price that halves because only a third of the variants
+  // priced tonight is an artifact of our own run. Rows written before this
+  // shipped have variants_priced = null, so the guard stays inert for them
+  // until one clean run records coverage - it can only protect, never invent.
+  const priorByPp = new Map<string, { evMid: number; variantsPriced: number | null }>();
+  {
+    const priorIds = (playerProducts as unknown as PP[]).map(x => x.id);
+    const PRIOR_CHUNK = 200; // gotcha #11: Kong rejects .in() URLs past ~8KB
+    for (let i = 0; i < priorIds.length; i += PRIOR_CHUNK) {
+      const { data: priorRows, error: priorErr } = await supabaseAdmin
+        .from('pricing_cache')
+        .select('player_product_id, ev_mid, variants_priced')
+        .in('player_product_id', priorIds.slice(i, i + PRIOR_CHUNK));
+      if (priorErr) {
+        // Never fail a refresh over the guard - log and run unguarded.
+        console.warn('[pricing-refresh] prior-coverage read failed, guard inert this run: ' + priorErr.message);
+        break;
+      }
+      type PR = { player_product_id: string; ev_mid: number | null; variants_priced: number | null };
+      for (const r of (priorRows ?? []) as PR[]) {
+        if (r.ev_mid != null && r.ev_mid > 0) {
+          priorByPp.set(r.player_product_id, { evMid: r.ev_mid, variantsPriced: r.variants_priced });
+        }
+      }
+    }
+  }
 
   await mapLimit(playerProducts as unknown as PP[], OUTER_CONCURRENCY, async pp => {
     // Hard deadline: bail out and at least preserve what we've collected.
@@ -643,6 +701,30 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
 
       const aggregated = aggregatePlayerEV(variantEVs, anchorStrategy, anchorPatterns);
       if (aggregated.evMid > 0) {
+        const pricedNow = aggregated.matchedVariants;
+        const prior = priorByPp.get(pp.id);
+        const evAfterMultiplier = Math.round(aggregated.evMid * lifecycleMultiplier);
+
+        // COVERAGE GUARD - keep the cached price when BOTH coverage and price
+        // collapsed. That combination is this pipeline failing, not the market.
+        if (
+          prior &&
+          prior.variantsPriced != null &&
+          prior.variantsPriced > 0 &&
+          pricedNow < prior.variantsPriced * COVERAGE_FLOOR &&
+          evAfterMultiplier < prior.evMid * PRICE_FLOOR
+        ) {
+          coverageGuardSkipped++;
+          console.warn(
+            '[pricing-refresh] coverage guard held pp=' + pp.id + ' (' + playerName + '): ' +
+            pricedNow + '/' + aggregatableVariants.length + ' variants priced vs ' +
+            prior.variantsPriced + ' last run; kept $' + prior.evMid +
+            ' instead of writing $' + evAfterMultiplier,
+          );
+          await maybeFlush();
+          return;
+        }
+
         if (aggregated.fellBack) anchorFellBackCount++;
         anchorMatchedSum += aggregated.matchedVariants;
         anchorAggregatedCount++;
@@ -651,6 +733,8 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
           cardhedger_card_id: pp.cardhedger_card_id ?? null,
           ...applyMultiplier(aggregated.evLow, aggregated.evMid, aggregated.evHigh),
           confidence: aggregated.confidence,
+          variants_priced: pricedNow,
+          variants_total: aggregatableVariants.length,
           raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
         });
         livePriced++;
@@ -667,6 +751,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
           cardhedger_card_id: pp.cardhedger_card_id ?? null,
           ...applyMultiplier(sibling.ev_low, sibling.ev_mid, sibling.ev_high),
           confidence: null,
+          variants_priced: null, variants_total: null,
           raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
         });
         crossPriced++;
@@ -682,6 +767,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
         cardhedger_card_id: pp.cardhedger_card_id ?? null,
         ...applyMultiplier(evMid * 0.35, evMid, evMid * 2.5),
         confidence: null,
+        variants_priced: null, variants_total: null,
         raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
       });
       defaultPriced++;
@@ -708,6 +794,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
         cardhedger_card_id: pp.cardhedger_card_id ?? null,
         ...applyMultiplier(ev.evLow, ev.evMid, ev.evHigh),
         confidence: null,
+        variants_priced: null, variants_total: null,
         raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
       });
       livePriced++;
@@ -727,6 +814,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
           cardhedger_card_id: pp.cardhedger_card_id ?? null,
           ...applyMultiplier(evLow, evMid, evHigh),
           confidence: null,
+          variants_priced: null, variants_total: null,
           raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
         });
         searchPriced++;
@@ -743,6 +831,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
         cardhedger_card_id: pp.cardhedger_card_id ?? null,
         ...applyMultiplier(sibling.ev_low, sibling.ev_mid, sibling.ev_high),
         confidence: null,
+        variants_priced: null, variants_total: null,
         raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
       });
       crossPriced++;
@@ -758,6 +847,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
       cardhedger_card_id: pp.cardhedger_card_id ?? null,
       ...applyMultiplier(evMid * 0.35, evMid, evMid * 2.5),
       confidence: null,
+      variants_priced: null, variants_total: null,
       raw_comps: {}, fetched_at: new Date().toISOString(), expires_at: expiresAt.toISOString(),
     });
     defaultPriced++;
@@ -798,6 +888,7 @@ export async function refreshProductPricing(productId: string): Promise<RefreshS
     productName: product?.name ?? null,
     totalPlayers: playerProducts.length,
     livePriced, crossPriced, searchPriced, defaultPriced,
+    coverageGuardSkipped,
     variantsFetched: pricesOnly.size,
     variantsTotal: allVariantCardIds.length,
     variantsFromCache,
