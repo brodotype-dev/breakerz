@@ -5,6 +5,18 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-11-20 — Models: Sonnet 4.6 → Sonnet 5.5 across the registry
+
+Brody asked what we run on extraction and synthesis, which surfaced that the lineup had moved twice since the June standardization. [lib/models.ts](lib/models.ts) carried a "current lineup" comment dated 2026-06-05 naming Haiku 4.5 / Sonnet 4.6 / Opus 4.8; verified against platform.claude.com, the live lineup is **Haiku 5.5 · Sonnet 5.5 · Opus 5.5 · Fable 5.2**, and Sonnet 5 (the obvious upgrade target) is already superseded by 5.5.
+
+All five keys — `matcher`, `cardMatch`, `verdict`, `extract`, `configurator` — move to **`claude-sonnet-5-5`**. It is a generation newer **and cheaper than what we were paying**: $2/$10 per MTok against Sonnet 4.6's $3/$15. Both `claude-sonnet-5-5` and `claude-haiku-5-5` were smoke-tested against our own key before shipping, so a typo'd ID can't sit undetected until the next `/insight`.
+
+**Haiku, revisited.** The June move off Haiku 4.5 was driven by associative substitution on long rosters (Russell Wilson → Sam Darnold). Haiku 5.5 is a different model, priced from $0.10/$0.50, and Anthropic pitches it for exactly our shape of work ("classification, extraction, and routing") — so `matcher` / `extract` are real candidates. Not taken here: the structural fix for that incident (scoping the roster query to active-product players, PR #140) landed *after* the retreat, so Haiku has never been tested under correct conditions. Worth a side-by-side; not worth flipping blind.
+
+**Effort deliberately left unset.** These models accept `effort` ('low' | 'medium' | 'high' | 'max', already typed in our pinned SDK 0.79) and Sonnet 5.5 defaults to **high** with adaptive thinking, where Sonnet 4.6 ran thinking-off. The exposure is the heavy vision parse in `parseBreakPrice`: a single 220s attempt inside a 300s cap. Changing model and thinking budget together would make any regression ambiguous, so this ships as one variable. Watch the next large `/break-price` sheet and the next re-match; `cardMatch` (thousands of 128-token calls per run) is the first place to pin a lower effort if cost or latency moves. No call site changed — the registry is the whole point.
+
+---
+
 ## 2026-11-20 — Root cause of the price collapses: a 24h cache TTL under a 24h cron
 
 Follow-up to the coverage guard below, which stopped the bad writes without explaining them. Brody asked the right question — *"do you think CardHedger has a bug? why would it drop so frequently and on a consistent basis?"* **They don't. We do.**
