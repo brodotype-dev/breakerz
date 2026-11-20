@@ -27,10 +27,33 @@ import { computeFallbackBaseEV } from '@/lib/pre-release-base-ev';
 import type { ProductLifecycle } from '@/lib/types';
 
 const CACHE_TTL_HOURS = 24;
-// `ch_price_cache` freshness window. Matches CACHE_TTL_HOURS so a refresh
-// run that completes both phases produces consistent results — the per-card
-// cache and the per-pp pricing_cache age out together.
-const CH_PRICE_CACHE_TTL_HOURS = 24;
+/**
+ * `ch_price_cache` freshness window. MUST stay longer than the gap between
+ * nightly runs — matching it is what caused the 2026-11-20 price collapses.
+ *
+ * This was 24h "so the per-card cache and pricing_cache age out together".
+ * But the cron is also 24h, so a card fetched at 03:05 is 24h00m old at the
+ * next night's 03:05 firing — the cache expired at the exact moment the run
+ * needed it, and whether it hit came down to a few minutes of drift in which
+ * 20-minute slot a product landed in. The run log shows the coin flip:
+ *
+ *   Nov 19  Chrome Football  from_cache 33,924 · live 0       →  48s
+ *   Nov 20  Chrome Football  from_cache 0      · live 33,924  → 152s
+ *
+ * Same product, same cards, 3× the wall time. On a miss night the big
+ * products spend half the 295s budget just fetching, so any added latency
+ * pushed them past the deadline; the AbortController fired, and the per-pp
+ * phase averaged each player's EV over whatever third of the variants had
+ * returned. Oct 29: 150/340 chunks done, 139 players collapsed ~79%, 60 of
+ * them all the way to the $8/$15 default rung — with CardHedger reporting
+ * zero failures (chunksAllGradesFailed: 0). It was never their outage; we
+ * stopped asking.
+ *
+ * 36h puts the cache comfortably clear of the 24h cron so it hits every
+ * night, while keeping any served price under ~1.5 days old. Raise the cron
+ * frequency and this has to rise with it.
+ */
+const CH_PRICE_CACHE_TTL_HOURS = 36;
 
 // Vercel Pro kills the function at 300s. Stop the batch phase early so we
 // have time to run per-pp fallbacks + upsert cache rows. Bowman Chrome
