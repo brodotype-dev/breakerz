@@ -1,5 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase';
-import { productPhrase } from '@/lib/break-feed-match';
+import { productPhrase, phraseNamesProduct } from '@/lib/break-feed-match';
 import { AlertTriangle, CheckCircle2, Radio, Store, ExternalLink } from 'lucide-react';
 import RefreshBreakFeedButton from './RefreshBreakFeedButton';
 
@@ -83,9 +83,17 @@ export default async function BreakFeedPage() {
     string,
     { phrase: string; count: number; reason: string; sport: string | null; examples: BreakRow[] }
   >();
+  let unnamedShows = 0;
   for (const row of gaps) {
     const phrase = productPhrase(row.title);
     if (!phrase) continue;
+    // Recurring show brands ("EW NFL MONDAY", "CHARACTER BREAKS ON FANATICS")
+    // are timeslots, not products. Counted, but kept out of the ranking so
+    // they cannot outrank an actual roster decision.
+    if (!phraseNamesProduct(phrase)) {
+      unnamedShows++;
+      continue;
+    }
     const key = phrase.toLowerCase();
     const existing = gapGroups.get(key);
     if (existing) {
@@ -221,6 +229,13 @@ export default async function BreakFeedPage() {
               </tr>
             ))}
           </TableShell>
+        )}
+        {unnamedShows > 0 && (
+          <p className="text-[11px]" style={{ color: 'var(--text-tertiary)' }}>
+            Plus {unnamedShows} live show{unnamedShows === 1 ? '' : 's'} whose title names no
+            product (&ldquo;EW NFL MONDAY&rdquo;, &ldquo;CHARACTER BREAKS&rdquo;) — recurring
+            timeslots, not roster decisions, so they stay out of the ranking.
+          </p>
         )}
       </section>
 

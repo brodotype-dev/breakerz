@@ -18,7 +18,7 @@
 // Chrome) and the year pairs (2025 vs 2026 Chrome Football) are the two ways
 // that goes wrong in this data, so both are asserted explicitly.
 
-import { matchBreakTitle } from '../lib/break-feed-match.ts';
+import { matchBreakTitle, productPhrase, phraseNamesProduct } from '../lib/break-feed-match.ts';
 
 /** The 11 products active in production on 2026-11-22. */
 const PRODUCTS = [
@@ -168,7 +168,42 @@ console.log(
     `${matched} of these titles are products we carry\n`
 );
 
+// ---------------------------------------------------------------------------
+// productPhrase / phraseNamesProduct — what the coverage gap groups on.
+// Real titles from the 2026-11-22 pull. The "10" case is a regression: the
+// "10" in "10-Blaster Box" was landing in the phrase and splitting one
+// product across several gap rows.
+// ---------------------------------------------------------------------------
+const PHRASE_CASES = [
+  ['2026 Topps Chrome Football Jumbo Hobby Box Random Division Group Break #5 - Brett',
+   '2026 Topps Chrome Football', true],
+  ['2023-24 Panini Phoenix Basketball 10-Blaster Box Random 3-Team Group Break #1',
+   '2023-24 Panini Phoenix Basketball', true],
+  ['2025-26 Topps Cosmic Chrome Basketball Hobby Box Random Division Group Break #44 - Steve',
+   '2025-26 Topps Cosmic Chrome Basketball', true],
+  ['2026 Topps Museum Collection Baseball Hobby 8-Box Case PYT Group Break #3 - Steve',
+   '2026 Topps Museum Collection Baseball', true],
+  // Live-platform show brands: a phrase, but not a product.
+  ['EW NFL MONDAY! PYTS AND BREAKS ALL DAY! AUCTIONS AT NOON!', 'Ew Nfl Monday', false],
+  ['BIGGEST AND BEST CHARACTER BREAKS ON FANATICS - GIVEAWAYS ALL DAY',
+   'Biggest And Best Character', false],
+  ['2025-26 Topps Stadium Club Basketball Hobby 12-Box Case PYT Group Break #1',
+   '2025-26 Topps Stadium Club Basketball', true],
+  ['GILDED BASEBALL RELEASE DAY w/ EAST WEST!', 'Gilded Baseball', false],
+];
+
+console.log('productPhrase / phraseNamesProduct\n');
+for (const [title, expectedPhrase, expectedIsProduct] of PHRASE_CASES) {
+  const phrase = productPhrase(title);
+  const isProduct = phrase ? phraseNamesProduct(phrase) : false;
+  const ok = phrase === expectedPhrase && isProduct === expectedIsProduct;
+  if (!ok) failures++;
+  console.log(`${ok ? '  ok  ' : ' FAIL '} ${JSON.stringify(phrase)}  product=${isProduct}`);
+  if (!ok) console.log(`        expected ${JSON.stringify(expectedPhrase)} product=${expectedIsProduct}`);
+}
+
 if (failures > 0) {
-  console.error(`${failures} failure(s)\n`);
+  console.error(`\n${failures} failure(s)\n`);
   process.exit(1);
 }
+console.log('\nall green\n');

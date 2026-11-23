@@ -231,8 +231,9 @@ export function matchBreakTitle(title: string, products: MatchableProduct[]): Br
  * ranking a coverage gap we only want the product.
  */
 const CONFIG_BOUNDARY = new Set([
-  'hobby', 'jumbo', 'box', 'boxes', 'case', 'half', 'pyt', 'random', 'mixer',
-  'group', 'break', 'blaster', 'cello', 'tin', 'pack', 'fotl', 'retail',
+  'hobby', 'jumbo', 'box', 'boxes', 'case', 'cases', 'half', 'pyt', 'pyts',
+  'random', 'mixer', 'mixers', 'group', 'break', 'breaks', 'breaking',
+  'blaster', 'cello', 'tin', 'tins', 'pack', 'packs', 'fotl', 'retail',
   'mega', 'live', 'presale', 'w', 'with', 'release', 'day', 'two', 'one',
 ]);
 
@@ -246,19 +247,56 @@ export function productPhrase(title: string): string | null {
   const tokens = normalizeTitle(title).split(' ').filter(Boolean);
   const kept: string[] = [];
 
-  for (let i = 0; i < tokens.length && kept.length < 6; i++) {
+  for (let i = 0; i < tokens.length && kept.length < 7; i++) {
     const token = tokens[i];
     if (CONFIG_BOUNDARY.has(token)) break;
-    // A standalone number that is not a year is a break number, not a product.
-    if (/^\d+$/.test(token) && !/^20\d{2}$/.test(token) && !isSeasonToken(token, undefined)) break;
+
+    if (/^\d+$/.test(token)) {
+      const isYear = /^20\d{2}$/.test(token);
+      // A two-digit number is only a season continuation when a four-digit
+      // year came immediately before it ("2025 26"). Otherwise it is break
+      // copy — the "10" in "10-Blaster Box" was landing in the phrase and
+      // splitting one product into several groups.
+      const isSeasonTail = /^\d{2}$/.test(token) && /^20\d{2}$/.test(kept[kept.length - 1] ?? '');
+      if (!isYear && !isSeasonTail) break;
+    }
+
     kept.push(token);
   }
 
   // A bare season, or nothing, is not a product name.
-  const meaningful = kept.filter(t => !isSeasonToken(t, undefined));
+  const meaningful = kept.filter(t => !/^\d+$/.test(t));
   if (meaningful.length === 0) return null;
 
-  return kept
-    .map(t => (/^\d/.test(t) ? t : t.charAt(0).toUpperCase() + t.slice(1)))
-    .join(' ');
+  const cased = kept.map(t => (/^\d/.test(t) ? t : t.charAt(0).toUpperCase() + t.slice(1)));
+
+  // normalizeTitle flattened "2025-26" to "2025 26"; put the hyphen back so
+  // the gap list reads the way the hobby writes a season.
+  const out: string[] = [];
+  for (let i = 0; i < cased.length; i++) {
+    if (/^20\d{2}$/.test(cased[i]) && /^\d{2}$/.test(cased[i + 1] ?? '')) {
+      out.push(`${cased[i]}-${cased[i + 1]}`);
+      i++;
+      continue;
+    }
+    out.push(cased[i]);
+  }
+  return out.join(' ');
+}
+
+/**
+ * Does this phrase name a product, or is it just show copy?
+ *
+ * Live-platform titles are recurring show brands, not products — "EW NFL
+ * MONDAY! PYTS AND BREAKS ALL DAY", "BIGGEST AND BEST CHARACTER BREAKS ON
+ * FANATICS". Those were ranking ABOVE the real signal in the coverage gap
+ * (six "Character Breaks" entries outranking five 2026 Chrome Football
+ * breaks), which is exactly backwards: one is a product we should onboard,
+ * the other is a weekly timeslot.
+ *
+ * A stated year is the cheap, reliable tell. Breakers drop plenty else from
+ * a title but they lead with the year on anything they want found.
+ */
+export function phraseNamesProduct(phrase: string): boolean {
+  return /\b20\d{2}\b/.test(phrase);
 }
