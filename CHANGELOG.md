@@ -5,6 +5,24 @@ Format: newest first. Each entry covers what changed, why, and any important tec
 
 ---
 
+## 2026-11-23 — Break Feed: what the market is actually breaking
+
+Brody's framing, after looking at BreakRadar: not a competitor, a reference implementation — *"what could we leverage from how they built what they built, to get better at the user loop… if you look at a product or a player, we show you upcoming breaks that we know about."*
+
+What the research found first is the part worth keeping. **The live-break market splits in two, and only one half can be ingested at all.** Shop storefronts (Steel City) pre-list each break as an e-commerce product, so every row carries a spot price, spots left, date and breaker. Live platforms do not, by design: BreakRadar says so about Whatnot, and Fanatics Live behaves identically — a **named, product-specific** show two days out (`GILDED BASEBALL RELEASE DAY w/ EAST WEST!`) still renders *"This shop is empty (for now)"*, and the breaker's own pinned comment reads *"TEXT BROCK FOR PRE-CLAIMS."* The inventory doesn't exist until it's dropped and the real pre-break market is in DMs. Not a scraping problem. So `price`/`spots` are nullable and the UI labels which fidelity a row is; titles alone still answer which products are getting attention.
+
+**Shipped the admin half, not the consumer half** — and that ordering is the finding, not caution. Against our 11 active products, the first live pull matched **3 of 66 sports breaks (5%)**, so an "upcoming breaks" panel would render empty on 10 of 11 product pages. The near-misses are the actual product signal: 5 breaks of 2026 Topps Chrome Football (we carry **2025**), 3 of Topps Museum, 2 of Cosmic Chrome *Baseball* (we carry Football and Basketball). The May *most-recent-Bowman-per-sport* scoping has aged out. `/admin/break-feed` leads with that gap, ranked by how many breakers are running each product — an onboarding queue instead of a guess.
+
+**Matching is strict and deliberately not an LLM call.** Every core token of a product name must appear in the title with no intruder token inside the span, which is what stops `Topps Chrome Baseball` claiming a `Topps Cosmic Chrome Baseball` listing — one word, different product, different price point. Year mismatches are rejected for the same reason. The failure modes are asymmetric: a miss surfaces as a gap to review, a false positive silently claims coverage we don't have. Two retail/catalog divergences live in a greppable `TITLE_ALIASES` map (retail calls our "2026 Bowman Sapphire Baseball" *"Bowman Chrome Baseball Sapphire Edition"*; OPC for O-Pee-Chee). 28 matcher + 8 phrase regression cases, all from real captured titles.
+
+**Two bugs caught during verification, both of the same shape — a success that isn't one.** (1) Alexandria reports upstream provider failures as an `error` nested *inside an HTTP 200* (observed live: `provider_error`, status 502, cleared on retry). Reading only the status hands you zero products, which the disappeared-sweep would then have read as the entire board coming off the market; now checked explicitly with a 3× backoff retry, and the sweep only runs when every source refreshed cleanly. (2) The gap ranking initially put *"Biggest And Best Character Breaks"* and three *"EW NFL \<weekday\> PYTS AND BREAKS"* entries **above** 2026 Chrome Football — recurring timeslots outranking a roster decision. `phraseNamesProduct()` now gates the ranking on a stated year; the rest are counted and noted beneath the table.
+
+Runs on the existing `FIRECRAWL_API_KEY` (Alexandria is a `POST /v2/scrape` with an `alexandria` body) — no new vendor, ~15 credits per refresh, nightly at 09:00 UTC. Admin-only, service-role-only tables per gotcha #12; engine, pricing and `pricing_cache` untouched. **Ceiling worth knowing:** Steel City is the only structured group-break provider in the entire Alexandria library — the `fanatics-com` provider is retail merch, and there is no Whatnot provider.
+
+Architecture: [docs/break-feed.md](docs/break-feed.md). PR #263.
+
+---
+
 ## 2026-11-20 — Thinking effort pinned to `low`, and a prompt index
 
 Follow-up to the Sonnet 5.5 move, which shipped with `effort` unset. That silently bought a thinking budget we never had: 5.5 defaults to **high** with adaptive thinking where Sonnet 4.6 ran thinking-off, on a pipeline whose tightest path (`parseBreakPrice`: one 220s attempt inside a 300s cap) has no room for it. Brody's call — *"the things that we're doing are not super complex… I definitely don't want to risk any timeouts… I would probably start with low."*
