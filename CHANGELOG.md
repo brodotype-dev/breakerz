@@ -46,6 +46,12 @@ On a miss night the three biggest products burn half the budget fetching, any ad
 
 **Watch:** `variantsFromCache` should be non-zero for every product on every run from tomorrow. If it reads 0 again, the resonance is back.
 
+## 2026-11-22 — Two-day check on the pricing fix + the freshness tradeoff written down
+
+**The fix held.** Four nights since: **zero V-shaped collapses** (none since Nov 6), **zero partial runs**, and the coverage guard has never fired — which is the expected outcome, since #259 removed the condition that produced thin coverage. Coverage instrumentation is populating: 2,136 cached prices carry `variants_priced`, averaging 96.5% of variants priced. Also verified `claude-sonnet-5-5` + `output_config.effort` against the live API (HTTP 200) after #260/#261 swapped the registry — a bad model id would have silently broken every verdict and Discord parse with nobody to notice.
+
+**But the stated watch item failed, and it's now documented rather than fixed.** #259 predicted the cache would hit every night; it doesn't. A cache hit doesn't refresh `fetched_at`, so 36h against a 24h cron gives a strict **miss/hit alternation** (Nov 19: 102,525 cached / 3,761 live, 54s · Nov 20: 400 / 105,890, 152s · Nov 21: 105,890 / 400, 49s · Nov 22: 400 / 105,890, 136s). Two consequences: hit nights **freeze prices** (99.7% of players byte-identical Nov 21; 96.5% Nov 19 — a fetch night runs ~70% unchanged, which is normal), so big products reprice every *other* day; and the thing preventing a repeat is now the **~145s of headroom** (136–152s against the 295s cap), not the cache — the same workload took 287s on Oct 29. **Decision (Brody): leave it** — at 5 profiles and no traffic, half the CardHedger spend beats same-day prices. Written up in [docs/icebox.md](docs/icebox.md) with the measurements, the revisit triggers (real users, any run >240s, `coverageGuardSkipped` non-zero, product growth, a new V-shape) and the fix when triggered (TTL *below* the cron interval, e.g. 20h — **not** touching `fetched_at` on hit, which would stop prices updating entirely). Gotcha #15 points at it.
+
 ## 2026-11-20 — Consumer prices were collapsing one day in six, and the cron called it a success
 
 **The EV history paid for itself the first time anyone looked at it.** Returning to the project after seven weeks idle, the first question was what the 65 days of `player_product_ev_snapshots` enabled for trend features. The answer: nothing yet, because the data exposed a live correctness bug first.
